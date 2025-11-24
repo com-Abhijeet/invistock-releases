@@ -59,20 +59,20 @@ import ExpensesPage from "./pages/ExpensePage";
 import StockAdjustmentsPage from "./pages/StockAdjustmentsPage";
 import UpdateManager from "./components/UpdateManager";
 
-/**
- * Represents the current status of the application persistence layer.
- *
- * - `"loading"`: The application is initializing or loading resources.
- * - `"server"`: The server is active and handling requests.
- * - `"client-connected"`: The client has successfully connected to the server.
- * - `"client-connecting"`: The client is in the process of connecting to the server.
- */
-let persistedAppStatus:
-  | "loading"
-  | "server"
-  | "client-connected"
-  | "client-connecting" = "loading";
-let persistedServerUrl: string | null = null;
+// /**
+//  * Represents the current status of the application persistence layer.
+//  *
+//  * - `"loading"`: The application is initializing or loading resources.
+//  * - `"server"`: The server is active and handling requests.
+//  * - `"client-connected"`: The client has successfully connected to the server.
+//  * - `"client-connecting"`: The client is in the process of connecting to the server.
+//  */
+// let persistedAppStatus:
+//   | "loading"
+//   | "server"
+//   | "client-connected"
+//   | "client-connecting" = "loading";
+// let persistedServerUrl: string | null = null;
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -182,49 +182,110 @@ function AppLayout() {
 function AppInitializer() {
   const [status, setStatus] = useState<
     "loading" | "server" | "client-connecting" | "client-connected"
-  >(persistedAppStatus);
+  >("loading");
 
   useEffect(() => {
-    console.log("[INIT] Attaching IPC listeners...");
+    console.log("[INIT] Starting AppInitializer...");
 
-    (async () => {
-      const mode = await window.electron.getAppMode();
-      const url = await window.electron.getServerUrl();
-      console.log("[INIT] Recovered persisted mode:", mode, "URL:", url);
+    let pollingInterval: NodeJS.Timeout | null = null;
+    let isMounted = true;
 
-      if (mode === "server") {
-        setStatus("server");
-        persistedAppStatus = "server";
-      } else if (url) {
+    // 2. Initial Async Check
+    const init = async () => {
+      try {
+        const mode = await window.electron.getAppMode();
+        console.log("[INIT] App Mode from Main:", mode);
+
+        if (mode === "server") {
+          console.log("[INIT] Server mode detected");
+          if (isMounted) {
+            setStatus("server");
+          }
+          return true;
+        }
+
+        // We are in Client Mode. Do we have a URL?
+        const serverUrlFromMain = await window.electron.getServerUrl();
+        console.log("[INIT] Server URL from Main:", serverUrlFromMain);
+
+        if (serverUrlFromMain) {
+          console.log("[INIT] Got URL from Main, setting to client-connected");
+          setApiBaseUrl(serverUrlFromMain);
+          if (isMounted) {
+            setStatus("client-connected"); // ✅ This MUST update state
+          }
+          return true;
+        }
+
+        // Fallback: Check localStorage
+        const storedUrl = localStorage.getItem("serverUrl");
+        if (storedUrl) {
+          console.log("[INIT] Got URL from Storage:", storedUrl);
+          setApiBaseUrl(storedUrl);
+          if (isMounted) {
+            setStatus("client-connected");
+          }
+          return true;
+        }
+
+        console.log("[INIT] No URL found, entering client-connecting mode");
+        if (isMounted) {
+          setStatus("client-connecting");
+        }
+        return false;
+      } catch (e) {
+        console.error("[INIT] Error during init:", e);
+        if (isMounted) {
+          setStatus("client-connecting");
+        }
+        return false;
+      }
+    };
+
+    // Run initial check
+    init().then((success) => {
+      if (!success && isMounted) {
+        console.log("[INIT] Starting polling for server URL...");
+        pollingInterval = setInterval(async () => {
+          const serverUrl = await window.electron.getServerUrl();
+          if (serverUrl && isMounted) {
+            console.log("[INIT] Polling found URL:", serverUrl);
+            setApiBaseUrl(serverUrl);
+            localStorage.setItem("serverUrl", serverUrl);
+            setStatus("client-connected");
+            if (pollingInterval) clearInterval(pollingInterval);
+          }
+        }, 2000);
+      }
+    });
+
+    // 3. Event Listeners (with proper cleanup)
+    const handleSetMode = (mode: "server" | "client") => {
+      console.log("[INIT] Event: Mode ->", mode);
+      if (isMounted) {
+        setStatus(mode === "server" ? "server" : "client-connecting");
+      }
+    };
+
+    const handleSetUrl = (url: string) => {
+      console.log("[INIT] Event: URL ->", url);
+      if (isMounted) {
         setApiBaseUrl(url);
+        localStorage.setItem("serverUrl", url);
         setStatus("client-connected");
-        persistedAppStatus = "client-connected";
-        persistedServerUrl = url;
-      } else {
-        setStatus("client-connecting");
-        persistedAppStatus = "client-connecting";
+        if (pollingInterval) clearInterval(pollingInterval);
       }
-    })();
+    };
 
-    window.electron.onSetAppMode((mode: "server" | "client") => {
-      if (mode === "server") {
-        setStatus("server");
-        persistedAppStatus = "server";
-      } else if (persistedServerUrl) {
-        setStatus("client-connected");
-        persistedAppStatus = "client-connected";
-      } else {
-        setStatus("client-connecting");
-        persistedAppStatus = "client-connecting";
-      }
-    });
+    // ✅ IMPORTANT: Remove old listeners before adding new ones
+    window.electron.onSetAppMode(handleSetMode);
+    window.electron.onSetServerUrl(handleSetUrl);
 
-    window.electron.onSetServerUrl((url: string) => {
-      setApiBaseUrl(url);
-      persistedServerUrl = url;
-      setStatus("client-connected");
-      persistedAppStatus = "client-connected";
-    });
+    // Cleanup on unmount
+    return () => {
+      isMounted = false;
+      if (pollingInterval) clearInterval(pollingInterval);
+    };
   }, []);
 
   // -------------------- UI Rendering --------------------
@@ -263,36 +324,30 @@ function AppInitializer() {
     );
   }
 
-  // 🔹 Once server or client-connected — render full app
+  // ✅ Render app when status is "server" or "client-connected"
   return (
-    <Routes>
-      {/* 1. Public Routes - NO AuthProvider wrapping these */}
-      <Route path="/license" element={<LicensePage />} />
-      <Route path="/view-license" element={<ViewLicensePage />} />
-
-      {/* 2. The Main Application - Wrapped in AuthProvider */}
-      <Route
-        path="/*"
-        element={
-          <AuthProvider>
-            <ModeProvider>
-              <GlobalShortcuts />
-              <AppLayout />
-            </ModeProvider>
-          </AuthProvider>
-        }
-      />
-    </Routes>
+    <AuthProvider>
+      <ModeProvider>
+        <GlobalShortcuts />
+        <AppLayout />
+      </ModeProvider>
+    </AuthProvider>
   );
 }
-
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
         <UpdateManager />
-        <AppInitializer />
+        <Routes>
+          {/* ✅ License routes FIRST - no providers, no AppInitializer */}
+          <Route path="/license" element={<LicensePage />} />
+          <Route path="/view-license" element={<ViewLicensePage />} />
+
+          {/* ✅ All other routes go through AppInitializer */}
+          <Route path="/*" element={<AppInitializer />} />
+        </Routes>
       </Router>
     </ThemeProvider>
   );
