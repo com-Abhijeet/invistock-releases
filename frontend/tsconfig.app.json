@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    // --- Output & Environment ---
+    "target": "ESNext",
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ],
+    "jsx": "react-jsx",
+    "noEmit": true, // ✅ CRITICAL: Prevents TypeScript from creating .js files.
+    "isolatedModules": true,
+    // --- Module Resolution (for Vite/Bundlers) ---
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    // --- Strictness & Best Practices ---
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src"
+  ] // ✅ Only include your actual source code directory.
+}

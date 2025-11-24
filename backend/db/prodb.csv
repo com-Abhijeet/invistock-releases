@@ -1,0 +1,2 @@
+id,name,product_code,hsn,gst_rate,mrp,mop,category,subcategory,storage_location,quantity,description,brand,barcode,image_url,created_at,updated_at,is_active
+1,"LG 32""",ELE_TVE_001,100230,18.0,18000.0,16000.0,1,1,warehouse 1,18,LG TV,LG ,,,2025-08-05 08:46:48,2025-08-05 08:46:48,1

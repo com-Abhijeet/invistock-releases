@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "types": [
+      "vite/client",
+      "vite-plugin-pwa/client" // ✅ Add this line
+    ],
+  },
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
+}
