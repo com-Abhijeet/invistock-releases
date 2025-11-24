@@ -1,12 +1,16 @@
 {
   "name": "invistock",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Invistock is a inventory and operational software built to cater specific needs of businesses.",
   "main": "electron/main.js",
   "type": "commonjs",
   "author": {
     "name": "Abhijeet Shinde",
     "email": "invistock@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/com-Abhijeet/invistock-releases/releases"
   },
   "scripts": {
     "dev": "concurrently -k -n FRONTEND,BACKEND,ELECTRON -c cyan,magenta,yellow \"npm:serve-frontend\" \"npm:serve-backend\" \"npm:serve-electron\"",
@@ -18,7 +22,8 @@
     "build": "npm run build:frontend && npm run build:electron",
     "postinstall": "electron-rebuild",
     "rebuild:backend": "cd backend && npm rebuild --runtime=electron --target=37.2.3 --dist-url=https://electronjs.org/headers --arch=x64",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "publish": "npm run build && electron-builder --publish always"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
@@ -39,7 +44,7 @@
     "xlsx": "^0.18.5"
   },
   "build": {
-    "appId": "com.yourcompany.labelinventory",
+    "appId": "com.abhijeetShinde.invistock",
     "productName": "InviStock - inventory management",
     "directories": {
       "buildResources": "assets",
@@ -59,8 +64,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "com.abhijeet",
-        "repo": "Invistock-Releases"
+        "owner": "com-abhijeet",
+        "repo": "invistock-releases"
       }
     ],
     "win": {

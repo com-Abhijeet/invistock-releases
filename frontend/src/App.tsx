@@ -59,6 +59,21 @@ import ExpensesPage from "./pages/ExpensePage";
 import StockAdjustmentsPage from "./pages/StockAdjustmentsPage";
 import UpdateManager from "./components/UpdateManager";
 
+/**
+ * Represents the current status of the application persistence layer.
+ *
+ * - `"loading"`: The application is initializing or loading resources.
+ * - `"server"`: The server is active and handling requests.
+ * - `"client-connected"`: The client has successfully connected to the server.
+ * - `"client-connecting"`: The client is in the process of connecting to the server.
+ */
+let persistedAppStatus:
+  | "loading"
+  | "server"
+  | "client-connected"
+  | "client-connecting" = "loading";
+let persistedServerUrl: string | null = null;
+
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
   const navigate = useNavigate();
@@ -95,6 +110,7 @@ function AppLayout() {
   return (
     <Routes>
       <Route path="/license" element={<LicensePage />} />
+      <Route path="/view-license" element={<ViewLicensePage />} />
       {/* The mobile view route is handled by the backend now, but keeping for reference if needed */}
       {/* <Route path="/mobile-view" element={<MobileProductView />} /> */}
 
@@ -134,7 +150,7 @@ function AppLayout() {
                   <Route path="/transactions" element={<TransactionsPage />} />
                   <Route path="/gst" element={<Gstr1ReportPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/view-license" element={<ViewLicensePage />} />
+
                   <Route path="/about" element={<AboutPage />} />
                   <Route path="/expenses" element={<ExpensesPage />} />
                   <Route
@@ -163,80 +179,55 @@ function AppLayout() {
   );
 }
 
-// ✅ FIXED AppInitializer
 function AppInitializer() {
-  // 1. Use STATE for the status, so updates trigger re-renders
   const [status, setStatus] = useState<
     "loading" | "server" | "client-connecting" | "client-connected"
-  >("loading");
+  >(persistedAppStatus);
 
   useEffect(() => {
-    console.log("[INIT] Starting AppInitializer...");
+    console.log("[INIT] Attaching IPC listeners...");
 
-    // 2. Initial Async Check
-    // We check both the persistent store AND ask the main process
-    const init = async () => {
-      try {
-        // Check if we are in Server mode
-        const mode = await window.electron.getAppMode();
-        console.log("[INIT] App Mode from Main:", mode);
+    (async () => {
+      const mode = await window.electron.getAppMode();
+      const url = await window.electron.getServerUrl();
+      console.log("[INIT] Recovered persisted mode:", mode, "URL:", url);
 
-        if (mode === "Admin (Server) Mode" || mode === "server") {
-          setStatus("server");
-          return;
-        }
-
-        // We are in Client Mode. Do we have a URL?
-        // First, check if main process already found one
-        const serverUrlFromMain = await window.electron.getServerUrl(); // You need to expose this in preload if not already
-        if (serverUrlFromMain) {
-          console.log("[INIT] Got URL from Main:", serverUrlFromMain);
-          setApiBaseUrl(serverUrlFromMain);
-          setStatus("client-connected");
-          return;
-        }
-
-        // Fallback: Check localStorage
-        const storedUrl = localStorage.getItem("serverUrl");
-        if (storedUrl) {
-          console.log("[INIT] Got URL from Storage:", storedUrl);
-          setApiBaseUrl(storedUrl);
-          // Optional: We can set status to connected, or wait for verification
-          // For now, let's set it to connected to unlock UI
-          setStatus("client-connected");
-        } else {
-          setStatus("client-connecting");
-        }
-      } catch (e) {
-        console.error("[INIT] Error during init:", e);
+      if (mode === "server") {
+        setStatus("server");
+        persistedAppStatus = "server";
+      } else if (url) {
+        setApiBaseUrl(url);
+        setStatus("client-connected");
+        persistedAppStatus = "client-connected";
+        persistedServerUrl = url;
+      } else {
         setStatus("client-connecting");
+        persistedAppStatus = "client-connecting";
       }
-    };
+    })();
 
-    init();
+    window.electron.onSetAppMode((mode: "server" | "client") => {
+      if (mode === "server") {
+        setStatus("server");
+        persistedAppStatus = "server";
+      } else if (persistedServerUrl) {
+        setStatus("client-connected");
+        persistedAppStatus = "client-connected";
+      } else {
+        setStatus("client-connecting");
+        persistedAppStatus = "client-connecting";
+      }
+    });
 
-    // 3. Event Listeners (for live updates)
-    const handleSetMode = (mode: "server" | "client") => {
-      console.log("[INIT] Event: Mode ->", mode);
-      if (mode === "server") setStatus("server");
-      else
-        setStatus((prev) =>
-          prev === "client-connected" ? prev : "client-connecting"
-        );
-    };
-
-    const handleSetUrl = (url: string) => {
-      console.log("[INIT] Event: URL ->", url);
+    window.electron.onSetServerUrl((url: string) => {
       setApiBaseUrl(url);
-      localStorage.setItem("serverUrl", url); // Persist it
+      persistedServerUrl = url;
       setStatus("client-connected");
-    };
-
-    window.electron.onSetAppMode(handleSetMode);
-    window.electron.onSetServerUrl(handleSetUrl);
+      persistedAppStatus = "client-connected";
+    });
   }, []);
 
-  // --- Render Logic ---
+  // -------------------- UI Rendering --------------------
 
   if (status === "loading") {
     return (
@@ -266,20 +257,32 @@ function AppInitializer() {
         <CircularProgress />
         <Typography variant="h6">Searching for InviStock Server...</Typography>
         <Typography color="text.secondary">
-          Please ensure the main app is running.
+          Please ensure the main app is running on your network.
         </Typography>
       </Box>
     );
   }
 
-  // Server or Client-Connected -> Render App
+  // 🔹 Once server or client-connected — render full app
   return (
-    <AuthProvider>
-      <ModeProvider>
-        <GlobalShortcuts />
-        <AppLayout />
-      </ModeProvider>
-    </AuthProvider>
+    <Routes>
+      {/* 1. Public Routes - NO AuthProvider wrapping these */}
+      <Route path="/license" element={<LicensePage />} />
+      <Route path="/view-license" element={<ViewLicensePage />} />
+
+      {/* 2. The Main Application - Wrapped in AuthProvider */}
+      <Route
+        path="/*"
+        element={
+          <AuthProvider>
+            <ModeProvider>
+              <GlobalShortcuts />
+              <AppLayout />
+            </ModeProvider>
+          </AuthProvider>
+        }
+      />
+    </Routes>
   );
 }
 

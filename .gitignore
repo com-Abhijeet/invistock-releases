@@ -3,3 +3,4 @@ frontend/node_modules
 dist_electron
 out
 .env
+.wwebjs_auth

@@ -54,6 +54,7 @@ const {
 const { initializeUpdater } = require("./updater.js");
 
 const config = require("./config.js");
+app.disableHardwareAcceleration();
 
 const dbPath = config.paths.database;
 let lastKnownServerUrl = null;
@@ -182,6 +183,7 @@ app.whenReady().then(() => {
   if (config.isClientMode) {
     // --- CLIENT APP ---
     console.log("[CLIENT MODE] Starting. Looking for InviStock Server...");
+    initializeLicenseHandlers(); // Initialize handlers even in client mode
     createWindow(); // Just create the window. The 'did-finish-load' will handle the rest.
 
     const bonjour = new Bonjour();
@@ -209,18 +211,58 @@ app.whenReady().then(() => {
     });
   } else {
     // --- SERVER (MAIN ADMIN) APP ---
-    console.log("[SERVER MODE] Starting.");
-    startServer(config.paths.database);
 
+    // 1. Initialize Handlers FIRST (Critical for License Window IPC)
     initializeLicenseHandlers();
-    const licenseStatus = checkAppLicense();
 
+    let serverStarted = false;
+
+    // 2. Safe Server Start Logic
+    try {
+      console.log("[SERVER MODE] Checking database...");
+
+      // ✅ FIX: Check if DB exists. If not, don't crash—just skip to license window.
+      if (fs.existsSync(config.paths.database)) {
+        console.log("[SERVER MODE] Database found. Starting backend.");
+        startServer(config.paths.database);
+        serverStarted = true;
+      } else {
+        console.log(
+          "[SERVER MODE] Fresh install detected (No DB). Skipping server start."
+        );
+      }
+    } catch (error) {
+      // ✅ FIX: Log error but DO NOT show blocking dialog.
+      // We want to fall through to createLicenseWindow()
+      console.error(
+        "[CRITICAL] Backend failed to start (ignoring for fresh install):",
+        error
+      );
+    }
+
+    // 3. Check License
+    let licenseStatus = { status: "invalid" };
+    try {
+      licenseStatus = checkAppLicense();
+    } catch (e) {
+      console.warn(
+        "License check failed (expected on fresh install):",
+        e.message
+      );
+    }
+
+    // 4. Decide which window to open
+    // Only open the Main Window if the Server started AND License is valid
     if (
-      licenseStatus.status === "valid" ||
-      licenseStatus.status === "grace_period"
+      serverStarted &&
+      (licenseStatus.status === "valid" ||
+        licenseStatus.status === "grace_period")
     ) {
       createWindow(); // Open main app
     } else {
+      console.log(
+        "[APP] Opening License Window (Fresh Install or Invalid License)"
+      );
       createLicenseWindow(); // Open activation screen
     }
   }
@@ -228,10 +270,10 @@ app.whenReady().then(() => {
   // Handle macOS dock icon click
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      // ✅ Re-run the full startup logic on activate
       if (config.isClientMode) {
         createWindow();
       } else {
+        // Re-run the safe check on activate
         const licenseStatus = checkAppLicense();
         if (
           licenseStatus.status === "valid" ||
