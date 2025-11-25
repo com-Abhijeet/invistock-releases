@@ -2,6 +2,8 @@
 declare global {
   interface Window {
     electron: {
+      removeSetAppMode: any;
+      removeSetServerUrl: any;
       checkForUpdates: () => Promise<void>;
       restartApp: () => Promise<void>;
       getServerUrl(): string;

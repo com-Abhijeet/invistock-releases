@@ -22,31 +22,71 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// This new component will replace your AppInitializer
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [status, setStatus] = useState<AppStatus>("loading");
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
-  // This is the hard-coded password for the server/admin.
-  // In a real app, you might fetch this from a config file.
   const ADMIN_PASSWORD = "admin";
 
   useEffect(() => {
-    // 1. Listen for the initial mode from main.js
-    window.electron.onSetAppMode((mode: "server" | "client") => {
-      console.log(`[INIT] App mode received: ${mode}`);
-      if (mode === "server") {
-        setStatus("server");
-      } else {
+    let offMode: (() => void) | undefined;
+    let offUrl: (() => void) | undefined;
+
+    // Get current values first to avoid missing events sent before mount
+    (async () => {
+      try {
+        const mode =
+          typeof window.electron?.getAppMode === "function"
+            ? await window.electron.getAppMode()
+            : undefined;
+        console.log("[INIT] initial mode:", mode);
+        if (mode === "server") setStatus("server");
+        else setStatus("client-connecting");
+
+        const url =
+          typeof window.electron?.getServerUrl === "function"
+            ? await window.electron.getServerUrl()
+            : undefined;
+        if (url) {
+          console.log("[INIT] initial server URL:", url);
+          setApiBaseUrl(url);
+          setStatus("client-connected");
+        }
+      } catch (e) {
+        console.warn("[INIT] failed to read initial mode/url:", e);
         setStatus("client-connecting");
       }
-    });
+    })();
 
-    // 2. Listen for the server URL from main.js
-    window.electron.onSetServerUrl((url: string) => {
-      setApiBaseUrl(url); // Redirect the API
-      setStatus("client-connected"); // Unlock the app
-    });
+    // Subscribe to updates (preload may return an unsubscribe function)
+    if (typeof window.electron?.onSetAppMode === "function") {
+      offMode = (window.electron.onSetAppMode as unknown as (cb: (mode: "server" | "client") => void) => (() => void) | undefined)((mode: "server" | "client") => {
+        console.log("[INIT] App mode event:", mode);
+        if (mode === "server") setStatus("server");
+        else
+          setStatus((prev) =>
+            prev === "client-connected" ? prev : "client-connecting"
+          );
+      });
+    }
+
+    if (typeof window.electron?.onSetServerUrl === "function") {
+      offUrl = (window.electron.onSetServerUrl as unknown as (cb: (url: string) => void) => (() => void) | undefined)((url: string) => {
+        console.log("[INIT] Server URL event:", url);
+        setApiBaseUrl(url);
+        setStatus("client-connected");
+      });
+    }
+
+    return () => {
+      if (typeof offMode === "function") offMode();
+      else if (typeof window.electron?.removeSetAppMode === "function")
+        window.electron.removeSetAppMode?.();
+
+      if (typeof offUrl === "function") offUrl();
+      else if (typeof window.electron?.removeSetServerUrl === "function")
+        window.electron.removeSetServerUrl?.();
+    };
   }, []);
 
   const login = (password: string): boolean => {
@@ -68,6 +108,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         height="100vh"
       >
         <CircularProgress />
+        <Typography>Loading Auth</Typography>
       </Box>
     );
   }
@@ -92,11 +133,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  // If status is 'server' or 'client-connected', render the app.
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Custom hook to easily access the context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {

@@ -140,6 +140,7 @@ export default function Dashboard() {
           height="60vh" // Adjust height to fit below header
         >
           <CircularProgress />
+          <Typography>Lading Dashboard Data</Typography>
         </Box>
       ) : (
         <>

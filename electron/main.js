@@ -79,9 +79,11 @@ let mainWindow; // Store the main window instance
 
 function createLicenseWindow() {
   const licenseWin = new BrowserWindow({
-    width: 600,
-    height: 400,
-    resizable: false,
+    minWidth: 1100,
+    minHeight: 700,
+    width: 1280,
+    height: 800,
+    resizable: true,
     autoHideMenuBar: true,
     title: "Activate InviStock",
     webPreferences: {
@@ -211,26 +213,16 @@ app.whenReady().then(() => {
     });
   } else {
     // --- SERVER (MAIN ADMIN) APP ---
-
-    // 1. Initialize Handlers FIRST (Critical for License Window IPC)
-    initializeLicenseHandlers();
-
     let serverStarted = false;
-
-    // 2. Safe Server Start Logic
+    // 1. Safe Server Start Logic
     try {
       console.log("[SERVER MODE] Checking database...");
 
       // ✅ FIX: Check if DB exists. If not, don't crash—just skip to license window.
-      if (fs.existsSync(config.paths.database)) {
-        console.log("[SERVER MODE] Database found. Starting backend.");
-        startServer(config.paths.database);
-        serverStarted = true;
-      } else {
-        console.log(
-          "[SERVER MODE] Fresh install detected (No DB). Skipping server start."
-        );
-      }
+
+      console.log("[SERVER MODE] Database found. Starting backend.");
+      startServer(config.paths.database);
+      serverStarted = true;
     } catch (error) {
       // ✅ FIX: Log error but DO NOT show blocking dialog.
       // We want to fall through to createLicenseWindow()
@@ -239,6 +231,9 @@ app.whenReady().then(() => {
         error
       );
     }
+
+    // 2. Initialize Handlers FIRST (Critical for License Window IPC)
+    initializeLicenseHandlers();
 
     // 3. Check License
     let licenseStatus = { status: "invalid" };

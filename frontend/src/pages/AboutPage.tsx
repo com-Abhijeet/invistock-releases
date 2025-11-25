@@ -107,7 +107,10 @@ const AboutPage = () => {
                     size="small"
                   />
                 ) : (
-                  <CircularProgress size={20} />
+                  <>
+                    <CircularProgress size={20} />
+                    <Typography>Loading About Page</Typography>
+                  </>
                 )}
               </Box>
               <Typography variant="body2" color="text.secondary">

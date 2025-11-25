@@ -109,8 +109,6 @@ function AppLayout() {
 
   return (
     <Routes>
-      <Route path="/license" element={<LicensePage />} />
-      <Route path="/view-license" element={<ViewLicensePage />} />
       {/* The mobile view route is handled by the backend now, but keeping for reference if needed */}
       {/* <Route path="/mobile-view" element={<MobileProductView />} /> */}
 
@@ -184,6 +182,8 @@ function AppInitializer() {
     "loading" | "server" | "client-connecting" | "client-connected"
   >("loading");
 
+  console.log("[INIT] AppInitializer render, status =", status);
+
   useEffect(() => {
     console.log("[INIT] Starting AppInitializer...");
 
@@ -199,6 +199,7 @@ function AppInitializer() {
         if (mode === "server") {
           console.log("[INIT] Server mode detected");
           if (isMounted) {
+            console.log("Setting status server");
             setStatus("server");
           }
           return true;
@@ -277,14 +278,32 @@ function AppInitializer() {
       }
     };
 
-    // ✅ IMPORTANT: Remove old listeners before adding new ones
-    window.electron.onSetAppMode(handleSetMode);
-    window.electron.onSetServerUrl(handleSetUrl);
+    // // ✅ IMPORTANT: Remove old listeners before adding new ones
+    // window.electron.onSetAppMode(handleSetMode);
+    // window.electron.onSetServerUrl(handleSetUrl);
+    // Register IPC listeners; handle possible unsubscribe function if provided by preload
+    const offMode = window.electron.onSetAppMode
+      ? window.electron.onSetAppMode(handleSetMode)
+      : undefined;
+    const offUrl = window.electron.onSetServerUrl
+      ? window.electron.onSetServerUrl(handleSetUrl)
+      : undefined;
 
-    // Cleanup on unmount
+    // // Cleanup on unmount
+    // return () => {
+    //   isMounted = false;
+    //   if (pollingInterval) clearInterval(pollingInterval);
+    // };
     return () => {
       isMounted = false;
       if (pollingInterval) clearInterval(pollingInterval);
+      // Unsubscribe listeners if API returned an unsubscribe, otherwise try best-effort removal
+      if (typeof offMode === "function") offMode();
+      else if (window.electron.removeSetAppMode)
+        window.electron.removeSetAppMode(handleSetMode);
+      if (typeof offUrl === "function") offUrl();
+      else if (window.electron.removeSetServerUrl)
+        window.electron.removeSetServerUrl(handleSetUrl);
     };
   }, []);
 
@@ -344,8 +363,6 @@ function App() {
           {/* ✅ License routes FIRST - no providers, no AppInitializer */}
           <Route path="/license" element={<LicensePage />} />
           <Route path="/view-license" element={<ViewLicensePage />} />
-
-          {/* ✅ All other routes go through AppInitializer */}
           <Route path="/*" element={<AppInitializer />} />
         </Routes>
       </Router>

@@ -1,6 +1,6 @@
 {
   "name": "invistock",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Invistock is a inventory and operational software built to cater specific needs of businesses.",
   "main": "electron/main.js",
   "type": "commonjs",

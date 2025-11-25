@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import OnboardingScreen from "../components/setup/OnboardingScreen";
-import { CircularProgress, Box } from "@mui/material";
+import { CircularProgress, Box, Typography } from "@mui/material";
 import type { ShopSetupForm as Shop } from "../lib/types/shopTypes";
 import { getShopData } from "../lib/api/shopService";
 
@@ -31,6 +31,7 @@ export default function ShopProvider({
         minHeight="100vh"
       >
         <CircularProgress />
+        <Typography>Loading Shop</Typography>
       </Box>
     );
   }
