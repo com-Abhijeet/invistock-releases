@@ -63,7 +63,7 @@ function initializeWhatsApp(win) {
     const execPath = getBrowserExecutablePath();
 
     client = new Client({
-      authStrategy: new LocalAuth({ clientId: "invistock-client" }),
+      authStrategy: new LocalAuth({ clientId: "KOSH-client" }),
       puppeteer: {
         // ✅ CRITICAL: Point to the external browser
         executablePath: execPath,

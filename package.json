@@ -1,7 +1,7 @@
 {
-  "name": "invistock",
-  "version": "1.0.2",
-  "description": "Invistock is a inventory and operational software built to cater specific needs of businesses.",
+  "name": "kosh",
+  "version": "1.0.3",
+  "description": "KOSH is a inventory and operational software built to cater specific needs of businesses.",
   "main": "electron/main.js",
   "type": "commonjs",
   "author": {
@@ -45,7 +45,7 @@
   },
   "build": {
     "appId": "com.abhijeetShinde.invistock",
-    "productName": "InviStock - inventory management",
+    "productName": "KOSH - inventory management",
     "directories": {
       "buildResources": "assets",
       "output": "dist_electron"
@@ -70,7 +70,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.png"
     }
   }
 }

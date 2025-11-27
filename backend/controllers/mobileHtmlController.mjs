@@ -5,7 +5,7 @@ export function serveMobileHtml(req, res) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>InviStock Mobile</title>
+  <title>KOSH Mobile</title>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
     /* ... (All previous CSS remains the same) ... */
@@ -121,7 +121,7 @@ export function serveMobileHtml(req, res) {
 
   <div class="header">
     <button class="menu-btn" onclick="openNav()">&#9776;</button>
-    <h1>InviStock <span id="filterBadge" class="filter-badge">Filtered</span></h1>
+    <h1>KOSH <span id="filterBadge" class="filter-badge">Filtered</span></h1>
   </div>
 
   <div class="search-container">

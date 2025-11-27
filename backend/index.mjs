@@ -102,7 +102,7 @@ export function startServer(dbPath) {
   });
 
   // ✅ GENERATE SELF-SIGNED CERTIFICATE
-  const attrs = [{ name: "commonName", value: "InviStock" }];
+  const attrs = [{ name: "commonName", value: "KOSH" }];
   const pems = selfsigned.generate(attrs, { days: 365 });
 
   // ✅ START HTTPS SERVER
@@ -117,13 +117,13 @@ export function startServer(dbPath) {
       try {
         bonjourInstance = new Bonjour();
         bonjourInstance.publish({
-          name: "InviStock-Main-Server", // Unique name for your service
+          name: "KOSH-Main-Server", // Unique name for your service
           type: "https", // ✅ Change type to https
           port: PORT,
           txt: { version: "1.0.0" }, // You can add extra info here
         });
         console.log(
-          "[BONJOUR] InviStock Server is now discoverable on the local network."
+          "[BONJOUR] KOSH Server is now discoverable on the local network."
         );
       } catch (error) {
         console.error("[BONJOUR] Failed to announce service:", error);

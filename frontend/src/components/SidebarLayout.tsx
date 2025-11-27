@@ -505,7 +505,7 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
                 onClick={() => navigate("/about")}
                 sx={{ cursor: "pointer", letterSpacing: "-0.5px" }}
               >
-                INVISTOCK
+                KOSH
               </Typography>
               <Divider
                 orientation="vertical"

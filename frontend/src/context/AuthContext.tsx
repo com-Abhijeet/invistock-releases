@@ -60,7 +60,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Subscribe to updates (preload may return an unsubscribe function)
     if (typeof window.electron?.onSetAppMode === "function") {
-      offMode = (window.electron.onSetAppMode as unknown as (cb: (mode: "server" | "client") => void) => (() => void) | undefined)((mode: "server" | "client") => {
+      offMode = (
+        window.electron.onSetAppMode as unknown as (
+          cb: (mode: "server" | "client") => void
+        ) => (() => void) | undefined
+      )((mode: "server" | "client") => {
         console.log("[INIT] App mode event:", mode);
         if (mode === "server") setStatus("server");
         else
@@ -71,7 +75,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     if (typeof window.electron?.onSetServerUrl === "function") {
-      offUrl = (window.electron.onSetServerUrl as unknown as (cb: (url: string) => void) => (() => void) | undefined)((url: string) => {
+      offUrl = (
+        window.electron.onSetServerUrl as unknown as (
+          cb: (url: string) => void
+        ) => (() => void) | undefined
+      )((url: string) => {
         console.log("[INIT] Server URL event:", url);
         setApiBaseUrl(url);
         setStatus("client-connected");
@@ -125,7 +133,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         sx={{ backgroundColor: "grey.100" }}
       >
         <CircularProgress />
-        <Typography variant="h6">Searching for InviStock Server...</Typography>
+        <Typography variant="h6">Searching for KOSH Server...</Typography>
         <Typography color="text.secondary">
           Please ensure the main app is running on your network.
         </Typography>

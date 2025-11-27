@@ -278,32 +278,14 @@ function AppInitializer() {
       }
     };
 
-    // // ✅ IMPORTANT: Remove old listeners before adding new ones
-    // window.electron.onSetAppMode(handleSetMode);
-    // window.electron.onSetServerUrl(handleSetUrl);
-    // Register IPC listeners; handle possible unsubscribe function if provided by preload
-    const offMode = window.electron.onSetAppMode
-      ? window.electron.onSetAppMode(handleSetMode)
-      : undefined;
-    const offUrl = window.electron.onSetServerUrl
-      ? window.electron.onSetServerUrl(handleSetUrl)
-      : undefined;
+    // ✅ IMPORTANT: Remove old listeners before adding new ones
+    window.electron.onSetAppMode(handleSetMode);
+    window.electron.onSetServerUrl(handleSetUrl);
 
-    // // Cleanup on unmount
-    // return () => {
-    //   isMounted = false;
-    //   if (pollingInterval) clearInterval(pollingInterval);
-    // };
+    // Cleanup on unmount
     return () => {
       isMounted = false;
       if (pollingInterval) clearInterval(pollingInterval);
-      // Unsubscribe listeners if API returned an unsubscribe, otherwise try best-effort removal
-      if (typeof offMode === "function") offMode();
-      else if (window.electron.removeSetAppMode)
-        window.electron.removeSetAppMode(handleSetMode);
-      if (typeof offUrl === "function") offUrl();
-      else if (window.electron.removeSetServerUrl)
-        window.electron.removeSetServerUrl(handleSetUrl);
     };
   }, []);
 
@@ -318,7 +300,7 @@ function AppInitializer() {
         height="100vh"
       >
         <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Starting InviStock...</Typography>
+        <Typography sx={{ ml: 2 }}>Starting KOSH...</Typography>
       </Box>
     );
   }
@@ -335,7 +317,7 @@ function AppInitializer() {
         sx={{ backgroundColor: "grey.100" }}
       >
         <CircularProgress />
-        <Typography variant="h6">Searching for InviStock Server...</Typography>
+        <Typography variant="h6">Searching for KOSH Server...</Typography>
         <Typography color="text.secondary">
           Please ensure the main app is running on your network.
         </Typography>

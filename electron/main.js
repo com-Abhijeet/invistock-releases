@@ -85,7 +85,7 @@ function createLicenseWindow() {
     height: 800,
     resizable: true,
     autoHideMenuBar: true,
-    title: "Activate InviStock",
+    title: "Activate KOSH",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
     },
@@ -109,7 +109,7 @@ function createLicenseWindow() {
 // ===============================================================
 function createWindow() {
   mainWindow = new BrowserWindow({
-    title: "InviStock - Inventory Management",
+    title: "KOSH - Inventory Management",
     icon: path.join(__dirname, "..", "assets", "icon.ico"),
     minWidth: 1100,
     minHeight: 700,
@@ -184,13 +184,13 @@ app.whenReady().then(() => {
   // --- Client vs. Server Mode Logic ---
   if (config.isClientMode) {
     // --- CLIENT APP ---
-    console.log("[CLIENT MODE] Starting. Looking for InviStock Server...");
+    console.log("[CLIENT MODE] Starting. Looking for KOSH Server...");
     initializeLicenseHandlers(); // Initialize handlers even in client mode
     createWindow(); // Just create the window. The 'did-finish-load' will handle the rest.
 
     const bonjour = new Bonjour();
     const browser = bonjour.find({ type: "https" }, (service) => {
-      if (service.name === "InviStock-Main-Server") {
+      if (service.name === "KOSH-Main-Server") {
         const serverUrl = `https://${service.host}:${service.port}`;
         lastKnownServerUrl = serverUrl; // ✅ store globally
         console.log(`[CLIENT MODE] Found server at ${serverUrl}`);
@@ -324,7 +324,7 @@ app.on("before-quit", async (event) => {
       // ✅ Check connection and WAIT for upload
       if (isConnected()) {
         const date = new Date().toISOString().split("T")[0];
-        const backupFileName = `InviStock-Backup-${date}.db`;
+        const backupFileName = `KOSH-Backup-${date}.db`;
 
         console.log("[GDRIVE] Uploading backup...");
         await uploadBackup(config.paths.database, backupFileName);
@@ -439,7 +439,7 @@ ipcMain.handle("gdrive-login", async () => {
             await handleAuthCallback(code);
             res.writeHead(200, { "Content-Type": "text/html" });
             res.end(
-              "<h1>Success!</h1><p>InviStock is connected. You can close this tab.</p>"
+              "<h1>Success!</h1><p>KOSH is connected. You can close this tab.</p>"
             );
 
             if (mainWindow) mainWindow.webContents.send("gdrive-connected");

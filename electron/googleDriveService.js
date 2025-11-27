@@ -5,8 +5,8 @@ const config = require("./config.js");
 
 // 🔒 DEVELOPER KEYS (Hardcoded or from .env during build)
 // These are YOUR keys. The user never sees them.
-const CLIENT_ID = "CLIENT_ID";
-const CLIENT_SECRET = "CLIENT_SECRET";
+const CLIENT_ID = "YOUR_CLIENT_ID";
+const CLIENT_SECRET = "_YOUR_CLIENT_SECRET";
 const REDIRECT_URI = "http://127.0.0.1:5001/callback";
 
 const TOKEN_PATH = path.join(config.paths.userData, "gdrive_token.json");
@@ -59,10 +59,10 @@ async function uploadBackup(filePath, fileName) {
     // Automatically refreshes token if needed
     const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-    // A. Check/Create "InviStock Backups" folder
+    // A. Check/Create "KOSH Backups" folder
     let folderId;
     const q =
-      "mimeType='application/vnd.google-apps.folder' and name='InviStock Backups' and trashed=false";
+      "mimeType='application/vnd.google-apps.folder' and name='KOSH Backups' and trashed=false";
     const folderRes = await drive.files.list({ q, fields: "files(id, name)" });
 
     if (folderRes.data.files.length > 0) {
@@ -70,7 +70,7 @@ async function uploadBackup(filePath, fileName) {
     } else {
       const newFolder = await drive.files.create({
         resource: {
-          name: "InviStock Backups",
+          name: "KOSH Backups",
           mimeType: "application/vnd.google-apps.folder",
         },
         fields: "id",

@@ -49,7 +49,7 @@ const AboutPage = () => {
             {/* App Intro */}
             <Box>
               <Typography variant="h4" fontWeight="bold" color="primary.main">
-                Welcome to InviStock
+                Welcome to KOSH
               </Typography>
               <Typography
                 variant="body1"
@@ -117,7 +117,7 @@ const AboutPage = () => {
                 Version 1.0.0
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                For support, contact: +91 9370294078, invistock@gmail.com
+                For support, contact: +91 9370294078, KOSH@gmail.com
               </Typography>
             </Paper>
           </Stack>

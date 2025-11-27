@@ -183,7 +183,7 @@ export default function LicensePage() {
               <KeyRound size={32} />
             </Box>
             <Typography variant="h5" fontWeight="800" gutterBottom>
-              Activate InviStock
+              Activate KOSH
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Enter your product license key to unlock the full potential of

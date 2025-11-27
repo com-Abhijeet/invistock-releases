@@ -183,7 +183,7 @@ export default function MobileApp() {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" sx={{ flexGrow: 1, ml: 1 }}>
-            InviStock
+            KOSH
           </Typography>
         </Toolbar>
       </AppBar>
