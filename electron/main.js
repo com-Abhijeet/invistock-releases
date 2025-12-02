@@ -150,6 +150,7 @@ function createWindow() {
   }
   mainWindow.once("ready-to-show", () => {
     // Only run updater in production to avoid errors in dev
+    initializeUpdater(mainWindow);
     if (!isDev) {
       initializeUpdater(mainWindow);
     }

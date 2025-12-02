@@ -385,11 +385,7 @@ export default function ProductDetailPage() {
               <Grid item xs={6} sm={3}>
                 <DetailItem
                   label="MF/W Price"
-                  value={
-                    product.mfw_price
-                      ? `₹${product.mfw_price.toLocaleString("en-IN")}`
-                      : "—"
-                  }
+                  value={product.mfw_price ? `₹${product.mfw_price}` : "—"}
                 />
               </Grid>
               {/* --- END OF NEW FIELD --- */}

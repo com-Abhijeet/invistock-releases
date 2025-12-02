@@ -70,7 +70,7 @@ const defaultForm: Product = {
   brand: "",
   barcode: "",
   image_url: "",
-  mfw_price: 0,
+  mfw_price: "",
   low_stock_threshold: 0,
   size: "",
   weight: "",
@@ -443,11 +443,9 @@ export default function AddEditProductModal({
               <TextField
                 fullWidth
                 size="small"
-                type="number"
+                type="text"
                 value={form.mfw_price ?? ""}
-                onChange={(e) =>
-                  handleChange("mfw_price", Number(e.target.value))
-                }
+                onChange={(e) => handleChange("mfw_price", e.target.value)}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">₹</InputAdornment>

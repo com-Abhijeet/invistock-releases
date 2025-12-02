@@ -266,15 +266,7 @@ Step 4 : Calculate Final Price
     const currentItem = updated[index];
 
     // Check for rate < MOP
-    if (field === "rate") {
-      // ✅ CORRECTED: Look up the product in the cache
-      const product = productCache[currentItem.product_id];
-
-      if (product && value < product.mop) {
-        setError(`Rate cannot be lower than MOP (₹${product.mop}).`);
-        return; // Stop the update if validation fails
-      }
-    }
+    
 
     // Update the field and recalculate the price
     (currentItem as any)[field] = value;

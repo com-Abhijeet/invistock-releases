@@ -3,14 +3,17 @@ import toast from "react-hot-toast";
 import { Box, Button, Typography, LinearProgress } from "@mui/material";
 import { Download, RefreshCw, AlertTriangle } from "lucide-react";
 
-const { electron } = window;
+// Access the strictly typed electron object from window
+const electron = window.electron;
 
 export default function UpdateManager() {
   useEffect(() => {
-    if (!electron) return;
+    // Safety check: ensure electron API is available (prevents crash in browser)
+    if (!electron?.updater) return;
 
     // 1. Update Available
-    electron.ipcRenderer.on("update-available", () => {
+    // Note: The callback receives 'info' (UpdateInfo), but we don't strictly need it for the toast
+    electron.updater.onUpdateAvailable((_info) => {
       toast("New update available. Downloading...", {
         icon: <Download size={18} />,
         duration: 4000,
@@ -19,10 +22,10 @@ export default function UpdateManager() {
     });
 
     // 2. Download Progress
-    // We use a custom toast ID 'update-progress' to update the SAME toast
-    // instead of spamming new ones.
-    electron.ipcRenderer.on("update-progress", (progress: any) => {
+    // Typed automatically as ProgressInfo from electron.d.ts
+    electron.updater.onDownloadProgress((progress) => {
       const percent = Math.round(progress.percent);
+
       toast.custom(
         (_t) => (
           <Box
@@ -46,7 +49,7 @@ export default function UpdateManager() {
     });
 
     // 3. Update Downloaded (Ready to Install)
-    electron.ipcRenderer.on("update-downloaded", () => {
+    electron.updater.onUpdateDownloaded((_info) => {
       // Dismiss the progress toast
       toast.dismiss("update-progress");
 
@@ -86,7 +89,8 @@ export default function UpdateManager() {
                 variant="contained"
                 color="success"
                 startIcon={<RefreshCw size={16} />}
-                onClick={() => electron.restartApp()}
+                // Call the exposed safe method instead of direct IPC
+                onClick={() => electron.updater.restartApp()}
               >
                 Restart Now
               </Button>
@@ -98,12 +102,21 @@ export default function UpdateManager() {
     });
 
     // 4. Error
-    electron.ipcRenderer.on("update-error", (err: string) => {
+    electron.updater.onUpdateError((err) => {
       toast.error("Update failed. Check logs.", {
         icon: <AlertTriangle size={18} color="orange" />,
       });
       console.error("Update error:", err);
     });
+
+    // Cleanup: Remove listeners when component unmounts
+    return () => {
+      // We use the raw channel names here because our preload helper wraps ipcRenderer.removeAllListeners(channel)
+      electron.updater.removeAllListeners("update-available");
+      electron.updater.removeAllListeners("update-progress");
+      electron.updater.removeAllListeners("update-downloaded");
+      electron.updater.removeAllListeners("update-error");
+    };
   }, []);
 
   return null; // This component renders nothing by default

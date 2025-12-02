@@ -154,7 +154,7 @@ export async function importProducts(payload: {
 
 // fetchNextBarcode remains unchanged
 export async function fetchNextBarcode(): Promise<string> {
-  const response = await api.get(`${API_BASE}/products/next-barcode`);
+  const response = await api.get(`${API_BASE}/next-barcode`);
   return response.data.barcode;
 }
 

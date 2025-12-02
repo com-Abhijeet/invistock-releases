@@ -2,6 +2,7 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const QRCode = require("qrcode");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 // Singleton instance variables
 let client = null;
@@ -16,26 +17,34 @@ let isInitializing = false;
  */
 function getBrowserExecutablePath() {
   const possiblePaths = [
-    // Chrome (64-bit)
-    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    // Chrome (32-bit)
-    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    // Microsoft Edge (Standard on Windows 10/11)
+    // Microsoft Edge (Standard on Windows 10/11 - Most reliable)
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    path.join(
+      os.homedir(),
+      "AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe"
+    ),
+
+    // Google Chrome
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    path.join(
+      os.homedir(),
+      "AppData\\Local\\Google\\Chrome\\Application\\chrome.exe"
+    ),
+
+    // Brave (Good fallback for some users)
+    "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
   ];
 
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
-      console.log("[WHATSAPP] Using browser at:", p);
+      console.log("[WHATSAPP] Using system browser at:", p);
       return p;
     }
   }
 
-  // Fallback: If we can't find a browser, return null.
-  // Puppeteer will try its default, which might fail if not unpacked,
-  // but this covers 99% of Windows users.
-  console.warn("[WHATSAPP] No system browser found. Trying default...");
+  console.warn("[WHATSAPP] No system browser found in standard paths.");
   return null;
 }
 
@@ -45,8 +54,10 @@ function getBrowserExecutablePath() {
 function initializeWhatsApp(win) {
   mainWindow = win;
 
+  // If client exists, just update the UI with current status
   if (client || isInitializing) {
     if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log("[WHATSAPP] Service already running, sending status.");
       mainWindow.webContents.send("whatsapp-status", {
         status,
         qr: qrCodeDataUrl,
@@ -62,10 +73,33 @@ function initializeWhatsApp(win) {
 
     const execPath = getBrowserExecutablePath();
 
+    // If no browser is found, we cannot start Puppeteer in production (asar)
+    // In Dev, puppeteer might download its own chrome, so we can try without execPath
+    // But in Prod, this is fatal.
+    if (!execPath) {
+      console.error(
+        "[WHATSAPP] CRITICAL: No browser found. WhatsApp feature disabled."
+      );
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("whatsapp-status", {
+          status: "error",
+          qr: null,
+        });
+      }
+      isInitializing = false;
+      return;
+    }
+
     client = new Client({
-      authStrategy: new LocalAuth({ clientId: "KOSH-client" }),
+      authStrategy: new LocalAuth({
+        clientId: "KOSH-client",
+        // Store session data in userData to persist between updates/restarts
+        dataPath: path.join(
+          require("electron").app.getPath("userData"),
+          ".wwebjs_auth"
+        ),
+      }),
       puppeteer: {
-        // ✅ CRITICAL: Point to the external browser
         executablePath: execPath,
         headless: true,
         args: [
@@ -76,13 +110,18 @@ function initializeWhatsApp(win) {
           "--no-first-run",
           "--no-zygote",
           "--disable-gpu",
+          "--disable-extensions", // Disable extensions for speed/stability
         ],
       },
     });
 
     client.on("qr", (qr) => {
+      // console.log("[WHATSAPP] QR Code received");
       QRCode.toDataURL(qr, (err, url) => {
-        if (err) return;
+        if (err) {
+          console.error("[WHATSAPP] QR Gen Error:", err);
+          return;
+        }
         qrCodeDataUrl = url;
         status = "scanning";
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -107,6 +146,7 @@ function initializeWhatsApp(win) {
     client.on("authenticated", () => {
       status = "authenticated";
       qrCodeDataUrl = null;
+      console.log("[WHATSAPP] Client authenticated");
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("whatsapp-status", { status, qr: null });
       }
@@ -120,16 +160,28 @@ function initializeWhatsApp(win) {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("whatsapp-status", { status, qr: null });
       }
+      // Optional: Retry logic could go here
     });
 
-    client.initialize();
+    // Handle authentication failure (e.g. changed password, banned)
+    client.on("auth_failure", (msg) => {
+      console.error("[WHATSAPP] AUTH FAILURE", msg);
+      status = "disconnected";
+      isInitializing = false;
+      client = null;
+    });
+
+    client.initialize().catch((err) => {
+      console.error("[WHATSAPP] Client Initialize Error:", err);
+      isInitializing = false;
+      client = null;
+    });
   } catch (e) {
-    console.error("[WHATSAPP] Initialization failed:", e);
+    console.error("[WHATSAPP] Initialization exception:", e);
     isInitializing = false;
     client = null;
   }
 }
-
 async function sendWhatsAppMessage(number, message) {
   if (status !== "ready" || !client) {
     throw new Error("WhatsApp is not connected. Please scan QR in Settings.");

@@ -446,16 +446,21 @@ export function bulkInsertProducts(products) {
  * @returns {number} The next available 8-digit barcode.
  */
 export function getNextBarcode() {
-  const stmt = db.prepare(
-    "SELECT MAX(CAST(barcode AS INTEGER)) as lastBarcode FROM products"
-  );
-  const result = stmt.get();
+  try {
+    const stmt = db.prepare(
+      "SELECT MAX(CAST(barcode AS INTEGER)) as lastBarcode FROM products"
+    );
+    const result = stmt.get();
 
-  // If no barcodes exist, start from the first 8-digit number.
-  // Otherwise, add 1 to the highest existing barcode.
-  const nextBarcode =
-    result && result.lastBarcode ? result.lastBarcode + 1 : 10000001;
-  return nextBarcode;
+    // If no barcodes exist, start from the first 8-digit number.
+    // Otherwise, add 1 to the highest existing barcode.
+    const nextBarcode =
+      result && result.lastBarcode ? result.lastBarcode + 1 : 10000001;
+    return nextBarcode;
+  } catch (error) {
+    console.log("[BACKEND] - Error in getting barcode value");
+    throw new Error("[BACKEND] - Error in getting barcode value : ");
+  }
 }
 
 /**

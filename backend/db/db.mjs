@@ -217,7 +217,7 @@ CREATE TABLE IF NOT EXISTS products (
   is_active INTEGER DEFAULT 1,
 
   low_stock_threshold INTEGER DEFAULT 0,
-  mfw_price REAL,
+  mfw_price TEXT,
   size TEXT,
   weight TEXT,
 

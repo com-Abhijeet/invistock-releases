@@ -1,187 +1,659 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   Box,
   Typography,
-  Paper,
   Stack,
   Chip,
-  List,
-  ListItem,
-  ListItemButton,
+  Button,
+  LinearProgress,
+  Divider,
+  Card,
+  CardContent,
   CircularProgress,
+  Link as MuiLink,
+  Avatar,
+  useTheme,
+  alpha,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { useNavigate } from "react-router-dom"; // Assuming you use React Router
-import { flattenedMenu } from "../lib/navigation";
+import {
+  RotateCw,
+  DownloadCloud,
+  CheckCircle2,
+  AlertTriangle,
+  Zap,
+  Info,
+  Mail,
+  Phone,
+  ShieldCheck,
+  Server,
+  Database,
+  Globe,
+  Smartphone,
+  CreditCard,
+  Package,
+  ShoppingCart,
+  BarChart3,
+  Users,
+} from "lucide-react";
+import { useUpdate } from "../context/UpdateContext";
+import DashboardHeader from "../components/DashboardHeader";
+import { useNavigate } from "react-router-dom";
 
-// ✅ Import an icon for the license page
-import { KeyRound } from "lucide-react";
-import { useState, useEffect } from "react";
-const { electron } = window;
-const AboutPage = () => {
+// Safely access electron
+const electron = typeof window !== "undefined" ? window.electron : undefined;
+
+export default function AboutPage() {
+  const theme = useTheme();
   const navigate = useNavigate();
-  // ✅ State to hold the application mode
+
+  // Access update context
+  const {
+    status,
+    progress,
+    currentVersion,
+    newVersion,
+    checkForUpdates,
+    restartApp,
+  } = useUpdate();
+
   const [appMode, setAppMode] = useState<string | null>(null);
 
-  // ✅ Fetch the app mode when the component loads
+  // Fetch app mode on mount
   useEffect(() => {
-    electron
-      .getAppMode()
-      .then(setAppMode)
-      .catch((err) => {
-        console.error("Failed to get app mode:", err);
-        setAppMode("Error");
-      });
+    if (electron?.getAppMode) {
+      electron
+        .getAppMode()
+        .then((mode: string) => setAppMode(mode))
+        .catch((err: any) => {
+          console.error("Failed to get app mode:", err);
+          setAppMode("Unknown");
+        });
+    }
   }, []);
 
-  return (
-    <Box p={3}>
-      {/* --- Left Column (Unchanged) --- */}
-      <Grid container spacing={4}>
-        {/* --- Left Column (Unchanged) --- */}
-        <Grid item xs={12} md={4}>
-          <Stack
-            direction="column"
-            justifyContent="space-between"
-            sx={{ height: "calc(90vh - 48px)" }}
-          >
-            {/* App Intro */}
-            <Box>
-              <Typography variant="h4" fontWeight="bold" color="primary.main">
-                Welcome to KOSH
-              </Typography>
-              <Typography
-                variant="body1"
-                color="text.secondary"
-                component="div"
-                mt={2}
-              >
-                Your complete solution for business management. Key features
-                include:
-                <ul style={{ paddingLeft: "20px", marginTop: "8px" }}>
-                  <li>
-                    <b>Billing:</b> Fast and accurate Point of Sale (POS) for
-                    creating invoices.
-                  </li>
-                  <li>
-                    <b>Inventory Management:</b> Real-time stock tracking and
-                    product catalog management.
-                  </li>
-                  <li>
-                    <b>Purchase & Supplier Tracking:</b> Manage purchase orders
-                    and vendor details seamlessly.
-                  </li>
-                  <li>
-                    <b>Business Analytics:</b> In-depth dashboards for sales,
-                    purchases, and payments.
-                  </li>
-                  <li>
-                    <b>Data Management:</b> Easy import and export for products,
-                    categories, and more.
-                  </li>
-                  <li>
-                    <b>CRM & Reporting:</b> Manage your customer directory and
-                    Account summary.
-                  </li>
-                </ul>
-              </Typography>
-            </Box>
+  // Helper to format bytes
+  const formatBytes = (bytes: number) => {
+    if (!bytes) return "0 MB";
+    console.log("bytes", bytes);
+    return (bytes / (1024 * 1024)).toFixed(2);
+  };
 
-            {/* Developer Details */}
-            <Paper variant="outlined" sx={{ p: 2, backgroundColor: "grey.50" }}>
-              {/* ✅ Added Mode Indicator */}
+  const features = [
+    {
+      title: "Billing",
+      desc: "Fast POS & Invoicing",
+      icon: <CreditCard size={20} />,
+    },
+    {
+      title: "Inventory",
+      desc: "Real-time Tracking",
+      icon: <Package size={20} />,
+    },
+    {
+      title: "Purchases",
+      desc: "Vendor Management",
+      icon: <ShoppingCart size={20} />,
+    },
+    {
+      title: "Analytics",
+      desc: "In-depth Reports",
+      icon: <BarChart3 size={20} />,
+    },
+    { title: "CRM", desc: "Customer Directory", icon: <Users size={20} /> },
+    { title: "Mobile", desc: "App Companion", icon: <Smartphone size={20} /> },
+  ];
+
+  return (
+    <Box
+      p={3}
+      sx={{
+        backgroundColor: "#f9fafb",
+        minHeight: "100vh",
+      }}
+    >
+      <DashboardHeader
+        title="About Application"
+        showSearch={false}
+        showDateFilters={false}
+      />
+
+      <Grid container spacing={3}>
+        {/* --- Left Column: App Identity & Features --- */}
+        <Grid item xs={12} md={7}>
+          <Stack spacing={3}>
+            {/* Branding Card */}
+            <Card
+              elevation={0}
+              sx={{
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 4,
+                overflow: "hidden",
+              }}
+            >
               <Box
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
-                mb={1}
+                sx={{
+                  bgcolor: "primary.main",
+                  color: "white",
+                  p: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                }}
               >
-                <Typography variant="subtitle2" fontWeight="bold">
-                  Developer : Abhijeet Shinde
-                </Typography>
-                {appMode ? (
-                  <Chip
-                    label={appMode}
-                    color={appMode === "server " ? "success" : "info"}
-                    size="small"
-                  />
-                ) : (
-                  <>
-                    <CircularProgress size={20} />
-                    <Typography>Loading About Page</Typography>
-                  </>
-                )}
+                <Box
+                  sx={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 3,
+                    bgcolor: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "primary.main",
+                    fontSize: "2.5rem",
+                    fontWeight: "900",
+                    boxShadow: 3,
+                  }}
+                >
+                  K
+                </Box>
+                <Box>
+                  <Typography variant="h4" fontWeight="800">
+                    KOSH
+                  </Typography>
+                  <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>
+                    Business Operating System
+                  </Typography>
+                </Box>
+                <Box sx={{ flexGrow: 1 }} />
+                <Chip
+                  label={`v${currentVersion}`}
+                  sx={{
+                    bgcolor: "rgba(255,255,255,0.2)",
+                    color: "white",
+                    fontWeight: "bold",
+                    backdropFilter: "blur(4px)",
+                  }}
+                />
               </Box>
-              <Typography variant="body2" color="text.secondary">
-                Version 1.0.0
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                For support, contact: +91 9370294078, KOSH@gmail.com
-              </Typography>
-            </Paper>
+
+              <CardContent sx={{ p: 4 }}>
+                <Typography variant="h6" gutterBottom fontWeight="bold">
+                  Empowering Your Business
+                </Typography>
+                <Typography variant="body1" color="text.secondary" paragraph>
+                  Invistock (KOSH) is your complete solution for seamless
+                  business management. Designed to streamline operations from
+                  billing to the balance sheet.
+                </Typography>
+
+                <Box sx={{ mt: 4 }}>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight="bold"
+                    color="text.secondary"
+                    gutterBottom
+                    sx={{
+                      mb: 2,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Core Capabilities
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {features.map((feature) => (
+                      <Grid item xs={12} sm={6} key={feature.title}>
+                        <Box
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            bgcolor: alpha(theme.palette.primary.main, 0.04),
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 2,
+                            transition: "all 0.2s",
+                            "&:hover": {
+                              bgcolor: alpha(theme.palette.primary.main, 0.08),
+                            },
+                          }}
+                        >
+                          <Box sx={{ color: "primary.main" }}>
+                            {feature.icon}
+                          </Box>
+                          <Box>
+                            <Typography variant="subtitle2" fontWeight="bold">
+                              {feature.title}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {feature.desc}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
+              </CardContent>
+            </Card>
+
+            {/* Contact Info */}
+            <Card
+              elevation={0}
+              sx={{
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 4,
+              }}
+            >
+              <CardContent>
+                <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                  Developer Support
+                </Typography>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={3}
+                  sx={{ mt: 2 }}
+                >
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Avatar
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        bgcolor: "grey.100",
+                        color: "grey.700",
+                      }}
+                    >
+                      <Phone size={16} />
+                    </Avatar>
+                    <Box>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                      >
+                        Phone
+                      </Typography>
+                      <Typography variant="body2" fontWeight="500">
+                        +91 9370294078
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Avatar
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        bgcolor: "grey.100",
+                        color: "grey.700",
+                      }}
+                    >
+                      <Mail size={16} />
+                    </Avatar>
+                    <Box>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                      >
+                        Email
+                      </Typography>
+                      <MuiLink
+                        href="mailto:invistock@gmail.com"
+                        variant="body2"
+                        color="inherit"
+                        fontWeight="500"
+                        underline="hover"
+                      >
+                        invistock@gmail.com
+                      </MuiLink>
+                    </Box>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
           </Stack>
         </Grid>
 
-        {/* --- Right Column (Action List) --- */}
-        <Grid item xs={12} md={8}>
-          <Paper variant="outlined">
-            <List disablePadding>
-              {flattenedMenu.map((item, index) => (
-                <ListItem key={item.path} divider sx={{ py: 0.5 }}>
-                  <ListItemButton
-                    onClick={() => navigate(item.path)}
-                    sx={{ width: "100%", px: 0 }}
+        {/* --- Right Column: Update & System --- */}
+        <Grid item xs={12} md={5}>
+          <Stack spacing={3}>
+            {/* Update Center Card */}
+            <Card
+              elevation={0}
+              sx={{
+                border: "1px solid",
+                borderColor:
+                  status === "available" || status === "downloading"
+                    ? "primary.main"
+                    : "divider",
+                borderRadius: 4,
+                position: "relative",
+                overflow: "hidden",
+              }}
+            >
+              {status === "downloading" && progress && (
+                <Box
+                  sx={{
+                    position: "absolute",
+                    bottom: 0,
+                    left: 0,
+                    height: "4px",
+                    bgcolor: "primary.main",
+                    width: `${progress.percent}%`,
+                    transition: "width 0.3s ease",
+                  }}
+                />
+              )}
+
+              <CardContent sx={{ p: 3 }}>
+                <Stack direction="row" alignItems="center" spacing={2} mb={2}>
+                  <Avatar
+                    sx={{
+                      bgcolor:
+                        status === "ready"
+                          ? "success.light"
+                          : status === "available" || status === "downloading"
+                          ? "primary.light"
+                          : "grey.100",
+                      color:
+                        status === "ready"
+                          ? "success.dark"
+                          : status === "available" || status === "downloading"
+                          ? "primary.main"
+                          : "grey.600",
+                    }}
                   >
+                    {status === "checking" ? (
+                      <CircularProgress size={20} color="inherit" />
+                    ) : status === "ready" ? (
+                      <CheckCircle2 size={20} />
+                    ) : status === "downloading" ? (
+                      <DownloadCloud size={20} />
+                    ) : status === "error" ? (
+                      <AlertTriangle size={20} />
+                    ) : (
+                      <Zap size={20} />
+                    )}
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h6" fontWeight="bold">
+                      Software Update
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Current Version: v{currentVersion}
+                    </Typography>
+                  </Box>
+                </Stack>
+
+                <Divider sx={{ my: 2 }} />
+
+                {/* Status: Idle / Checking */}
+                {(status === "idle" || status === "checking") && (
+                  <Box textAlign="center" py={2}>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      paragraph
+                    >
+                      Stay updated to get the latest features and security
+                      patches.
+                    </Typography>
+                    <Button
+                      variant={status === "checking" ? "outlined" : "contained"}
+                      onClick={checkForUpdates}
+                      disabled={status === "checking"}
+                      startIcon={
+                        status !== "checking" && <RotateCw size={16} />
+                      }
+                      fullWidth
+                      sx={{ borderRadius: 2 }}
+                    >
+                      {status === "checking"
+                        ? "Checking..."
+                        : "Check for Updates"}
+                    </Button>
+                  </Box>
+                )}
+
+                {/* Status: Update Available */}
+                {status === "available" && (
+                  <Box textAlign="center" py={2}>
+                    <Typography
+                      variant="body1"
+                      fontWeight="bold"
+                      color="primary"
+                      gutterBottom
+                    >
+                      New Version Found!
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      paragraph
+                    >
+                      Version {newVersion} is available. Download starting...
+                    </Typography>
+                    <LinearProgress sx={{ borderRadius: 2 }} />
+                  </Box>
+                )}
+
+                {/* Status: Downloading */}
+                {status === "downloading" && progress && (
+                  <Box>
                     <Stack
                       direction="row"
-                      alignItems="center"
                       justifyContent="space-between"
-                      width="100%"
+                      mb={1}
                     >
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        {item.icon}
-                        <Typography variant="body1" fontWeight={500}>
-                          {item.label}
-                        </Typography>
-                      </Stack>
-
-                      {index < 12 && (
-                        <Chip label={`F${index + 1}`} size="small" />
-                      )}
-                    </Stack>
-                  </ListItemButton>
-                </ListItem>
-              ))}
-
-              {/* ✅ ADDED: License Page Link */}
-              <ListItem key="/view-license" divider sx={{ py: 1 }}>
-                <ListItemButton
-                  onClick={() => navigate("/view-license")}
-                  sx={{ width: "100%", px: 0 }}
-                >
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    width="100%"
-                  >
-                    <Stack direction="row" alignItems="center" spacing={1.5}>
-                      <KeyRound size={18} />
-                      <Typography variant="body1" fontWeight={500}>
-                        License Status
+                      <Typography variant="body2" fontWeight="bold">
+                        Downloading...
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        fontWeight="bold"
+                        color="primary"
+                      >
+                        {Math.round(progress.percent)}%
                       </Typography>
                     </Stack>
-                    {/* No F-key chip for this one */}
-                  </Stack>
-                </ListItemButton>
-              </ListItem>
-            </List>
-          </Paper>
+                    <LinearProgress
+                      variant="determinate"
+                      value={progress.percent}
+                      sx={{ height: 10, borderRadius: 5, mb: 2 }}
+                    />
+                    <Stack direction="row" justifyContent="space-between">
+                      <Chip
+                        icon={<DownloadCloud size={12} />}
+                        label={`${formatBytes(progress.bytesPerSecond)}/s`}
+                        size="small"
+                        variant="outlined"
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        {formatBytes(progress.transferred)} /{" "}
+                        {formatBytes(progress.total)} MB
+                      </Typography>
+                    </Stack>
+                  </Box>
+                )}
+
+                {/* Status: Ready */}
+                {status === "ready" && (
+                  <Box
+                    sx={{
+                      bgcolor: "success.lighter",
+                      p: 2,
+                      borderRadius: 2,
+                      textAlign: "center",
+                    }}
+                  >
+                    <CheckCircle2
+                      size={32}
+                      color="#2e7d32"
+                      style={{ marginBottom: 8 }}
+                    />
+                    <Typography
+                      variant="subtitle1"
+                      fontWeight="bold"
+                      color="success.dark"
+                    >
+                      Update Ready
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      onClick={restartApp}
+                      fullWidth
+                      startIcon={<RotateCw size={16} />}
+                      sx={{ mt: 1 }}
+                    >
+                      Restart & Install Now
+                    </Button>
+                  </Box>
+                )}
+
+                {/* Status: Error */}
+                {status === "error" && (
+                  <Box
+                    sx={{
+                      bgcolor: "error.lighter",
+                      p: 2,
+                      borderRadius: 2,
+                      textAlign: "center",
+                    }}
+                  >
+                    <AlertTriangle
+                      size={32}
+                      color="#d32f2f"
+                      style={{ marginBottom: 8 }}
+                    />
+                    <Typography
+                      variant="subtitle1"
+                      fontWeight="bold"
+                      color="error.dark"
+                    >
+                      Update Failed
+                    </Typography>
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={checkForUpdates}
+                      sx={{ mt: 1 }}
+                    >
+                      Try Again
+                    </Button>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* System Info */}
+            <Card
+              elevation={0}
+              sx={{
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 4,
+              }}
+            >
+              <CardContent sx={{ p: 3 }}>
+                <Stack direction="row" alignItems="center" spacing={2} mb={3}>
+                  <Avatar sx={{ bgcolor: "grey.100", color: "grey.700" }}>
+                    <Info size={20} />
+                  </Avatar>
+                  <Typography variant="h6" fontWeight="bold">
+                    System Information
+                  </Typography>
+                </Stack>
+                <Stack spacing={2}>
+                  <SystemRow
+                    icon={<Server size={18} />}
+                    label="App Mode"
+                    value={appMode || "Unknown"}
+                  />
+                  <SystemRow
+                    icon={<Database size={18} />}
+                    label="Database"
+                    value="Local"
+                  />
+                  <SystemRow
+                    icon={<ShieldCheck size={18} />}
+                    label="License"
+                    value="Active"
+                    color="success"
+                    onClick={() => navigate("/view-license")}
+                  />
+                  <SystemRow
+                    icon={<Globe size={18} />}
+                    label="Environment"
+                    value="Desktop"
+                  />
+                </Stack>
+              </CardContent>
+            </Card>
+          </Stack>
         </Grid>
       </Grid>
     </Box>
   );
-};
+}
 
-export default AboutPage;
+// Helper Component for System Info Rows
+function SystemRow({ icon, label, value, color = "default", onClick }: any) {
+  return (
+    <Box
+      display="flex"
+      justifyContent="space-between"
+      alignItems="center"
+      p={1.5}
+      bgcolor="grey.50"
+      borderRadius={2}
+      onClick={onClick} // ✅ 1. Attach the click handler here
+      sx={{
+        // ✅ 2. Add visual feedback (pointer cursor & hover effect)
+        cursor: onClick ? "pointer" : "default",
+        transition: "all 0.2s ease",
+        "&:hover": onClick
+          ? {
+              bgcolor: "grey.200",
+              transform: "translateX(4px)",
+            }
+          : {},
+      }}
+    >
+      <Stack direction="row" spacing={1.5} alignItems="center">
+        <Box sx={{ color: "#666" }}>{icon}</Box>
+        <Typography variant="body2" fontWeight="500">
+          {label}
+        </Typography>
+      </Stack>
+      {color === "success" ? (
+        <Stack
+          direction="row"
+          spacing={0.5}
+          alignItems="center"
+          color="success.main"
+        >
+          <CheckCircle2 size={14} />
+          <Typography variant="caption" fontWeight="bold">
+            {value}
+          </Typography>
+        </Stack>
+      ) : (
+        <Chip
+          label={value}
+          size="small"
+          variant={color === "default" ? "outlined" : "filled"}
+          color={color === "default" ? "default" : "success"}
+        />
+      )}
+    </Box>
+  );
+}

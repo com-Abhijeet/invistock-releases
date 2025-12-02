@@ -16,7 +16,7 @@ export const productSchema = z.object({
   barcode: z.string().optional().nullable(),
   image_url: z.string().optional().nullable(),
   is_active: z.number().int().optional(),
-  mfw_price: z.number().optional().nullable(),
+  mfw_price: z.string().optional().nullable(),
   low_stock_threshold: z.number().optional().nullable(),
   size: z.string().optional().nullable(),
   weight: z.string().optional().nullable(),

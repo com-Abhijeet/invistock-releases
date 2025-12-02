@@ -7,7 +7,7 @@ const { BrowserWindow } = require("electron");
  */
 async function printShippingLabel(htmlContent, printOptions = {}) {
   const labelWindow = new BrowserWindow({
-    show: true,
+    show: false,
     width: 400,
     height: 600,
   });

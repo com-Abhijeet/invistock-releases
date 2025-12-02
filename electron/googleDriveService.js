@@ -5,8 +5,8 @@ const config = require("./config.js");
 
 // 🔒 DEVELOPER KEYS (Hardcoded or from .env during build)
 // These are YOUR keys. The user never sees them.
-const CLIENT_ID = "YOUR_CLIENT_ID";
-const CLIENT_SECRET = "_YOUR_CLIENT_SECRET";
+const CLIENT_ID = "";
+const CLIENT_SECRET = "";
 const REDIRECT_URI = "http://127.0.0.1:5001/callback";
 
 const TOKEN_PATH = path.join(config.paths.userData, "gdrive_token.json");

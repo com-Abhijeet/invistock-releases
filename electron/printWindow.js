@@ -50,7 +50,7 @@ const createPrintWindow = async (payload) => {
 
   // 4. Create Window
   const win = new BrowserWindow({
-    show: false,
+    show: true,
     width: 400, // Window size doesn't matter for printing
     height: 600,
   });

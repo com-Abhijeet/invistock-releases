@@ -31,6 +31,6 @@ const config = {
 };
 
 // Log the configuration on startup for easy debugging
-console.log("App Config Loaded:", JSON.stringify(config, null, 2));
+// console.log("App Config Loaded:", JSON.stringify(config, null, 2));
 
 module.exports = config;

@@ -6,7 +6,7 @@ const originalConsole = { ...console };
 contextBridge.exposeInMainWorld("electron", {
   ipcRenderer: {
     send: (channel, data) => {
-      const validSendChannels = ["print-label", "print-invoice"];
+      const validSendChannels = ["print-label", "print-invoice", "log"];
       if (validSendChannels.includes(channel)) {
         ipcRenderer.send(channel, data);
       }
@@ -33,20 +33,25 @@ contextBridge.exposeInMainWorld("electron", {
         "export-non-gst-sales-to-pdfs",
         "export-non-gst-items-to-excel",
         "print-bulk-labels",
-        // ✅ Added WhatsApp & External URL channels
+
+        // WhatsApp & External
         "whatsapp-get-status",
         "whatsapp-send-message",
+        "whatsapp-send-invoice-pdf",
         "open-external-url",
-        // ✅ Ensure these are present for Auth/Backup features
+
+        // Auth & Utils
         "login-admin",
         "dialog:open-directory",
+
+        // Google Drive
         "gdrive-status",
         "gdrive-login",
-        // UPDATE
-        "update-available",
-        "update-progress",
-        "update-downloaded",
-        "update-error",
+
+        // ✅ Updater Channels (Must be whitelisted for the helper below to work)
+        "check-for-updates",
+        "get-app-version",
+        "restart-app",
       ];
       if (validInvokeChannels.includes(channel)) {
         return ipcRenderer.invoke(channel, data);
@@ -55,22 +60,41 @@ contextBridge.exposeInMainWorld("electron", {
       }
     },
     on: (channel, callback) => {
-      // ✅ Added 'whatsapp-status' to whitelist
-      const validReceiveChannels = ["export-progress", "whatsapp-status"];
+      const validReceiveChannels = [
+        "export-progress",
+        "whatsapp-status",
+        "gdrive-connected",
+        // ✅ Updater Events
+        "update-available",
+        "update-not-available",
+        "update-progress",
+        "update-downloaded",
+        "update-error",
+      ];
       if (validReceiveChannels.includes(channel)) {
         // Deliberately strip event as it includes `sender`
         ipcRenderer.on(channel, (event, ...args) => callback(...args));
       }
     },
-    // ✅ ADD THIS CLEANUP METHOD
     removeAllListeners: (channel) => {
-      // ✅ Added 'whatsapp-status' to whitelist
-      const validReceiveChannels = ["export-progress", "whatsapp-status"];
+      const validReceiveChannels = [
+        "export-progress",
+        "whatsapp-status",
+        "gdrive-connected",
+        // ✅ Updater Events
+        "update-available",
+        "update-not-available",
+        "update-progress",
+        "update-downloaded",
+        "update-error",
+      ];
       if (validReceiveChannels.includes(channel)) {
         ipcRenderer.removeAllListeners(channel);
       }
     },
   },
+
+  // --- EXISTING HELPER FUNCTIONS ---
   onSetAppMode: (callback) => {
     ipcRenderer.on("set-app-mode", (event, mode) => callback(mode));
   },
@@ -83,47 +107,73 @@ contextBridge.exposeInMainWorld("electron", {
   getServerUrl: () => ipcRenderer.invoke("get-server-url"),
   getLocalIp: () => ipcRenderer.invoke("get-local-ip"),
 
-  // ✅ WHATSAPP SPECIFIC FUNCTIONS
+  // --- WHATSAPP ---
   openExternalUrl: (url) => ipcRenderer.invoke("open-external-url", url),
   getWhatsAppStatus: () => ipcRenderer.invoke("whatsapp-get-status"),
   sendWhatsAppMessage: (phone, message) =>
     ipcRenderer.invoke("whatsapp-send-message", { phone, message }),
   onWhatsAppUpdate: (callback) =>
     ipcRenderer.on("whatsapp-status", (event, data) => callback(data)),
-
   sendWhatsAppInvoicePdf: (payload) =>
     ipcRenderer.invoke("whatsapp-send-invoice-pdf", payload),
 
-  // ✅ AUTH & UTILS (Restored)
+  // --- AUTH & UTILS ---
   loginAdmin: (password) => ipcRenderer.invoke("login-admin", password),
   selectDirectory: () => ipcRenderer.invoke("dialog:open-directory"),
-
   getGDriveStatus: () => ipcRenderer.invoke("gdrive-status"),
   loginGDrive: () => ipcRenderer.invoke("gdrive-login"),
   onGDriveConnected: (callback) => ipcRenderer.on("gdrive-connected", callback),
 
-  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
-  restartApp: () => ipcRenderer.invoke("restart-app"),
+  // ✅ UPDATER NAMESPACE (New)
+  updater: {
+    checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+    restartApp: () => ipcRenderer.invoke("restart-app"),
+    getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+
+    // Listeners
+    onUpdateAvailable: (callback) =>
+      ipcRenderer.on("update-available", (_event, info) => callback(info)),
+    onUpdateNotAvailable: (callback) =>
+      ipcRenderer.on("update-not-available", (_event, info) => callback(info)),
+    onUpdateError: (callback) =>
+      ipcRenderer.on("update-error", (_event, error) => callback(error)),
+    onDownloadProgress: (callback) =>
+      ipcRenderer.on("update-progress", (_event, progressObj) =>
+        callback(progressObj)
+      ),
+    onUpdateDownloaded: (callback) =>
+      ipcRenderer.on("update-downloaded", (_event, info) => callback(info)),
+
+    // Cleanup for updater events
+    removeAllListeners: (channel) => {
+      const validChannels = [
+        "update-available",
+        "update-not-available",
+        "update-progress",
+        "update-downloaded",
+        "update-error",
+      ];
+      if (validChannels.includes(channel)) {
+        ipcRenderer.removeAllListeners(channel);
+      }
+    },
+  },
 });
 
 window.console = {
-  ...originalConsole, // Keep original functions like .table, .clear, etc.
-
+  ...originalConsole,
   log: (...args) => {
-    originalConsole.log(...args); // Keep logging to DevTools
-    ipcRenderer.send("log", { level: "info", data: args }); // Send to main process
+    originalConsole.log(...args);
+    ipcRenderer.send("log", { level: "info", data: args });
   },
-
   info: (...args) => {
     originalConsole.info(...args);
     ipcRenderer.send("log", { level: "info", data: args });
   },
-
   warn: (...args) => {
     originalConsole.warn(...args);
     ipcRenderer.send("log", { level: "warn", data: args });
   },
-
   error: (...args) => {
     originalConsole.error(...args);
     ipcRenderer.send("log", { level: "error", data: args });

@@ -1,28 +1,21 @@
 import db from "../db/db.mjs";
 
-/** Returns financial year string, e.g. "2025-26" */
 function getFinancialYear(date = new Date()) {
   const year = date.getFullYear();
-  const month = date.getMonth(); // 0 = Jan
+  const month = date.getMonth();
   return month >= 3
     ? `${year}-${String(year + 1).slice(2)}`
     : `${year - 1}-${String(year).slice(2)}`;
 }
 
-/**
- * Generates a GST-compliant, sequential reference number.
- * @param {'S' | 'NGS' | 'P' | 'CN' | 'DN' | 'PI' | 'PO'} type
- */
 export function generateReference(type) {
   const transaction = db.transaction(() => {
-    // 1. Fetch Shop Settings
     const shop = db.prepare("SELECT * FROM shop WHERE id = 1").get();
     if (!shop) throw new Error("Shop settings not found.");
 
     const currentFy = getFinancialYear();
     let counterColumn, prefix;
 
-    // 2. Determine Column & Prefix
     switch (type) {
       case "S":
         counterColumn = "sale_invoice_counter";
@@ -56,13 +49,13 @@ export function generateReference(type) {
         throw new Error(`Invalid reference type: ${type}`);
     }
 
-    // 3. Compare Financial Years
-    // Use the DB value. If null, we will initialize it below.
+    // ✅ Use the DB value strictly
     const dbFy = shop.last_reset_fy;
     let numberForThisInvoice;
 
+    // Check for New Financial Year (or First Run/Null)
     if (dbFy && dbFy !== currentFy) {
-      // --- CASE A: NEW FINANCIAL YEAR (Reset Everything) ---
+      // --- New Financial Year: Reset Counters ---
       numberForThisInvoice = 1;
 
       db.prepare(
@@ -75,20 +68,17 @@ export function generateReference(type) {
           payment_in_counter = 1,
           payment_out_counter = 1,
           non_gst_sale_counter = 1,
-          ${counterColumn} = 2, -- Set next ID for this specific type
-          last_reset_fy = ?
+          ${counterColumn} = 2, -- Set next value for THIS counter
+          last_reset_fy = ?     -- ✅ Lock in the new year
         WHERE id = 1
       `
       ).run(currentFy);
     } else {
-      // --- CASE B: SAME YEAR (Or First Run/Null) ---
-
-      // If dbFy was null, we are technically in the "Same Year" flow (current),
-      // but we MUST update the DB to lock in this year so it doesn't stay NULL.
-
+      // --- Same Financial Year ---
       numberForThisInvoice = shop[counterColumn] || 1;
 
-      // Increment the specific counter AND ensure last_reset_fy is set
+      // ✅ Always update 'last_reset_fy' even here.
+      // This fixes the issue where a NULL db value (fresh install) stays NULL forever.
       db.prepare(
         `
         UPDATE shop SET 
@@ -99,7 +89,6 @@ export function generateReference(type) {
       ).run(currentFy);
     }
 
-    // 4. Format and Return
     const padded = String(numberForThisInvoice).padStart(7, "0");
     return `${prefix}/${currentFy}/${padded}`;
   });

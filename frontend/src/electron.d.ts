@@ -1,7 +1,40 @@
 // This declares that a global 'window' object exists with an 'electron' property.
+
+export interface UpdateInfo {
+  version: string;
+  files: Array<{ url: string; sha512: string; size: number }>;
+  path: string;
+  sha512: string;
+  releaseDate: string;
+  releaseName?: string;
+  releaseNotes?: string | Array<any>;
+}
+
+export interface ProgressInfo {
+  total: number;
+  delta: number;
+  transferred: number;
+  percent: number;
+  bytesPerSecond: number;
+}
+
+export interface UpdaterAPI {
+  checkForUpdates: () => Promise<void>;
+  restartApp: () => Promise<void>;
+  getAppVersion: () => Promise<string>;
+
+  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => void;
+  onUpdateNotAvailable: (callback: (info: UpdateInfo) => void) => void;
+  onUpdateError: (callback: (error: string) => void) => void;
+  onDownloadProgress: (callback: (progress: ProgressInfo) => void) => void;
+  onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => void;
+  removeAllListeners: (channel: string) => void;
+}
+
 declare global {
   interface Window {
     electron: {
+      updater: UpdaterAPI;
       removeSetAppMode: any;
       removeSetServerUrl: any;
       checkForUpdates: () => Promise<void>;

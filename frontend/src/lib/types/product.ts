@@ -18,7 +18,7 @@ export interface Product {
   is_active: boolean | 0 | 1;
 
   low_stock_threshold?: number;
-  mfw_price?: number;
+  mfw_price?: string;
   size?: string;
   weight?: String;
 
@@ -41,7 +41,7 @@ export type ProductOverviewType = {
   storage_location?: string | null;
 
   low_stock_threshold?: number;
-  mfw_price?: number;
+  mfw_price?: string;
   size?: string;
   weight?: String;
 
@@ -76,7 +76,7 @@ export type productDetails = {
   is_active: boolean | 0 | 1;
 
   low_stock_threshold?: number;
-  mfw_price?: number;
+  mfw_price?: string;
   size?: string;
   weight?: String;
 

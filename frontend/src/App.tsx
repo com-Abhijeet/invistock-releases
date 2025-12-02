@@ -57,7 +57,7 @@ import ProtectedRoutes from "./components/auth/ProtectedRoutes";
 import AboutPage from "./pages/AboutPage";
 import ExpensesPage from "./pages/ExpensePage";
 import StockAdjustmentsPage from "./pages/StockAdjustmentsPage";
-import UpdateManager from "./components/UpdateManager";
+import { UpdateProvider } from "./context/UpdateContext";
 
 // /**
 //  * Represents the current status of the application persistence layer.
@@ -119,6 +119,7 @@ function AppLayout() {
             <SidebarLayout>
               <Toaster position="bottom-center" />
               <Routes>
+                <Route path="/view-license" element={<ViewLicensePage />} />
                 <Route path="/" element={<AboutPage />} />
                 <Route path="/inventory" element={<InventoryDashboardPage />} />
                 <Route path="/products" element={<Products />} />
@@ -340,13 +341,14 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <UpdateManager />
-        <Routes>
-          {/* ✅ License routes FIRST - no providers, no AppInitializer */}
-          <Route path="/license" element={<LicensePage />} />
-          <Route path="/view-license" element={<ViewLicensePage />} />
-          <Route path="/*" element={<AppInitializer />} />
-        </Routes>
+        <UpdateProvider>
+          <Routes>
+            {/* ✅ License routes FIRST - no providers, no AppInitializer */}
+
+            <Route path="/license" element={<LicensePage />} />
+            <Route path="/*" element={<AppInitializer />} />
+          </Routes>
+        </UpdateProvider>
       </Router>
     </ThemeProvider>
   );
