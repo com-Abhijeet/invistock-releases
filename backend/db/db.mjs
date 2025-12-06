@@ -105,13 +105,13 @@ CREATE TABLE IF NOT EXISTS shop(
   shop_alias TEXT,
   use_alias_on_bills INTEGER DEFAULT 0,
 
-  sale_invoice_counter INTEGER DEFAULT 1,
-  purchase_bill_counter INTEGER DEFAULT 1,
-  credit_note_counter INTEGER DEFAULT 1,
-  debit_note_counter INTEGER DEFAULT 1,
-  payment_in_counter INTEGER DEFAULT 1,
-  payment_out_counter INTEGER DEFAULT 1,
-  non_gst_sale_counter INTEGER DEFAULT 1,
+  sale_invoice_counter INTEGER DEFAULT 0,
+  purchase_bill_counter INTEGER DEFAULT 0,
+  credit_note_counter INTEGER DEFAULT 0,
+  debit_note_counter INTEGER DEFAULT 0,
+  payment_in_counter INTEGER DEFAULT 0,
+  payment_out_counter INTEGER DEFAULT 0,
+  non_gst_sale_counter INTEGER DEFAULT 0,
   last_reset_fy TEXT
 );
 
