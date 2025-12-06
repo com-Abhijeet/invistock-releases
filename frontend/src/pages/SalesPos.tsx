@@ -28,7 +28,6 @@ const defaultSalePayload: SalePayload = {
 
 export default function SalesPos() {
   const { action, id } = useParams<{ action?: string; id?: string }>();
-
   // State for the main sale payload
   const [sale, setSale] = useState<SalePayload>(defaultSalePayload);
 
@@ -84,6 +83,7 @@ export default function SalesPos() {
   useEffect(() => {
     if (action === "view") setMode("view");
     else setMode("new");
+    console.log(mode);
   }, [action]);
 
   /*
@@ -94,6 +94,7 @@ export default function SalesPos() {
     const loadSale = async () => {
       if (mode === "view" && id) {
         const saleData = await getSaleById(Number(id));
+        console.log("sale fetched successfully", saleData);
 
         if (saleData) {
           setSale(saleData.data);

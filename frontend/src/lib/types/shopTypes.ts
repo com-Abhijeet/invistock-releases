@@ -71,4 +71,6 @@ export type ShopSetupForm = {
   //upi Details
   upi_id: string;
   upi_banking_name: string;
+
+  last_reset_fy: string;
 };

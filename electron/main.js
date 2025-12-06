@@ -69,6 +69,7 @@ const {
 const {
   getAllCategories,
 } = require("../backend/repositories/categoryRepository.mjs");
+const { machineIdSync } = require("node-machine-id");
 
 // 3. GLOBAL CONFIGURATION & VARIABLES
 // ===============================================================
@@ -350,6 +351,10 @@ app.on("before-quit", async (event) => {
 
 ipcMain.handle("get-app-mode", () => {
   return lastKnownAppMode;
+});
+
+ipcMain.handle("get-machine-id", () => {
+  return machineIdSync();
 });
 
 ipcMain.handle("get-server-url", () => {

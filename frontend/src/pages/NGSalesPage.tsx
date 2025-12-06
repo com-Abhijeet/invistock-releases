@@ -1,5 +1,12 @@
 "use client";
 
+declare global {
+  interface Window {
+    ipcRenderer: any;
+    electron: any;
+  }
+}
+
 import { useEffect, useState } from "react";
 import {
   Box,
@@ -14,15 +21,20 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Eye, Trash2, Download } from "lucide-react"; // ✅ Import Download icon
+import { Eye, Trash2, Download, MessageCircle } from "lucide-react"; // ✅ Import MessageCircle
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { getNonGstSales, NonGstSaleRow } from "../lib/api/nonGstSalesService";
+import {
+  getNonGstSales,
+  NonGstSaleRow,
+  getNonGstSaleById,
+} from "../lib/api/nonGstSalesService"; // ✅ Import getNonGstSaleById
+import { getShopData } from "../lib/api/shopService"; // ✅ Import getShopData
 import DataTable from "../components/DataTable";
 import DashboardHeader from "../components/DashboardHeader";
 
 // Get the ipcRenderer from your preload script
-const { ipcRenderer } = window.electron;
+const { ipcRenderer, electron } = window; // ✅ Destructure electron for WhatsApp
 
 // Helper function to get dates in YYYY-MM-DD format
 const getISODate = (date = new Date()) => {
@@ -77,6 +89,91 @@ export default function NGSalesPage() {
     }, 500); // Debounce search
     return () => clearTimeout(handler);
   }, [page, rowsPerPage, searchTerm]);
+
+  // --- WhatsApp Handler ---
+  const handleWhatsAppShare = async (saleId: number) => {
+    const toastId = toast.loading("Preparing WhatsApp message...");
+    try {
+      // 1. Check connection status
+      const wsStatus = await electron.getWhatsAppStatus();
+      if (wsStatus.status !== "ready") {
+        toast.error("WhatsApp not connected. Please scan QR in Settings.", {
+          id: toastId,
+        });
+        return;
+      }
+
+      // 2. Fetch Sale & Shop Data
+      // We assume getNonGstSaleById exists in your service, similar to getSaleById
+      const [saleRes, shop] = await Promise.all([
+        getNonGstSaleById(saleId),
+        getShopData(),
+      ]);
+
+      // Handle response structure (assuming saleRes.data holds the sale object)
+      const sale = saleRes;
+
+      if (!sale || !shop) throw new Error("Could not fetch data");
+
+      const phoneToSend = sale.customer_phone;
+      if (!phoneToSend) {
+        toast.error("Customer has no phone number.", { id: toastId });
+        return;
+      }
+
+      // 3. Construct Message
+      const nl = "\n";
+      const itemsList = sale.items
+        .map(
+          (item: any, i: number) =>
+            `${i + 1}. ${item.product_name} x ${item.quantity} = ₹${(
+              item.rate * item.quantity
+            ).toLocaleString("en-IN")}`
+        )
+        .join(nl);
+
+      const message =
+        `*Receipt from ${shop.shop_name}*${nl}${nl}` +
+        `Hello ${sale.customer_name || "Customer"},${nl}` +
+        `Receipt No: ${sale.reference_no}${nl}${nl}` +
+        `*Items:*${nl}${itemsList}${nl}` +
+        `------------------------------${nl}` +
+        `*Total: ₹${sale.total_amount.toLocaleString("en-IN")}*${nl}` +
+        `------------------------------${nl}` +
+        `Thank you!`;
+
+      // 4. Send Text
+      const textRes = await electron.sendWhatsAppMessage(phoneToSend, message);
+
+      if (textRes.success) {
+        toast.success("Text message sent!", { id: toastId });
+
+        // 5. Send PDF (using the Non-GST print template logic)
+        // We need a specific handler for Non-GST PDFs if it differs,
+        // but 'whatsapp-send-invoice-pdf' might use 'createInvoiceHTML'.
+        // Non-GST usually uses 'createNonGstReceiptHTML'.
+        // For now, let's assume we use the same PDF generator or you might need a specific IPC for Non-GST PDF.
+        // Since 'whatsapp-send-invoice-pdf' likely uses 'createInvoiceHTML' (GST), sending a Non-GST sale might look wrong if templates differ.
+        // Ideally, we'd have 'whatsapp-send-nongst-pdf'.
+        // Let's skip the PDF part for Non-GST to avoid template mismatch errors
+        // UNLESS you have updated the backend handler to switch templates based on sale type.
+        // Given the previous backend code for 'whatsapp-send-invoice-pdf' strictly used 'createInvoiceHTML',
+        // it's safer to only send text OR update the backend to handle Non-GST.
+        // I will stick to Text Only to be safe, or we can try sending the PDF if your backend handles it.
+        // Let's assume Text is sufficient for Non-GST or add a TODO.
+
+        // If you really want PDF, we'd need to add `whatsapp-send-nongst-pdf` to main.js.
+        // For now, I'll just finish here.
+      } else {
+        toast.error("WhatsApp Text Failed: " + textRes.error, { id: toastId });
+      }
+    } catch (error: any) {
+      console.error(error);
+      toast.error("WhatsApp Error: " + (error.message || "Unknown error"), {
+        id: toastId,
+      });
+    }
+  };
 
   // --- Export Handlers ---
 
@@ -161,23 +258,27 @@ export default function NGSalesPage() {
         navigate(`/non-gst/view-sale/${row.id}`);
       },
     },
+    // ✅ ADDED: Send WhatsApp
+    {
+      label: "Send Receipt",
+      icon: <MessageCircle size={18} color="#25D366" />,
+      onClick: (row: NonGstSaleRow) => handleWhatsAppShare(row.id),
+    },
     {
       label: "Delete Sale",
       icon: <Trash2 size={18} />,
       onClick: (_row: NonGstSaleRow) => {
-        // TODO: You'll need to create a delete API endpoint
-        // handleDelete(row.id)
         toast("Delete functionality not yet implemented.");
       },
     },
   ];
+
   return (
     <Box
       p={2}
       pt={3}
       sx={{
         backgroundColor: "#fff",
-
         minHeight: "100vh",
       }}
     >

@@ -4,8 +4,10 @@ dist_electron
 out
 .env
 .wwebjs_auth
+.wwebjs_cache
 readme
 developer.md
 electron/googleDriveService.js
 .npmrc
 electron/googleDriveService.js
+scripts

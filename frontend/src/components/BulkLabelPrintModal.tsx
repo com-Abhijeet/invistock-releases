@@ -12,7 +12,6 @@ import {
   TableRow,
   TableCell,
   TextField,
-  CircularProgress,
 } from "@mui/material";
 import { Printer } from "lucide-react";
 import toast from "react-hot-toast";
@@ -20,6 +19,7 @@ import {
   fetchPurchaseItemsForLabels,
   LabelItem,
 } from "../lib/api/purchaseService";
+import KoshSpinningLoader from "./KoshSpinningLoader";
 
 const { ipcRenderer } = window.electron;
 
@@ -87,7 +87,7 @@ export default function BulkLabelPrintModal({
       <DialogTitle>Print Labels from Purchase</DialogTitle>
       <DialogContent dividers>
         {loading ? (
-          <CircularProgress />
+          <KoshSpinningLoader />
         ) : (
           <Table size="small">
             <TableHead>

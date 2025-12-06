@@ -38,6 +38,7 @@ declare global {
       removeSetAppMode: any;
       removeSetServerUrl: any;
       checkForUpdates: () => Promise<void>;
+      getMachineId: () => Promise<string>;
       restartApp: () => Promise<void>;
       getServerUrl(): string;
       onSetAppMode: any;

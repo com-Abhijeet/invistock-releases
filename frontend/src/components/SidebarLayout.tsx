@@ -40,6 +40,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  ArchiveRestore,
+  ArchiveX,
+  UserSearch,
+  ChartCandlestick,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import LowStockNotification from "./layout/LowStockNotification";
@@ -115,6 +119,21 @@ const menuSections = [
         icon: <SquareStack size={20} />,
         path: "/categories",
       },
+      {
+        label: "Restock Suggestions",
+        icon: <ArchiveRestore size={20} />,
+        path: "/stock-restock",
+      },
+      {
+        label: "Dead Stock ",
+        icon: <ArchiveX size={20} />,
+        path: "/dead-stock",
+      },
+      {
+        label: "Product ABC Analysis ",
+        icon: <ChartCandlestick size={20} />,
+        path: "/product-abc-page",
+      },
     ],
   },
   {
@@ -135,6 +154,11 @@ const menuSections = [
         label: "Customer Directory",
         icon: <User size={20} />,
         path: "/customers",
+      },
+      {
+        label: "Customer Analytics",
+        icon: <UserSearch size={20} />,
+        path: "/customer-analytics",
       },
     ],
   },

@@ -5,8 +5,9 @@ import {
   useEffect,
   ReactNode,
 } from "react";
-import { Box, CircularProgress, Typography } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import { setApiBaseUrl } from "../lib/api/api";
+import KoshSpinningLoader from "../components/KoshSpinningLoader";
 
 type AppStatus =
   | "loading"
@@ -115,7 +116,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         alignItems="center"
         height="100vh"
       >
-        <CircularProgress />
+        <KoshSpinningLoader />
         <Typography>Loading Auth</Typography>
       </Box>
     );
@@ -132,7 +133,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         gap={2}
         sx={{ backgroundColor: "grey.100" }}
       >
-        <CircularProgress />
+        <KoshSpinningLoader />
         <Typography variant="h6">Searching for KOSH Server...</Typography>
         <Typography color="text.secondary">
           Please ensure the main app is running on your network.

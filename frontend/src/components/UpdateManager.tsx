@@ -13,7 +13,7 @@ export default function UpdateManager() {
 
     // 1. Update Available
     // Note: The callback receives 'info' (UpdateInfo), but we don't strictly need it for the toast
-    electron.updater.onUpdateAvailable((_info) => {
+    electron.updater.onUpdateAvailable((_info: any) => {
       toast("New update available. Downloading...", {
         icon: <Download size={18} />,
         duration: 4000,
@@ -23,7 +23,7 @@ export default function UpdateManager() {
 
     // 2. Download Progress
     // Typed automatically as ProgressInfo from electron.d.ts
-    electron.updater.onDownloadProgress((progress) => {
+    electron.updater.onDownloadProgress((progress: { percent: number }) => {
       const percent = Math.round(progress.percent);
 
       toast.custom(
@@ -49,7 +49,7 @@ export default function UpdateManager() {
     });
 
     // 3. Update Downloaded (Ready to Install)
-    electron.updater.onUpdateDownloaded((_info) => {
+    electron.updater.onUpdateDownloaded((_info: any) => {
       // Dismiss the progress toast
       toast.dismiss("update-progress");
 
@@ -102,7 +102,7 @@ export default function UpdateManager() {
     });
 
     // 4. Error
-    electron.updater.onUpdateError((err) => {
+    electron.updater.onUpdateError((err: any) => {
       toast.error("Update failed. Check logs.", {
         icon: <AlertTriangle size={18} color="orange" />,
       });

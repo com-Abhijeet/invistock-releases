@@ -71,6 +71,7 @@ const defaultForm: Product = {
   barcode: "",
   image_url: "",
   mfw_price: "",
+  average_purchase_price: 0,
   low_stock_threshold: 0,
   size: "",
   weight: "",
@@ -405,7 +406,7 @@ export default function AddEditProductModal({
             </FormField>
           </Grid>
           <Grid item xs={12} sm={3}>
-            <FormField label="Selling Price (MOP)">
+            <FormField label="Max. offer price MOP">
               <TextField
                 fullWidth
                 size="small"
@@ -428,8 +429,10 @@ export default function AddEditProductModal({
                 size="small"
                 variant="outlined"
                 type="number"
-                value={form.average_purchase_price ?? ""}
-                // disabled
+                value={form.average_purchase_price ?? 0}
+                onChange={(e) =>
+                  handleChange("average_purchase_price", Number(e.target.value))
+                }
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">₹</InputAdornment>

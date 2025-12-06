@@ -173,11 +173,19 @@ export const getProductById = (id) => {
  */
 export function getProductHistory(productId) {
   const product = db
-    .prepare("SELECT * FROM products WHERE id = ?")
+    .prepare(
+      `
+      SELECT 
+        p.*,
+        c.name as category_name,
+        sc.name as subcategory_name
+      FROM products p
+      LEFT JOIN categories c ON p.category = c.id
+      LEFT JOIN subcategories sc ON p.subcategory = sc.id
+      WHERE p.id = ?
+    `
+    )
     .get(productId);
-  if (!product) {
-    throw new Error("Product not found.");
-  }
 
   // 1. Fetch all purchase items (+)
   const purchases = db

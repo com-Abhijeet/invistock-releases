@@ -27,6 +27,7 @@ import mobileHtmlRoutes from "./routes/mobileHtmlRoutes.mjs";
 import dashboardRoutes from "./routes/dashboardRoutes.mjs";
 import expenseRoutes from "./routes/expenseRoutes.mjs";
 import stockAdjustmentRouter from "./routes/stockAdjustmentRoutes.mjs";
+import analyticsRouter from "./routes/analyticsRoutes.mjs";
 
 import { initializeDatabase, closeDatabase } from "./db/db.mjs";
 import { createRequire } from "module";
@@ -74,6 +75,7 @@ export function startServer(dbPath) {
   app.use("/api/dashboard", dashboardRoutes);
   app.use("/api/expenses", expenseRoutes);
   app.use("/api/inventory", stockAdjustmentRouter);
+  app.use("/api/analytics", analyticsRouter);
   // ✅ 1. Serve the Mobile HTML Page
   app.use("/mobile", mobileHtmlRoutes);
 

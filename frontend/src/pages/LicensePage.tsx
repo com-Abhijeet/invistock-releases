@@ -11,8 +11,11 @@ import {
   CircularProgress,
   Alert,
   Divider,
+  Stack,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
-import { KeyRound, ShieldCheck, Lock } from "lucide-react";
+import { KeyRound, ShieldCheck, Lock, Copy, Monitor } from "lucide-react";
 import {
   getLicenseStatus,
   activateLicense,
@@ -31,12 +34,23 @@ export default function LicensePage() {
   const [loading, setLoading] = useState(true);
   const [activating, setActivating] = useState(false);
 
-  // Fetch the current license status when the page loads
+  // ✅ State for Machine ID
+  const [machineId, setMachineId] = useState<string>("Loading...");
+
+  // Fetch status and Machine ID
   useEffect(() => {
-    getLicenseStatus()
-      .then((currentStatus) => {
+    const init = async () => {
+      try {
+        // 1. Get Machine ID
+        if (electron) {
+          const id = await electron.getMachineId();
+          setMachineId(id);
+        }
+
+        // 2. Check License
+        const currentStatus = await getLicenseStatus();
         setStatus(currentStatus);
-        // If already valid, redirect immediately
+
         if (
           currentStatus.status === "valid" ||
           currentStatus.status === "grace_period"
@@ -44,38 +58,33 @@ export default function LicensePage() {
           toast.success("License valid. Redirecting...");
           setTimeout(() => navigate("/"), 1000);
         }
-      })
-      .catch((err) => {
-        console.error("License check failed:", err);
-      })
-      .finally(() => setLoading(false));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
   }, [navigate]);
 
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(machineId);
+    toast.success("Machine ID copied!");
+  };
+
   const handleSubmit = async () => {
-    if (!licenseKey.trim()) {
-      return toast.error("Please enter a license key.");
-    }
+    if (!licenseKey.trim()) return toast.error("Please enter a license key.");
     setActivating(true);
     try {
-      // Call the API to activate the new key
       const result = await activateLicense(licenseKey);
       setStatus(result);
 
       if (result.status === "valid" || result.status === "grace_period") {
         toast.success("License activated successfully!");
-
-        // 1. Send signal to Electron Main to re-initialize backend/license checks if needed
         if (electron) {
-          // Wait a moment for the user to see the success message
           setTimeout(() => {
-            // This usually reloads the app to ensure clean state
-            // If you just want to navigate, you can remove this IPC call
-            // But restarting is safer for "Mode" switching (Server vs Client)
-            // electron.ipcRenderer.send("license-updated-restart-app");
-
-            // For smoother UX, we can just navigate:
             navigate("/");
-            window.location.reload(); // Hard reload to refresh contexts
+            window.location.reload();
           }, 1500);
         } else {
           navigate("/");
@@ -86,10 +95,7 @@ export default function LicensePage() {
     } catch (err: any) {
       const errorMsg = err.response?.data?.error || "Activation failed.";
       toast.error(errorMsg);
-      setStatus({
-        status: "invalid",
-        message: errorMsg,
-      });
+      setStatus({ status: "invalid", message: errorMsg });
     } finally {
       setActivating(false);
     }
@@ -143,7 +149,6 @@ export default function LicensePage() {
         bgcolor="grey.100"
       >
         <CircularProgress />
-        <Typography>Loading License</Typography>
       </Box>
     );
   }
@@ -192,6 +197,52 @@ export default function LicensePage() {
           </Box>
 
           <Divider />
+
+          {/* ✅ Machine ID Section */}
+          <Box
+            mt={3}
+            p={2}
+            bgcolor="grey.50"
+            borderRadius={2}
+            border="1px dashed #ccc"
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+          >
+            <Typography
+              variant="caption"
+              fontWeight="bold"
+              color="text.secondary"
+              gutterBottom
+            >
+              YOUR MACHINE ID
+            </Typography>
+
+            <Stack direction="row" alignItems="center" spacing={1} width="100%">
+              <Monitor size={16} color="#666" />
+              <Typography
+                variant="body2"
+                fontFamily="monospace"
+                fontWeight="bold"
+                sx={{
+                  flexGrow: 1,
+                  wordBreak: "break-all",
+                  textAlign: "center",
+                }}
+              >
+                {machineId}
+              </Typography>
+              <Tooltip title="Copy ID">
+                <IconButton size="small" onClick={handleCopyId}>
+                  <Copy size={16} />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+
+            <Typography variant="caption" color="text.disabled" mt={1}>
+              Send this ID to support to get your key.
+            </Typography>
+          </Box>
 
           <StatusDisplay />
 
@@ -246,7 +297,8 @@ export default function LicensePage() {
             display="block"
             mt={3}
           >
-            Need help? Contact support at support@invistock.com
+            Need help? Contact support at @ email : support@invistock.com
+            whatsapp : +91 9370294078
           </Typography>
         </CardContent>
       </Card>

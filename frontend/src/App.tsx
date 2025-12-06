@@ -6,13 +6,7 @@ import {
   Navigate,
   useNavigate,
 } from "react-router-dom";
-import {
-  ThemeProvider,
-  CssBaseline,
-  Box,
-  CircularProgress,
-  Typography,
-} from "@mui/material";
+import { ThemeProvider, CssBaseline, Box, Typography } from "@mui/material";
 import theme from "../theme";
 import { Toaster } from "react-hot-toast";
 import { useEffect, useState } from "react";
@@ -58,6 +52,11 @@ import AboutPage from "./pages/AboutPage";
 import ExpensesPage from "./pages/ExpensePage";
 import StockAdjustmentsPage from "./pages/StockAdjustmentsPage";
 import { UpdateProvider } from "./context/UpdateContext";
+import KoshSpinningLoader from "./components/KoshSpinningLoader";
+import SmartRestockPage from "./pages/SmartRestockPage";
+import DeadStockPage from "./pages/DeadStockPage";
+import CustomerAnalyticsPage from "./pages/CustomerAnalyticsPage";
+import ProductABCPage from "./pages/ProductABCPage";
 
 // /**
 //  * Represents the current status of the application persistence layer.
@@ -129,12 +128,10 @@ function AppLayout() {
                 <Route path="/suppliers" element={<SuppliersPage />} />
                 <Route path="/customer/:id" element={<CustomerPage />} />
                 <Route path="/customers" element={<CustomersPage />} />
-                <Route path="/billing/:action?/:id?" element={<SalesPOS />} />
+                <Route path="/billing" element={<SalesPOS />} />
+                <Route path="/billing/:action/:id" element={<SalesPOS />} />
                 <Route path="/sales" element={<SalesDashboard />} />
-                <Route path="/billing/view/:id" element={<SalesPOS />} />
-
                 <Route path="*" element={<Navigate to="/" />} />
-
                 {/* Protected Routes (Require Admin PIN) */}
                 <Route element={<ProtectedRoutes />}>
                   <Route path="/dashboard" element={<Dashboard />} />
@@ -155,6 +152,16 @@ function AppLayout() {
                   <Route
                     path="/adjustments"
                     element={<StockAdjustmentsPage />}
+                  />
+                  <Route path="/stock-restock" element={<SmartRestockPage />} />
+                  <Route path="/dead-stock" element={<DeadStockPage />} />
+                  <Route
+                    path="/customer-analytics"
+                    element={<CustomerAnalyticsPage />}
+                  />
+                  <Route
+                    path="/product-abc-page"
+                    element={<ProductABCPage />}
                   />
                 </Route>
               </Routes>
@@ -300,7 +307,7 @@ function AppInitializer() {
         alignItems="center"
         height="100vh"
       >
-        <CircularProgress />
+        <KoshSpinningLoader />
         <Typography sx={{ ml: 2 }}>Starting KOSH...</Typography>
       </Box>
     );
@@ -317,7 +324,7 @@ function AppInitializer() {
         gap={2}
         sx={{ backgroundColor: "grey.100" }}
       >
-        <CircularProgress />
+        <KoshSpinningLoader />
         <Typography variant="h6">Searching for KOSH Server...</Typography>
         <Typography color="text.secondary">
           Please ensure the main app is running on your network.

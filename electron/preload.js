@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("electron", {
     invoke: (channel, data) => {
       const validInvokeChannels = [
         "license-updated-restart-app",
+        "get-machine-id",
         "generate-excel-report",
         "select-logo",
         "copy-product-image",
@@ -123,6 +124,7 @@ contextBridge.exposeInMainWorld("electron", {
   getGDriveStatus: () => ipcRenderer.invoke("gdrive-status"),
   loginGDrive: () => ipcRenderer.invoke("gdrive-login"),
   onGDriveConnected: (callback) => ipcRenderer.on("gdrive-connected", callback),
+  getMachineId: () => ipcRenderer.invoke("get-machine-id"),
 
   // ✅ UPDATER NAMESPACE (New)
   updater: {

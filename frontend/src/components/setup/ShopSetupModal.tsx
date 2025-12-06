@@ -28,6 +28,16 @@ type Props = {
   onSuccess: () => void;
 };
 
+const getCurrentFinancialYear = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0 = Jan
+  // Financial year starts in April (Month 3)
+  return month >= 3
+    ? `${year}-${String(year + 1).slice(2)}`
+    : `${year - 1}-${String(year).slice(2)}`;
+};
+
 export default function ShopSetupModal({ open, onClose, onSuccess }: Props) {
   const [form, setForm] = useState<ShopSetupForm>({
     shop_name: "",
@@ -88,6 +98,7 @@ export default function ShopSetupModal({ open, onClose, onSuccess }: Props) {
     shop_alias: "",
     silent_printing: false,
     use_alias_on_bills: false,
+    last_reset_fy: getCurrentFinancialYear(),
   });
 
   // form updater
@@ -114,7 +125,8 @@ export default function ShopSetupModal({ open, onClose, onSuccess }: Props) {
       let errorMessage = "Setup failed";
       if (axios.isAxiosError(error)) {
         // axios error: try to read server-provided message, fall back to axios message
-        errorMessage = (error.response?.data as any)?.error || error.message || errorMessage;
+        errorMessage =
+          (error.response?.data as any)?.error || error.message || errorMessage;
       } else if (error instanceof Error) {
         // generic Error
         errorMessage = error.message || errorMessage;
@@ -228,7 +240,7 @@ export default function ShopSetupModal({ open, onClose, onSuccess }: Props) {
                     onChange={(e) =>
                       updateForm("invoice_prefix", e.target.value)
                     }
-                    placeholder="INV-"
+                    placeholder="INV"
                   />
                 </Grid>
                 <Grid item xs={4}>

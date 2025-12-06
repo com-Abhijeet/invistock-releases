@@ -1,7 +1,8 @@
 {
     "name": "kosh",
-    "version": "1.0.5",
+    "version": "1.0.1",
     "description": "KOSH is a inventory and operational software built to cater specific needs of businesses.",
+    
     "main": "electron/main.js",
     "type": "commonjs",
     "author": {
@@ -20,6 +21,7 @@
         "build:frontend": "cd frontend && npm install && npm run build",
         "build:electron": "electron-builder",
         "build": "npm run build:frontend && npm run build:electron",
+        "buildWithObfuscate": "npm run build:frontend && node scripts/obfuscate.js && npm run build:electron",
         "postinstall": "electron-rebuild",
         "rebuild:backend": "cd backend && npm rebuild --runtime=electron --target=37.2.3 --dist-url=https://electronjs.org/headers --arch=x64",
         "preview": "vite preview",
@@ -31,6 +33,8 @@
         "electron": "^37.2.3",
         "electron-builder": "^26.0.12",
         "electron-rebuild": "^3.2.9",
+        "glob": "^13.0.0",
+        "javascript-obfuscator": "^4.2.0",
         "wait-on": "^8.0.3"
     },
     "dependencies": {
@@ -40,6 +44,7 @@
         "electron-log": "^5.4.3",
         "electron-updater": "^6.6.2",
         "googleapis": "^166.0.0",
+        "node-machine-id": "^1.1.12",
         "qrcode": "^1.5.4",
         "whatsapp-web.js": "^1.34.2",
         "xlsx": "^0.18.5"
@@ -60,7 +65,13 @@
                 "filter": [
                     "**/*"
                 ]
-            }
+            },
+            "!**/.wwebjs_auth",     
+            "!**/.wwebjs_cache",     
+            "!**/.webjs-auth",       
+            "!**/.webjs-cache",      
+            "!**/.puppeteer",        
+            "!**/session-data"       
         ],
         "publish": [
             {

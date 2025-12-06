@@ -120,7 +120,7 @@ export default function CustomerPage() {
           endDate: endDate,
         },
       })
-      .then((result) => {
+      .then((result: { success: any; error: any }) => {
         toast.dismiss();
         if (result.success) {
           toast.success("Ledger sent to printer.");
@@ -128,7 +128,7 @@ export default function CustomerPage() {
           toast.error(result.error || "Failed to generate ledger.");
         }
       })
-      .catch((err) => {
+      .catch((err: { message: any }) => {
         toast.dismiss();
         toast.error(`Print failed: ${err.message}`);
       });

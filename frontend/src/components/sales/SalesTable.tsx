@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Chip } from "@mui/material";
-import { Printer, Eye, Users, Truck, Undo2 } from "lucide-react";
+import { Printer, Eye, Users, Truck, Undo2, MessageCircle } from "lucide-react"; // ✅ Added MessageCircle
 import type {
   SalesFilter,
   SalesTable as SalesTableType,
@@ -10,11 +10,13 @@ import { fetchSalesTable } from "../../lib/api/salesStatsService";
 import DataTable from "../../components/DataTable";
 import { useNavigate } from "react-router-dom";
 import { getSaleById } from "../../lib/api/salesService";
+import { getShopData } from "../../lib/api/shopService"; // ✅ Import getShopData
 import { handlePrint } from "../../lib/handleInvoicePrint";
-// ✅ Import the new Return Modal
-import SalesReturnModal from "../sales/SalesReturnModal";
 import toast from "react-hot-toast";
-import { SalePayload } from "../../lib/types/salesTypes";
+
+// ✅ Import the Return Modal and Types
+import SalesReturnModal from "../sales/SalesReturnModal";
+import type { SalePayload } from "../../lib/types/salesTypes";
 
 interface SalesTableProps {
   filters: SalesFilter;
@@ -28,7 +30,7 @@ const SalesTable = ({ filters }: SalesTableProps) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const navigate = useNavigate();
 
-  // ✅ State for the return modal
+  // ✅ State for the Return / Credit Note modal
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [selectedSaleForReturn, setSelectedSaleForReturn] =
     useState<SalePayload | null>(null);
@@ -66,7 +68,9 @@ const SalesTable = ({ filters }: SalesTableProps) => {
     setTimeout(() => {
       window.electron.ipcRenderer
         .invoke("print-shipping-label", res.data)
-        .catch((err) => toast.error(`Label print failed: ${err.message}`));
+        .catch((err: { message: any }) =>
+          toast.error(`Label print failed: ${err.message}`)
+        );
     }, 1000);
   };
 
@@ -75,19 +79,110 @@ const SalesTable = ({ filters }: SalesTableProps) => {
     navigate(`/customer/${res.data.customer_id}`);
   };
 
-  // ✅ Handler for opening the return modal
-  const handleReturnClick = async (saleId: number) => {
+  // ✅ Handler to fetch full details and open Return Modal
+  const handleProcessReturn = async (saleId: number) => {
+    const toastId = toast.loading("Loading sale details...");
     try {
       const res = await getSaleById(saleId);
-      setSelectedSaleForReturn(res.data);
-      setIsReturnModalOpen(true);
+      if (res.data) {
+        setSelectedSaleForReturn(res.data);
+        setIsReturnModalOpen(true);
+      }
+      toast.dismiss(toastId);
     } catch (error) {
-      toast.error("Failed to load sale details for return.");
+      console.error(error);
+      toast.dismiss(toastId);
+      toast.error("Failed to load sale details.");
+    }
+  };
+
+  // ✅ NEW: Handler for WhatsApp Sharing
+  const handleWhatsAppShare = async (saleId: number) => {
+    const toastId = toast.loading("Preparing WhatsApp message...");
+    try {
+      // 1. Check connection status first
+      const wsStatus = await window.electron.getWhatsAppStatus();
+      if (wsStatus.status !== "ready") {
+        toast.error("WhatsApp not connected. Please scan QR in Settings.", {
+          id: toastId,
+        });
+        return;
+      }
+
+      // 2. Fetch Sale & Shop Data
+      const [saleRes, shop] = await Promise.all([
+        getSaleById(saleId),
+        getShopData(),
+      ]);
+      const sale = saleRes.data;
+
+      if (!sale || !shop) throw new Error("Could not fetch data");
+
+      const phoneToSend = sale.customer_phone;
+      if (!phoneToSend) {
+        toast.error("Customer has no phone number.", { id: toastId });
+        return;
+      }
+
+      // 3. Construct Message
+      const nl = "\n";
+      const itemsList = sale.items
+        .map(
+          (
+            item: { product_name: any; quantity: number; rate: number },
+            i: number
+          ) =>
+            `${i + 1}. ${item.product_name} x ${item.quantity} = ₹${(
+              item.rate * item.quantity
+            ).toLocaleString("en-IN")}`
+        )
+        .join(nl);
+
+      const message =
+        `*Invoice from ${shop.shop_name}*${nl}${nl}` +
+        `Hello ${sale.customer_name || "Customer"},${nl}` +
+        `Bill No: ${sale.reference_no}${nl}${nl}` +
+        `*Items:*${nl}${itemsList}${nl}` +
+        `------------------------------${nl}` +
+        `*Total: ₹${sale.total_amount.toLocaleString("en-IN")}*${nl}` +
+        `------------------------------${nl}` +
+        `Thank you!`;
+
+      // 4. Send Text
+      const textRes = await window.electron.sendWhatsAppMessage(
+        phoneToSend,
+        message
+      );
+
+      if (textRes.success) {
+        toast.success("Text message sent!", { id: toastId });
+
+        // 5. Send PDF
+        toast.loading("Sending PDF Invoice...", { id: toastId });
+        const pdfRes = await window.electron.sendWhatsAppInvoicePdf({
+          sale: sale,
+          shop: shop,
+          customerPhone: phoneToSend,
+        });
+
+        if (pdfRes.success) {
+          toast.success("Invoice sent successfully!", { id: toastId });
+        } else {
+          toast.error("Failed to send PDF.", { id: toastId });
+        }
+      } else {
+        toast.error("WhatsApp Text Failed: " + textRes.error, { id: toastId });
+      }
+    } catch (error: any) {
+      console.error(error);
+      toast.error("WhatsApp Error: " + (error.message || "Unknown error"), {
+        id: toastId,
+      });
     }
   };
 
   const handleReturnSuccess = () => {
-    loadData(); // Refresh the table to show updated status
+    loadData(); // Refresh table to show updated status
     setIsReturnModalOpen(false);
     setSelectedSaleForReturn(null);
   };
@@ -111,9 +206,12 @@ const SalesTable = ({ filters }: SalesTableProps) => {
         break;
       case "returned":
         color = "error";
-        break; // Distinct color for returns
+        break;
       case "cancelled":
         color = "error";
+        break;
+      case "draft":
+        color = "default";
         break;
       default:
         color = "default";
@@ -184,11 +282,15 @@ const SalesTable = ({ filters }: SalesTableProps) => {
       icon: <Truck size={18} />,
       onClick: (row: SalesTableType) => handleShippingLablePrint(row.id),
     },
-    // ✅ REPLACED: "Update Status" with "Return / Credit Note"
+    {
+      label: "Send on WhatsApp",
+      icon: <MessageCircle size={18} color="#25D366" />, // WhatsApp green
+      onClick: (row: SalesTableType) => handleWhatsAppShare(row.id),
+    },
     {
       label: "Process Return / Credit Note",
-      icon: <Undo2 size={18} />, // Using a 'Undo' or 'Rotate-CCW' icon
-      onClick: (row: SalesTableType) => handleReturnClick(row.id),
+      icon: <Undo2 size={18} />,
+      onClick: (row: SalesTableType) => handleProcessReturn(row.id),
     },
   ];
 
@@ -209,13 +311,12 @@ const SalesTable = ({ filters }: SalesTableProps) => {
         }}
       />
 
-      {/* ✅ Render the SalesReturnModal */}
       {selectedSaleForReturn && (
         <SalesReturnModal
           open={isReturnModalOpen}
           onClose={() => setIsReturnModalOpen(false)}
-          onSuccess={handleReturnSuccess}
           sale={selectedSaleForReturn}
+          onSuccess={handleReturnSuccess}
         />
       )}
     </>

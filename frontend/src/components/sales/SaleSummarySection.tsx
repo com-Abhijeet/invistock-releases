@@ -168,7 +168,7 @@ const SaleSummarySection = ({
           setTimeout(() => {
             window.electron.ipcRenderer
               .invoke("print-shipping-label", response.data)
-              .catch((err) =>
+              .catch((err: { message: any }) =>
                 toast.error(`Label print failed: ${err.message}`)
               );
           }, 1000); // 1-second delay to avoid printer conflicts
@@ -213,7 +213,7 @@ const SaleSummarySection = ({
             // --- 3. Send Text Message ---
             window.electron
               .sendWhatsAppMessage(phoneToSend, message)
-              .then((res) => {
+              .then((res: { success: any; error: string }) => {
                 if (res.success) {
                   toast.success("WhatsApp Text Sent!");
 
@@ -226,7 +226,7 @@ const SaleSummarySection = ({
                       shop: shop,
                       customerPhone: phoneToSend,
                     })
-                    .then((pdfRes) => {
+                    .then((pdfRes: { success: any }) => {
                       toast.dismiss();
                       if (pdfRes.success) toast.success("PDF Invoice Sent!");
                       else toast.error("PDF Send Failed");

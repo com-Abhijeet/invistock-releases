@@ -84,6 +84,7 @@ export async function createTransaction(transactionData) {
  * @param {boolean} [options.all=false] - If true, fetches all records without pagination.
  * @returns {object} An object containing the filtered records and the total count.
  * @throws {Error} If fetching transactions fails.
+ * Now joins with sales/purchase/customer/supplier tables for detailed info.
  */
 export function getAllTransactions({
   page = 1,
@@ -108,16 +109,16 @@ export function getAllTransactions({
     let whereClauses = [dateWhere];
     const params = [...dateParams];
 
-    // Filter by query (case-insensitive search on reference_no and note)
+    // Filter by query (case-insensitive search on reference_no, note, entity name)
     if (query) {
       whereClauses.push(
-        `(LOWER(t.reference_no) LIKE ? OR LOWER(t.note) LIKE ?)`
+        `(LOWER(t.reference_no) LIKE ? OR LOWER(t.note) LIKE ? OR LOWER(COALESCE(c.name, sup.name)) LIKE ?)`
       );
-      params.push(`%${query.toLowerCase()}%`, `%${query.toLowerCase()}%`);
+      const q = `%${query.toLowerCase()}%`;
+      params.push(q, q, q);
     }
 
     // Filter by transaction type
-    // Only apply the filter if 'type' is not 'all' or null
     if (type && type !== "all") {
       whereClauses.push(`t.type = ?`);
       params.push(type);
@@ -134,16 +135,44 @@ export function getAllTransactions({
         .filter((clause) => clause && clause !== "1=1")
         .join(" AND ") || "1=1";
 
-    const totalCountStmt = db.prepare(`
-      SELECT COUNT(id) AS count FROM transactions AS t WHERE ${whereString}
-    `);
-    const totalRecords = totalCountStmt.get(...params).count;
-
+    // Main Query with Joins
+    // We use COALESCE to get name/phone from either customer or supplier table based on entity_type
+    // We use CASE/COALESCE to get bill reference from sale/non-gst/purchase tables based on bill_type
     let recordsQuery = `
-      SELECT * FROM transactions AS t
+      SELECT 
+        t.*,
+        -- Entity Details
+        COALESCE(c.name, sup.name) as entity_name,
+        COALESCE(c.phone, sup.phone) as entity_phone,
+        
+        -- Bill Reference Number
+        CASE 
+          WHEN t.bill_type = 'sale' THEN s.reference_no
+          WHEN t.bill_type = 'sale_non_gst' THEN sng.reference_no
+          WHEN t.bill_type = 'purchase' THEN p.reference_no
+          ELSE NULL
+        END as bill_ref_no
+
+      FROM transactions AS t
+      LEFT JOIN customers c ON t.entity_type = 'customer' AND t.entity_id = c.id
+      LEFT JOIN suppliers sup ON t.entity_type = 'supplier' AND t.entity_id = sup.id
+      LEFT JOIN sales s ON t.bill_type = 'sale' AND t.bill_id = s.id
+      LEFT JOIN sales_non_gst sng ON t.bill_type = 'sale_non_gst' AND t.bill_id = sng.id
+      LEFT JOIN purchases p ON t.bill_type = 'purchase' AND t.bill_id = p.id
+
       WHERE ${whereString}
       ORDER BY t.created_at DESC
     `;
+
+    // Total Count Query (Simplified join for performance if needed, but reusing logic is safer)
+    const totalCountStmt = db.prepare(`
+      SELECT COUNT(t.id) AS count 
+      FROM transactions AS t
+      LEFT JOIN customers c ON t.entity_type = 'customer' AND t.entity_id = c.id
+      LEFT JOIN suppliers sup ON t.entity_type = 'supplier' AND t.entity_id = sup.id
+      WHERE ${whereString}
+    `);
+    const totalRecords = totalCountStmt.get(...params).count;
 
     const queryParams = [...params];
 
