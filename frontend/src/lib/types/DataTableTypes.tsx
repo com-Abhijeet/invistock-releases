@@ -23,4 +23,6 @@ export interface DataTableProps {
   rowsPerPage: number;
   onPageChange: (newPage: number) => void;
   onRowsPerPageChange: (newLimit: number) => void;
+  hidePagination: Boolean;
+  rowsPerPageOptions?: number[];
 }
