@@ -44,6 +44,7 @@ import {
   ArchiveX,
   UserSearch,
   ChartCandlestick,
+  BookA,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import LowStockNotification from "./layout/LowStockNotification";
@@ -144,7 +145,13 @@ const menuSections = [
         icon: <IndianRupee size={20} />,
         path: "/transactions",
       },
+
       { label: "Expenses", icon: <FileText size={20} />, path: "/expenses" },
+      {
+        label: "DayBook",
+        icon: <BookA size={20} />,
+        path: "/daybook",
+      },
     ],
   },
   {

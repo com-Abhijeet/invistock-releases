@@ -57,6 +57,7 @@ import SmartRestockPage from "./pages/SmartRestockPage";
 import DeadStockPage from "./pages/DeadStockPage";
 import CustomerAnalyticsPage from "./pages/CustomerAnalyticsPage";
 import ProductABCPage from "./pages/ProductABCPage";
+import DayBookPage from "./pages/DayBookPage";
 
 // /**
 //  * Represents the current status of the application persistence layer.
@@ -163,6 +164,7 @@ function AppLayout() {
                     path="/product-abc-page"
                     element={<ProductABCPage />}
                   />
+                  <Route path="/daybook" element={<DayBookPage />} />
                 </Route>
               </Routes>
             </SidebarLayout>

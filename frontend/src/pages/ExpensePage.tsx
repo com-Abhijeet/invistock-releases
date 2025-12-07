@@ -1,9 +1,28 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Box, Button, Typography, Chip, CircularProgress } from "@mui/material";
+import {
+  Box,
+  Button,
+  Typography,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Stack,
+} from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { Plus, Trash2, Edit, TrendingDown, Wallet } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Edit,
+  TrendingDown,
+  Wallet,
+  Download,
+} from "lucide-react"; // ✅ Added Download icon
 import toast from "react-hot-toast";
 import type { Column } from "../lib/types/DataTableTypes";
 
@@ -19,7 +38,11 @@ import {
 } from "../lib/api/expenseService";
 import type { Expense, ExpenseStats } from "../lib/types/expenseTypes";
 import { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
-import { DataCard as StatisticCard } from "../components/DataCard";
+
+import { DataCard } from "../components/DataCard";
+
+// Get electron from window
+const { electron } = window;
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -31,12 +54,20 @@ export default function ExpensesPage() {
   const [editExpense, setEditExpense] = useState<Expense | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
-  // ✅ FIX: Calculate initial dates for "This Month" so the page loads data immediately
+  // ✅ Export Modal States
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportFrom, setExportFrom] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [exportTo, setExportTo] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+
+  // Filter State
   const [filters, setFilters] = useState<DashboardFilter>(() => {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    // Simple ISO string YYYY-MM-DD (Adjust for timezone if strictly needed, but usually fine for reports)
     const from = new Date(start.getTime() - start.getTimezoneOffset() * 60000)
       .toISOString()
       .split("T")[0];
@@ -44,14 +75,9 @@ export default function ExpensesPage() {
       .toISOString()
       .split("T")[0];
 
-    return {
-      filter: "month",
-      from,
-      to,
-    };
+    return { filter: "month", from, to };
   });
 
-  // ✅ Stabilized fetchData
   const fetchData = useCallback(async (currentFilters: DashboardFilter) => {
     setLoading(true);
     try {
@@ -69,13 +95,10 @@ export default function ExpensesPage() {
     }
   }, []);
 
-  // ✅ Proper useEffect dependencies
   useEffect(() => {
-    // This will now run on mount because 'filters' has valid dates
     fetchData(filters);
   }, [fetchData, filters.filter, filters.from, filters.to]);
 
-  // ✅ Handler to prevent loop
   const handleFilterChange = (newFilters: DashboardFilter) => {
     setFilters((prev) => {
       if (
@@ -101,6 +124,58 @@ export default function ExpensesPage() {
     setDeleteId(null);
   };
 
+  // ✅ HANDLE EXPORT
+  const handleExport = async () => {
+    if (!exportFrom || !exportTo) {
+      return toast.error("Please select both start and end dates.");
+    }
+
+    const toastId = toast.loading("Generating export...");
+    try {
+      // 1. Fetch expenses for the selected range
+      const dataToExport = await getExpenses(exportFrom, exportTo);
+
+      if (!dataToExport || dataToExport.length === 0) {
+        toast.error("No expenses found for this period.", { id: toastId });
+        return;
+      }
+
+      // 2. Define Columns for Excel
+      const columnMap = {
+        date: "Date",
+        category: "Category",
+        amount: "Amount",
+        payment_mode: "Payment Mode",
+        description: "Description / Notes",
+        created_at: "Entry Created At",
+      };
+
+      // 3. Call Electron
+      if (electron) {
+        const result = await electron.ipcRenderer.invoke(
+          "generate-excel-report",
+          {
+            data: dataToExport,
+            fileName: `Expenses_${exportFrom}_to_${exportTo}`,
+            columnMap: columnMap,
+          }
+        );
+
+        if (result.success) {
+          toast.success("Export successful!", { id: toastId });
+          setExportModalOpen(false);
+        } else {
+          toast.error("Export failed: " + result.message, { id: toastId });
+        }
+      } else {
+        toast.error("Export not available in browser mode.", { id: toastId });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("An error occurred during export.", { id: toastId });
+    }
+  };
+
   // Table Columns
   const columns: Column[] = [
     { key: "date", label: "Date" },
@@ -123,7 +198,6 @@ export default function ExpensesPage() {
     },
   ];
 
-  // Table Actions
   const actions = [
     {
       label: "Edit",
@@ -143,7 +217,8 @@ export default function ExpensesPage() {
       pt={3}
       sx={{
         backgroundColor: "#fff",
-
+        borderTopLeftRadius: "36px",
+        borderBottomLeftRadius: "36px",
         minHeight: "100vh",
       }}
     >
@@ -154,24 +229,41 @@ export default function ExpensesPage() {
         onFilterChange={handleFilterChange}
         onRefresh={() => fetchData(filters)}
         actions={
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<Plus size={18} />}
-            onClick={() => setAddOpen(true)}
-            sx={{
-              borderRadius: "12px",
-              textTransform: "none",
-              fontWeight: 600,
-              px: 3,
-              boxShadow: "none",
-              "&:hover": {
-                boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-              },
-            }}
-          >
-            Add Expense
-          </Button>
+          <Stack direction="row" spacing={1.5}>
+            {/* ✅ Export Button */}
+            <Button
+              variant="outlined"
+              onClick={() => setExportModalOpen(true)}
+              startIcon={<Download size={18} />}
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Export
+            </Button>
+
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<Plus size={18} />}
+              onClick={() => setAddOpen(true)}
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                fontWeight: 600,
+                px: 3,
+                boxShadow: "none",
+                "&:hover": {
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                },
+              }}
+            >
+              Add Expense
+            </Button>
+          </Stack>
         }
       />
 
@@ -180,7 +272,7 @@ export default function ExpensesPage() {
         <Box mb={3} mt={2}>
           <Grid container spacing={3}>
             <Grid item xs={12} sm={6} md={3}>
-              <StatisticCard
+              <DataCard
                 title="Total Expenses"
                 value={`₹${stats.total.toLocaleString("en-IN")}`}
                 icon={<TrendingDown />}
@@ -189,10 +281,9 @@ export default function ExpensesPage() {
               />
             </Grid>
 
-            {/* Top Spending Categories */}
             {stats.breakdown.map((cat, idx) => (
               <Grid item xs={12} sm={6} md={3} key={cat.category}>
-                <StatisticCard
+                <DataCard
                   title={cat.category}
                   value={`₹${cat.total.toLocaleString("en-IN")}`}
                   icon={<Wallet />}
@@ -241,6 +332,52 @@ export default function ExpensesPage() {
         header="Delete Expense"
         disclaimer="Are you sure? This will permanently remove this expense record."
       />
+
+      {/* ✅ Export Date Range Modal */}
+      <Dialog
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Export Expenses</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            Select the date range you want to export to Excel.
+          </Typography>
+          <Stack spacing={2}>
+            <TextField
+              label="Start Date"
+              type="date"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              value={exportFrom}
+              onChange={(e) => setExportFrom(e.target.value)}
+            />
+            <TextField
+              label="End Date"
+              type="date"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              value={exportTo}
+              onChange={(e) => setExportTo(e.target.value)}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setExportModalOpen(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleExport}
+            variant="contained"
+            color="primary"
+            startIcon={<Download size={18} />}
+          >
+            Export Excel
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
