@@ -14,7 +14,6 @@ import {
   Menu,
   MenuItem,
   useTheme,
-  Paper,
   Typography,
 } from "@mui/material";
 import { MoreHorizontal } from "lucide-react";
