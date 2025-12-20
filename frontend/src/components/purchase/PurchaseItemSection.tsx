@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
 import {
   Autocomplete,
   Box,
   Button,
   IconButton,
-  Paper,
   Table,
   TableBody,
   TableCell,
@@ -16,10 +14,9 @@ import {
   TableRow,
   TextField,
   Typography,
+  useTheme,
 } from "@mui/material";
-import { Trash2 } from "lucide-react";
-
-import theme from "../../../theme";
+import { Trash2, Plus } from "lucide-react";
 import { getAllProducts } from "../../lib/api/productService";
 import type { Product } from "../../lib/types/product";
 import type { PurchaseItem } from "../../lib/types/purchaseTypes";
@@ -45,28 +42,27 @@ const PurchaseItemSection = ({
   onItemsChange,
   readOnly = false,
 }: Props) => {
+  const theme = useTheme();
   const [products, setProducts] = useState<Product[]>([]);
   const autocompleteRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const [_hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
 
-  const params = {
-    page: 1,
-    limit: 100,
-    query: "",
-    isActive: 0,
-    all: true,
-  };
   useEffect(() => {
-    getAllProducts(params)
-      .then((data) => setProducts(data.records || []))
-      .then(() => console.log(products));
+    getAllProducts({
+      page: 1,
+      limit: 100,
+      query: "",
+      isActive: 0,
+      all: true,
+    }).then((data) => setProducts(data.records || []));
   }, []);
 
   useEffect(() => {
     if (!readOnly && items.length > 0) {
-      const lastIndex = items.length - 1;
-      setTimeout(() => {
-        autocompleteRefs.current[lastIndex]?.focus();
-      }, 100);
+      setTimeout(
+        () => autocompleteRefs.current[items.length - 1]?.focus(),
+        100
+      );
     }
   }, [items.length, readOnly]);
 
@@ -91,9 +87,13 @@ const PurchaseItemSection = ({
       updated[index] = {
         ...updated[index],
         product_id: product.id!,
-        rate: product.mop,
-        gst_rate: 0,
-        price: calculatePrice({ ...updated[index], rate: product.mop }),
+        rate: product.mop, // Assuming MOP as base rate
+        gst_rate: product.gst_rate || 0, // Auto-fill GST
+        price: calculatePrice({
+          ...updated[index],
+          rate: product.mop,
+          gst_rate: product.gst_rate || 0,
+        }),
       };
     } else {
       updated[index] = defaultItem();
@@ -113,180 +113,78 @@ const PurchaseItemSection = ({
     onItemsChange(updated);
   };
 
-  // const filterOptions = useMemo(
-  //   () =>
-  //     (options: Product[], { inputValue }: any) =>
-  //       options.filter((p) =>
-  //         [p.name, p.product_code, p.barcode]
-  //           .filter(Boolean)
-  //           .some((field) =>
-  //             field
-  //               ? field.toLowerCase().includes(inputValue.toLowerCase())
-  //               : false
-  //           )
-  //       ),
-  //   []
-  // );
+  const handleRemoveItem = (idx: number) => {
+    if (readOnly) return;
+    const updated = items.filter((_, i) => i !== idx);
+    updated.forEach((item, index) => {
+      item.sr_no = index + 1;
+    });
+    onItemsChange(updated);
+  };
+
+  // Unified Header Style
+  const headerSx = {
+    fontWeight: 700,
+    color: "text.secondary",
+    fontSize: "0.75rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
+    borderBottom: `2px solid ${theme.palette.divider}`,
+    py: 1.5,
+  };
 
   return (
-    <Box mt={1}>
-      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-        Purchase Items
-      </Typography>
-
-      <TableContainer
-        component={Paper}
-        variant="outlined"
-        sx={{ borderRadius: 2, borderColor: theme.palette.divider }}
-      >
+    <Box overflow="hidden">
+      <TableContainer>
         <Table size="small">
-          <TableHead sx={{ backgroundColor: theme.palette.grey[50] }}>
+          <TableHead>
             <TableRow>
-              <TableCell
-                rowSpan={2}
-                sx={{
-                  fontWeight: 600,
-                  width: "5%",
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                Sr.
+              <TableCell sx={{ ...headerSx, width: "5%" }} align="center">
+                #
               </TableCell>
-              <TableCell
-                rowSpan={2}
-                sx={{
-                  fontWeight: 600,
-                  width: "5%",
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                HSN
+              <TableCell sx={{ ...headerSx, width: "30%" }}>PRODUCT</TableCell>
+              <TableCell sx={{ ...headerSx, width: "12%" }}>RATE</TableCell>
+              <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
+              <TableCell sx={{ ...headerSx, width: "10%" }} align="center">
+                GST%
               </TableCell>
-              <TableCell
-                rowSpan={2}
-                sx={{
-                  fontWeight: 600,
-                  width: "28%",
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                Product
+              <TableCell sx={{ ...headerSx, width: "8%" }} align="center">
+                DISC%
               </TableCell>
-              <TableCell
-                rowSpan={2}
-                sx={{
-                  fontWeight: 600,
-                  width: "12%",
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                Rate
+              <TableCell sx={{ ...headerSx, width: "15%" }} align="right">
+                AMOUNT
               </TableCell>
-              <TableCell
-                rowSpan={2}
-                sx={{
-                  fontWeight: 600,
-                  width: "10%",
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                Qty
-              </TableCell>
-              <TableCell
-                colSpan={2}
-                align="center"
-                sx={{
-                  width: "15%",
-                  fontWeight: 600,
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                GST
-              </TableCell>
-              <TableCell
-                rowSpan={2}
-                align="center"
-                sx={{
-                  fontWeight: 600,
-                  width: "5%",
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                Discount
-              </TableCell>
-              <TableCell
-                rowSpan={2}
-                align="right"
-                sx={{ fontWeight: 600, width: "15%" }}
-              >
-                Price
-              </TableCell>
-              <TableCell
-                rowSpan={2}
-                align="center"
-                sx={{
-                  fontWeight: 600,
-                  width: "5%",
-                  borderLeft: `1px solid ${theme.palette.divider}`,
-                }}
-              ></TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell
-                align="center"
-                sx={{
-                  fontWeight: 500,
-                  width: "7%",
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                Rate
-              </TableCell>
-              <TableCell
-                align="right"
-                sx={{
-                  fontWeight: 500,
-                  width: "8%",
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                Amt
-              </TableCell>
+              <TableCell sx={{ ...headerSx, width: "5%" }}></TableCell>
             </TableRow>
           </TableHead>
 
           <TableBody>
             {items?.map((item, idx) => {
               const product = products.find((p) => p.id === item.product_id);
-
-              item.gst_rate = product?.gst_rate || 0;
+              // Recalculate tax amount for display
               const taxableAmount =
                 item.rate * item.quantity * (1 - (item.discount || 0) / 100);
               const gstAmount = (taxableAmount * (item.gst_rate || 0)) / 100;
 
-              function handleRemoveItem(idx: number): void {
-                if (readOnly) return;
-                const updated = items.filter((_, i) => i !== idx);
-                // Update serial numbers after removal
-                updated.forEach((item, index) => {
-                  item.sr_no = index + 1;
-                });
-                onItemsChange(updated);
-              }
-
               return (
                 <TableRow
                   key={idx}
-                  sx={{
-                    "&:nth-of-type(odd)": {
-                      backgroundColor: theme.palette.action.hover,
-                    },
-                    "&:last-child td, &:last-child th": { border: 0 },
-                  }}
+                  hover
+                  onMouseEnter={() => setHoveredRowIndex(idx)}
+                  onMouseLeave={() => setHoveredRowIndex(null)}
                 >
-                  <TableCell align="center">{item.sr_no}</TableCell>
-                  <TableCell>{product?.hsn || "—"}</TableCell>
-                  <TableCell sx={{ p: 0.5 }}>
+                  <TableCell
+                    align="center"
+                    sx={{
+                      borderBottom: "1px dashed #eee",
+                      color: "text.secondary",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    {item.sr_no}
+                  </TableCell>
+
+                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
                     <Autocomplete
                       disabled={readOnly}
                       options={products}
@@ -299,43 +197,41 @@ const PurchaseItemSection = ({
                           inputRef={(el) =>
                             (autocompleteRefs.current[idx] = el)
                           }
-                          placeholder="Search Product..."
-                          variant="outlined"
-                          size="small"
-                          sx={{
-                            "& .MuiOutlinedInput-root": {
-                              "& fieldset": { border: "none" },
-                            },
+                          placeholder="Select Product"
+                          variant="standard"
+                          InputProps={{
+                            ...params.InputProps,
+                            disableUnderline: true,
+                            sx: { fontSize: "0.95rem", fontWeight: 500 },
                           }}
                         />
                       )}
                     />
                   </TableCell>
-                  <TableCell sx={{ p: 0.5 }}>
+
+                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
                     <TextField
                       type="number"
-                      size="small"
-                      variant="outlined"
+                      variant="standard"
                       fullWidth
-                      value={(item as any)["rate"]}
+                      value={item.rate}
                       onChange={(e) =>
                         handleFieldChange(idx, "rate", Number(e.target.value))
                       }
-                      InputProps={{ readOnly }}
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          "& fieldset": { border: "none" },
-                        },
+                      InputProps={{
+                        disableUnderline: true,
+                        readOnly,
+                        sx: { fontSize: "0.95rem" },
                       }}
                     />
                   </TableCell>
-                  <TableCell sx={{ p: 0.5 }}>
+
+                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
                     <TextField
                       type="number"
-                      size="small"
-                      variant="outlined"
+                      variant="standard"
                       fullWidth
-                      value={(item as any)["quantity"]}
+                      value={item.quantity}
                       onChange={(e) =>
                         handleFieldChange(
                           idx,
@@ -343,22 +239,23 @@ const PurchaseItemSection = ({
                           Number(e.target.value)
                         )
                       }
-                      InputProps={{ readOnly }}
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          "& fieldset": { border: "none" },
-                        },
+                      InputProps={{
+                        disableUnderline: true,
+                        readOnly,
+                        sx: { fontSize: "0.95rem", fontWeight: "bold" },
                       }}
                     />
                   </TableCell>
-                  <TableCell sx={{ p: 0.5 }}>
+
+                  <TableCell
+                    sx={{ p: 1, borderBottom: "1px dashed #eee" }}
+                    align="center"
+                  >
                     <TextField
                       type="number"
-                      size="small"
-                      variant="outlined"
+                      variant="standard"
                       fullWidth
-                      // ✅ Use the product's GST rate if available
-                      value={item.gst_rate ?? product?.gst_rate}
+                      value={item.gst_rate}
                       onChange={(e) =>
                         handleFieldChange(
                           idx,
@@ -366,25 +263,33 @@ const PurchaseItemSection = ({
                           Number(e.target.value)
                         )
                       }
-                      InputProps={{ readOnly }}
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          "& fieldset": { border: "none" },
-                        },
+                      inputProps={{ style: { textAlign: "center" } }}
+                      InputProps={{
+                        disableUnderline: true,
+                        readOnly,
+                        sx: { fontSize: "0.95rem" },
                       }}
                     />
+                    <Typography
+                      variant="caption"
+                      display="block"
+                      textAlign="center"
+                      color="text.secondary"
+                      fontWeight={600}
+                    >
+                      {gstAmount > 0 ? `₹${gstAmount.toFixed(1)}` : ""}
+                    </Typography>
                   </TableCell>
-                  <TableCell align="right">
-                    {/* ✅ GST Amount is now displayed */}
-                    {gstAmount.toFixed(2)}
-                  </TableCell>
-                  <TableCell sx={{ p: 0.5 }}>
+
+                  <TableCell
+                    sx={{ p: 1, borderBottom: "1px dashed #eee" }}
+                    align="center"
+                  >
                     <TextField
                       type="number"
-                      size="small"
-                      variant="outlined"
+                      variant="standard"
                       fullWidth
-                      value={(item as any)["discount"]}
+                      value={item.discount}
                       onChange={(e) =>
                         handleFieldChange(
                           idx,
@@ -392,26 +297,44 @@ const PurchaseItemSection = ({
                           Number(e.target.value)
                         )
                       }
-                      InputProps={{ readOnly }}
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          "& fieldset": { border: "none" },
-                        },
+                      inputProps={{ style: { textAlign: "center" } }}
+                      InputProps={{
+                        disableUnderline: true,
+                        readOnly,
+                        sx: { fontSize: "0.95rem" },
                       }}
                     />
                   </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 500 }}>
-                    {item.price.toLocaleString("en-IN", {
-                      style: "currency",
-                      currency: "INR",
-                    })}
+
+                  <TableCell
+                    align="right"
+                    sx={{ borderBottom: "1px dashed #eee" }}
+                  >
+                    <Typography
+                      fontWeight={700}
+                      color="text.primary"
+                      fontSize="0.95rem"
+                    >
+                      {item.price.toLocaleString("en-IN", {
+                        style: "currency",
+                        currency: "INR",
+                      })}
+                    </Typography>
                   </TableCell>
-                  <TableCell align="center">
+
+                  <TableCell
+                    align="center"
+                    sx={{ borderBottom: "1px dashed #eee" }}
+                  >
                     {!readOnly && (
                       <IconButton
                         size="small"
                         onClick={() => handleRemoveItem(idx)}
-                        color="error"
+                        sx={{
+                          color: theme.palette.error.main,
+                          opacity: 0.7,
+                          "&:hover": { opacity: 1 },
+                        }}
                       >
                         <Trash2 size={16} />
                       </IconButton>
@@ -425,9 +348,20 @@ const PurchaseItemSection = ({
       </TableContainer>
 
       {!readOnly && (
-        <Box mt={2}>
-          <Button onClick={handleAddItem} size="small" variant="contained">
-            + Add Item
+        <Box sx={{ p: 1, borderTop: `1px solid ${theme.palette.divider}` }}>
+          <Button
+            onClick={handleAddItem}
+            size="small"
+            variant="text"
+            startIcon={<Plus size={16} />}
+            sx={{
+              color: "text.secondary",
+              textTransform: "none",
+              fontWeight: 600,
+              "&:hover": { color: "primary.main", bgcolor: "transparent" },
+            }}
+          >
+            Add Another Line
           </Button>
         </Box>
       )}

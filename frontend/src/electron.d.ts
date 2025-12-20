@@ -73,10 +73,15 @@ declare global {
       }) => Promise<{ success: boolean; error?: string }>;
       getGDriveStatus: () => Promise<boolean>;
       loginGDrive: () => Promise<{ success: boolean; message?: string }>;
+      getGDriveTokenExpiry: () => Promise<number | null>; // milliseconds or null
+      checkGDriveTokenExpiry: () => Promise<void>;
       onGDriveConnected: (callback: () => void) => void;
+      onGDriveTokenExpiring: (
+        callback: (data: { daysUntilExpiry: number }) => void
+      ) => void;
+      onGDriveTokenExpired: (callback: () => void) => void;
     };
   }
 }
 
-// This line is needed to make the file a module.
 export {};

@@ -1,19 +1,20 @@
 import { useState, useEffect } from "react";
-import { Box, Divider } from "@mui/material";
+import { Box } from "@mui/material";
 import { getCustomers } from "../lib/api/customerService";
 import type { CustomerType } from "../lib/types/customerTypes";
 import SaleItemSection from "../components/sales/SaleItemSection";
 import type { SaleItemPayload, SalePayload } from "../lib/types/salesTypes";
 import SaleSummarySection from "../components/sales/SaleSummarySection";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { getSaleById } from "../lib/api/salesService";
 import SalesPosHeaderSection from "../components/sales/SalesPosHeaderSection";
 import ProductOverviewModal from "../components/products/ProductOverviewModal";
 import theme from "../../theme";
+import toast from "react-hot-toast";
 
 // Define the default payload to avoid duplication
 const defaultSalePayload: SalePayload = {
-  reference_no: "",
+  reference_no: "Auto Generated On Submit",
   payment_mode: "cash",
   note: "",
   paid_amount: 0,
@@ -28,12 +29,16 @@ const defaultSalePayload: SalePayload = {
 
 export default function SalesPos() {
   const { action, id } = useParams<{ action?: string; id?: string }>();
+  const navigate = useNavigate();
+
   // State for the main sale payload
   const [sale, setSale] = useState<SalePayload>(defaultSalePayload);
 
   // State for UI mode and data loading
-  const [mode, setMode] = useState<"new" | "view">("new");
-  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"new" | "view">(
+    action === "view" ? "view" : "new"
+  );
+  const [_loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   //state for product overview modal
@@ -57,13 +62,8 @@ export default function SalesPos() {
   /**
    * RESETS ALL FORM DATA
    */
-  const resetForm = async () => {
-    const newRef = "Auto Generated On Submit";
-    setSale({
-      ...defaultSalePayload,
-      reference_no: newRef,
-    });
-
+  const resetForm = () => {
+    setSale(defaultSalePayload);
     setQuery("");
     setOptions([]);
     setCustomerId(0);
@@ -74,74 +74,43 @@ export default function SalesPos() {
     setCity("");
     setState("");
     setPincode("");
+    setMode("new");
+    if (id) navigate("/billing");
   };
 
-  /*
-   * SET Action Mode Based On Params
-   * View OR EDIT
-   */
   useEffect(() => {
-    if (action === "view") setMode("view");
-    else setMode("new");
-    console.log(mode);
-  }, [action]);
-
-  /*
-   * Fetches Sale based on Mode
-   * If Mode === View Fetch sale and fill in data
-   */
-  useEffect(() => {
-    const loadSale = async () => {
-      if (mode === "view" && id) {
-        const saleData = await getSaleById(Number(id));
-        console.log("sale fetched successfully", saleData);
-
-        if (saleData) {
-          setSale(saleData.data);
-          setCustomerName(saleData.data.customer_name || "");
-          setCustomerPhone(saleData.data.customer_phone || "");
-          setCustomerGstNo(saleData.data.customer_gstin || "");
-          setCustomerId(saleData.data.customer_id || 0);
+    const init = async () => {
+      if (id && action === "view") {
+        setMode("view");
+        setLoading(true);
+        try {
+          const res = await getSaleById(Number(id));
+          if (res && res.data) {
+            setSale(res.data);
+            setCustomerId(res.data.customer_id || 0);
+            setCustomerName(res.data.customer_name || "");
+            setCustomerPhone(res.data.customer_phone || "");
+            setCustomerGstNo(res.data.customer_gstin || "");
+          } else {
+            toast.error("Sale not found");
+            navigate("/billing");
+          }
+        } catch (error) {
+          console.error("Failed to load sale", error);
+          toast.error("Failed to load sale details");
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setMode("new");
+        if (sale.id) {
+          resetForm();
         }
       }
     };
-    loadSale();
-  }, [mode, id]);
+    init();
+  }, [id, action]);
 
-  /*
-   * Clear Sale If Mode Changes to new
-   * Helps clear states when navigating from View to Create or New Mode
-   */
-  useEffect(() => {
-    const clearSale = async () => {
-      if (mode === "new") {
-        setSale(defaultSalePayload);
-        resetForm();
-      }
-    };
-    clearSale();
-  }, [mode]);
-
-  /*
-   *GENERATE REFERENCE NUMBER BASED ON BACKEND DATA
-   *REFERENCE = OLD REF + 1
-   */
-  useEffect(() => {
-    const setInitialReference = async () => {
-      if (mode === "new") {
-        const ref = "Auto Generated On Submit";
-        setSale((prevSale) => ({
-          ...prevSale,
-          reference_no: ref,
-        }));
-      }
-    };
-    setInitialReference();
-  }, [mode]);
-
-  /*
-   *Handles changes in items array
-   */
   const handleItemsChange = (updatedItems: SaleItemPayload[]) => {
     setSale((prev) => ({
       ...prev,
@@ -150,22 +119,18 @@ export default function SalesPos() {
     }));
   };
 
-  /*
-   *search customers based on phone number or name
-   */
   useEffect(() => {
     const timeout = setTimeout(async () => {
       const searchQuery = query.trim();
       if (searchQuery.length >= 3) {
-        setLoading(true);
         try {
           const customersResponse = await getCustomers({
             query: searchQuery,
             all: true,
           });
           setOptions(customersResponse.records);
-        } finally {
-          setLoading(false);
+        } catch (e) {
+          console.error(e);
         }
       } else {
         setOptions([]);
@@ -174,39 +139,25 @@ export default function SalesPos() {
     return () => clearTimeout(timeout);
   }, [query]);
 
-  /*
-   * Handles Customer Select
-   */
   const handleSelect = (customer: CustomerType | null) => {
     if (!customer) {
-      resetForm();
+      setCustomerId(0);
+      setCustomerName("");
+      setCustomerPhone("");
       return;
     }
-
     const id = customer.id!;
-
-    // Set basic details
     setCustomerId(id);
     setCustomerName(customer.name || "");
     setCustomerPhone(customer.phone || "");
     setCustomerGstNo(customer.gst_no || "");
-
-    // Set the new address fields
     setAddress(customer.address || "");
     setCity(customer.city || "");
     setState(customer.state || "");
     setPincode(customer.pincode || "");
-
-    // Update the main sale object with the customer's ID
-    setSale((prev) => ({
-      ...prev,
-      customer_id: id,
-    }));
+    setSale((prev) => ({ ...prev, customer_id: id }));
   };
 
-  /*
-   * Reset Sales Data After Success
-   */
   useEffect(() => {
     if (success) {
       resetForm();
@@ -228,67 +179,93 @@ export default function SalesPos() {
 
   return (
     <Box
-      p={2}
-      pt={3}
       sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "calc(100vh - 64px)", // Adjust based on your Topbar height
         backgroundColor: theme.palette.background.default,
+        overflow: "hidden",
       }}
-      minHeight={"100vh"}
     >
-      {/* --------------------------- HEADER SECTION --------------------------- */}
-      <SalesPosHeaderSection
-        sale={sale}
-        options={options}
-        loading={loading}
-        handleFieldChange={handleFieldChange}
-        mode={mode}
-        customerId={customerId}
-        customerName={customerName}
-        selectedPhone={customerPhone}
-        customerGstNo={customerGstNo}
-        address={address}
-        city={city}
-        state={state}
-        pincode={pincode}
-        setCustomerName={setCustomerName}
-        setQuery={setQuery}
-        setCustomerId={setCustomerId}
-        handleSelect={handleSelect}
-        setSelectedPhone={setCustomerPhone}
-        setCustomerGstNo={setCustomerGstNo}
-        setAddress={setAddress}
-        setCity={setCity}
-        setState={setState}
-        setPincode={setPincode}
-      />
+      {/* --- HEADER (Fixed) --- */}
+      <Box sx={{ p: 2, pb: 1, flexShrink: 0, zIndex: 10 }}>
+        <SalesPosHeaderSection
+          sale={sale}
+          options={options}
+          loading={false}
+          handleFieldChange={handleFieldChange}
+          mode={mode}
+          customerId={customerId}
+          customerName={customerName}
+          selectedPhone={customerPhone}
+          customerGstNo={customerGstNo}
+          address={address}
+          city={city}
+          state={state}
+          pincode={pincode}
+          setCustomerName={setCustomerName}
+          setQuery={setQuery}
+          setCustomerId={setCustomerId}
+          handleSelect={handleSelect}
+          setSelectedPhone={setCustomerPhone}
+          setCustomerGstNo={setCustomerGstNo}
+          setAddress={setAddress}
+          setCity={setCity}
+          setState={setState}
+          setPincode={setPincode}
+        />
+      </Box>
 
-      {/* Sale Items */}
-      <SaleItemSection
-        items={sale.items}
-        onItemsChange={handleItemsChange}
-        mode={mode}
-        onOpenOverview={handleOpenOverview}
-      />
-
-      <Divider sx={{ my: 2 }} />
-
-      {/* Summary Section */}
-      <SaleSummarySection
-        sale={sale}
-        onSaleChange={setSale}
-        setSuccess={setSuccess}
-        customer={{
-          name: customerName,
-          phone: customerPhone,
-          address: address,
-          city: city,
-          state: state,
-          pincode: pincode,
-          gst_no: customerGstNo,
+      {/* --- ITEMS (Scrollable) --- */}
+      <Box
+        sx={{
+          flexGrow: 1,
+          overflowY: "auto",
+          px: 2,
+          pb: 2,
+          // Custom scrollbar for cleaner look
+          "&::-webkit-scrollbar": { width: "6px" },
+          "&::-webkit-scrollbar-track": { background: "transparent" },
+          "&::-webkit-scrollbar-thumb": {
+            backgroundColor: "#ddd",
+            borderRadius: "4px",
+          },
         }}
-        resetForm={resetForm}
-        mode={mode}
-      />
+      >
+        <SaleItemSection
+          items={sale.items}
+          onItemsChange={handleItemsChange}
+          mode={mode}
+          onOpenOverview={handleOpenOverview}
+        />
+      </Box>
+
+      {/* --- SUMMARY (Fixed Bottom) --- */}
+      <Box
+        sx={{
+          flexShrink: 0,
+          backgroundColor: "#fff",
+          borderTop: `1px solid ${theme.palette.divider}`,
+          zIndex: 10,
+        }}
+      >
+        <SaleSummarySection
+          sale={sale}
+          onSaleChange={setSale}
+          setSuccess={setSuccess}
+          customer={{
+            name: customerName,
+            phone: customerPhone,
+            address: address,
+            city: city,
+            state: state,
+            pincode: pincode,
+            gst_no: customerGstNo,
+          }}
+          resetForm={resetForm}
+          mode={mode}
+        />
+      </Box>
 
       <ProductOverviewModal
         open={overviewModalOpen}

@@ -6,22 +6,31 @@ import {
   Typography,
   CircularProgress,
   Autocomplete,
-  Divider,
-  Card,
-  CardContent,
   InputAdornment,
   MenuItem,
+  Stack,
+  useTheme,
+  Button,
+  Collapse,
+  Divider,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { useState } from "react"; // ✅ Import useState for errors
+import { useState } from "react";
 import type { CustomerType } from "../../lib/types/customerTypes";
 import type { SalePayload } from "../../lib/types/salesTypes";
-import { User, Phone, Hash, MapPin, Building } from "lucide-react";
+import {
+  User,
+  Phone,
+  MapPin,
+  Hash,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+} from "lucide-react";
 import { indianStates } from "../../lib/constants/statesList";
-import { FormField } from "../FormField";
 import BooleanToggle from "../BooleanToggle";
 
-// Define all the props the component will need from its parent
 interface Props {
   sale: SalePayload;
   options: CustomerType[];
@@ -73,317 +82,317 @@ export default function SalesPosHeaderSection({
   setPincode,
   handleFieldChange,
 }: Props) {
-  // ✅ State to hold validation errors locally within the header
-  const [errors, setErrors] = useState<any>({});
+  const theme = useTheme();
+  const [showMore, setShowMore] = useState(false);
 
-  // ✅ Simple validation for fields that have rules
-  const validateField = (name: string, value: string) => {
-    let error = "";
-    if (name === "customerName" && value.length > 50)
-      error = "Name cannot exceed 50 characters.";
-    if (name === "selectedPhone" && value && !/^\d{10}$/.test(value))
-      error = "Phone must be 10 digits.";
-    if (name === "customerGstNo" && value && !/^[0-9A-Z]{15}$/.test(value))
-      error = "GSTIN must be 15 characters.";
-    if (name === "pincode" && value && !/^\d{6}$/.test(value))
-      error = "Pincode must be 6 digits.";
-
-    setErrors((prev: any) => ({ ...prev, [name]: error }));
+  // Reusable label style from Summary Section
+  const labelStyle = {
+    variant: "caption" as const,
+    fontWeight: 700,
+    color: "text.secondary",
+    display: "block",
+    mb: 0.5,
+    sx: { textTransform: "uppercase", letterSpacing: 0.5 },
   };
 
   return (
-    <Card
-      variant="outlined"
+    <Box
       sx={{
-        mb: 3,
-        borderRadius: 2,
-        backgroundColor: "inherit",
+        borderBottom: `1px solid ${theme.palette.divider}`,
+        overflow: "hidden",
       }}
     >
-      <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            mb: 2,
-          }}
+      {/* --- Section 1: Meta Data (Ref, Date, Type) --- */}
+      <Box sx={{ p: 3, pb: 2 }}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "flex-start", sm: "center" }}
+          spacing={3}
         >
-          {/* Left side: Reference Number */}
-          <Box>
-            <Typography variant="body2" color="text.secondary">
-              {/* ✅ Label changes based on the toggle state */}
-              {sale.is_quote ? "Quote No." : "Invoice No."}
-            </Typography>
-            <Typography variant="body1" fontWeight={600}>
-              {sale.reference_no}
-            </Typography>
-          </Box>
+          {/* Left: Document Type Toggle */}
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Box
+              sx={{
+                p: 1,
+                bgcolor: theme.palette.action.hover,
+                borderRadius: 1,
+                color: theme.palette.primary.main,
+              }}
+            >
+              <FileText size={20} />
+            </Box>
+            <Box>
+              <Typography {...labelStyle}>DOCUMENT TYPE</Typography>
+              <BooleanToggle
+                value={sale.is_quote || false}
+                onChange={(newValue) => handleFieldChange("is_quote", newValue)}
+                trueLabel="Quotation"
+                falseLabel="Tax Invoice"
+                disabled={mode === "view"}
+              />
+            </Box>
+          </Stack>
 
-          {/* ✅ Center: The new toggle component */}
-          <BooleanToggle
-            value={sale.is_quote || false} // Handles initial undefined state
-            onChange={(newValue) => handleFieldChange("is_quote", newValue)}
-            trueLabel="Quote"
-            falseLabel="Sale"
-            disabled={mode === "view"}
-          />
-
-          {/* Right side: Date */}
-          <Box sx={{ textAlign: "right" }}>
-            <Typography variant="body2" color="text.secondary">
-              Date
-            </Typography>
-            <Typography variant="body1" fontWeight={500}>
-              {new Date().toLocaleDateString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              })}
-            </Typography>
-          </Box>
-        </Box>
-        <Divider />
-        <Box mt={2}>
-          <Typography
-            sx={{ textTransform: "uppercase", fontWeight: 600, mb: 0.5 }}
-            variant="body2"
+          {/* Right: Ref & Date */}
+          <Stack
+            direction="row"
+            spacing={4}
+            divider={
+              <Divider
+                orientation="vertical"
+                flexItem
+                sx={{ height: 20, alignSelf: "center" }}
+              />
+            }
           >
-            Customer Details
-          </Typography>
-          <Grid container spacing={1}>
-            <Grid item xs={12} sm={4}>
-              <FormField
-                label="Search or Enter Customer Name *"
-                charCount={{ current: customerName.length, max: 50 }}
-              >
-                <Autocomplete
-                  freeSolo
-                  options={options}
-                  loading={loading}
-                  fullWidth
-                  disabled={mode === "view"}
-                  getOptionLabel={(option) =>
-                    typeof option === "string" ? option : option.name || ""
-                  }
-                  value={options.find((opt) => opt.id === customerId) || null}
-                  inputValue={customerName}
-                  onInputChange={(_, val, reason) => {
-                    if (reason === "input") {
-                      setCustomerName(val);
-                      setQuery(val);
-                      validateField("customerName", val);
-                    }
-                  }}
-                  onChange={(_, val, reason) => {
-                    if (reason === "clear") {
-                      handleSelect(null);
-                      return;
-                    }
+            <Box>
+              <Typography {...labelStyle}>REF NO</Typography>
+              <Typography variant="body2" fontWeight={700} color="text.primary">
+                {sale.reference_no || "AUTO-GENERATED"}
+              </Typography>
+            </Box>
 
-                    // This existing logic is fine
-                    if (typeof val === "string") {
-                      setCustomerName(val);
-                      setCustomerId(0);
-                    } else if (val) {
-                      handleSelect(val);
-                    }
-                  }}
-                  renderOption={(props, option) => (
-                    <li {...props} key={option.id}>
-                      <Box>
-                        <Typography variant="body2" fontWeight={500}>
-                          {option.name}
-                        </Typography>
-                        <Typography variant="caption" color="gray">
-                          {option.phone}
-                        </Typography>
-                      </Box>
-                    </li>
-                  )}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      size="small"
-                      variant="outlined"
-                      placeholder="Search by name..."
-                      error={!!errors.customerName}
-                      helperText={errors.customerName}
-                      inputProps={{ ...params.inputProps, maxLength: 50 }}
-                      InputProps={{
-                        ...params.InputProps,
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <User size={18} />
-                          </InputAdornment>
-                        ),
-                        endAdornment: (
-                          <>
-                            {loading ? <CircularProgress size={20} /> : null}
-                            {params.InputProps.endAdornment}
-                          </>
-                        ),
-                      }}
-                    />
-                  )}
-                />
-              </FormField>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <FormField
-                label="Phone Number *"
-                charCount={{ current: selectedPhone.length, max: 10 }}
-              >
+            <Box>
+              <Typography {...labelStyle}>DATE</Typography>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Calendar size={14} color={theme.palette.text.secondary} />
+                <Typography variant="body2" fontWeight={600}>
+                  {new Date().toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </Typography>
+              </Stack>
+            </Box>
+          </Stack>
+        </Stack>
+      </Box>
+
+      <Divider sx={{ borderStyle: "dashed" }} />
+
+      {/* --- Section 2: Customer Details (Bill To) --- */}
+      <Box sx={{ p: 3 }}>
+        <Grid container spacing={4}>
+          {/* Customer Name */}
+          <Grid item xs={12} md={5}>
+            <Typography {...labelStyle}>BILL TO (CUSTOMER)</Typography>
+            <Autocomplete
+              freeSolo
+              options={options}
+              loading={loading}
+              disabled={mode === "view"}
+              getOptionLabel={(option) =>
+                typeof option === "string" ? option : option.name || ""
+              }
+              value={options.find((opt) => opt.id === customerId) || null}
+              inputValue={customerName}
+              onInputChange={(_, val, reason) => {
+                if (reason === "input") {
+                  setCustomerName(val);
+                  setQuery(val);
+                }
+              }}
+              onChange={(_, val, reason) => {
+                if (reason === "clear") return handleSelect(null);
+                if (typeof val === "string") {
+                  setCustomerName(val);
+                  setCustomerId(0);
+                } else if (val) {
+                  handleSelect(val);
+                }
+              }}
+              renderOption={(props, option) => (
+                <li {...props} key={option.id}>
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>
+                      {option.name}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {option.phone}
+                    </Typography>
+                  </Box>
+                </li>
+              )}
+              renderInput={(params) => (
                 <TextField
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  disabled={mode === "view"}
-                  value={selectedPhone}
-                  onChange={(e) => {
-                    setSelectedPhone(e.target.value);
-                    validateField("selectedPhone", e.target.value);
-                  }}
-                  placeholder="Enter phone..."
-                  error={!!errors.selectedPhone}
-                  helperText={errors.selectedPhone}
-                  inputProps={{ maxLength: 10 }}
+                  {...params}
+                  variant="standard"
+                  placeholder="Search or enter name"
                   InputProps={{
+                    ...params.InputProps,
+                    disableUnderline: true, // Clean look
+                    sx: {
+                      fontSize: "1.1rem",
+                      fontWeight: 600,
+                      color: "text.primary",
+                      "& input::placeholder": {
+                        fontSize: "1rem",
+                        fontWeight: 400,
+                      },
+                    },
                     startAdornment: (
                       <InputAdornment position="start">
-                        <Phone size={18} />
+                        <User size={18} color={theme.palette.text.disabled} />
                       </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <>
+                        {loading ? <CircularProgress size={16} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
                     ),
                   }}
                 />
-              </FormField>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <FormField
-                label="GSTIN (Optional)"
-                charCount={{ current: customerGstNo.length, max: 15 }}
-              >
+              )}
+            />
+          </Grid>
+
+          {/* Phone Number */}
+          <Grid item xs={12} md={3}>
+            <Typography {...labelStyle}>CONTACT</Typography>
+            <TextField
+              fullWidth
+              variant="standard"
+              disabled={mode === "view"}
+              value={selectedPhone}
+              onChange={(e) => setSelectedPhone(e.target.value)}
+              placeholder="Mobile Number"
+              InputProps={{
+                disableUnderline: true,
+                sx: { fontSize: "0.95rem", fontWeight: 500 },
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Phone size={16} color={theme.palette.text.disabled} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Grid>
+
+          {/* Address Toggle Trigger */}
+          <Grid
+            item
+            xs={12}
+            md={4}
+            display="flex"
+            alignItems="center"
+            justifyContent="flex-end"
+          >
+            <Button
+              onClick={() => setShowMore(!showMore)}
+              endIcon={
+                showMore ? <ChevronUp size={16} /> : <ChevronDown size={16} />
+              }
+              sx={{
+                textTransform: "none",
+                fontWeight: 600,
+                color: "text.secondary",
+              }}
+            >
+              {showMore ? "Hide Billing Details" : "Add Address & GSTIN"}
+            </Button>
+          </Grid>
+        </Grid>
+
+        {/* Collapsible Section for Address & GST */}
+        <Collapse in={showMore}>
+          <Box mt={2} pt={2} borderTop={`1px dashed ${theme.palette.divider}`}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={4}>
+                <Typography {...labelStyle}>GSTIN</Typography>
                 <TextField
                   fullWidth
-                  variant="outlined"
-                  size="small"
+                  variant="standard"
                   disabled={mode === "view"}
                   value={customerGstNo}
-                  onChange={(e) => {
-                    setCustomerGstNo(e.target.value);
-                    validateField("customerGstNo", e.target.value);
-                  }}
-                  placeholder="Enter GSTIN..."
-                  error={!!errors.customerGstNo}
-                  helperText={errors.customerGstNo}
-                  inputProps={{ maxLength: 15 }}
+                  onChange={(e) => setCustomerGstNo(e.target.value)}
+                  placeholder="Enter GST Number"
                   InputProps={{
+                    disableUnderline: true,
+                    sx: { fontSize: "0.9rem" },
                     startAdornment: (
                       <InputAdornment position="start">
-                        <Hash size={18} />
+                        <Hash size={15} color={theme.palette.text.disabled} />
                       </InputAdornment>
                     ),
                   }}
                 />
-              </FormField>
-            </Grid>
-            <Grid item xs={12}>
-              <FormField
-                label="Address (Street, Area)"
-                charCount={{ current: address.length, max: 48 }}
-              >
+              </Grid>
+              <Grid item xs={12} md={8}>
+                <Typography {...labelStyle}>ADDRESS</Typography>
                 <TextField
                   fullWidth
-                  variant="outlined"
-                  size="small"
+                  variant="standard"
                   disabled={mode === "view"}
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Enter street address..."
+                  placeholder="Street Address, Area"
                   InputProps={{
+                    disableUnderline: true,
+                    sx: { fontSize: "0.9rem" },
                     startAdornment: (
                       <InputAdornment position="start">
-                        <MapPin size={18} />
+                        <MapPin size={15} color={theme.palette.text.disabled} />
                       </InputAdornment>
                     ),
                   }}
                 />
-              </FormField>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <FormField
-                label="City"
-                charCount={{ current: city.length, max: 32 }}
-              >
+              </Grid>
+              <Grid item xs={4} md={4}>
                 <TextField
                   fullWidth
-                  variant="outlined"
-                  size="small"
+                  variant="standard"
                   disabled={mode === "view"}
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  placeholder="Enter city..."
+                  placeholder="City"
                   InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Building size={18} />
-                      </InputAdornment>
-                    ),
+                    disableUnderline: true,
+                    sx: { fontSize: "0.9rem" },
                   }}
                 />
-              </FormField>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <FormField label="State">
+              </Grid>
+              <Grid item xs={4} md={4}>
                 <TextField
                   select
                   fullWidth
-                  variant="outlined"
-                  size="small"
+                  variant="standard"
                   disabled={mode === "view"}
                   value={state}
                   onChange={(e) => setState(e.target.value)}
+                  label="State"
+                  InputProps={{
+                    disableUnderline: true,
+                    sx: { fontSize: "0.9rem" },
+                  }}
                 >
-                  {indianStates.map((stateName) => (
-                    <MenuItem key={stateName} value={stateName}>
-                      {stateName}
+                  {indianStates.map((s) => (
+                    <MenuItem key={s} value={s}>
+                      {s}
                     </MenuItem>
                   ))}
                 </TextField>
-              </FormField>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <FormField
-                label="Pincode"
-                charCount={{ current: pincode.length, max: 6 }}
-              >
+              </Grid>
+              <Grid item xs={4} md={4}>
                 <TextField
                   fullWidth
-                  variant="outlined"
-                  size="small"
+                  variant="standard"
                   disabled={mode === "view"}
                   value={pincode}
-                  onChange={(e) => {
-                    setPincode(e.target.value);
-                    validateField("pincode", e.target.value);
-                  }}
-                  placeholder="Enter pincode..."
-                  error={!!errors.pincode}
-                  helperText={errors.pincode}
-                  inputProps={{ maxLength: 6 }}
+                  onChange={(e) => setPincode(e.target.value)}
+                  placeholder="Pincode"
                   InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Hash size={18} />
-                      </InputAdornment>
-                    ),
+                    disableUnderline: true,
+                    sx: { fontSize: "0.9rem" },
                   }}
                 />
-              </FormField>
+              </Grid>
             </Grid>
-          </Grid>
-        </Box>
-      </CardContent>
-    </Card>
+          </Box>
+        </Collapse>
+      </Box>
+    </Box>
   );
 }

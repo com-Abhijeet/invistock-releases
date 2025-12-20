@@ -60,7 +60,7 @@ const PurchaseDashboard = () => {
     setSummary(summaryData);
     setTrend(trendData);
     setKpi(kpiData);
-  }, [activeFilters]); 
+  }, [activeFilters]);
 
   useEffect(() => {
     fetchAll();

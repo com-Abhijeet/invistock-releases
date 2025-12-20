@@ -1,9 +1,13 @@
 import crypto from "crypto";
-import { getLicenseInfo } from "../repositories/licenseRepository.mjs";
 import machineId from "node-machine-id";
 const { machineIdSync } = machineId;
+import {
+  getLicenseInfo,
+  saveLicenseInfo,
+} from "../repositories/licenseRepository.mjs";
+import { app } from "electron";
 
-// ✅ Embed your public key directly into the application code.
+// ✅ Your Public Key
 const publicKey = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm8ECfDUprjSK7ao8HjdG
 it/sXyubVPuVoldheMpYnDTRe15kVrHyiepjM/vJmsYK5H7HLqEDEfJk6hvDCGFq
@@ -14,6 +18,8 @@ cav/k9ZgGx3/FGnbEz8WdBUGDAr9AOrbc3s4loM2w8iIHyolxWGNnL2kLsDxTqIE
 iQIDAQAB
 -----END PUBLIC KEY-----`;
 
+const API_URL = "http://localhost:5001/api/v1/security/validate";
+
 function parseDate(dateStr) {
   const day = parseInt(dateStr.substring(0, 2), 10);
   const month = parseInt(dateStr.substring(2, 4), 10) - 1;
@@ -21,7 +27,10 @@ function parseDate(dateStr) {
   return new Date(year, month, day);
 }
 
-export function validateLicense(licenseKey) {
+/**
+ * 1. LOCAL VALIDATION
+ */
+function validateLocal(licenseKey) {
   try {
     const decoded = Buffer.from(licenseKey, "base64").toString("utf8");
     const [payload, signature] = decoded.split(".");
@@ -30,47 +39,28 @@ export function validateLicense(licenseKey) {
       return { status: "invalid", message: "Invalid license format." };
     }
 
-    // 1. Verify Signature
     const verifier = crypto.createVerify("sha256");
     verifier.update(payload);
     if (!verifier.verify(publicKey, signature, "base64")) {
       return { status: "invalid", message: "License key is tampered." };
     }
 
-    // 2. Parse Payload
-    // Expected: Start-Info1-Info2-Expiry-HardwareID
     const parts = payload.split("-");
-
-    // Legacy support check (optional, or force invalid if you want to strictly enforce new keys)
     if (parts.length < 5) {
-      return {
-        status: "invalid",
-        message: "Old license format. Please request a new key.",
-      };
+      return { status: "invalid", message: "Old license format." };
     }
 
     const [startDateStr, info1, info2, expiryDateStr, licenseHardwareId] =
       parts;
 
-    // ---------------------------------------------------------
-    // ✅ 3. MACHINE ID CHECK (Node-Locking)
-    // ---------------------------------------------------------
     const currentMachineId = machineIdSync();
     if (licenseHardwareId !== currentMachineId) {
-      console.warn(
-        `[LICENSE] Machine ID Mismatch! License: ${licenseHardwareId}, Actual: ${currentMachineId}`
-      );
       return {
         status: "invalid",
-        message:
-          "This license is not valid for this computer. Machine ID mismatch.",
+        message: "This license is not valid for this computer.",
       };
     }
 
-    // ---------------------------------------------------------
-    // ✅ 4. DATE VALIDATION
-    // ---------------------------------------------------------
-    // Note: Removed the 10-minute timestamp check as requested.
     const startDate = parseDate(startDateStr);
     const expiryDate = parseDate(expiryDateStr);
     const now = new Date();
@@ -89,7 +79,7 @@ export function validateLicense(licenseKey) {
 
       if (now < gracePeriodEndDate) {
         const daysLeft = Math.ceil(
-          (gracePeriodEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+          (gracePeriodEndDate - now) / (1000 * 60 * 60 * 24)
         );
         return {
           status: "grace_period",
@@ -107,17 +97,116 @@ export function validateLicense(licenseKey) {
       data: { startDate, expiryDate, info1, info2 },
     };
   } catch (error) {
+    console.error(error);
     return { status: "invalid", message: "Failed to read license key." };
   }
 }
 
-// Check on startup
-export function checkAppLicense() {
+/**
+ * 2. ONLINE VALIDATION (UPDATED)
+ */
+async function verifyOnline(licenseKey) {
+  try {
+    const machineId = machineIdSync();
+
+    // 2. GET METADATA
+    const appVersion = app.getVersion();
+    const osInfo = process.platform; // e.g. 'win32', 'darwin'
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        licenseKey,
+        machineId,
+        // 3. SEND METADATA
+        osInfo: osInfo, // Matches backend 'osInfo'
+        appVersion: appVersion, // Matches backend 'appVersion'
+        platform: osInfo, // (Optional) Keep for legacy if your API uses 'platform'
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      const responsePayload = data.data || {};
+
+      // AUTO-UPDATE DATABASE IF RENEWAL DETECTED
+      if (
+        responsePayload.latestLicenseKey &&
+        responsePayload.latestLicenseKey !== licenseKey
+      ) {
+        console.log(
+          "[LICENSE] 🔄 Renewal Detected! Validating and saving to database..."
+        );
+
+        const checkNewKey = validateLocal(responsePayload.latestLicenseKey);
+
+        if (checkNewKey.status === "valid") {
+          saveLicenseInfo({
+            licenseKey: responsePayload.latestLicenseKey,
+            status: "valid",
+            expiryDate: checkNewKey.data.expiryDate.toISOString(),
+          });
+          console.log("[LICENSE] ✅ Database updated with renewed license.");
+        } else {
+          console.warn(
+            "[LICENSE] ⚠️ Renewed key failed local validation:",
+            checkNewKey.message
+          );
+        }
+      }
+
+      return { status: "valid", message: "Online verification successful." };
+    }
+
+    if (response.status === 403 || response.status === 401) {
+      return {
+        status: "banned",
+        message: data.message || "License revoked or machine banned.",
+      };
+    }
+
+    throw new Error("Server Error");
+  } catch (error) {
+    console.error(
+      "[backend] - [license Service] [ online verification failed ] ",
+      error
+    );
+    return { status: "network_error", message: error.message };
+  }
+}
+/**
+ * 3. HYBRID CHECK
+ */
+export async function validateLicense(licenseKey) {
+  console.log("[LICENSE] Attempting Online Verification...");
+
+  const onlineResult = await verifyOnline(licenseKey);
+
+  if (onlineResult.status === "banned") {
+    console.warn("[LICENSE] Blocked by Server:", onlineResult.message);
+    return { status: "invalid", message: onlineResult.message };
+  }
+
+  if (onlineResult.status === "valid") {
+    console.log("[LICENSE] Online Check Passed.");
+    return validateLocal(licenseKey);
+  }
+
+  console.warn("[LICENSE] Network Error. Falling back to Local Check...");
+  return validateLocal(licenseKey);
+}
+
+export async function checkAppLicense() {
   const licenseInfo = getLicenseInfo();
   if (!licenseInfo || !licenseInfo.license_key) {
     return { status: "unlicensed", message: "No license key found." };
   }
-  const status = validateLicense(licenseInfo.license_key);
-  console.log(`[LICENSE] Startup Check: ${status.status}`);
-  return status;
+  return await validateLicense(licenseInfo.license_key);
 }

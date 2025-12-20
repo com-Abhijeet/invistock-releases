@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
 import {
   Box,
   Button,
@@ -14,31 +13,15 @@ import {
   FormControlLabel,
   InputAdornment,
   MenuItem,
-  Paper,
   Stack,
   TextField,
   Typography,
+  useTheme,
+  Divider,
+  CircularProgress,
 } from "@mui/material";
-import Grid from "@mui/material/GridLegacy";
-import {
-  Banknote,
-  CheckCircle2,
-  Clock,
-  CreditCard,
-  HandCoins,
-  Landmark,
-  PackageCheck,
-  Save,
-  ScrollText,
-  Smartphone,
-  Split,
-  Ticket,
-  XCircle,
-  File,
-} from "lucide-react";
+import { Save } from "lucide-react";
 
-import theme from "../../../theme";
-import { FormField } from "../FormField";
 import { createPurchase } from "../../lib/api/purchaseService";
 import type { PurchasePayload } from "../../lib/types/purchaseTypes";
 import { numberToWords } from "../../utils/numberToWords";
@@ -56,35 +39,20 @@ const PurchaseSummarySection = ({
   onPurchaseChange,
   setSuccess,
   readOnly = false,
-}: // isEdit = false,
-Props) => {
+}: Props) => {
+  const theme = useTheme();
   const [warnOpen, setWarnOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (field: keyof PurchasePayload, value: any) => {
-    if (readOnly) return;
-    onPurchaseChange({ ...purchase, [field]: value });
+    if (!readOnly) onPurchaseChange({ ...purchase, [field]: value });
   };
 
   const handleSubmit = async (action: "save" | "cancel") => {
     if (readOnly) return;
-
     if (action === "cancel") {
-      onPurchaseChange({
-        reference_no: "",
-        date: "",
-        supplier_id: 0,
-        note: "",
-        total_amount: 0,
-        discount: 0,
-        paid_amount: 0,
-        items: [],
-        status: "pending",
-        payment_mode: "cash",
-        is_reverse_charge: false,
-      });
-      navigate("/purchase");
-
+      navigate("/purchase-dashboard");
       return;
     }
 
@@ -96,15 +64,17 @@ Props) => {
       return;
     }
 
-    // Use updatePurchase if isEdit in future
-    const response = await createPurchase(purchase);
-
-    if (response?.status === "success") setSuccess(true);
+    setIsSubmitting(true);
+    try {
+      const response = await createPurchase(purchase);
+      if (response?.status === "success") setSuccess(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   useEffect(() => {
     if (readOnly) return;
-
     const listener = (e: KeyboardEvent) => {
       if (e.key === "F10") handleSubmit("save");
       else if (e.key === "F12") handleSubmit("cancel");
@@ -114,234 +84,196 @@ Props) => {
   }, [purchase, readOnly]);
 
   return (
-    <>
-      <Box sx={{ p: 2, backgroundColor: "#fff", borderRadius: 2 }}>
-        <Grid container spacing={4}>
-          {/* Left Section: Notes & Amount in Words */}
-          <Grid item xs={12} md={7}>
-            <Stack spacing={2}>
-              <FormField label="Notes / Remarks">
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  multiline
-                  rows={2}
-                  disabled={readOnly}
-                  value={purchase.note}
-                  onChange={(e) => handleChange("note", e.target.value)}
-                  placeholder="Add any notes about this purchase..."
-                />
-              </FormField>
-              <FormField label="Amount in Words">
-                <Typography
-                  fontStyle="italic"
-                  color="text.primary"
-                  fontWeight={500}
-                  variant="body2"
-                >
-                  {numberToWords(purchase.total_amount)}
-                </Typography>
-              </FormField>
-            </Stack>
-          </Grid>
-          <Grid item xs={12} md={5}></Grid>{" "}
-          {/* Empty grid item for alignment */}
-        </Grid>
+    <Box>
+      {/* 1. Notes (Clean Input) */}
+      <Box px={3} py={1}>
+        <TextField
+          fullWidth
+          size="small"
+          multiline
+          minRows={1}
+          maxRows={3}
+          value={purchase.note}
+          onChange={(e) => handleChange("note", e.target.value)}
+          placeholder="Add delivery notes, supplier info..."
+          disabled={readOnly}
+          variant="standard"
+          InputProps={{
+            disableUnderline: true,
+            sx: { fontSize: "0.9rem", color: "text.secondary" },
+          }}
+        />
+        <Divider sx={{ mt: 1 }} />
       </Box>
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={purchase.is_reverse_charge || false}
-            onChange={(e) =>
-              handleChange("is_reverse_charge", e.target.checked)
-            }
-            disabled={readOnly}
-          />
-        }
-        label={
-          <Typography variant="body2">Reverse Charge Applicable</Typography>
-        }
-      />
 
-      {/* Sticky Bottom Action Bar with All Price Fields */}
-      <Paper
-        elevation={3}
-        sx={{
-          position: "sticky",
-          bottom: 0,
-          py: 1.5,
-          px: 2,
-          mt: 2,
-          borderTop: `1px solid ${theme.palette.divider}`,
-          backgroundColor: "background.paper",
-        }}
-      >
+      {/* 2. Unified Footer */}
+      <Box sx={{ px: 3, py: 2 }}>
         <Stack
           direction={{ xs: "column", lg: "row" }}
           justifyContent="space-between"
-          alignItems="center"
-          spacing={2}
+          alignItems="flex-end"
+          spacing={4}
         >
-          {/* Left side of bar: Payment Inputs */}
-          {!readOnly && (
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              alignItems="center"
-              spacing={2}
-            >
-              <FormField label="Paid Amount">
-                {/* ✅ ADDED: "Paid in Full" button */}
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <TextField
-                    variant="outlined"
-                    size="small"
-                    type="number"
-                    value={purchase.paid_amount}
-                    onChange={(e) =>
-                      handleChange("paid_amount", parseFloat(e.target.value))
-                    }
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">₹</InputAdornment>
-                      ),
-                    }}
-                    sx={{ width: 150 }}
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() =>
-                      handleChange("paid_amount", purchase.total_amount)
-                    }
-                    disabled={purchase.paid_amount >= purchase.total_amount}
-                  >
-                    Full
-                  </Button>
-                </Stack>
-              </FormField>
-              {/* ✅ Payment Mode */}
-              <FormField label="Payment Mode">
-                <TextField
-                  select
-                  size="small"
-                  variant="outlined"
-                  value={purchase.payment_mode}
-                  onChange={(e) => handleChange("payment_mode", e.target.value)}
-                  sx={{ width: 180 }}
-                >
-                  <MenuItem value="cash">
-                    <Banknote size={18} style={{ marginRight: 8 }} /> Cash
-                  </MenuItem>
-                  <MenuItem value="card">
-                    <CreditCard size={18} style={{ marginRight: 8 }} /> Card
-                  </MenuItem>
-                  <MenuItem value="upi">
-                    <Smartphone size={18} style={{ marginRight: 8 }} /> UPI
-                  </MenuItem>
-                  <MenuItem value="bank_transfer">
-                    <Landmark size={18} style={{ marginRight: 8 }} /> Bank
-                    Transfer
-                  </MenuItem>
-                  <MenuItem value="credit">
-                    <HandCoins size={18} style={{ marginRight: 8 }} /> On Credit
-                  </MenuItem>
-                  <MenuItem value="cheque">
-                    <ScrollText size={18} style={{ marginRight: 8 }} /> Cheque
-                  </MenuItem>
-                  <MenuItem value="voucher">
-                    <Ticket size={18} style={{ marginRight: 8 }} /> Voucher
-                  </MenuItem>
-                  <MenuItem value="mixed">
-                    <Split size={18} style={{ marginRight: 8 }} /> Mixed Payment
-                  </MenuItem>
-                </TextField>
-              </FormField>
-
-              {/* ✅ Status Dropdown */}
-              <FormField label="Status">
-                <TextField
-                  select
-                  size="small"
-                  variant="outlined"
-                  value={purchase.status}
-                  onChange={(e) => handleChange("status", e.target.value)}
-                  sx={{ width: 180 }}
-                >
-                  <MenuItem value="draft">
-                    <File size={18} style={{ marginRight: 8 }} /> Draft
-                  </MenuItem>
-                  <MenuItem value="pending">
-                    <Clock size={18} style={{ marginRight: 8 }} /> Pending
-                  </MenuItem>
-                  <MenuItem value="partial_payment">
-                    <HandCoins size={18} style={{ marginRight: 8 }} /> Partial
-                    Payment
-                  </MenuItem>
-                  <MenuItem value="paid">
-                    <CheckCircle2 size={18} style={{ marginRight: 8 }} /> Paid
-                  </MenuItem>
-                  <MenuItem value="received">
-                    <PackageCheck size={18} style={{ marginRight: 8 }} />{" "}
-                    Received
-                  </MenuItem>
-                  <MenuItem value="cancelled">
-                    <XCircle size={18} style={{ marginRight: 8 }} /> Cancelled
-                  </MenuItem>
-                </TextField>
-              </FormField>
-            </Stack>
-          )}
-
-          {/* Right side of bar: Total & Action Buttons */}
-          <Stack
-            direction="row"
-            alignItems="center"
-            spacing={3}
-            flexGrow={1}
-            justifyContent="flex-end"
-          >
-            <Box sx={{ textAlign: "right", minWidth: 180 }}>
+          {/* Left: Total + Word Amount */}
+          <Stack spacing={0.5} flex={1}>
+            <Stack direction="row" alignItems="baseline" spacing={2}>
               <Typography
-                variant="body1"
-                color="text.secondary"
-                lineHeight={1.2}
+                variant="h4"
+                fontWeight={800}
+                color="text.primary"
+                lineHeight={1}
               >
-                GRAND TOTAL
-              </Typography>
-              <Typography variant="h4" fontWeight="bold" color="primary.main">
                 {purchase.total_amount.toLocaleString("en-IN", {
                   style: "currency",
                   currency: "INR",
+                  maximumFractionDigits: 0,
                 })}
               </Typography>
-            </Box>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{
+                  textTransform: "uppercase",
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  letterSpacing: 0.5,
+                }}
+              >
+                Net Payable
+              </Typography>
+            </Stack>
+            <Typography
+              variant="body2"
+              fontStyle="italic"
+              color="text.secondary"
+            >
+              {numberToWords(purchase.total_amount)}
+            </Typography>
 
+            {/* Payment Details (Inline) */}
             {!readOnly && (
-              <Stack direction="row" spacing={1.5}>
+              <Stack direction="row" spacing={2} alignItems="center" mt={2}>
+                <TextField
+                  label="Paid"
+                  size="small"
+                  type="number"
+                  variant="standard"
+                  value={purchase.paid_amount}
+                  onChange={(e) =>
+                    handleChange("paid_amount", parseFloat(e.target.value))
+                  }
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">₹</InputAdornment>
+                    ),
+                  }}
+                  sx={{ width: 100 }}
+                />
                 <Button
-                  variant="outlined"
+                  size="small"
+                  variant="text"
+                  sx={{ textTransform: "none", minWidth: "auto" }}
+                  onClick={() =>
+                    handleChange("paid_amount", purchase.total_amount)
+                  }
+                  disabled={purchase.paid_amount >= purchase.total_amount}
+                >
+                  Full
+                </Button>
+                <TextField
+                  select
+                  label="Mode"
+                  size="small"
+                  variant="standard"
+                  value={purchase.payment_mode}
+                  onChange={(e) => handleChange("payment_mode", e.target.value)}
+                  sx={{ width: 100 }}
+                >
+                  <MenuItem value="cash">Cash</MenuItem>
+                  <MenuItem value="upi">UPI</MenuItem>
+                  <MenuItem value="card">Card</MenuItem>
+                  <MenuItem value="bank_transfer">Bank</MenuItem>
+                  <MenuItem value="credit">Credit</MenuItem>
+                  <MenuItem value="cheque">Cheque</MenuItem>
+                </TextField>
+                <TextField
+                  select
+                  label="Status"
+                  size="small"
+                  variant="standard"
+                  value={purchase.status}
+                  onChange={(e) => handleChange("status", e.target.value)}
+                  sx={{ width: 100 }}
+                >
+                  <MenuItem value="received">Received</MenuItem>
+                  <MenuItem value="pending">Pending</MenuItem>
+                  <MenuItem value="paid">Paid</MenuItem>
+                  <MenuItem value="draft">Draft</MenuItem>
+                </TextField>
+              </Stack>
+            )}
+          </Stack>
+
+          {/* Right: Actions Block */}
+          {!readOnly && (
+            <Stack spacing={2} alignItems="flex-end">
+              {/* Toggles Row */}
+              <Stack direction="row" spacing={2} alignItems="center">
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={purchase.is_reverse_charge}
+                      onChange={(e) =>
+                        handleChange("is_reverse_charge", e.target.checked)
+                      }
+                      disabled={readOnly}
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">Reverse Charge</Typography>
+                  }
+                />
+              </Stack>
+
+              {/* Buttons Row */}
+              <Stack direction="row" spacing={2}>
+                <Button
+                  variant="text"
                   color="error"
                   onClick={() => handleSubmit("cancel")}
-                  sx={{ minWidth: 110 }}
-                  startIcon={<XCircle />}
+                  disabled={isSubmitting}
                 >
                   Cancel
                 </Button>
                 <Button
                   variant="contained"
                   color="primary"
+                  size="large"
                   onClick={() => handleSubmit("save")}
-                  sx={{ minWidth: 120 }}
-                  startIcon={<Save />}
+                  disabled={isSubmitting}
+                  startIcon={
+                    isSubmitting ? (
+                      <CircularProgress size={20} color="inherit" />
+                    ) : (
+                      <Save size={20} />
+                    )
+                  }
+                  sx={{
+                    px: 4,
+                    borderRadius: 2,
+                    fontWeight: 700,
+                    fontSize: "1rem",
+                    boxShadow: theme.shadows[4],
+                  }}
                 >
-                  Save
+                  {isSubmitting ? "Saving..." : "SAVE PURCHASE"}
                 </Button>
               </Stack>
-            )}
-          </Stack>
+            </Stack>
+          )}
         </Stack>
-      </Paper>
+      </Box>
 
       {/* Warning for underpaid */}
       <Dialog open={warnOpen} onClose={() => setWarnOpen(false)}>
@@ -361,7 +293,7 @@ Props) => {
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+    </Box>
   );
 };
 

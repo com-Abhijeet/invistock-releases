@@ -11,7 +11,7 @@ import { saveLicenseInfo } from "../repositories/licenseRepository.mjs";
 export async function getLicenseStatusController(req, res) {
   try {
     // checkAppLicense already reads the DB and validates the key
-    const licenseStatus = checkAppLicense();
+    const licenseStatus = await checkAppLicense();
     res.status(200).json(licenseStatus);
   } catch (error) {
     console.error(
@@ -38,12 +38,16 @@ export async function saveLicenseController(req, res) {
     }
 
     // 1. Validate the new key
-    const validationResult = validateLicense(licenseKey);
+    const validationResult = await validateLicense(licenseKey);
 
     if (
       validationResult.status === "invalid" ||
       validationResult.status === "expired"
     ) {
+      console.log(
+        "[backend] - [license controller] - invalid key",
+        validationResult
+      );
       return res.status(400).json(validationResult);
     }
 

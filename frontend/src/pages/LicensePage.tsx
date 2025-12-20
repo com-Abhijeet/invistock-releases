@@ -14,8 +14,18 @@ import {
   Stack,
   IconButton,
   Tooltip,
+  Chip,
 } from "@mui/material";
-import { KeyRound, ShieldCheck, Lock, Copy, Monitor } from "lucide-react";
+import {
+  KeyRound,
+  ShieldCheck,
+  Lock,
+  Copy,
+  Monitor,
+  CreditCard,
+  Ban,
+  AlertTriangle,
+} from "lucide-react";
 import {
   getLicenseStatus,
   activateLicense,
@@ -34,21 +44,37 @@ export default function LicensePage() {
   const [loading, setLoading] = useState(true);
   const [activating, setActivating] = useState(false);
 
-  // ✅ State for Machine ID
+  // State for Machine ID & App Mode
   const [machineId, setMachineId] = useState<string>("Loading...");
+  const [appMode, setAppMode] = useState<string>("server");
 
   // Fetch status and Machine ID
   useEffect(() => {
     const init = async () => {
       try {
-        // 1. Get Machine ID
+        // 1. Get Machine ID & Mode
         if (electron) {
           const id = await electron.getMachineId();
           setMachineId(id);
+          const mode = await electron.getAppMode();
+          setAppMode(mode);
         }
 
-        // 2. Check License
-        const currentStatus = await getLicenseStatus();
+        // 2. Check License based on Mode
+        let currentStatus: LicenseStatus;
+        if (appMode === "client" && electron) {
+          // For client, we assume invalid initially if we are on this page,
+          // but strictly we could add an IPC 'check-client-license' if needed.
+          // For now, if the app opened this page, it means license failed.
+          currentStatus = {
+            status: "unlicensed",
+            message: "Client activation required.",
+          };
+        } else {
+          // Server mode checks API
+          currentStatus = await getLicenseStatus();
+        }
+
         setStatus(currentStatus);
 
         if (
@@ -60,12 +86,13 @@ export default function LicensePage() {
         }
       } catch (error) {
         console.error(error);
+        setStatus({ status: "invalid", message: "Connection check failed." });
       } finally {
         setLoading(false);
       }
     };
     init();
-  }, [navigate]);
+  }, [navigate, appMode]); // Added appMode to dependency to re-run if it updates
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(machineId);
@@ -76,15 +103,39 @@ export default function LicensePage() {
     if (!licenseKey.trim()) return toast.error("Please enter a license key.");
     setActivating(true);
     try {
-      const result = await activateLicense(licenseKey);
+      let result;
+
+      // ✅ Conditional Activation Logic
+      if (appMode === "client") {
+        console.log("[frontend] : saving license key");
+        // Client: Use IPC to save to local file
+        const response = await electron.ipcRenderer.invoke(
+          "activate-client-license",
+          licenseKey
+        );
+        if (response.success) {
+          result = response.status; // { status: 'valid', ... }
+        } else {
+          throw { response: { data: { error: response.error } } };
+        }
+      } else {
+        // Server: Use API to save to DB
+        result = await activateLicense(licenseKey);
+        console.log("[frontend] : Saved license key", result);
+      }
+
       setStatus(result);
 
       if (result.status === "valid" || result.status === "grace_period") {
         toast.success("License activated successfully!");
         if (electron) {
           setTimeout(() => {
-            navigate("/");
-            window.location.reload();
+            // Restarting allows main process to re-run startup checks
+            if (electron.restartApp) electron.restartApp();
+            else {
+              navigate("/");
+              window.location.reload();
+            }
           }, 1500);
         } else {
           navigate("/");
@@ -93,7 +144,8 @@ export default function LicensePage() {
         toast.error(result.message);
       }
     } catch (err: any) {
-      const errorMsg = err.response?.data?.error || "Activation failed.";
+      const errorMsg =
+        err.response?.data?.error || err.message || "Activation failed.";
       toast.error(errorMsg);
       setStatus({ status: "invalid", message: errorMsg });
     } finally {
@@ -111,10 +163,19 @@ export default function LicensePage() {
     if (status.status === "valid") {
       severity = "success";
       icon = <ShieldCheck size={18} />;
-    }
-    if (status.status === "grace_period") severity = "warning";
-    if (["expired", "invalid", "unlicensed"].includes(status.status))
+    } else if (status.status === "grace_period") {
+      severity = "warning";
+      icon = <AlertTriangle size={18} />;
+    } else if (["expired", "invalid", "unlicensed"].includes(status.status)) {
       severity = "error";
+      // Check for specific keywords to show Ban icon
+      if (
+        status.message?.toLowerCase().includes("banned") ||
+        status.message?.toLowerCase().includes("revoked")
+      ) {
+        icon = <Ban size={18} />;
+      }
+    }
 
     return (
       <Alert
@@ -153,6 +214,11 @@ export default function LicensePage() {
     );
   }
 
+  // Check if banned to conditionally disable input
+  const isBanned =
+    status?.message?.toLowerCase().includes("banned") ||
+    status?.message?.toLowerCase().includes("revoked");
+
   return (
     <Box
       display="flex"
@@ -180,25 +246,32 @@ export default function LicensePage() {
                 display: "inline-flex",
                 p: 2,
                 borderRadius: "50%",
-                bgcolor: "primary.light",
-                color: "primary.main",
+                bgcolor: isBanned ? "error.light" : "primary.light", // Red if banned
+                color: isBanned ? "error.main" : "primary.main",
                 mb: 2,
               }}
             >
-              <KeyRound size={32} />
+              {isBanned ? <Ban size={32} /> : <KeyRound size={32} />}
             </Box>
             <Typography variant="h5" fontWeight="800" gutterBottom>
-              Activate KOSH
+              {isBanned ? "Access Denied" : "Activate KOSH"}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Enter your product license key to unlock the full potential of
-              your inventory management system.
+              {isBanned
+                ? "Your access has been revoked. Please contact support."
+                : "Enter your product license key to unlock the full potential of your inventory management system."}
             </Typography>
+            {/* Added Mode Badge */}
+            <Chip
+              label={appMode === "client" ? "Client Mode" : "Server Mode"}
+              size="small"
+              sx={{ mt: 1, fontWeight: "bold" }}
+            />
           </Box>
 
           <Divider />
 
-          {/* ✅ Machine ID Section */}
+          {/* Machine ID Section */}
           <Box
             mt={3}
             p={2}
@@ -240,7 +313,7 @@ export default function LicensePage() {
             </Stack>
 
             <Typography variant="caption" color="text.disabled" mt={1}>
-              Send this ID to support to get your key.
+              This ID is required for generating your license key.
             </Typography>
           </Box>
 
@@ -258,7 +331,7 @@ export default function LicensePage() {
               onChange={(e) => setLicenseKey(e.target.value)}
               placeholder="Paste your license key here..."
               variant="outlined"
-              disabled={activating || status?.status === "valid"}
+              disabled={activating || status?.status === "valid" || isBanned}
               sx={{
                 "& .MuiOutlinedInput-root": { borderRadius: 3 },
                 backgroundColor: "grey.50",
@@ -271,7 +344,12 @@ export default function LicensePage() {
             variant="contained"
             size="large"
             onClick={handleSubmit}
-            disabled={activating || !licenseKey || status?.status === "valid"}
+            disabled={
+              activating ||
+              !licenseKey ||
+              status?.status === "valid" ||
+              isBanned
+            }
             sx={{
               mt: 3,
               py: 1.5,
@@ -290,6 +368,31 @@ export default function LicensePage() {
             )}
           </Button>
 
+          {/* Purchase / Upgrade Section */}
+          <Box mt={3} textAlign="center">
+            <Typography variant="caption" color="text.secondary">
+              Don't have a license key?
+            </Typography>
+            <Button
+              fullWidth
+              variant="outlined"
+              size="medium"
+              startIcon={<CreditCard size={18} />}
+              onClick={() => navigate("/plans")}
+              sx={{
+                mt: 1,
+                py: 1,
+                borderRadius: 3,
+                textTransform: "none",
+                fontWeight: 600,
+                borderColor: "primary.main",
+                color: "primary.main",
+              }}
+            >
+              View Plans & Buy Now
+            </Button>
+          </Box>
+
           <Typography
             variant="caption"
             color="text.secondary"
@@ -297,8 +400,7 @@ export default function LicensePage() {
             display="block"
             mt={3}
           >
-            Need help? Contact support at @ email : support@invistock.com
-            whatsapp : +91 9370294078
+            Need help? Contact support at email : support@invistock.com
           </Typography>
         </CardContent>
       </Card>

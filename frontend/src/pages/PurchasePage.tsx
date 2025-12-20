@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-
-import { Box } from "@mui/material";
+import { Box, useTheme } from "@mui/material";
 
 import PurchaseHeaderSection from "../components/purchase/PurchaseHeaderSection";
 import PurchaseItemSection from "../components/purchase/PurchaseItemSection";
@@ -26,13 +25,13 @@ const generateInitialPurchase = (): PurchasePayload => ({
 
 const PurchasePage = () => {
   const { action, id } = useParams();
+  const theme = useTheme();
   const [purchase, setPurchase] = useState<PurchasePayload | null>(null);
   const [success, setSuccess] = useState(false);
   const [__loading, setLoading] = useState(false);
   const isView = action === "view";
   const isEdit = action === "edit";
 
-  // Fetch purchase if in edit or view mode
   useEffect(() => {
     if ((isEdit || isView) && id) {
       const fetchPurchase = async () => {
@@ -52,14 +51,12 @@ const PurchasePage = () => {
     }
   }, [action, id]);
 
-  // Reset on success (only in create mode)
   useEffect(() => {
     if (success && !action) {
       setPurchase(generateInitialPurchase());
     }
   }, [success, action]);
 
-  // Recalculate total on items change
   useEffect(() => {
     if (!purchase) return;
     const total = purchase.items.reduce((acc, item) => acc + item.price, 0);
@@ -72,61 +69,65 @@ const PurchasePage = () => {
 
   return (
     <Box
-      p={2}
-      pt={3}
       sx={{
-        backgroundColor: "#fff",
-
-        // pt: "30px",
+        display: "flex",
+        flexDirection: "column",
+        height: "calc(100vh - 64px)",
+        backgroundColor: theme.palette.background.default,
+        overflow: "hidden",
       }}
-      minHeight={"100vh"}
     >
+      {/* Header (Fixed) */}
+      <Box sx={{ p: 2, pb: 1, flexShrink: 0, zIndex: 10 }}>
+        <PurchaseHeaderSection
+          purchase={purchase}
+          onPurchaseChange={(p) => !isView && setPurchase(p)}
+          readOnly={isView}
+        />
+      </Box>
+
+      {/* Items (Scrollable) */}
       <Box
         sx={{
-          background: "#ffffff",
-          border: "1px solid #ddd",
-          overflow: "hidden",
+          flexGrow: 1,
+          overflowY: "auto",
+          px: 2,
+          pb: 2,
+          "&::-webkit-scrollbar": { width: "6px" },
+          "&::-webkit-scrollbar-thumb": {
+            backgroundColor: "#ddd",
+            borderRadius: "4px",
+          },
         }}
       >
-        {/* Header */}
-        <Box p={2}>
-          <PurchaseHeaderSection
-            purchase={purchase}
-            onPurchaseChange={(p) => !isView && setPurchase(p)}
-            readOnly={isView}
-          />
-        </Box>
+        <PurchaseItemSection
+          items={purchase.items}
+          onItemsChange={
+            isView
+              ? () => {}
+              : (items: PurchaseItem[]) =>
+                  setPurchase((prev) => (prev ? { ...prev, items } : prev))
+          }
+          readOnly={isView}
+        />
+      </Box>
 
-        {/* Divider */}
-        <Box sx={{ borderTop: "1px solid #ddd" }} />
-
-        {/* Items */}
-        <Box p={2}>
-          <PurchaseItemSection
-            items={purchase.items}
-            onItemsChange={
-              isView
-                ? () => {}
-                : (items: PurchaseItem[]) =>
-                    setPurchase((prev) => (prev ? { ...prev, items } : prev))
-            }
-            readOnly={isView}
-          />
-        </Box>
-
-        {/* Divider */}
-        <Box sx={{ borderTop: "1px solid #ddd" }} />
-
-        {/* Summary */}
-        <Box p={2}>
-          <PurchaseSummarySection
-            purchase={purchase}
-            onPurchaseChange={(p) => !isView && setPurchase(p)}
-            setSuccess={setSuccess}
-            readOnly={isView}
-            isEdit={isEdit}
-          />
-        </Box>
+      {/* Summary (Fixed Bottom) */}
+      <Box
+        sx={{
+          flexShrink: 0,
+          backgroundColor: "#fff",
+          borderTop: `1px solid ${theme.palette.divider}`,
+          zIndex: 10,
+        }}
+      >
+        <PurchaseSummarySection
+          purchase={purchase}
+          onPurchaseChange={(p) => !isView && setPurchase(p)}
+          setSuccess={setSuccess}
+          readOnly={isView}
+          isEdit={isEdit}
+        />
       </Box>
     </Box>
   );

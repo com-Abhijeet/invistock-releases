@@ -58,6 +58,7 @@ import DeadStockPage from "./pages/DeadStockPage";
 import CustomerAnalyticsPage from "./pages/CustomerAnalyticsPage";
 import ProductABCPage from "./pages/ProductABCPage";
 import DayBookPage from "./pages/DayBookPage";
+import PlansPage from "./pages/PlansPage";
 
 // /**
 //  * Represents the current status of the application persistence layer.
@@ -355,6 +356,7 @@ function App() {
             {/* ✅ License routes FIRST - no providers, no AppInitializer */}
 
             <Route path="/license" element={<LicensePage />} />
+            <Route path="/plans" element={<PlansPage />} />
             <Route path="/*" element={<AppInitializer />} />
           </Routes>
         </UpdateProvider>

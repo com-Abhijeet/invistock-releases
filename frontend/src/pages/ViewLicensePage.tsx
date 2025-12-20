@@ -54,6 +54,7 @@ export default function ViewLicensePage() {
       // 2. Get License Status
       const licenseStatus = await getLicenseStatus();
       setStatus(licenseStatus);
+      console.log(licenseStatus);
     } catch (error) {
       setStatus({
         status: "invalid",

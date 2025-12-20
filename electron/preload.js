@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("electron", {
         "export-non-gst-sales-to-pdfs",
         "export-non-gst-items-to-excel",
         "print-bulk-labels",
+        "open-external-url",
 
         // WhatsApp & External
         "whatsapp-get-status",
@@ -48,6 +49,8 @@ contextBridge.exposeInMainWorld("electron", {
         // Google Drive
         "gdrive-status",
         "gdrive-login",
+        "get-gdrive-token-expiry",
+        "check-gdrive-token-expiry",
 
         // ✅ Updater Channels (Must be whitelisted for the helper below to work)
         "check-for-updates",
@@ -65,6 +68,8 @@ contextBridge.exposeInMainWorld("electron", {
         "export-progress",
         "whatsapp-status",
         "gdrive-connected",
+        "gdrive-token-expired",
+        "gdrive-token-expiring",
         // ✅ Updater Events
         "update-available",
         "update-not-available",
@@ -125,6 +130,13 @@ contextBridge.exposeInMainWorld("electron", {
   loginGDrive: () => ipcRenderer.invoke("gdrive-login"),
   onGDriveConnected: (callback) => ipcRenderer.on("gdrive-connected", callback),
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),
+  // ✅ NEW: Google Drive token expiry
+  getGDriveTokenExpiry: () => ipcRenderer.invoke("get-gdrive-token-expiry"),
+  checkGDriveTokenExpiry: () => ipcRenderer.invoke("check-gdrive-token-expiry"),
+  onGDriveTokenExpiring: (callback) =>
+    ipcRenderer.on("gdrive-token-expiring", (event, data) => callback(data)),
+  onGDriveTokenExpired: (callback) =>
+    ipcRenderer.on("gdrive-token-expired", callback),
 
   // ✅ UPDATER NAMESPACE (New)
   updater: {
