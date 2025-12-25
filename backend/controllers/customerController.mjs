@@ -181,3 +181,21 @@ export async function getCustomerOverdueSummaryController(req, res) {
     res.status(500).json({ success: false, error: error.message });
   }
 }
+
+export const getCustomerLedger = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+
+    // Call the service method (assuming it exists as per your snippet)
+    const data = await customerService.getCustomerLedgerService(id, {
+      startDate,
+      endDate,
+    });
+
+    res.json({ success: true, ...data });
+  } catch (error) {
+    console.error("Error getting customer ledger:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

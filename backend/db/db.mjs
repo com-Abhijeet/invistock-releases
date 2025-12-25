@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import bcrypt from "bcrypt";
 
 let db; // The database instance will be stored here. It's initially undefined.
 
@@ -38,6 +39,32 @@ CREATE TABLE IF NOT EXISTS license_info (
   expiry_date TEXT,
   checked_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+/* =============================================================== */
+ /* USER MANAGEMENT & RBAC (NEW)
+/* =============================================================== */
+
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    username TEXT UNIQUE NOT NULL, -- Can be Employee ID or Name
+    password TEXT NOT NULL,        -- Hashed password
+    role TEXT CHECK(role IN ('admin', 'employee')) NOT NULL DEFAULT 'employee',
+    permissions TEXT,              -- JSON string (e.g., '["sales", "inventory"]')
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS access_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    user_name TEXT,                -- Denormalized for easier log reading if user is deleted
+    action TEXT,                   -- 'login', 'logout', 'view_report'
+    details TEXT,                  -- specific details like 'Viewed Sales Report'
+    machine_type TEXT,             -- 'server' or 'client'
+    ip_address TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+  );
 
 -- The main table for shop/business details. No dependencies.
 CREATE TABLE IF NOT EXISTS shop(
@@ -406,6 +433,21 @@ CREATE TABLE IF NOT EXISTS stock_adjustments (
 );
 
 `);
+
+  const adminCheck = db
+    .prepare("SELECT count(*) as count FROM users WHERE role = 'admin'")
+    .get();
+  if (adminCheck.count === 0) {
+    console.log("[DB] Seeding default admin user...");
+    // Default password 'admin123' - CHANGE THIS IN PRODUCTION
+    const hash = bcrypt.hashSync("admin123", 10);
+    db.prepare(
+      `
+      INSERT INTO users (name, username, password, role, permissions) 
+      VALUES ('Super Admin', 'admin', ?, 'admin', '["*"]')
+    `
+    ).run(hash);
+  }
 }
 
 /**

@@ -1,4 +1,3 @@
-// src/App.tsx
 import {
   HashRouter as Router,
   Routes,
@@ -48,6 +47,7 @@ import NGSalesPage from "./pages/NGSalesPage";
 import ViewNGSalePage from "./pages/ViewNGSalePage";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoutes from "./components/auth/ProtectedRoutes";
+import PermissionGuard from "./components/auth/PermissionGuard"; // ✅ Import PermissionGuard
 import AboutPage from "./pages/AboutPage";
 import ExpensesPage from "./pages/ExpensePage";
 import StockAdjustmentsPage from "./pages/StockAdjustmentsPage";
@@ -59,6 +59,12 @@ import CustomerAnalyticsPage from "./pages/CustomerAnalyticsPage";
 import ProductABCPage from "./pages/ProductABCPage";
 import DayBookPage from "./pages/DayBookPage";
 import PlansPage from "./pages/PlansPage";
+import SalesTablePage from "./pages/SalesHistory";
+import PurchaseTablePage from "./pages/PurchaseHistory";
+import UserManagement from "./pages/UserManagement";
+import AccessLogs from "./pages/AccessLogs";
+import ConnectionsPage from "./pages/ConnectionsPage";
+import CustomerLedgerPage from "./pages/CustomerLedgerPage";
 
 // /**
 //  * Represents the current status of the application persistence layer.
@@ -120,59 +126,273 @@ function AppLayout() {
             <SidebarLayout>
               <Toaster position="bottom-center" />
               <Routes>
+                {/* --- Public / License Pages --- */}
                 <Route path="/view-license" element={<ViewLicensePage />} />
                 <Route path="/" element={<AboutPage />} />
-                <Route path="/inventory" element={<InventoryDashboardPage />} />
-                <Route path="/products" element={<Products />} />
-                <Route path="/product/:id" element={<ProductDetailPage />} />
-                <Route path="/categories" element={<CategoriesPage />} />
-                <Route path="/viewSupplier/:id" element={<SupplierPage />} />
-                <Route path="/suppliers" element={<SuppliersPage />} />
-                <Route path="/customer/:id" element={<CustomerPage />} />
-                <Route path="/customers" element={<CustomersPage />} />
-                <Route path="/billing" element={<SalesPOS />} />
-                <Route path="/billing/:action/:id" element={<SalesPOS />} />
-                <Route path="/sales" element={<SalesDashboard />} />
-                <Route path="*" element={<Navigate to="/" />} />
-                {/* Protected Routes (Require Admin PIN) */}
+
+                {/* --- Protected Routes Wrapper --- */}
                 <Route element={<ProtectedRoutes />}>
-                  <Route path="/dashboard" element={<Dashboard />} />
+                  {/* --- Analytics & Reports --- */}
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <PermissionGuard requiredPermission="dashboard">
+                        <Dashboard />
+                      </PermissionGuard>
+                    }
+                  />
+
+                  {/* --- Sales & Billing --- */}
+                  <Route
+                    path="/billing"
+                    element={
+                      <PermissionGuard requiredPermission="billing">
+                        <SalesPOS />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/billing/:action/:id"
+                    element={
+                      <PermissionGuard requiredPermission="billing">
+                        <SalesPOS />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/sales"
+                    element={
+                      <PermissionGuard requiredPermission="sales">
+                        <SalesDashboard />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/sales-history"
+                    element={
+                      <PermissionGuard requiredPermission="sales-history">
+                        <SalesTablePage />
+                      </PermissionGuard>
+                    }
+                  />
+
+                  {/* --- Purchasing & Vendors --- */}
                   <Route
                     path="/purchase/:action?/:id?"
-                    element={<PurchasePage />}
+                    element={
+                      <PermissionGuard requiredPermission="purchase">
+                        <PurchasePage />
+                      </PermissionGuard>
+                    }
                   />
                   <Route
                     path="/purchase-dashboard"
-                    element={<PurchaseDashboardPage />}
+                    element={
+                      <PermissionGuard requiredPermission="purchase-dashboard">
+                        <PurchaseDashboardPage />
+                      </PermissionGuard>
+                    }
                   />
-                  <Route path="/transactions" element={<TransactionsPage />} />
-                  <Route path="/gst" element={<Gstr1ReportPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route
+                    path="/purchase-history"
+                    element={
+                      <PermissionGuard requiredPermission="purchase-history">
+                        <PurchaseTablePage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/suppliers"
+                    element={
+                      <PermissionGuard requiredPermission="suppliers">
+                        <SuppliersPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/viewSupplier/:id"
+                    element={
+                      <PermissionGuard requiredPermission="suppliers">
+                        <SupplierPage />
+                      </PermissionGuard>
+                    }
+                  />
 
-                  <Route path="/about" element={<AboutPage />} />
-                  <Route path="/expenses" element={<ExpensesPage />} />
+                  {/* --- Inventory & Products --- */}
+                  <Route
+                    path="/inventory"
+                    element={
+                      <PermissionGuard requiredPermission="inventory">
+                        <InventoryDashboardPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/products"
+                    element={
+                      <PermissionGuard requiredPermission="products">
+                        <Products />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/product/:id"
+                    element={
+                      <PermissionGuard requiredPermission="products">
+                        <ProductDetailPage />
+                      </PermissionGuard>
+                    }
+                  />
                   <Route
                     path="/adjustments"
-                    element={<StockAdjustmentsPage />}
+                    element={
+                      <PermissionGuard requiredPermission="adjustments">
+                        <StockAdjustmentsPage />
+                      </PermissionGuard>
+                    }
                   />
-                  <Route path="/stock-restock" element={<SmartRestockPage />} />
-                  <Route path="/dead-stock" element={<DeadStockPage />} />
                   <Route
-                    path="/customer-analytics"
-                    element={<CustomerAnalyticsPage />}
+                    path="/categories"
+                    element={
+                      <PermissionGuard requiredPermission="categories">
+                        <CategoriesPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/stock-restock"
+                    element={
+                      <PermissionGuard requiredPermission="stock-restock">
+                        <SmartRestockPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/dead-stock"
+                    element={
+                      <PermissionGuard requiredPermission="dead-stock">
+                        <DeadStockPage />
+                      </PermissionGuard>
+                    }
                   />
                   <Route
                     path="/product-abc-page"
-                    element={<ProductABCPage />}
+                    element={
+                      <PermissionGuard requiredPermission="product-abc-page">
+                        <ProductABCPage />
+                      </PermissionGuard>
+                    }
                   />
-                  <Route path="/daybook" element={<DayBookPage />} />
+
+                  {/* --- Payments & Transactions --- */}
+                  <Route
+                    path="/transactions"
+                    element={
+                      <PermissionGuard requiredPermission="transactions">
+                        <TransactionsPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/expenses"
+                    element={
+                      <PermissionGuard requiredPermission="expenses">
+                        <ExpensesPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/daybook"
+                    element={
+                      <PermissionGuard requiredPermission="daybook">
+                        <DayBookPage />
+                      </PermissionGuard>
+                    }
+                  />
+
+                  {/* --- CRM & Customers --- */}
+                  <Route
+                    path="/customers"
+                    element={
+                      <PermissionGuard requiredPermission="customers">
+                        <CustomersPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/customer/:id"
+                    element={
+                      <PermissionGuard requiredPermission="customers">
+                        <CustomerPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/customers/ledger/:id"
+                    element={
+                      <PermissionGuard requiredPermission="customers">
+                        <CustomerLedgerPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/customer-analytics"
+                    element={
+                      <PermissionGuard requiredPermission="customer-analytics">
+                        <CustomerAnalyticsPage />
+                      </PermissionGuard>
+                    }
+                  />
+
+                  {/* --- Reports --- */}
+                  <Route
+                    path="/gst"
+                    element={
+                      <PermissionGuard requiredPermission="gst">
+                        <Gstr1ReportPage />
+                      </PermissionGuard>
+                    }
+                  />
+
+                  {/* --- Administration --- */}
+                  <Route
+                    path="/users"
+                    element={
+                      <PermissionGuard requiredPermission="users">
+                        <UserManagement />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/access-logs"
+                    element={
+                      <PermissionGuard requiredPermission="access-logs">
+                        <AccessLogs />
+                      </PermissionGuard>
+                    }
+                  />
+
+                  {/* --- System --- */}
+                  <Route
+                    path="/settings"
+                    element={
+                      <PermissionGuard requiredPermission="settings">
+                        <SettingsPage />
+                      </PermissionGuard>
+                    }
+                  />
+
+                  <Route path="/about" element={<AboutPage />} />
+                  <Route path="/connections" element={<ConnectionsPage />} />
                 </Route>
+                <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </SidebarLayout>
           }
         />
       ) : (
         <Route path="/non-gst" element={<NonGstLayout />}>
+          {/* Non-GST routes can also be protected if needed */}
           <Route path="pos" element={<NGSalesPos />} />
           <Route path="history" element={<NGSalesPage />} />
           <Route path="view-sale/:id" element={<ViewNGSalePage />} />
@@ -272,10 +492,27 @@ function AppInitializer() {
     });
 
     // 3. Event Listeners (with proper cleanup)
-    const handleSetMode = (mode: "server" | "client") => {
+    const handleSetMode = async (mode: "server" | "client") => {
       console.log("[INIT] Event: Mode ->", mode);
-      if (isMounted) {
-        setStatus(mode === "server" ? "server" : "client-connecting");
+      if (!isMounted) return;
+
+      if (mode === "server") {
+        setStatus("server");
+        return;
+      }
+
+      // For 'client' mode: check if we already have a server URL before forcing 'client-connecting'
+      try {
+        const url = await window.electron.getServerUrl();
+        if (url) {
+          setApiBaseUrl(url);
+          localStorage.setItem("serverUrl", url);
+          setStatus("client-connected");
+        } else {
+          setStatus("client-connecting");
+        }
+      } catch (e) {
+        setStatus("client-connecting");
       }
     };
 

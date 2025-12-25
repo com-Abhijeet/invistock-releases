@@ -55,6 +55,7 @@ function validateLocal(licenseKey) {
 
     const currentMachineId = machineIdSync();
     if (licenseHardwareId !== currentMachineId) {
+      console.log("INVALID MACHINE MATCH LICENSE");
       return {
         status: "invalid",
         message: "This license is not valid for this computer.",
@@ -70,6 +71,7 @@ function validateLocal(licenseKey) {
     now.setHours(12, 0, 0, 0);
 
     if (now < startDate) {
+      console.log("INVALID LICENSE DATE");
       return { status: "invalid", message: `License not yet active.` };
     }
 
@@ -87,6 +89,7 @@ function validateLocal(licenseKey) {
           data: { expiryDate },
         };
       } else {
+        console.log("LICENSE EXPIRED");
         return { status: "expired", message: "License expired." };
       }
     }
@@ -97,7 +100,7 @@ function validateLocal(licenseKey) {
       data: { startDate, expiryDate, info1, info2 },
     };
   } catch (error) {
-    console.error(error);
+    console.error("[license service]-Failed local check", error);
     return { status: "invalid", message: "Failed to read license key." };
   }
 }

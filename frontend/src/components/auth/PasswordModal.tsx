@@ -9,28 +9,34 @@ import {
   Typography,
   Box,
   CircularProgress,
+  InputAdornment,
+  IconButton,
 } from "@mui/material";
-import { LockKeyhole } from "lucide-react";
-import { useAuth } from "../../context/AuthContext"; // Adjust path if needed
+import { LockKeyhole, User, KeyRound, Eye, EyeOff } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 
 export default function PasswordModal() {
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
   const handleSubmit = async () => {
-    if (!password) return;
+    if (!username || !password) {
+      toast.error("Please enter both ID and Password");
+      return;
+    }
 
     setLoading(true);
     try {
-      // Ensure we await the login if it's async (which it should be for IPC)
-      const success = await login(password);
+      // Calls the AuthContext login which uses UserApiService
+      const success = await login(username, password);
 
       if (!success) {
-        toast.error("Incorrect PIN or Password");
-        setPassword(""); // Clear input on failure
-        // Shake animation logic could go here
+        setPassword(""); // Clear password on failure so they can retry
+        // Toast is handled in AuthContext usually, but safe to have here if needed
       }
     } catch (error) {
       console.error(error);
@@ -47,12 +53,12 @@ export default function PasswordModal() {
       fullWidth
       PaperProps={{
         sx: {
-          borderRadius: 4, // Modern rounded corners
-          boxShadow: "0 20px 40px rgba(0,0,0,0.2)", // Deep shadow for modal pop
-          overflow: "visible", // Allow content to breathe
+          borderRadius: 4,
+          boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+          overflow: "visible",
         },
       }}
-      // Prevent closing by clicking outside
+      // Prevent closing by clicking outside or escape
       disableEscapeKeyDown
     >
       <DialogContent sx={{ p: 4, textAlign: "center" }}>
@@ -62,7 +68,7 @@ export default function PasswordModal() {
             display: "inline-flex",
             p: 2.5,
             borderRadius: "50%",
-            bgcolor: "primary.lighter", // Light blue background
+            bgcolor: "primary.lighter",
             color: "primary.main",
             mb: 2,
             background: "linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)",
@@ -71,40 +77,61 @@ export default function PasswordModal() {
           <LockKeyhole size={40} strokeWidth={1.5} />
         </Box>
 
-        {/* --- Title & Subtitle --- */}
         <Typography variant="h5" fontWeight="800" gutterBottom>
-          Admin Access
+          System Locked
         </Typography>
         <Typography variant="body2" color="text.secondary" mb={4}>
-          This section is protected. Enter your secure PIN to continue.
+          Enter your credentials to continue.
         </Typography>
 
-        {/* --- Password Input --- */}
+        {/* --- Username Input --- */}
         <TextField
           autoFocus
           fullWidth
-          type="password"
-          placeholder="••••"
+          label="Username or ID"
+          variant="outlined"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          disabled={loading}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <User size={20} className="text-gray-400" />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ mb: 2 }}
+        />
+
+        {/* --- Password Input --- */}
+        <TextField
+          fullWidth
+          type={showPassword ? "text" : "password"}
+          label="Password"
           variant="outlined"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           disabled={loading}
-          sx={{
-            mb: 3,
-            "& .MuiOutlinedInput-root": {
-              borderRadius: 3,
-              backgroundColor: "grey.50",
-              fontSize: "1.5rem", // Larger text for PIN feel
-              fontWeight: "bold",
-              letterSpacing: "8px", // Spacing for PIN masking dots
-              textAlign: "center",
-              "& input": {
-                textAlign: "center", // Center the cursor/text
-                py: 1.5,
-              },
-            },
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <KeyRound size={20} className="text-gray-400" />
+              </InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  onClick={() => setShowPassword(!showPassword)}
+                  edge="end"
+                  tabIndex={-1} // Skip focusing on this button when tabbing
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </IconButton>
+              </InputAdornment>
+            ),
           }}
+          sx={{ mb: 3 }}
         />
 
         {/* --- Action Button --- */}
@@ -113,7 +140,7 @@ export default function PasswordModal() {
           variant="contained"
           fullWidth
           size="large"
-          disabled={loading || !password}
+          disabled={loading || !username || !password}
           sx={{
             borderRadius: 3,
             py: 1.5,

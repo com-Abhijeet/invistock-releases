@@ -1,297 +1,240 @@
 import * as transactionsService from "../services/transactionService.mjs";
 
 /**
+ * @description Standardized Response Helper
+ */
+const sendResponse = (res, statusCode, status, message, data = null) => {
+  return res.status(statusCode).json({ status, message, data });
+};
+
+/**
  * @description Creates a new transaction record.
  * @route POST /api/transactions
- * @param {object} req - Express request object.
- * @param {object} res - Express response object.
- * @returns {object} The newly created transaction record.
  */
 export async function createTransactionController(req, res) {
   try {
     const transactionData = req.body;
-    if (!transactionData || !transactionData.type || !transactionData.amount) {
-      return res.status(400).json({
-        status: "error",
-        message: "Missing required transaction data.",
-      });
+
+    // Controller level 'Required Field' check
+    const required = [
+      "type",
+      "amount",
+      "bill_id",
+      "bill_type",
+      "entity_id",
+      "entity_type",
+    ];
+    const missing = required.filter((field) => !transactionData[field]);
+
+    if (missing.length > 0) {
+      return sendResponse(
+        res,
+        400,
+        "error",
+        `Missing required fields: ${missing.join(", ")}`
+      );
     }
+
     const newTransaction = await transactionsService.createTransactionService(
       transactionData
     );
-    return res.status(201).json({
-      status: "success",
-      message: "Transaction created successfully.",
-      data: newTransaction,
-    });
+
+    return sendResponse(
+      res,
+      201,
+      "success",
+      "Transaction created successfully.",
+      newTransaction
+    );
   } catch (error) {
-    console.error("Error in createTransactionController:", error.message);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Failed to create transaction." });
+    // Distinguish between validation errors (400) and system errors (500)
+    // If error message contains 'Overpayment', it's a 400 (Bad Request)
+    const isValidation =
+      error.message.includes("Overpayment") ||
+      error.message.includes("must be") ||
+      error.message.includes("not found");
+    const code = isValidation ? 400 : 500;
+
+    return sendResponse(res, code, "error", error.message);
   }
 }
 
 /**
- * @description Retrieves a paginated list of transactions with optional filters.
+ * @description Retrieves a paginated list of transactions.
  * @route GET /api/transactions
- * @param {object} req - Express request object (query parameters for filters).
- * @param {object} res - Express response object.
- * @returns {object} A paginated list of transactions.
  */
 export async function getAllTransactionsController(req, res) {
   try {
+    // Parse filters
     const filters = {
-      page: parseInt(req.query.page || "1"),
-      limit: parseInt(req.query.limit || "20"),
-      query: req.query.query || null,
-      type: req.query.type || null,
-      status: req.query.status || null,
-      filter: req.query.filter || null,
-      year: req.query.year || null,
-      startDate: req.query.startDate || null,
-      endDate: req.query.endDate || null,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 20,
+      query: req.query.query || "",
+      type: req.query.type,
+      status: req.query.status,
+      filter: req.query.filter,
+      startDate: req.query.startDate,
+      endDate: req.query.endDate,
       all: req.query.all === "true",
     };
+
     const result = await transactionsService.getAllTransactionsService(filters);
+
+    // Custom structure for lists
     return res.status(200).json({
       status: "success",
-      message: "Transactions fetched successfully.",
+      message: "Transactions fetched.",
       data: result.records,
       totalRecords: result.totalRecords,
     });
   } catch (error) {
-    console.error("Error in getAllTransactionsController:", error.message);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch transactions." });
+    return sendResponse(res, 500, "error", error.message);
   }
 }
 
 /**
- * @description Retrieves a single transaction record by its ID.
+ * @description Retrieves a single transaction.
  * @route GET /api/transactions/:id
- * @param {object} req - Express request object (params: id).
- * @param {object} res - Express response object.
- * @returns {object} The transaction object.
  */
 export async function getTransactionByIdController(req, res) {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) {
-      return res
-        .status(400)
-        .json({ status: "error", message: "Invalid transaction ID." });
-    }
+    const id = Number(req.params.id);
+    if (isNaN(id)) return sendResponse(res, 400, "error", "Invalid ID");
+
     const transaction = await transactionsService.getTransactionByIdService(id);
-    if (!transaction) {
-      return res
-        .status(404)
-        .json({ status: "error", message: "Transaction not found." });
-    }
-    return res.status(200).json({
-      status: "success",
-      message: "Transaction fetched successfully.",
-      data: transaction,
-    });
+    return sendResponse(
+      res,
+      200,
+      "success",
+      "Transaction fetched.",
+      transaction
+    );
   } catch (error) {
-    console.error("Error in getTransactionByIdController:", error.message);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch transaction." });
+    return sendResponse(res, 404, "error", error.message);
   }
 }
 
 /**
- * @description Retrieves all transactions related to a specific original transaction ID.
+ * @description Retrieves related transactions.
  * @route GET /api/transactions/related/:id
- * @param {object} req - Express request object (params: id, query: entityType).
- * @param {object} res - Express response object.
- * @returns {object} An array of related transactions.
  */
 export async function getTransactionsByRelatedIdController(req, res) {
   try {
-    const relatedId = parseInt(req.params.id);
-    const { entityType } = req.query;
-    if (isNaN(relatedId) || !entityType) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid related ID or entity type.",
-      });
+    const relatedId = Number(req.params.id);
+    const { entityType } = req.query; // 'sale' or 'purchase' technically, but route params say entityType?
+    // Wait, the route says /related/:id. The service expects (billId, billType).
+    // The previous code had (relatedId, entityType) but the logic inside used it as bill_id/bill_type.
+    // Let's stick to the convention: params.id = bill_id, query.type = bill_type.
+    // The query param was 'entityType' in previous code. I will check.
+    // Previous code: getTransactionsByRelatedId(relatedId, entityType) -> query: WHERE bill_id = ? AND entity_type = ?
+    // Wait, transaction table has `bill_type` AND `entity_type`.
+    // If I want transactions for Sale #1, I should query by bill_id=1 AND bill_type='sale'.
+
+    // CORRECTING LOGIC:
+    // User requests: /api/transactions/related/101?type=sale
+    const billType = req.query.type || req.query.entityType; // Fallback support
+
+    if (isNaN(relatedId) || !billType) {
+      return sendResponse(res, 400, "error", "Invalid Bill ID or Type.");
     }
+
+    // Using the service method
     const transactions =
       await transactionsService.getTransactionsByRelatedIdService(
         relatedId,
-        entityType
+        billType
       );
-    return res.status(200).json({
-      status: "success",
-      message: "Related transactions fetched successfully.",
-      data: transactions,
-    });
-  } catch (error) {
-    console.error(
-      "Error in getTransactionsByRelatedIdController:",
-      error.message
+    return sendResponse(
+      res,
+      200,
+      "success",
+      "Related transactions fetched.",
+      transactions
     );
-    return res.status(500).json({
-      status: "error",
-      message: "Failed to fetch related transactions.",
-    });
+  } catch (error) {
+    return sendResponse(res, 500, "error", error.message);
   }
 }
 
 /**
- * @description Updates an existing transaction record by its ID.
+ * @description Updates a transaction.
  * @route PUT /api/transactions/:id
- * @param {object} req - Express request object (params: id, body: updatedData).
- * @param {object} res - Express response object.
- * @returns {object} The updated transaction record.
  */
 export async function updateTransactionController(req, res) {
   try {
-    const id = parseInt(req.params.id);
+    const id = Number(req.params.id);
     const updatedData = req.body;
-    if (isNaN(id) || Object.keys(updatedData).length === 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid ID or no data provided for update.",
-      });
-    }
-    const updatedTransaction =
-      await transactionsService.updateTransactionService(id, updatedData);
-    return res.status(200).json({
-      status: "success",
-      message: "Transaction updated successfully.",
-      data: updatedTransaction,
-    });
+
+    if (isNaN(id)) return sendResponse(res, 400, "error", "Invalid ID");
+
+    const updated = await transactionsService.updateTransactionService(
+      id,
+      updatedData
+    );
+    return sendResponse(res, 200, "success", "Transaction updated.", updated);
   } catch (error) {
-    console.error("Error in updateTransactionController:", error.message);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Failed to update transaction." });
+    return sendResponse(res, 400, "error", error.message);
   }
 }
 
 /**
- * @description Soft-deletes a transaction record by its ID.
+ * @description Deletes a transaction.
  * @route DELETE /api/transactions/:id
- * @param {object} req - Express request object (params: id).
- * @param {object} res - Express response object.
- * @returns {object} A success message.
  */
 export async function deleteTransactionController(req, res) {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) {
-      return res
-        .status(400)
-        .json({ status: "error", message: "Invalid transaction ID." });
-    }
-    await transactionsService.deleteTransactionService(id);
-    return res.status(200).json({
-      status: "success",
-      message: "Transaction soft-deleted successfully.",
-    });
+    const id = Number(req.params.id);
+    if (isNaN(id)) return sendResponse(res, 400, "error", "Invalid ID");
+
+    const result = await transactionsService.deleteTransactionService(id);
+    return sendResponse(res, 200, "success", result.message);
   } catch (error) {
-    console.error("Error in deleteTransactionController:", error.message);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Failed to delete transaction." });
+    return sendResponse(res, 500, "error", error.message);
   }
 }
 
-/**
- * @description Gets a customer's account summary.
- * @route GET /api/customers/:id/summary
- * @param {object} req - Express request object.
- * @param {object} res - Express response object.
- * @returns {object} Response with the customer's account summary.
- */
+// --- Summaries ---
+
 export async function getCustomerAccountSummaryController(req, res) {
   try {
-    const customerId = parseInt(req.params.id);
+    const id = Number(req.params.id);
     const summary = await transactionsService.getCustomerAccountSummaryService(
-      customerId,
+      id,
       req.query
     );
-    return res.status(200).json({ status: "success", data: summary });
+    return sendResponse(res, 200, "success", "Summary fetched", summary);
   } catch (error) {
-    console.error(
-      "Error in getCustomerAccountSummaryController:",
-      error.message
-    );
-    return res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch customer summary." });
+    return sendResponse(res, 500, "error", error.message);
   }
 }
 
-/**
- * @description Gets a supplier's account summary.
- * @route GET /api/suppliers/:id/summary
- * @param {object} req - Express request object.
- * @param {object} res - Express response object.
- * @returns {object} Response with the supplier's account summary.
- */
 export async function getSupplierAccountSummaryController(req, res) {
   try {
-    const supplierId = parseInt(req.params.id);
+    const id = Number(req.params.id);
     const summary = await transactionsService.getSupplierAccountSummaryService(
-      supplierId,
+      id,
       req.query
     );
-    return res.status(200).json({ status: "success", data: summary });
+    return sendResponse(res, 200, "success", "Summary fetched", summary);
   } catch (error) {
-    console.error(
-      "Error in getSupplierAccountSummaryController:",
-      error.message
-    );
-
-    return res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch supplier summary." });
+    return sendResponse(res, 500, "error", error.message);
   }
 }
 
-/**
- * @description Gets transactions for a specific customer or supplier.
- * @route GET /api/transactions/entity/:id
- * @param {object} req - Express request object.
- * @param {object} res - Express response object.
- * @returns {object} Response with a paginated list of transactions.
- */
 export async function getEntityTransactionsController(req, res) {
   try {
     const filters = {
-      entityId: parseInt(req.params.id),
+      entityId: Number(req.params.id),
       entityType: req.query.entityType,
-      page: parseInt(req.query.page || "1"),
-      limit: parseInt(req.query.limit || "20"),
-      query: req.query.query || null,
-      type: req.query.type || null,
-      status: req.query.status || null,
-      filter: req.query.filter || null,
-      year: req.query.year || null,
-      startDate: req.query.startDate || null,
-      endDate: req.query.endDate || null,
-      all: req.query.all === "false",
+      page: Number(req.query.page),
+      limit: Number(req.query.limit),
+      all: req.query.all === "true",
     };
-
-    console.dir(req.query, 5);
-
-    if (isNaN(filters.entityId) || !filters.entityType) {
-      return res
-        .status(400)
-        .json({ status: "error", message: "Invalid entity ID or type." });
-    }
-
     const result = await transactionsService.getEntityTransactionsService(
       filters
     );
     return res.status(200).json({ status: "success", data: result });
   } catch (error) {
-    console.error("Error in getEntityTransactionsController:", error.message);
-    return res.status(500).json({ status: "error", message: error.message });
+    return sendResponse(res, 500, "error", error.message);
   }
 }

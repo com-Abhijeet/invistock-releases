@@ -184,15 +184,14 @@ export function processSalesReturn(payload) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * @description Retrieves a sale and its associated items by ID.
+ * @description Retrieves a sale and its associated items by ID, reconciling payment status with transactions.
  * @param {number} saleId - The ID of the sale to retrieve.
- * @returns {object|null} The sale object with a nested array of items, or null if not found.
+ * @returns {object|null} The sale object with a nested array of items and payment summary, or null if not found.
  * @throws {Error} If fetching the sale fails.
  */
-
 export function getSaleWithItemsById(saleId) {
   try {
-    // 💡 Fetch the main sale record. This should be a synchronous operation.
+    // 1. Fetch the main sale record.
     const saleStmt = db.prepare(`
       SELECT
         s.*,
@@ -209,12 +208,12 @@ export function getSaleWithItemsById(saleId) {
     `);
     const sale = saleStmt.get(saleId);
 
-    // 💡 If the sale doesn't exist, return null early.
+    // If the sale doesn't exist, return null early.
     if (!sale) {
       return null;
     }
 
-    // 💡 Fetch the related sale items.
+    // 2. Fetch the related sale items.
     const itemsStmt = db.prepare(`
       SELECT
         si.*,
@@ -232,11 +231,57 @@ export function getSaleWithItemsById(saleId) {
     `);
     const items = itemsStmt.all(saleId);
 
-    // 💡 Return the combined object.
-    return { ...sale, items };
+    // 3. Reconcile with transactions to get actual payment status
+    // UPDATE: Now checks for 'payment_in' AND 'sale' type transactions for payments made at time of bill
+    const transactionStmt = db.prepare(`
+      SELECT 
+        COALESCE(SUM(CASE WHEN type IN ('payment_in', 'sale') THEN amount ELSE 0 END), 0) as total_paid,
+        COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as total_credit_notes
+      FROM transactions
+      WHERE bill_id = ? AND bill_type = 'sale' AND status != 'deleted'
+    `);
+    const transactionResult = transactionStmt.get(saleId);
+
+    const reconciledPaidAmount = transactionResult
+      ? transactionResult.total_paid
+      : 0;
+    const creditNotes = transactionResult
+      ? transactionResult.total_credit_notes
+      : 0; // Usually negative
+
+    // Net Payable is the original bill minus any credit notes (returns/adjustments)
+    const netPayable = (sale.total_amount || 0) + creditNotes;
+
+    // Balance is Net Payable minus what has been paid
+    const balance = netPayable - reconciledPaidAmount;
+
+    // Determine status based on reconciliation
+    let paymentStatus = "pending";
+    if (balance <= 0.9) {
+      // Floating point buffer
+      paymentStatus = "paid";
+    } else if (reconciledPaidAmount > 0) {
+      paymentStatus = "partial";
+    }
+
+    // 4. Return the combined object.
+    return {
+      ...sale,
+      items,
+      // Add a specific summary object for the UI to use easily
+      payment_summary: {
+        total_paid: reconciledPaidAmount,
+        total_credit_notes: creditNotes,
+        net_payable: netPayable > 0 ? netPayable : 0,
+        balance: balance > 0 ? balance : 0,
+        status: paymentStatus,
+      },
+      // We also update the root properties so legacy code using sale.paid_amount works with the reconciled value
+      paid_amount: reconciledPaidAmount,
+      status: paymentStatus,
+    };
   } catch (error) {
     console.error(" Failed to fetch sale with items:", error.message);
-    // 💡 Re-throw a custom error for better debugging upstream.
     throw new Error("Failed to fetch sale with items: " + error.message);
   }
 }

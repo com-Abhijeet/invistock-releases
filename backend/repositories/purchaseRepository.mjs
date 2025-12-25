@@ -81,6 +81,7 @@ export function createPurchase(purchaseData, items) {
  */
 export function getPurchaseById(id) {
   try {
+    // 1. Fetch the Purchase
     const purchaseStmt = db.prepare(`
       SELECT 
         p.id,
@@ -102,6 +103,7 @@ export function getPurchaseById(id) {
       return null;
     }
 
+    // 2. Fetch Items
     const itemsStmt = db.prepare(`
       SELECT 
         pi.id,
@@ -120,22 +122,50 @@ export function getPurchaseById(id) {
     `);
     const items = itemsStmt.all(id);
 
-    // Get real-time financial summary from transactions table
+    // 3. Reconcile with Transactions (Real-time Payment Status)
+    // UPDATE: Now checks for 'payment_out' AND 'purchase' type transactions for payments made at time of bill
     const summaryStmt = db.prepare(`
       SELECT
-        SUM(CASE WHEN t.type = 'purchase' THEN t.amount ELSE 0 END) +
-        SUM(CASE WHEN t.type = 'debit_note' THEN t.amount ELSE 0 END) AS adjusted_total_amount,
-        SUM(CASE WHEN t.type = 'payment_out' THEN t.amount ELSE 0 END) AS net_paid_amount
+        COALESCE(SUM(CASE WHEN t.type IN ('payment_out', 'purchase') THEN t.amount ELSE 0 END), 0) AS total_paid,
+        COALESCE(SUM(CASE WHEN t.type = 'debit_note' THEN t.amount ELSE 0 END), 0) AS total_debit_notes
       FROM transactions t
-      WHERE t.bill_id = ? AND t.bill_type = 'purchase'
+      WHERE t.bill_id = ? AND t.bill_type = 'purchase' AND t.status != 'deleted'
     `);
     const summary = summaryStmt.get(id);
+
+    const totalPaid = summary.total_paid || 0;
+    const debitNotes = summary.total_debit_notes || 0; // Usually negative value
+
+    // Adjusted Total = Original Total + Debit Notes (Debit notes are negative, so they reduce the total)
+    const adjustedTotal = (purchase.total_amount || 0) + debitNotes;
+
+    const balance = adjustedTotal - totalPaid;
+
+    // Determine status
+    let paymentStatus = "pending";
+    if (balance <= 0.9) {
+      // Floating point buffer
+      paymentStatus = "paid";
+    } else if (totalPaid > 0) {
+      paymentStatus = "partial";
+    }
 
     return {
       ...purchase,
       items,
-      adjusted_total_amount: summary.adjusted_total_amount || 0,
-      net_paid_amount: summary.net_paid_amount || 0,
+      // Standardized Payment Summary
+      payment_summary: {
+        total_paid: totalPaid,
+        total_debit_notes: debitNotes,
+        adjusted_total: adjustedTotal,
+        balance: balance > 0 ? balance : 0,
+        status: paymentStatus,
+      },
+      // Root overrides for compatibility with UI tables
+      paid_amount: totalPaid,
+      status: paymentStatus,
+      adjusted_total_amount: adjustedTotal,
+      net_paid_amount: totalPaid,
     };
   } catch (error) {
     console.error("Error in getPurchaseById:", error.message);

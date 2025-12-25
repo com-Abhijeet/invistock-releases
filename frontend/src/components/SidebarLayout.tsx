@@ -12,7 +12,6 @@ import {
   ListItemText,
   useTheme,
   Typography,
-  Divider,
   AppBar,
   IconButton,
   Stack,
@@ -20,178 +19,49 @@ import {
   Tooltip,
   CSSObject,
   Theme,
-  Collapse, // ✅ Import Collapse for animation
+  Collapse,
+  Menu,
+  MenuItem,
 } from "@mui/material";
 import {
-  LayoutDashboard,
-  Boxes,
-  Printer,
-  ReceiptText,
-  Store,
   User,
   Settings,
-  FileText,
-  SquareStack,
-  BadgePercent,
-  IndianRupee,
   ArrowLeft,
-  Notebook,
-  Menu,
-  ChevronLeft,
-  ChevronRight,
+  Menu as MenuIcon, // Alias to avoid conflict with MUI Menu
   ChevronDown,
-  ArchiveRestore,
-  ArchiveX,
-  UserSearch,
-  ChartCandlestick,
-  BookA,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Lock,
+  LogOut,
+  HelpCircle, // Icon for help
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import LowStockNotification from "./layout/LowStockNotification";
 import OverduePaymentsNotification from "./layout/OverduePaymentsNotification";
 import { getShopData } from "../lib/api/shopService";
 import { ShopSetupForm } from "../lib/types/shopTypes";
+import { useAuth } from "../context/AuthContext";
+import GlobalSearch from "./GlobalSearch";
+import KeyboardShortcutsModal from "./KeyboardShortcutModal"; // ✅ Import Modal
 
-const drawerWidth = 250; // Slightly wider to fit headers comfortably
+import theme from "../../theme";
+import { menuSections } from "../config/menu";
+
+const drawerWidth = 260;
 const collapsedDrawerWidth = 72;
 
-const menuSections = [
-  {
-    title: "Analytics & Reports",
-    items: [
-      {
-        label: "Business Dashboard",
-        icon: <LayoutDashboard size={20} />,
-        path: "/dashboard",
-      },
-    ],
-  },
-  {
-    title: "Sales & Billing",
-    items: [
-      {
-        label: "Point of Sale",
-        icon: <BadgePercent size={20} />,
-        path: "/billing",
-      },
-      {
-        label: "Sales Analytics",
-        icon: <ReceiptText size={20} />,
-        path: "/sales",
-      },
-    ],
-  },
-  {
-    title: "Purchasing & Vendors",
-    items: [
-      {
-        label: "Purchase Orders",
-        icon: <FileText size={20} />,
-        path: "/purchase",
-      },
-      {
-        label: "Purchase Analytics",
-        icon: <Boxes size={20} />,
-        path: "/purchase-dashboard",
-      },
-      { label: "Suppliers", icon: <Store size={20} />, path: "/suppliers" },
-    ],
-  },
-  {
-    title: "Inventory & Products",
-    items: [
-      {
-        label: "Inventory Overview",
-        icon: <Printer size={20} />,
-        path: "/inventory",
-      },
-      {
-        label: "Product Catalog",
-        icon: <Boxes size={20} />,
-        path: "/products",
-      },
-      {
-        label: "Stock Adjustments",
-        icon: <Boxes size={20} />,
-        path: "/adjustments",
-      },
-      {
-        label: "Categories",
-        icon: <SquareStack size={20} />,
-        path: "/categories",
-      },
-      {
-        label: "Restock Suggestions",
-        icon: <ArchiveRestore size={20} />,
-        path: "/stock-restock",
-      },
-      {
-        label: "Dead Stock ",
-        icon: <ArchiveX size={20} />,
-        path: "/dead-stock",
-      },
-      {
-        label: "Product ABC Analysis ",
-        icon: <ChartCandlestick size={20} />,
-        path: "/product-abc-page",
-      },
-    ],
-  },
-  {
-    title: "Payments & Transactions",
-    items: [
-      {
-        label: "Payments",
-        icon: <IndianRupee size={20} />,
-        path: "/transactions",
-      },
-
-      { label: "Expenses", icon: <FileText size={20} />, path: "/expenses" },
-      {
-        label: "DayBook",
-        icon: <BookA size={20} />,
-        path: "/daybook",
-      },
-    ],
-  },
-  {
-    title: "CRM & Customers",
-    items: [
-      {
-        label: "Customer Directory",
-        icon: <User size={20} />,
-        path: "/customers",
-      },
-      {
-        label: "Customer Analytics",
-        icon: <UserSearch size={20} />,
-        path: "/customer-analytics",
-      },
-    ],
-  },
-  {
-    title: "Reports",
-    items: [
-      { label: "GST Reports", icon: <Notebook size={20} />, path: "/gst" },
-    ],
-  },
-  {
-    title: "System",
-    items: [
-      { label: "Preferences", icon: <Settings size={20} />, path: "/settings" },
-    ],
-  },
-];
-
-const SidebarNav = ({ isCollapsed }: { isCollapsed: boolean }) => {
+const SidebarNav = ({
+  isCollapsed,
+  onCollapseToggle,
+}: {
+  isCollapsed: boolean;
+  onCollapseToggle: () => void;
+}) => {
   const location = useLocation();
-  const navigate = useNavigate();
-  const theme = useTheme();
 
-  // ✅ State to track which section is currently open
   const [openSection, setOpenSection] = useState<string | null>(null);
 
-  // ✅ Effect: Auto-expand the section that contains the active route
   useEffect(() => {
     const activeSection = menuSections.find((section) =>
       section.items.some((item) => item.path === location.pathname)
@@ -202,7 +72,6 @@ const SidebarNav = ({ isCollapsed }: { isCollapsed: boolean }) => {
   }, [location.pathname]);
 
   const handleToggleSection = (title: string) => {
-    // Toggle: Close if open, Open if closed (Exclusive mode)
     setOpenSection((prev) => (prev === title ? null : title));
   };
 
@@ -210,199 +79,222 @@ const SidebarNav = ({ isCollapsed }: { isCollapsed: boolean }) => {
     <Box
       sx={{
         height: "100%",
-        overflowY: "auto",
-        overflowX: "hidden",
-        "&::-webkit-scrollbar": { width: "4px" },
-        "&::-webkit-scrollbar-track": { background: "transparent" },
-        "&::-webkit-scrollbar-thumb": {
-          background: theme.palette.grey[300],
-          borderRadius: "4px",
-        },
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        bgcolor: theme.palette.background.default, // Soft Grey
+        borderRight: `1px solid ${theme.palette.divider}`,
       }}
     >
-      {/* Back Button */}
-      <Box sx={{ p: 1, mb: 0 }}>
-        <ListItem disablePadding>
-          <Tooltip
-            title="Go Back"
-            placement="right"
-            disableHoverListener={!isCollapsed}
+      {/* Sidebar Header / Toggle */}
+      <Box
+        sx={{
+          p: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: isCollapsed ? "center" : "space-between",
+          minHeight: 64, // Match AppBar height
+          borderBottom: `1px solid ${theme.palette.divider}`,
+        }}
+      >
+        {!isCollapsed && (
+          <Typography
+            variant="h6"
+            fontWeight={800}
+            color="primary.main"
+            sx={{ letterSpacing: "-0.5px" }}
           >
-            <ListItemButton
-              onClick={() => navigate(-1)}
-              sx={{
-                minHeight: 44,
-                justifyContent: isCollapsed ? "center" : "initial",
-                px: 2.5,
-                borderRadius: "8px",
-                color: theme.palette.text.secondary,
-                "&:hover": {
-                  backgroundColor: theme.palette.action.hover,
-                  color: theme.palette.primary.main,
-                },
-              }}
-            >
-              <ListItemIcon
-                sx={{
-                  minWidth: 0,
-                  mr: isCollapsed ? 0 : 2,
-                  justifyContent: "center",
-                  color: "inherit",
-                }}
-              >
-                <ArrowLeft size={20} />
-              </ListItemIcon>
-              <ListItemText
-                primary="Back"
-                sx={{ opacity: isCollapsed ? 0 : 1, whiteSpace: "nowrap" }}
-              />
-            </ListItemButton>
-          </Tooltip>
-        </ListItem>
+            KOSH
+          </Typography>
+        )}
+        <IconButton
+          onClick={onCollapseToggle}
+          sx={{
+            color: theme.palette.text.secondary,
+            "&:hover": { color: theme.palette.primary.main },
+          }}
+        >
+          {isCollapsed ? (
+            <PanelLeftOpen size={20} />
+          ) : (
+            <PanelLeftClose size={20} />
+          )}
+        </IconButton>
       </Box>
-      <Divider />
 
-      {/* Menu Sections */}
-      {menuSections.map((section, index) => {
-        // In collapsed (thin) mode, we force all items to show flat (no accordion)
-        // In expanded mode, we use the accordion logic
-        const isOpen = isCollapsed || openSection === section.title;
+      {/* Scrollable Menu Area */}
+      <Box
+        sx={{
+          flexGrow: 1,
+          overflowY: "auto",
+          overflowX: "hidden",
+          p: 1,
+          "&::-webkit-scrollbar": { width: "4px" },
+          "&::-webkit-scrollbar-track": { background: "transparent" },
+          "&::-webkit-scrollbar-thumb": {
+            background: theme.palette.grey[300],
+            borderRadius: "4px",
+          },
+        }}
+      >
+        {menuSections.map((section, index) => {
+          const isOpen = isCollapsed || openSection === section.title;
+          const hasActiveChild = section.items.some(
+            (item) => item.path === location.pathname
+          );
 
-        return (
-          <Box key={index}>
-            {/* ✅ Section Header (Only clickable in expanded mode) */}
-            {!isCollapsed && (
-              <ListItemButton
-                onClick={() => handleToggleSection(section.title)}
-                sx={{
-                  py: 1,
-                  px: 3,
-                  mt: 1,
-                  borderRadius: "8px",
-                  mx: 1,
-                  "&:hover": { backgroundColor: "transparent" }, // No hover effect on header
-                }}
-              >
-                <ListItemText
-                  primary={section.title.toUpperCase()}
-                  primaryTypographyProps={{
-                    fontSize: "0.7rem",
-                    fontWeight: 700,
-                    color: theme.palette.text.secondary,
-                    letterSpacing: "0.5px",
-                  }}
-                />
-                {/* Chevron Icon */}
-                <Box
+          return (
+            <Box key={index} mb={0.5}>
+              {!isCollapsed && (
+                <ListItemButton
+                  onClick={() => handleToggleSection(section.title)}
                   sx={{
-                    color: theme.palette.text.disabled,
-                    transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 0.2s",
-                    display: "flex",
+                    py: 0.75,
+                    px: 1.5,
+                    mt: 1,
+                    mb: 0.5,
+                    borderRadius: "6px",
+                    "&:hover": { backgroundColor: "transparent" },
                   }}
                 >
-                  <ChevronDown size={16} />
-                </Box>
-              </ListItemButton>
-            )}
+                  <ListItemText
+                    primary={section.title.toUpperCase()}
+                    primaryTypographyProps={{
+                      fontSize: "0.68rem",
+                      fontWeight: 700,
+                      color: hasActiveChild
+                        ? theme.palette.primary.main
+                        : theme.palette.text.secondary,
+                      letterSpacing: "0.8px",
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      color: theme.palette.text.disabled,
+                      transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 0.2s",
+                      display: "flex",
+                    }}
+                  >
+                    <ChevronDown size={14} />
+                  </Box>
+                </ListItemButton>
+              )}
 
-            {/* ✅ Collapsible Content */}
-            <Collapse in={isOpen} timeout="auto" unmountOnExit>
-              <List component="div" disablePadding>
-                {section.items.map((item) => {
-                  const selected = location.pathname === item.path;
-                  return (
-                    <ListItem
-                      key={item.label}
-                      disablePadding
-                      sx={{ display: "block", mb: 0.5 }}
-                    >
-                      <Tooltip
-                        title={isCollapsed ? item.label : ""}
-                        placement="right"
+              <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                <List component="div" disablePadding>
+                  {section.items.map((item) => {
+                    const selected = location.pathname === item.path;
+                    return (
+                      <ListItem
+                        key={item.label}
+                        disablePadding
+                        sx={{ display: "block", mb: 0.25 }}
                       >
-                        <ListItemButton
-                          component={Link}
-                          to={item.path}
-                          selected={selected}
-                          sx={{
-                            minHeight: 44,
-                            justifyContent: isCollapsed ? "center" : "initial",
-                            px: 2.5,
-                            mx: 1,
-                            borderRadius: "8px",
-                            color: selected
-                              ? theme.palette.secondary.contrastText
-                              : theme.palette.text.primary,
-                            backgroundColor: selected
-                              ? theme.palette.secondary.main
-                              : "transparent",
-                            "&.Mui-selected": {
-                              backgroundColor: theme.palette.secondary.main,
-                              color: theme.palette.secondary.contrastText,
-                              "&:hover": {
-                                backgroundColor: theme.palette.secondary.dark,
-                              },
-                            },
-                            "&:hover": {
-                              backgroundColor: selected
-                                ? theme.palette.secondary.dark
-                                : theme.palette.action.hover,
-                              color: selected
-                                ? theme.palette.secondary.contrastText
-                                : theme.palette.primary.main,
-                              "& .MuiListItemIcon-root": {
-                                color: selected
-                                  ? theme.palette.secondary.contrastText
-                                  : theme.palette.primary.main,
-                              },
-                            },
-                          }}
+                        <Tooltip
+                          title={isCollapsed ? item.label : ""}
+                          placement="right"
+                          arrow
                         >
-                          <ListItemIcon
+                          <ListItemButton
+                            component={Link}
+                            to={item.path}
+                            selected={selected}
                             sx={{
-                              minWidth: 0,
-                              mr: isCollapsed ? 0 : 2,
-                              justifyContent: "center",
+                              minHeight: 40,
+                              justifyContent: isCollapsed
+                                ? "center"
+                                : "initial",
+                              px: 2,
+                              mx: 0.5,
+                              borderRadius: "6px",
                               color: selected
-                                ? "inherit"
-                                : theme.palette.text.secondary,
+                                ? theme.palette.primary.main
+                                : theme.palette.text.primary,
+                              backgroundColor: selected
+                                ? theme.palette.action.selected
+                                : "transparent",
+                              position: "relative",
+                              overflow: "hidden",
+                              transition: "all 0.2s ease-in-out",
+                              // Active Indicator
+                              "&::before": selected
+                                ? {
+                                    content: '""',
+                                    position: "absolute",
+                                    left: 0,
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    height: "60%",
+                                    width: "4px",
+                                    backgroundColor: theme.palette.primary.main,
+                                    borderTopRightRadius: "4px",
+                                    borderBottomRightRadius: "4px",
+                                  }
+                                : {},
+                              "&:hover": {
+                                backgroundColor: selected
+                                  ? theme.palette.action.selected
+                                  : theme.palette.action.hover,
+                                color: theme.palette.primary.main,
+                                "& .MuiListItemIcon-root": {
+                                  color: theme.palette.primary.main,
+                                },
+                              },
                             }}
                           >
-                            {item.icon}
-                          </ListItemIcon>
-                          {!isCollapsed && (
-                            <ListItemText
-                              primary={item.label}
-                              primaryTypographyProps={{
-                                fontSize: "0.875rem",
-                                fontWeight: selected ? 600 : 400,
+                            <ListItemIcon
+                              sx={{
+                                minWidth: 0,
+                                mr: isCollapsed ? 0 : 1.5,
+                                justifyContent: "center",
+                                color: selected
+                                  ? theme.palette.primary.main
+                                  : theme.palette.text.secondary,
+                                transition: "color 0.2s",
                               }}
-                            />
-                          )}
-                        </ListItemButton>
-                      </Tooltip>
-                    </ListItem>
-                  );
-                })}
-              </List>
-            </Collapse>
-
-            {/* Divider logic for collapsed mode or visual separation */}
-            {/* {index < menuSections.length - 1 && isCollapsed && (
-              <Divider sx={{ my: 1 }} />
-            )} */}
-          </Box>
-        );
-      })}
+                            >
+                              {item.icon}
+                            </ListItemIcon>
+                            {!isCollapsed && (
+                              <ListItemText
+                                primary={item.label}
+                                primaryTypographyProps={{
+                                  fontSize: "0.875rem",
+                                  fontWeight: selected ? 600 : 400,
+                                }}
+                              />
+                            )}
+                          </ListItemButton>
+                        </Tooltip>
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              </Collapse>
+            </Box>
+          );
+        })}
+      </Box>
     </Box>
   );
 };
 
 export default function SidebarLayout({ children }: { children: ReactNode }) {
-  const [shop, setShop] = useState<ShopSetupForm | null>(null);
+  const { user, logout } = useAuth();
+  const [_shop, setShop] = useState<ShopSetupForm | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [isFocusLocked, setIsFocusLocked] = useState(false);
+
+  // Shortcuts Modal
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  // Profile Menu State
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const openMenu = Boolean(anchorEl);
+
   const theme = useTheme();
   const navigate = useNavigate();
 
@@ -410,10 +302,88 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
     getShopData().then(setShop);
   }, []);
 
+  // Shortcut Handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Help Shortcut (Shift + ?)
+      if (e.key === "?") {
+        e.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
+
+      // 2. Check for Ctrl+Alt+F (Toggle Locked Mode)
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        if (isFocusLocked) {
+          setIsFocusLocked(false);
+          setIsFocusMode(false);
+          toast.success("Focus Mode Unlocked");
+        } else {
+          setIsFocusMode(true);
+          setIsFocusLocked(true);
+          toast.success("Focus Mode Locked");
+        }
+        return;
+      }
+
+      // 3. Check for Ctrl+F (Toggle Mode if NOT locked)
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toLowerCase() === "f" &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        if (isFocusLocked) {
+          toast.error("Focus mode is locked. Press Ctrl + Alt + F to exit.");
+          return;
+        }
+        setIsFocusMode((prev) => !prev);
+      }
+
+      // 4. Allow Escape to exit focus mode (if NOT locked)
+      if (e.key === "Escape" && isFocusMode) {
+        if (isFocusLocked) {
+          toast.error("Focus mode is locked. Press Ctrl + Alt + F to exit.");
+          return;
+        }
+        setIsFocusMode(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isFocusMode, isFocusLocked]);
+
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
   const handleCollapseToggle = () => setIsCollapsed(!isCollapsed);
 
-  // Mixins for smooth transition
+  const handleProfileClick = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleProfileClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleLogout = async () => {
+    handleProfileClose();
+    await logout();
+  };
+
+  const handleSettingsClick = () => {
+    handleProfileClose();
+    navigate("/settings");
+  };
+
+  const handleFocusExitClick = () => {
+    if (isFocusLocked) {
+      toast.error("Focus mode is locked. Press Ctrl + Alt + F to exit.");
+      return;
+    }
+    setIsFocusMode(false);
+  };
+
   const openedMixin = (theme: Theme): CSSObject => ({
     width: drawerWidth,
     transition: theme.transitions.create("width", {
@@ -438,50 +408,62 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
         display: "flex",
         height: "100vh",
         overflow: "hidden",
-        bgcolor: "grey.50",
+        bgcolor: theme.palette.background.paper,
       }}
     >
-      <Box
-        component="nav"
-        sx={{
-          width: { sm: isCollapsed ? collapsedDrawerWidth : drawerWidth },
-          flexShrink: { sm: 0 },
-          transition: theme.transitions.create("width", {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.enteringScreen,
-          }),
-        }}
-      >
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{ keepMounted: true }}
+      {/* Sidebar - HIDDEN IN FOCUS MODE */}
+      {!isFocusMode && (
+        <Box
+          component="nav"
           sx={{
-            display: { xs: "block", sm: "none" },
-            "& .MuiDrawer-paper": { width: drawerWidth },
+            width: { sm: isCollapsed ? collapsedDrawerWidth : drawerWidth },
+            flexShrink: { sm: 0 },
+            transition: theme.transitions.create("width", {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
           }}
         >
-          <SidebarNav isCollapsed={false} />
-        </Drawer>
+          <Drawer
+            variant="temporary"
+            open={mobileOpen}
+            onClose={handleDrawerToggle}
+            ModalProps={{ keepMounted: true }}
+            sx={{
+              display: { xs: "block", sm: "none" },
+              "& .MuiDrawer-paper": {
+                width: drawerWidth,
+                backgroundColor: theme.palette.background.default,
+              },
+            }}
+          >
+            <SidebarNav
+              isCollapsed={false}
+              onCollapseToggle={handleDrawerToggle}
+            />
+          </Drawer>
 
-        <Drawer
-          variant="permanent"
-          open={!isCollapsed}
-          sx={{
-            display: { xs: "none", sm: "block" },
-            "& .MuiDrawer-paper": {
-              boxSizing: "border-box",
-              whiteSpace: "nowrap",
-              borderRight: "1px solid rgba(0,0,0,0.08)",
-              backgroundColor: "#fff",
-              ...(isCollapsed ? closedMixin(theme) : openedMixin(theme)),
-            },
-          }}
-        >
-          <SidebarNav isCollapsed={isCollapsed} />
-        </Drawer>
-      </Box>
+          <Drawer
+            variant="permanent"
+            open={!isCollapsed}
+            sx={{
+              display: { xs: "none", sm: "block" },
+              "& .MuiDrawer-paper": {
+                boxSizing: "border-box",
+                whiteSpace: "nowrap",
+                borderRight: "none", // Handled by SidebarNav container
+                backgroundColor: theme.palette.background.default,
+                ...(isCollapsed ? closedMixin(theme) : openedMixin(theme)),
+              },
+            }}
+          >
+            <SidebarNav
+              isCollapsed={isCollapsed}
+              onCollapseToggle={handleCollapseToggle}
+            />
+          </Drawer>
+        </Box>
+      )}
 
       {/* MAIN LAYOUT */}
       <Box
@@ -492,101 +474,197 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
           flexDirection: "column",
           height: "100vh",
           overflow: "hidden",
+          position: "relative",
         }}
       >
-        <AppBar
-          position="static"
-          elevation={0}
-          sx={{
-            bgcolor: "#fff",
-            color: "text.primary",
-            borderBottom: "1px solid rgba(0,0,0,0.08)",
-            zIndex: theme.zIndex.drawer + 1,
-          }}
-        >
-          <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }}>
-            <IconButton
-              color="inherit"
-              edge="start"
-              onClick={handleDrawerToggle}
-              sx={{ mr: 2, display: { sm: "none" } }}
-            >
-              <Menu />
-            </IconButton>
-            <IconButton
-              onClick={handleCollapseToggle}
-              sx={{
-                mr: 2,
-                display: { xs: "none", sm: "flex" },
-                color: theme.palette.text.secondary,
-              }}
-            >
-              {isCollapsed ? (
-                <ChevronRight size={20} />
-              ) : (
-                <ChevronLeft size={20} />
-              )}
-            </IconButton>
-
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <Typography
-                variant="h6"
-                fontWeight={800}
-                color="primary.main"
-                onClick={() => navigate("/about")}
-                sx={{ cursor: "pointer", letterSpacing: "-0.5px" }}
+        {/* AppBar - HIDDEN IN FOCUS MODE */}
+        {!isFocusMode && (
+          <AppBar
+            position="static"
+            elevation={0}
+            sx={{
+              bgcolor: theme.palette.background.paper,
+              color: theme.palette.text.primary,
+              borderBottom: `1px solid ${theme.palette.divider}`,
+              zIndex: theme.zIndex.drawer + 1,
+            }}
+          >
+            <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }}>
+              <IconButton
+                color="inherit"
+                edge="start"
+                onClick={handleDrawerToggle}
+                sx={{ mr: 2, display: { sm: "none" } }}
               >
-                KOSH
-              </Typography>
-              <Divider
-                orientation="vertical"
-                flexItem
-                sx={{ height: 24, alignSelf: "center" }}
-              />
-              <Typography
-                variant="body2"
-                fontWeight={500}
-                onClick={() => navigate("/settings")}
-                sx={{
-                  cursor: "pointer",
-                  "&:hover": { color: "primary.main" },
-                  maxWidth: 200,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {shop ? shop.shop_name : "Loading..."}
-              </Typography>
-            </Stack>
+                <MenuIcon />
+              </IconButton>
 
-            <Box sx={{ flexGrow: 1 }} />
-
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <LowStockNotification />
-              <OverduePaymentsNotification />
-              <Tooltip title="Profile">
-                <IconButton size="small" sx={{ ml: 1 }}>
-                  <Box
-                    sx={{
-                      width: 32,
-                      height: 32,
-                      bgcolor: "primary.main",
-                      color: "white",
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                    onClick={() => navigate("/settings")}
-                  >
-                    <User size={18} />
-                  </Box>
+              {/* Back Button */}
+              <Tooltip title="Go Back">
+                <IconButton
+                  onClick={() => navigate(-1)}
+                  sx={{
+                    mr: 2,
+                    color: theme.palette.text.secondary,
+                    "&:hover": { color: theme.palette.primary.main },
+                  }}
+                >
+                  <ArrowLeft size={20} />
                 </IconButton>
               </Tooltip>
-            </Stack>
-          </Toolbar>
-        </AppBar>
+
+              {/* ✅ GLOBAL SEARCH COMPONENT */}
+              <Box
+                sx={{ flexGrow: 1, display: "flex", justifyContent: "center" }}
+              >
+                <GlobalSearch />
+              </Box>
+
+              <Stack direction="row" alignItems="center" spacing={1}>
+                {/* Help Shortcut Icon */}
+                <Tooltip title="Keyboard Shortcuts (?)">
+                  <IconButton
+                    size="small"
+                    onClick={() => setShortcutsOpen(true)}
+                    sx={{ color: "text.secondary" }}
+                  >
+                    <HelpCircle size={20} />
+                  </IconButton>
+                </Tooltip>
+
+                <LowStockNotification />
+                <OverduePaymentsNotification />
+
+                {/* --- User Profile Dropdown --- */}
+                {user && (
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight="bold"
+                    sx={{ mr: 1, display: { xs: "none", sm: "block" } }}
+                  >
+                    {user.name}
+                  </Typography>
+                )}
+
+                <Tooltip title="Account Settings">
+                  <IconButton
+                    onClick={handleProfileClick}
+                    size="small"
+                    sx={{ ml: 1 }}
+                    aria-controls={openMenu ? "account-menu" : undefined}
+                    aria-haspopup="true"
+                    aria-expanded={openMenu ? "true" : undefined}
+                  >
+                    <Box
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        bgcolor: theme.palette.primary.main,
+                        color: theme.palette.primary.contrastText,
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <User size={18} />
+                    </Box>
+                  </IconButton>
+                </Tooltip>
+
+                <Menu
+                  anchorEl={anchorEl}
+                  id="account-menu"
+                  open={openMenu}
+                  onClose={handleProfileClose}
+                  onClick={handleProfileClose}
+                  PaperProps={{
+                    elevation: 0,
+                    sx: {
+                      overflow: "visible",
+                      filter: "drop-shadow(0px 2px 8px rgba(0,0,0,0.32))",
+                      mt: 1.5,
+                      minWidth: 150,
+                      "& .MuiAvatar-root": {
+                        width: 32,
+                        height: 32,
+                        ml: -0.5,
+                        mr: 1,
+                      },
+                      "&:before": {
+                        content: '""',
+                        display: "block",
+                        position: "absolute",
+                        top: 0,
+                        right: 14,
+                        width: 10,
+                        height: 10,
+                        bgcolor: "background.paper",
+                        transform: "translateY(-50%) rotate(45deg)",
+                        zIndex: 0,
+                      },
+                    },
+                  }}
+                  transformOrigin={{ horizontal: "right", vertical: "top" }}
+                  anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+                >
+                  <MenuItem onClick={handleSettingsClick}>
+                    <ListItemIcon>
+                      <Settings size={18} />
+                    </ListItemIcon>
+                    Settings
+                  </MenuItem>
+                  <MenuItem onClick={handleLogout} sx={{ color: "error.main" }}>
+                    <ListItemIcon>
+                      <LogOut size={18} color={theme.palette.error.main} />
+                    </ListItemIcon>
+                    Logout
+                  </MenuItem>
+                </Menu>
+              </Stack>
+            </Toolbar>
+          </AppBar>
+        )}
+
+        {/* Focus Mode Exit Button - VISIBLE ONLY IN FOCUS MODE */}
+        {isFocusMode && (
+          <Box
+            sx={{
+              position: "absolute",
+              top: 16,
+              left: 16,
+              zIndex: 1200,
+            }}
+          >
+            <Tooltip
+              title={
+                isFocusLocked
+                  ? "Focus Locked (Ctrl+Alt+F)"
+                  : "Exit Focus Mode (Esc)"
+              }
+            >
+              <IconButton
+                onClick={handleFocusExitClick}
+                sx={{
+                  bgcolor: theme.palette.background.paper,
+                  boxShadow: 3,
+                  border: `1px solid ${theme.palette.divider}`,
+                  "&:hover": {
+                    bgcolor: theme.palette.action.hover,
+                    transform: "scale(1.05)",
+                  },
+                  transition: "all 0.2s",
+                }}
+              >
+                {isFocusLocked ? (
+                  <Lock size={20} color={theme.palette.error.main} />
+                ) : (
+                  <ArrowLeft size={20} color={theme.palette.text.primary} />
+                )}
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
 
         <Box
           component="main"
@@ -595,12 +673,18 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
             overflowY: "auto",
             overflowX: "hidden",
             p: 0,
-            bgcolor: theme.palette.grey[50],
+            bgcolor: theme.palette.background.paper, // Main Content White
           }}
         >
           {children}
         </Box>
       </Box>
+
+      {/* Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal
+        open={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+      />
     </Box>
   );
 }

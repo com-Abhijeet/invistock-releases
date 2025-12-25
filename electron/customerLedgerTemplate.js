@@ -56,7 +56,7 @@ function createCustomerLedgerHTML(shop, customer, ledger) {
           <td colspan="2">${new Date(txn.transaction_date).toLocaleDateString(
             "en-IN"
           )}</td>
-          <td class="right">(${txn.payment_mode})</td>
+          <td class="right">(${txn.payment_mode || "Unspecified"})</td>
           <td class="right">- ₹${txn.amount.toLocaleString("en-IN")}</td>
         </tr>
       `

@@ -108,3 +108,13 @@ export async function fetchCustomerOverdueSummary(): Promise<OverdueSummary> {
   const response = await api.get(`${BASE_URL}/overdue-summary`);
   return response.data.data;
 }
+
+export const getCustomerLedger = async (
+  customerId: number,
+  filters: { startDate: string; endDate: string }
+) => {
+  const response = await api.get(`${BASE_URL}/${customerId}/ledger`, {
+    params: filters,
+  });
+  return response.data;
+};

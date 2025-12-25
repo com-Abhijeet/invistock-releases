@@ -37,6 +37,7 @@ import {
   MapPin,
   Phone,
   Printer,
+  FileText, // ✅ Added Icon for View Ledger
 } from "lucide-react";
 import theme from "../../theme";
 import type { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
@@ -322,23 +323,39 @@ export default function CustomerPage() {
         onRefresh={loadData}
         onFilterChange={setActiveFilters}
         actions={
-          <Button
-            variant="contained"
-            onClick={handleOpenPrintModal} // ✅ Call this to open the modal
-            startIcon={<Printer size={18} />}
-            sx={{
-              borderRadius: "12px",
-              textTransform: "none",
-              fontWeight: 600,
-              px: 3,
-              boxShadow: "none",
-              "&:hover": {
-                boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-              },
-            }}
-          >
-            Print Ledger
-          </Button>
+          <Stack direction="row" spacing={2}>
+            {/* ✅ Added View Statement Button */}
+            <Button
+              variant="outlined"
+              onClick={() => navigate(`/customers/ledger/${customerId}`)}
+              startIcon={<FileText size={18} />}
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                fontWeight: 600,
+                px: 3,
+              }}
+            >
+              View Statement
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleOpenPrintModal}
+              startIcon={<Printer size={18} />}
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                fontWeight: 600,
+                px: 3,
+                boxShadow: "none",
+                "&:hover": {
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                },
+              }}
+            >
+              Print Ledger
+            </Button>
+          </Stack>
         }
       />
       <Card

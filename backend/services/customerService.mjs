@@ -187,3 +187,7 @@ export function getOverdueSummary() {
     ],
   };
 }
+
+export const getCustomerLedgerService = async (customerId, filters) => {
+  return customerRepository.getCustomerLedger(customerId, filters);
+};

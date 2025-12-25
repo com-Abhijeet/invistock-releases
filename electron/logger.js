@@ -1,12 +1,30 @@
 const log = require("electron-log");
+const path = require("path");
+const { app } = require("electron");
 
-// ... your existing configurations ...
+// file level
 log.transports.file.level = "info";
 
-// ✅ ADD THIS LINE
-// This will automatically catch all console.log, .error, .warn, etc.
-// and route them through electron-log.
-log.overrideConsole;
+// put logs under %APPDATA%/<your app>/logs/main.log
+log.transports.file.resolvePath = () =>
+  path.join(app.getPath("userData"), "logs", "main.log");
 
-log.catchErrors;
+// catch uncaught exceptions / unhandled rejections
+log.catchErrors({ showDialog: false });
+
+// manual override of console.* to ensure output goes to electron-log
+["log", "info", "warn", "error", "debug"].forEach((method) => {
+  const original = console[method] ? console[method].bind(console) : () => {};
+  console[method] = (...args) => {
+    // map console.log -> info
+    const level = method === "log" ? "info" : method;
+    if (typeof log[level] === "function") {
+      log[level](...args);
+    } else {
+      log.info(...args);
+    }
+    original(...args);
+  };
+});
+
 module.exports = log;

@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ThemeProvider, CssBaseline } from "@mui/material";
-import theme; // Reuse your existing theme!
+import theme from "../theme"; // Reuse your existing theme!
 import MobileApp from "./MobileApp"; // We will create this next
 import { Toaster } from "react-hot-toast";
 

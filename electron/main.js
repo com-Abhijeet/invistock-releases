@@ -1,7 +1,6 @@
 /**
  * ===================================================================
  * Main Electron Process (main.js)
- * ...
  * ===================================================================
  */
 
@@ -15,10 +14,12 @@ const {
   protocol,
   shell,
 } = require("electron");
+
 const os = require("os");
 const path = require("path");
 const fs = require("fs");
 const log = require("electron-log");
+const logger = require("./logger.js");
 const xlsx = require("xlsx");
 const { Bonjour } = require("bonjour-service");
 const http = require("http");
@@ -56,14 +57,17 @@ const {
   sendWhatsAppPdf,
 } = require("./whatsappService");
 const { initializeUpdater } = require("./updater.js");
+// ✅ Import new Connection Handlers
+const {
+  registerConnectionHandlers,
+  loadManualConfigSync,
+} = require("./ipc/connectionHandlers.js");
 
 const config = require("./config.js");
 app.disableHardwareAcceleration();
 
-if (config.isDev) {
-  app.commandLine.appendSwitch("ignore-certificate-errors");
-  app.commandLine.appendSwitch("allow-insecure-localhost", "true");
-}
+app.commandLine.appendSwitch("ignore-certificate-errors");
+app.commandLine.appendSwitch("allow-insecure-localhost", "true");
 
 const dbPath = config.paths.database;
 let lastKnownServerUrl = null;
@@ -120,6 +124,12 @@ function createWindow() {
   mainWindow.webContents.on("did-finish-load", () => {
     const appMode = config.isClientMode ? "client" : "server";
     mainWindow.webContents.send("set-app-mode", appMode);
+
+    // If we already found a server (manual or bonjour) before window loaded, send it now
+    if (lastKnownServerUrl) {
+      mainWindow.webContents.send("set-server-url", lastKnownServerUrl);
+    }
+
     [0, 500, 1500, 3000].forEach((delay) =>
       setTimeout(() => {
         if (!mainWindow.isDestroyed())
@@ -129,6 +139,7 @@ function createWindow() {
   });
 
   initializeWhatsApp(mainWindow);
+  
   if (config.isDev) {
     mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools();
@@ -148,23 +159,44 @@ app.whenReady().then(() => {
   initializeLicenseHandlers();
 
   if (config.isClientMode) {
-    const savedKey = null; // keep original license check behavior as needed
     createWindow();
-    const bonjour = new Bonjour();
-    const browser = bonjour.find({ type: "https" }, (service) => {
-      if (service.name === "KOSH-Main-Server") {
-        const serverUrl = `https://${service.host}:${service.port}`;
-        lastKnownServerUrl = serverUrl;
-        [0, 500, 1500, 3000].forEach((delay) =>
-          setTimeout(() => {
-            if (mainWindow && !mainWindow.isDestroyed())
-              mainWindow.webContents.send("set-server-url", serverUrl);
-          }, delay)
-        );
-        browser.stop();
-      }
-    });
+
+    // ✅ 1. Check for Manual Configuration FIRST
+    const manualServer = loadManualConfigSync();
+
+    if (manualServer) {
+      console.log("🔵 Using Manual Server URL:", manualServer);
+      lastKnownServerUrl = manualServer;
+
+      // Retry sending to window a few times to ensure it receives it after load
+      [0, 500, 1500, 3000].forEach((delay) =>
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed())
+            mainWindow.webContents.send("set-server-url", manualServer);
+        }, delay)
+      );
+    } else {
+      // ✅ 2. Fallback to Bonjour Discovery
+      console.log("🔵 Starting Bonjour Discovery...");
+      const bonjour = new Bonjour();
+      const browser = bonjour.find({ type: "https" }, (service) => {
+        if (service.name === "KOSH-Main-Server") {
+          const serverUrl = `https://${service.host}:${service.port}`;
+          lastKnownServerUrl = serverUrl;
+          console.log("🔵 Bonjour discovered server:", serverUrl);
+
+          [0, 500, 1500, 3000].forEach((delay) =>
+            setTimeout(() => {
+              if (mainWindow && !mainWindow.isDestroyed())
+                mainWindow.webContents.send("set-server-url", serverUrl);
+            }, delay)
+          );
+          browser.stop();
+        }
+      });
+    }
   } else {
+    // Server Mode Startup
     let serverStarted = false;
     try {
       startServer(dbPath);
@@ -211,6 +243,10 @@ app.whenReady().then(() => {
     getAppMode: () => lastKnownAppMode,
     mainWindow,
   });
+
+  // ✅ Register the new Connection Handlers
+  registerConnectionHandlers(ipcMain);
+
   registerGDriveHandlers(ipcMain, { mainWindow });
   registerFileDialogHandlers(ipcMain, { mainWindow });
   registerBackupHandlers(ipcMain, { dbPath, app });
@@ -233,50 +269,34 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", async (event) => {
-  // 1. If we have already finished our work, allow the quit to happen
   if (isQuitting) {
     return;
   }
-
-  // 2. Prevent the app from quitting immediately
   event.preventDefault();
-
-  // 3. Set the flag so the NEXT app.quit() call succeeds
   isQuitting = true;
 
   if (!config.isClientMode) {
     console.log("--- Application Shutting Down ---");
 
     try {
-      // Dynamically load services to ensure they are ready
       const { isConnected, uploadBackup } = require("./googleDriveService.js");
-
-      // ✅ Check connection and WAIT for upload
       if (isConnected()) {
         const date = new Date().toISOString().split("T")[0];
         const backupFileName = `KOSH-Backup-${date}.db`;
-
         console.log("[GDRIVE] Uploading backup...");
         try {
           await uploadBackup(dbPath, backupFileName);
           console.log("[GDRIVE] Upload complete.");
         } catch (backupError) {
           console.error("[GDRIVE] Upload failed:", backupError.message);
-          // Continue shutdown even if backup fails
-          console.warn(
-            "[GDRIVE] Proceeding with shutdown despite backup failure."
-          );
         }
       } else {
         console.log("[GDRIVE] Not connected. Skipping backup.");
       }
-
-      // Shutdown the Express server
       shutdownBackend();
     } catch (error) {
       console.error("[SHUTDOWN] Error during shutdown:", error);
     } finally {
-      // 4. Force Quit (This triggers before-quit again, but isQuitting is true)
       app.quit();
     }
   } else {

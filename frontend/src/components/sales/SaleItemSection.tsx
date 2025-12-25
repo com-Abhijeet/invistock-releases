@@ -67,6 +67,8 @@ export default function SaleItemSection({
     {}
   );
 
+  console.log("Items in sales item section", items);
+
   useEffect(() => {
     if (inputValue.trim() === "") {
       setSearchResults([]);
@@ -355,7 +357,7 @@ export default function SaleItemSection({
                         onClick={() => setEditingRowIndex(idx)}
                         sx={{ cursor: "pointer", fontWeight: 500 }}
                       >
-                        {product?.name || "Select Product"}
+                        {item.product_name || "Select Product"}
                       </Typography>
                     )}
                   </TableCell>

@@ -1,7 +1,17 @@
 "use client";
-import { Box } from "@mui/material";
-import StatisticCard from "../StatisticCard";
-import { BarChart3, AlertCircle, ShoppingBag, User } from "lucide-react";
+
+import { Box, CircularProgress } from "@mui/material";
+import Grid from "@mui/material/GridLegacy";
+import { DataCard } from "../../components/DataCard";
+import {
+  BarChart3,
+  AlertCircle,
+  ShoppingBag,
+  User,
+  TrendingUp,
+  CreditCard,
+} from "lucide-react";
+import theme from "../../../theme";
 import type {
   PurchaseKPI,
   PurchaseSummary,
@@ -15,75 +25,87 @@ interface Props {
 const currency = (val: number | null | undefined) =>
   val ? `₹${val.toLocaleString("en-IN")}` : "₹0";
 
-const cardStyle = {
-  flex: "1 1 180px", // Responsive flex grow and shrink
-  minWidth: "180px",
-  maxWidth: "220px",
-};
-
 const PurchaseStatistics = ({ summary, kpi }: Props) => {
-  // ... (imports and other code)
+  // If data is loading (null), show spinner
+  if (!summary || !kpi) {
+    return (
+      <Box display="flex" justifyContent="center" p={3}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  // --- Row 1: Core Financials (3 cards) ---
+  const row1Stats = [
+    {
+      title: "Total Purchase",
+      value: currency(summary.total_amount),
+      icon: <BarChart3 size={24} />,
+      color: theme.palette.primary.main,
+    },
+    {
+      title: "Total Paid",
+      value: currency(summary.paid_amount),
+      icon: <ShoppingBag size={24} />,
+      color: theme.palette.success.main,
+    },
+    {
+      title: "Total Unpaid",
+      value: currency(summary.unpaid_amount),
+      icon: <AlertCircle size={24} />,
+      color: theme.palette.error.main,
+    },
+  ];
+
+  // --- Row 2: Operational / Analysis (3 cards) ---
+  const row2Stats = [
+    {
+      title: "Avg. Purchase Value",
+      value: currency(kpi.avg_purchase_value),
+      icon: <CreditCard size={24} />, // Changed icon for variety
+      color: theme.palette.info.main,
+    },
+    {
+      title: "Max Purchase Value",
+      value: currency(kpi.max_purchase),
+      icon: <TrendingUp size={24} />, // Changed icon for variety
+      color: theme.palette.warning.main,
+    },
+    {
+      title: "Top Supplier",
+      value: kpi.top_supplier?.supplier_name || "No Data",
+      icon: <User size={24} />,
+      color: theme.palette.secondary.main,
+    },
+  ];
 
   return (
-    <Box
-      display="flex"
-      flexWrap="wrap"
-      gap={2}
-      sx={{
-        mt: 1,
-        pb: { xs: 1, md: 0 },
-      }}
-    >
-      {summary && (
-        <>
-          <Box sx={cardStyle}>
-            <StatisticCard
-              title="Total Purchase"
-              value={currency(summary.total_amount) || "₹0"}
-              icon={<BarChart3 />}
+    <Box mb={3}>
+      <Grid container spacing={2}>
+        {/* Row 1 */}
+        {row1Stats.map((stat, index) => (
+          <Grid item xs={12} sm={6} md={4} key={`r1-${index}`}>
+            <DataCard
+              title={stat.title}
+              value={stat.value}
+              icon={stat.icon}
+              color={stat.color}
             />
-          </Box>
-          <Box sx={cardStyle}>
-            <StatisticCard
-              title="Paid"
-              value={currency(summary.paid_amount) || "₹0"}
-              icon={<ShoppingBag />}
+          </Grid>
+        ))}
+
+        {/* Row 2 */}
+        {row2Stats.map((stat, index) => (
+          <Grid item xs={12} sm={6} md={4} key={`r2-${index}`}>
+            <DataCard
+              title={stat.title}
+              value={stat.value}
+              icon={stat.icon}
+              color={stat.color}
             />
-          </Box>
-          <Box sx={cardStyle}>
-            <StatisticCard
-              title="Unpaid"
-              value={currency(summary.unpaid_amount) || "₹0"}
-              icon={<AlertCircle />}
-            />
-          </Box>
-        </>
-      )}
-      {kpi && (
-        <>
-          <Box sx={cardStyle}>
-            <StatisticCard
-              title="Avg Purchase"
-              value={`₹${kpi.avg_purchase_value?.toFixed(0) ?? "0"}`}
-              icon={<BarChart3 />}
-            />
-          </Box>
-          <Box sx={cardStyle}>
-            <StatisticCard
-              title="Max Purchase"
-              value={`₹${kpi.max_purchase?.toFixed(0) ?? "0"}`}
-              icon={<BarChart3 />}
-            />
-          </Box>
-          <Box sx={cardStyle}>
-            <StatisticCard
-              title="Top Supplier"
-              value={kpi.top_supplier?.supplier_name || "No supplier found"}
-              icon={<User />}
-            />
-          </Box>
-        </>
-      )}
+          </Grid>
+        ))}
+      </Grid>
     </Box>
   );
 };

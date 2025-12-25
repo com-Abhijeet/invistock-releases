@@ -52,7 +52,12 @@ contextBridge.exposeInMainWorld("electron", {
         "get-gdrive-token-expiry",
         "check-gdrive-token-expiry",
 
-        // ✅ Updater Channels (Must be whitelisted for the helper below to work)
+        // ✅ Connection & Network Channels
+        "get-network-details",
+        "set-manual-server",
+        "get-manual-server",
+
+        // ✅ Updater Channels
         "check-for-updates",
         "get-app-version",
         "restart-app",
@@ -78,7 +83,6 @@ contextBridge.exposeInMainWorld("electron", {
         "update-error",
       ];
       if (validReceiveChannels.includes(channel)) {
-        // Deliberately strip event as it includes `sender`
         ipcRenderer.on(channel, (event, ...args) => callback(...args));
       }
     },
@@ -87,7 +91,6 @@ contextBridge.exposeInMainWorld("electron", {
         "export-progress",
         "whatsapp-status",
         "gdrive-connected",
-        // ✅ Updater Events
         "update-available",
         "update-not-available",
         "update-progress",
@@ -100,7 +103,7 @@ contextBridge.exposeInMainWorld("electron", {
     },
   },
 
-  // --- EXISTING HELPER FUNCTIONS ---
+  // --- HELPER FUNCTIONS ---
   onSetAppMode: (callback) => {
     ipcRenderer.on("set-app-mode", (event, mode) => callback(mode));
   },
@@ -112,6 +115,11 @@ contextBridge.exposeInMainWorld("electron", {
   getAppMode: () => ipcRenderer.invoke("get-app-mode"),
   getServerUrl: () => ipcRenderer.invoke("get-server-url"),
   getLocalIp: () => ipcRenderer.invoke("get-local-ip"),
+
+  // ✅ NEW CONNECTION METHODS
+  getNetworkDetails: () => ipcRenderer.invoke("get-network-details"),
+  setManualServer: (url) => ipcRenderer.invoke("set-manual-server", url),
+  getManualServer: () => ipcRenderer.invoke("get-manual-server"),
 
   // --- WHATSAPP ---
   openExternalUrl: (url) => ipcRenderer.invoke("open-external-url", url),
@@ -130,7 +138,6 @@ contextBridge.exposeInMainWorld("electron", {
   loginGDrive: () => ipcRenderer.invoke("gdrive-login"),
   onGDriveConnected: (callback) => ipcRenderer.on("gdrive-connected", callback),
   getMachineId: () => ipcRenderer.invoke("get-machine-id"),
-  // ✅ NEW: Google Drive token expiry
   getGDriveTokenExpiry: () => ipcRenderer.invoke("get-gdrive-token-expiry"),
   checkGDriveTokenExpiry: () => ipcRenderer.invoke("check-gdrive-token-expiry"),
   onGDriveTokenExpiring: (callback) =>
@@ -138,13 +145,11 @@ contextBridge.exposeInMainWorld("electron", {
   onGDriveTokenExpired: (callback) =>
     ipcRenderer.on("gdrive-token-expired", callback),
 
-  // ✅ UPDATER NAMESPACE (New)
+  // ✅ UPDATER NAMESPACE
   updater: {
     checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
     restartApp: () => ipcRenderer.invoke("restart-app"),
     getAppVersion: () => ipcRenderer.invoke("get-app-version"),
-
-    // Listeners
     onUpdateAvailable: (callback) =>
       ipcRenderer.on("update-available", (_event, info) => callback(info)),
     onUpdateNotAvailable: (callback) =>
@@ -157,8 +162,6 @@ contextBridge.exposeInMainWorld("electron", {
       ),
     onUpdateDownloaded: (callback) =>
       ipcRenderer.on("update-downloaded", (_event, info) => callback(info)),
-
-    // Cleanup for updater events
     removeAllListeners: (channel) => {
       const validChannels = [
         "update-available",

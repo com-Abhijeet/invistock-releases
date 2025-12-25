@@ -24,4 +24,6 @@ customerRoutes.get(
   "/overdue-summary",
   customerController.getCustomerOverdueSummaryController
 );
+
+customerRoutes.get("/:id/ledger", customerController.getCustomerLedger);
 export default customerRoutes;

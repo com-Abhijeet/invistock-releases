@@ -1,4 +1,3 @@
-// src/components/transactions/AddEditTransactionModal.tsx
 "use client";
 
 import {
@@ -16,6 +15,11 @@ import {
   Select,
   Autocomplete,
   CircularProgress,
+  Card,
+  CardContent,
+  Stack,
+  Divider,
+  Alert,
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import {
@@ -24,8 +28,14 @@ import {
 } from "../../lib/api/transactionService";
 import { getCustomers } from "../../lib/api/customerService";
 import { getSuppliers } from "../../lib/api/supplierService";
-import { fetchCustomerSales as fetchSalesByCustomer } from "../../lib/api/salesService";
-import { getPurchasesBySupplierId as fetchPurchasesBySupplier } from "../../lib/api/purchaseService";
+import {
+  fetchCustomerSales as fetchSalesByCustomer,
+  getSaleById,
+} from "../../lib/api/salesService";
+import {
+  getPurchasesBySupplierId as fetchPurchasesBySupplier,
+  getPurchaseById,
+} from "../../lib/api/purchaseService";
 import type {
   Transaction,
   TransactionStatus,
@@ -34,7 +44,7 @@ import type {
 } from "../../lib/types/transactionTypes";
 import type { CustomerType } from "../../lib/types/customerTypes";
 import type { SupplierType } from "../../lib/types/supplierTypes";
-import { Search } from "lucide-react";
+import { Search, Wallet } from "lucide-react";
 import toast from "react-hot-toast";
 
 interface AddEditTransactionModalProps {
@@ -42,6 +52,20 @@ interface AddEditTransactionModalProps {
   onClose: () => void;
   onSuccess: () => void;
   initialData?: Partial<Transaction> | null;
+}
+
+// Helper Types for Bill Preview
+interface BillSummary {
+  id: number;
+  reference_no: string;
+  total_amount: number;
+  paid_amount?: number; // Legacy/Simple
+  payment_summary?: {
+    // Rigid Structure
+    total_paid: number;
+    balance: number;
+    status: string;
+  };
 }
 
 const transactionTypes: TransactionType[] = [
@@ -87,21 +111,24 @@ export default function AddEditTransactionModal({
   const [billLoading, setBillLoading] = useState(false);
   const [entityQuery, setEntityQuery] = useState("");
 
+  // New State for Bill Preview
+  const [selectedBillDetails, setSelectedBillDetails] =
+    useState<BillSummary | null>(null);
+  const [fetchingBillDetails, setFetchingBillDetails] = useState(false);
+
   const isEditMode = !!initialData?.id;
 
+  // Sync initial data
   useEffect(() => {
     if (!open) return;
     setForm(initialData || defaultForm);
+    setSelectedBillDetails(null); // Reset preview on open
   }, [open, initialData]);
 
-  useEffect(() => {
-    if (form.bill_type === "sale") {
-      handleChange("entity_type", "customer");
-    } else if (form.bill_type === "purchase") {
-      handleChange("entity_type", "supplier");
-    }
-  }, [form.bill_type]);
+  // REMOVED: Auto-switch entity type based on bill type useEffect
+  // This is now handled explicitly in handleBillTypeChange to prevent loops and unwanted resets on mount.
 
+  // Fetch Entities (Customers/Suppliers)
   useEffect(() => {
     const fetchEntities = async () => {
       setEntityLoading(true);
@@ -113,7 +140,6 @@ export default function AddEditTransactionModal({
           setEntityOptions(res?.records || []);
         } else if (form.entity_type === "supplier") {
           res = await getSuppliers();
-
           setEntityOptions(res || []);
         }
       } catch (e) {
@@ -126,8 +152,9 @@ export default function AddEditTransactionModal({
     return () => clearTimeout(debounceTimeout);
   }, [form.entity_type, entityQuery, form.bill_type]);
 
+  // Fetch List of Bills for Dropdown
   useEffect(() => {
-    const fetchBills = async () => {
+    const fetchBillsList = async () => {
       if (!form.entity_id) {
         setBillOptions([]);
         return;
@@ -140,7 +167,7 @@ export default function AddEditTransactionModal({
             page: 1,
             limit: 100,
             all: true,
-            filter: "month",
+            filter: "month", // Show recent bills by default
           });
           setBillOptions(res?.sales || []);
         } else if (form.entity_type === "supplier") {
@@ -150,21 +177,96 @@ export default function AddEditTransactionModal({
             limit: 100,
             all: true,
           });
-          setBillOptions(res || []);
+          setBillOptions(res.records || []);
         }
       } catch (e) {
-        toast.error("Failed to fetch related bills");
+        toast.error("Failed to fetch related bills list");
       } finally {
         setBillLoading(false);
       }
     };
+
     if (!isEditMode || initialData?.entity_id !== form.entity_id) {
-      fetchBills();
+      fetchBillsList();
     }
   }, [form.entity_id, form.entity_type]);
 
+  // 💡 NEW: Fetch Specific Bill Details for Preview & Validation
+  useEffect(() => {
+    const fetchDetailedBill = async () => {
+      if (!form.bill_id) {
+        setSelectedBillDetails(null);
+        return;
+      }
+
+      setFetchingBillDetails(true);
+      try {
+        let response: any;
+        if (form.bill_type === "sale") {
+          // You must ensure getSaleById is available and imported
+          response = await getSaleById(form.bill_id);
+        } else if (form.bill_type === "purchase") {
+          response = await getPurchaseById(String(form.bill_id));
+        }
+
+        // 💡 Fix: Handle unwrapping if the response is { data: ... }
+        const billData = response?.data || response;
+
+        if (billData) {
+          setSelectedBillDetails(billData);
+          // Auto-fill amount if it's 0 or new entry (optional UX enhancement)
+          if (!isEditMode && (!form.amount || form.amount === 0)) {
+            const pending =
+              billData.payment_summary?.balance ??
+              billData.total_amount - (billData.paid_amount || 0);
+            if (pending > 0) {
+              handleChange("amount", pending);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch bill details", error);
+        toast.error("Could not fetch bill details.");
+      } finally {
+        setFetchingBillDetails(false);
+      }
+    };
+
+    fetchDetailedBill();
+  }, [form.bill_id, form.bill_type]);
+
   const handleChange = (field: keyof Transaction, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // 💡 NEW: Explicit handler for Bill Type change to safely reset data
+  const handleBillTypeChange = (newBillType: BillType) => {
+    const newEntityType = newBillType === "sale" ? "customer" : "supplier";
+
+    // Determine default transaction type if not editing
+    let newTransactionType = form.type;
+    if (!isEditMode) {
+      newTransactionType =
+        newBillType === "sale" ? "payment_in" : "payment_out";
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      bill_type: newBillType,
+      entity_type: newEntityType,
+      type: newTransactionType,
+      // Reset dependent fields to prevent data mismatch
+      entity_id: undefined,
+      bill_id: undefined,
+      amount: 0,
+      // Optional: clear gst_amount if switching logic requires it, but keeping simple
+    }));
+
+    // Clear derived UI states
+    setSelectedBillDetails(null);
+    setBillOptions([]);
+    setEntityOptions([]);
+    setEntityQuery("");
   };
 
   const handleEntitySelect = (entity: CustomerType | SupplierType | null) => {
@@ -172,6 +274,7 @@ export default function AddEditTransactionModal({
       handleChange("entity_id", entity.id);
     } else {
       handleChange("entity_id", null);
+      handleChange("bill_id", null);
     }
   };
 
@@ -184,7 +287,7 @@ export default function AddEditTransactionModal({
   };
 
   const handleSubmit = async () => {
-    // 💡 Added check for gst_amount for specific transaction types
+    // Basic Frontend Validation
     if (
       !form.type ||
       !form.entity_id ||
@@ -196,6 +299,7 @@ export default function AddEditTransactionModal({
       toast.error("Please fill in all required fields.");
       return;
     }
+
     setLoading(true);
     try {
       if (isEditMode) {
@@ -208,9 +312,10 @@ export default function AddEditTransactionModal({
       }
       onSuccess();
       onClose();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      toast.error("An error occurred. Please try again.");
+      // 💡 Display the specific error message from the rigid backend logic
+      toast.error(e.message || "An error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -218,11 +323,18 @@ export default function AddEditTransactionModal({
 
   const selectedEntity =
     entityOptions.find((e) => e.id === form.entity_id) || null;
-  const selectedBill = billOptions.find((b) => b.id === form.bill_id) || null;
+  const selectedBillOption =
+    billOptions.find((b) => b.id === form.bill_id) || null;
 
-  // 💡 Condition to show GST field
   const isGSTRequired =
     form.type === "credit_note" || form.type === "debit_note";
+
+  // Calculate Balance for Preview
+  const previewBalance = selectedBillDetails?.payment_summary?.balance ?? 0;
+  const isOverpaying =
+    (form.amount || 0) > previewBalance &&
+    (form.type === "payment_in" || form.type === "payment_out") &&
+    !isEditMode; // Only warn on new entries to avoid locking existing data
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -230,69 +342,45 @@ export default function AddEditTransactionModal({
         {isEditMode ? "Edit Transaction" : "Add New Transaction"}
       </DialogTitle>
       <DialogContent dividers>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, p: 2 }}>
-          {/* Bill Type (Sale or Purchase) */}
-          <FormControl fullWidth>
-            <InputLabel>Bill Type</InputLabel>
-            <Select
-              value={form.bill_type || ""}
-              label="Bill Type"
-              onChange={(e) =>
-                handleChange("bill_type", e.target.value as BillType)
-              }
-            >
-              {billTypes.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+        <Stack spacing={2.5} sx={{ p: 1 }}>
+          {/* 1. Top Row: Bill Type & Transaction Type */}
+          <Stack direction="row" spacing={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Bill Type</InputLabel>
+              <Select
+                value={form.bill_type || ""}
+                label="Bill Type"
+                onChange={(e) =>
+                  handleBillTypeChange(e.target.value as BillType)
+                }
+              >
+                {billTypes.map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-          {/* Transaction Date */}
-          <TextField
-            fullWidth
-            label="Transaction Date"
-            type="date"
-            value={form.transaction_date || ""}
-            onChange={(e) => handleChange("transaction_date", e.target.value)}
-            InputLabelProps={{ shrink: true }}
-          />
+            <FormControl fullWidth size="small">
+              <InputLabel>Transaction Type</InputLabel>
+              <Select
+                value={form.type || ""}
+                label="Transaction Type"
+                onChange={(e) =>
+                  handleChange("type", e.target.value as TransactionType)
+                }
+              >
+                {transactionTypes.map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {type.replace("_", " ").toUpperCase()}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
 
-          {/* Type of Transaction */}
-          <FormControl fullWidth>
-            <InputLabel>Transaction Type</InputLabel>
-            <Select
-              value={form.type || ""}
-              label="Transaction Type"
-              onChange={(e) =>
-                handleChange("type", e.target.value as TransactionType)
-              }
-            >
-              {transactionTypes.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          {/* Entity Type - Autopopulated */}
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              Entity Type (Based on Bill Type)
-            </Typography>
-            <TextField
-              value={
-                (form.entity_type || "").charAt(0).toUpperCase() +
-                (form.entity_type || "").slice(1)
-              }
-              fullWidth
-              disabled
-            />
-          </Box>
-
-          {/* Entity Autocomplete */}
+          {/* 2. Entity Selection */}
           <Autocomplete
             options={entityOptions}
             loading={entityLoading}
@@ -309,6 +397,7 @@ export default function AddEditTransactionModal({
                 label={
                   form.entity_type === "customer" ? "Customer" : "Supplier"
                 }
+                size="small"
                 InputProps={{
                   ...params.InputProps,
                   startAdornment: (
@@ -327,19 +416,21 @@ export default function AddEditTransactionModal({
             )}
           />
 
-          {/* Related Bill */}
+          {/* 3. Related Bill Selection */}
           <Autocomplete
             options={billOptions}
             loading={billLoading}
             getOptionLabel={(option) =>
               option.reference_no || `ID: ${option.id}`
             }
-            value={selectedBill}
+            value={selectedBillOption}
             onChange={(_, val) => handleBillSelect(val as any)}
             renderInput={(params) => (
               <TextField
                 {...params}
-                label="Related Bill"
+                label="Select Bill to Link"
+                size="small"
+                helperText="Search by Reference No"
                 InputProps={{
                   ...params.InputProps,
                   endAdornment: (
@@ -353,41 +444,131 @@ export default function AddEditTransactionModal({
             )}
           />
 
-          {/* Amount */}
-          <TextField
-            fullWidth
-            label="Amount"
-            type="number"
-            value={form.amount || ""}
-            onChange={(e) => handleChange("amount", Number(e.target.value))}
-          />
-
-          {/* Payment Mode */}
-          {(form.type === "payment_in" || form.type === "payment_out") && (
-            <FormControl fullWidth>
-              <InputLabel>Payment Mode</InputLabel>
-              <Select
-                value={form.payment_mode || "cash"}
-                label="Payment Mode"
-                onChange={(e) =>
-                  handleChange("payment_mode", e.target.value as string)
-                }
-              >
-                {paymentModes.map((mode) => (
-                  <MenuItem key={mode} value={mode}>
-                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+          {/* 💡 4. NEW: Bill Payment Preview Card */}
+          {fetchingBillDetails ? (
+            <Box display="flex" justifyContent="center" py={2}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            selectedBillDetails && (
+              <Card variant="outlined" sx={{ bgcolor: "action.hover" }}>
+                <CardContent
+                  sx={{ py: 1.5, px: 2, "&:last-child": { pb: 1.5 } }}
+                >
+                  <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+                    <Wallet size={16} />
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      Bill Payment Status
+                    </Typography>
+                  </Stack>
+                  <Divider sx={{ mb: 1.5 }} />
+                  <Stack direction="row" justifyContent="space-between">
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Total Bill
+                      </Typography>
+                      <Typography variant="body2" fontWeight={700}>
+                        ₹
+                        {selectedBillDetails.total_amount?.toLocaleString(
+                          "en-IN"
+                        ) ?? 0}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Already Paid
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        color="success.main"
+                        fontWeight={700}
+                      >
+                        ₹
+                        {selectedBillDetails.payment_summary?.total_paid?.toLocaleString(
+                          "en-IN"
+                        ) ?? 0}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ textAlign: "right" }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Pending Balance
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        color="error.main"
+                        fontWeight={800}
+                      >
+                        ₹
+                        {selectedBillDetails.payment_summary?.balance?.toLocaleString(
+                          "en-IN"
+                        ) ?? 0}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+            )
           )}
 
-          {/* GST Amount for Credit/Debit Notes */}
+          {/* 5. Amount Input with Validation */}
+          <TextField
+            fullWidth
+            label="Transaction Amount"
+            type="number"
+            size="small"
+            required
+            value={form.amount || ""}
+            onChange={(e) => handleChange("amount", Number(e.target.value))}
+            error={isOverpaying}
+            helperText={
+              isOverpaying
+                ? `Warning: Amount exceeds pending balance of ₹${previewBalance}`
+                : ""
+            }
+            sx={{
+              "& input": { fontSize: "1.1rem", fontWeight: 600 },
+            }}
+          />
+
+          {/* 6. Date & Mode */}
+          <Stack direction="row" spacing={2}>
+            <TextField
+              fullWidth
+              label="Date"
+              type="date"
+              size="small"
+              value={form.transaction_date || ""}
+              onChange={(e) => handleChange("transaction_date", e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+
+            {(form.type === "payment_in" || form.type === "payment_out") && (
+              <FormControl fullWidth size="small">
+                <InputLabel>Mode</InputLabel>
+                <Select
+                  value={form.payment_mode || "cash"}
+                  label="Mode"
+                  onChange={(e) =>
+                    handleChange("payment_mode", e.target.value as string)
+                  }
+                >
+                  {paymentModes.map((mode) => (
+                    <MenuItem key={mode} value={mode}>
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+          </Stack>
+
+          {/* 7. GST Amount (Conditional) */}
           {isGSTRequired && (
             <TextField
               fullWidth
-              label="GST Amount"
+              label="Tax Amount (if applicable)"
               type="number"
+              size="small"
               value={form.gst_amount || ""}
               onChange={(e) =>
                 handleChange("gst_amount", Number(e.target.value))
@@ -395,12 +576,23 @@ export default function AddEditTransactionModal({
             />
           )}
 
-          {/* Status */}
-          <FormControl fullWidth>
-            <InputLabel>Status</InputLabel>
+          {/* 8. Notes */}
+          <TextField
+            fullWidth
+            label="Notes / Remarks"
+            multiline
+            rows={2}
+            size="small"
+            value={form.note || ""}
+            onChange={(e) => handleChange("note", e.target.value)}
+          />
+
+          {/* 9. Status */}
+          <FormControl fullWidth size="small">
+            <InputLabel>Transaction Status</InputLabel>
             <Select
               value={form.status || "pending"}
-              label="Status"
+              label="Transaction Status"
               onChange={(e) =>
                 handleChange("status", e.target.value as TransactionStatus)
               }
@@ -412,19 +604,34 @@ export default function AddEditTransactionModal({
               ))}
             </Select>
           </FormControl>
-        </Box>
+        </Stack>
+
+        {/* Global Error Alert */}
+        {isOverpaying && (
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            You are attempting to pay more than the outstanding bill balance.
+            The system may reject this transaction.
+          </Alert>
+        )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} color="secondary" disabled={loading}>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose} color="inherit" disabled={loading}>
           Cancel
         </Button>
         <Button
           onClick={handleSubmit}
           variant="contained"
-          color="primary"
+          color={isOverpaying ? "warning" : "primary"}
           disabled={loading}
+          sx={{ minWidth: 120 }}
         >
-          {isEditMode ? "Update" : "Save"}
+          {loading ? (
+            <CircularProgress size={24} />
+          ) : isEditMode ? (
+            "Update"
+          ) : (
+            "Save"
+          )}
         </Button>
       </DialogActions>
     </Dialog>

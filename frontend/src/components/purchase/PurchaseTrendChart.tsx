@@ -12,6 +12,7 @@ import { Box, CircularProgress } from "@mui/material";
 import { format } from "date-fns";
 import type { MonthlyStat } from "../../lib/types/purchaseStatsTypes";
 import type { DashboardFilter } from "../../lib/types/inventoryDashboardTypes";
+import theme from "../../../theme";
 
 interface Props {
   trend: MonthlyStat[] | null;
@@ -20,22 +21,22 @@ interface Props {
 
 const generateCompleteData = (
   trend: MonthlyStat[],
-  filter: DashboardFilter
+  filters: DashboardFilter
 ): MonthlyStat[] => {
   const filled: MonthlyStat[] = [];
 
-  if (filter.filter === "year") {
-    const months = Array.from({ length: 12 }, (_, i) => i); // 0 to 11
+  if (filters.filter === "year") {
+    const months = Array.from({ length: 12 }, (_, i) => i);
     months.forEach((m) => {
       const monthKey = String(m + 1).padStart(2, "0");
       const entry = trend.find((t) => t.period.endsWith(`-${monthKey}`));
       filled.push({
-        period: format(new Date(2000, m), "MMMM"), // Just to get month name
+        period: format(new Date(2000, m), "MMM"), // Short month name
         total: entry ? entry.total : 0,
       });
     });
-  } else if (filter.filter === "month") {
-    const daysInMonth = 31; // For simplicity, show 1–31 even if month has fewer days
+  } else if (filters.filter === "month") {
+    const daysInMonth = 31;
     for (let i = 1; i <= daysInMonth; i++) {
       const dayKey = String(i).padStart(2, "0");
       const entry = trend.find((t) => t.period.endsWith(`-${dayKey}`));
@@ -45,7 +46,6 @@ const generateCompleteData = (
       });
     }
   } else {
-    // custom → use as-is
     return trend;
   }
 
@@ -58,12 +58,12 @@ const PurchaseTrendChart = ({ trend, filters }: Props) => {
     !loading && trend ? generateCompleteData(trend, filters) : [];
 
   return (
-    <Box>
-      <Box fontSize="0.95rem" fontWeight={600} mb={1}>
-        Purchase Trend by {filters.filter === "month" ? "Day" : "Month"}
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <Box fontSize="0.95rem" fontWeight={600} mb={2}>
+        Purchase Trend ({filters.filter === "month" ? "Daily" : "Monthly"})
       </Box>
 
-      <Box height={300} position="relative">
+      <Box sx={{ flexGrow: 1, minHeight: 0 }}>
         {loading ? (
           <Box
             display="flex"
@@ -77,34 +77,51 @@ const PurchaseTrendChart = ({ trend, filters }: Props) => {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={processedData}
-              layout="vertical"
-              margin={{ left: 30, right: 20 }}
+              margin={{ left: 0, right: 0, top: 10, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <YAxis
-                dataKey="period"
-                type="category"
-                tick={{ fontSize: 12, fill: "#444" }}
-                axisLine={{ stroke: "#ccc" }}
-                width={90} // Ensure space for long month names
-                interval={0} // Force all labels to render
-              />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
 
               <XAxis
-                type="number"
-                tick={{ fontSize: 12, fill: "#444" }}
-                axisLine={{ stroke: "#ccc" }}
+                dataKey="period"
+                tick={{ fontSize: 12, fill: theme.palette.text.secondary }}
+                axisLine={{ stroke: theme.palette.divider }}
+                tickLine={false}
               />
+
+              <YAxis
+                tick={{ fontSize: 12, fill: theme.palette.text.secondary }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={(val) =>
+                  `₹${val >= 1000 ? `${val / 1000}k` : val}`
+                }
+              />
+
               <Tooltip
                 contentStyle={{
-                  background: "#fff",
-                  border: "1px solid #ddd",
-                  borderRadius: "6px",
-                  fontSize: "0.8rem",
+                  background: theme.palette.background.paper,
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderRadius: "8px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  fontSize: "0.85rem",
                 }}
-                labelStyle={{ fontWeight: 600 }}
+                labelStyle={{
+                  fontWeight: 600,
+                  color: theme.palette.text.primary,
+                  marginBottom: 4,
+                }}
+                formatter={(value: number) => [
+                  `₹ ${value.toLocaleString()}`,
+                  "Amount",
+                ]}
+                cursor={{ fill: "rgba(0,0,0,0.04)" }}
               />
-              <Bar dataKey="total" fill="#1976d2" radius={[0, 4, 4, 0]} />
+              <Bar
+                dataKey="total"
+                fill={theme.palette.primary.main}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={50}
+              />
             </BarChart>
           </ResponsiveContainer>
         )}

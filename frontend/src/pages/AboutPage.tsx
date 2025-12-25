@@ -77,7 +77,6 @@ export default function AboutPage() {
   // Helper to format bytes
   const formatBytes = (bytes: number) => {
     if (!bytes) return "0 MB";
-    console.log("bytes", bytes);
     return (bytes / (1024 * 1024)).toFixed(2);
   };
 
@@ -577,6 +576,8 @@ export default function AboutPage() {
                     icon={<Server size={18} />}
                     label="App Mode"
                     value={appMode || "Unknown"}
+                    // ✅ Updated to navigate to the new Connections Page
+                    onClick={() => navigate("/connections")}
                   />
                   <SystemRow
                     icon={<Database size={18} />}
@@ -615,9 +616,8 @@ function SystemRow({ icon, label, value, color = "default", onClick }: any) {
       p={1.5}
       bgcolor="grey.50"
       borderRadius={2}
-      onClick={onClick} // ✅ 1. Attach the click handler here
+      onClick={onClick}
       sx={{
-        // ✅ 2. Add visual feedback (pointer cursor & hover effect)
         cursor: onClick ? "pointer" : "default",
         transition: "all 0.2s ease",
         "&:hover": onClick

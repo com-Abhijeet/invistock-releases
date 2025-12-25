@@ -31,11 +31,12 @@ interface GetTransactionsParams {
 export async function getAllTransactions(params: GetTransactionsParams) {
   try {
     const response = await api.get(BASE_URL, { params });
-
     return response.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Failed to fetch transactions:", error);
-    throw new Error("Failed to fetch transactions.");
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch transactions."
+    );
   }
 }
 
@@ -46,9 +47,11 @@ export async function getTransactionById(id: number): Promise<Transaction> {
   try {
     const response = await api.get(`${BASE_URL}/${id}`);
     return response.data.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Failed to fetch transaction with ID ${id}:`, error);
-    throw new Error("Failed to fetch transaction.");
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch transaction."
+    );
   }
 }
 
@@ -61,9 +64,12 @@ export async function createTransaction(
   try {
     const response = await api.post(BASE_URL, transactionData);
     return response.data.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Failed to create transaction:", error);
-    throw new Error("Failed to create transaction.");
+    // 💡 Propagate the specific backend error message (e.g. Overpayment)
+    throw new Error(
+      error.response?.data?.message || "Failed to create transaction."
+    );
   }
 }
 
@@ -77,9 +83,11 @@ export async function updateTransaction(
   try {
     const response = await api.put(`${BASE_URL}/${id}`, updatedData);
     return response.data.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Failed to update transaction with ID ${id}:`, error);
-    throw new Error("Failed to update transaction.");
+    throw new Error(
+      error.response?.data?.message || "Failed to update transaction."
+    );
   }
 }
 
@@ -89,14 +97,16 @@ export async function updateTransaction(
 export async function deleteTransaction(id: number): Promise<void> {
   try {
     await api.delete(`${BASE_URL}/${id}`);
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Failed to delete transaction with ID ${id}:`, error);
-    throw new Error("Failed to delete transaction.");
+    throw new Error(
+      error.response?.data?.message || "Failed to delete transaction."
+    );
   }
 }
 
 /**
- * @description Fetches all transactions related to a specific original transaction (e.g., payments for a sale).
+ * @description Fetches all transactions related to a specific original transaction.
  */
 export async function getRelatedTransactions(
   relatedId: number,
@@ -107,21 +117,19 @@ export async function getRelatedTransactions(
       params: { entityType },
     });
     return response.data.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error(
       `Failed to fetch related transactions for ID ${relatedId}:`,
       error
     );
-    throw new Error("Failed to fetch related transactions.");
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch related transactions."
+    );
   }
 }
 
 /**
- * @description Fetches a customer's account summary from the API.
- * @param {number} customerId - The ID of the customer.
- * @param {DashboardFilter} [filters={}] - Optional date filters.
- * @returns {Promise<AccountSummary>} The customer's account summary.
- * @throws {Error} If the API call fails.
+ * @description Fetches a customer's account summary.
  */
 export async function getCustomerAccountSummary(
   customerId: number,
@@ -133,18 +141,16 @@ export async function getCustomerAccountSummary(
       { params: filters }
     );
     return response.data.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Failed to fetch customer summary:", error);
-    throw new Error("Failed to fetch customer summary.");
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch customer summary."
+    );
   }
 }
 
 /**
- * @description Fetches a supplier's account summary from the API.
- * @param {number} supplierId - The ID of the supplier.
- * @param {DashboardFilter} [filters={}] - Optional date filters.
- * @returns {Promise<SupplierAccountSummary>} The supplier's account summary.
- * @throws {Error} If the API call fails.
+ * @description Fetches a supplier's account summary.
  */
 export async function getSupplierAccountSummary(
   supplierId: number,
@@ -156,18 +162,16 @@ export async function getSupplierAccountSummary(
       { params: filters }
     );
     return response.data.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Failed to fetch supplier summary:", error);
-    throw new Error("Failed to fetch supplier summary.");
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch supplier summary."
+    );
   }
 }
 
 /**
- * @description Fetches a paginated list of transactions for a specific entity (customer or supplier).
- * @param {number} entityId - The ID of the customer or supplier.
- * @param {'customer' | 'supplier'} entityType - The type of entity.
- * @param {GetEntityTransactionsParams} params - The query parameters for filtering and pagination.
- * @returns {Promise<PaginatedTransactionsResponse>} A paginated list of transactions.
+ * @description Fetches a paginated list of transactions for a specific entity.
  */
 export async function getEntityTransactions(
   entityId: number,
@@ -180,11 +184,14 @@ export async function getEntityTransactions(
     });
 
     return response.data.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error(
       `Failed to fetch transactions for ${entityType} with ID ${entityId}:`,
       error
     );
-    throw new Error(`Failed to fetch ${entityType} transactions.`);
+    throw new Error(
+      error.response?.data?.message ||
+        `Failed to fetch ${entityType} transactions.`
+    );
   }
 }

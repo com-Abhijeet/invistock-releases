@@ -99,10 +99,8 @@ export default function Dashboard() {
       p={2}
       pt={3}
       sx={{
-        bgcolor: "#f8f9fa",
+        bgcolor: theme.palette.background.default,
         minHeight: "100vh",
-        borderTopLeftRadius: 36,
-        borderTopRightRadius: 0,
       }}
     >
       {/* ✅ Header is now outside the loading check, so it never unmounts */}

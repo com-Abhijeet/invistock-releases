@@ -1,40 +1,39 @@
-// src/theme/theme.ts
 import { createTheme } from "@mui/material/styles";
 
 const theme = createTheme({
   palette: {
     mode: "light",
     primary: {
-      main: "#1976d2",       // Calm Blue
-      light: "#63a4ff",
-      dark: "#004ba0",
-      contrastText: "#fff",
+      main: "#2563EB", // "Royal Blue" - Trust, Intelligence, Tech (Standard in modern SaaS)
+      light: "#60A5FA", // Lighter shade for hover states
+      dark: "#1E40AF", // Darker shade for active states
+      contrastText: "#ffffff",
     },
     secondary: {
-      main: "#7e57c2",        // Soft Purple
-      light: "#b085f5",
-      dark: "#4d2c91",
-      contrastText: "#fff",
+      main: "#7C3AED", // "Digital Violet" - Adds a premium, creative feel without clashing
+      light: "#A78BFA",
+      dark: "#5B21B6",
+      contrastText: "#ffffff",
     },
     success: {
-      main: "#388e3c",
-      light: "#66bb6a",
-      dark: "#2e7d32",
-      contrastText: "#fff",
+      main: "#10B981", // "Emerald" - Implies growth/stability; less jarring than neon green
+      light: "#34D399",
+      dark: "#059669",
+      contrastText: "#ffffff",
     },
     error: {
-      main: "#d32f2f",
-      light: "#ef5350",
-      dark: "#c62828",
-      contrastText: "#fff",
+      main: "#EF4444", // "Soft Red" - clear alert signal without causing visual panic
+      light: "#F87171",
+      dark: "#B91C1C",
+      contrastText: "#ffffff",
     },
     background: {
-      default: "#fdfdfd",
-      paper: "#f8f8f8",
+      default: "#F3F4F6", // "Cool Grey" - Reduces eye strain vs pure white on large screens
+      paper: "#FFFFFF", // Pure White - Creates a distinct "surface" layer for cards
     },
     text: {
-      primary: "#222",
-      secondary: "#555",
+      primary: "#111827", // "Deep Slate" - High contrast readability, but softer than #000
+      secondary: "#6B7280", // "Neutral Grey" - Excellent for labels and metadata
     },
   },
 });

@@ -222,6 +222,7 @@ export function bulkInsertCustomers(customers) {
  * @returns {object} An object containing the customer details and their sale/transaction history.
  */
 export function getCustomerLedger(customerId, filters) {
+  console.log("filters in getcustomerledger", filters);
   // 1. Get the customer's details
   const customer = db
     .prepare("SELECT * FROM customers WHERE id = ?")
@@ -230,11 +231,13 @@ export function getCustomerLedger(customerId, filters) {
 
   // 2. Build separate date filters for each table
   const { where: gstWhere, params: gstParams } = getDateFilter({
-    ...filters,
+    from: filters.startDate,
+    to: filters.endDate,
     alias: "s",
   });
   const { where: nonGstWhere, params: nonGstParams } = getDateFilter({
-    ...filters,
+    from: filters.startDate,
+    to: filters.endDate,
     alias: "sng",
   });
 

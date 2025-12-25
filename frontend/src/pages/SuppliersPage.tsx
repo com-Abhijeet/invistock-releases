@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import {
   Button,
@@ -8,11 +10,10 @@ import {
   Tooltip,
 } from "@mui/material";
 import { Search, RefreshCcw } from "lucide-react";
-
-import SuppliersTable from "../components/suppliers/SuppliersTable";
 import SupplierFormModal from "../components/suppliers/SupplierFormModal";
-import type { SupplierType } from "../lib/types/supplierTypes";
-import { getSuppliers, clearSuppliersCache } from "../lib/api/supplierService";
+import SuppliersTable from "../components/suppliers/SuppliersTable";
+import { getSuppliers } from "../lib/api/supplierService";
+import { SupplierType } from "../lib/types/supplierTypes";
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<SupplierType[]>([]);
@@ -32,8 +33,8 @@ export default function SuppliersPage() {
   };
 
   const handleRefresh = async () => {
-    clearSuppliersCache(); // clear localStorage
-    await fetchSuppliers(); // re-fetch
+    // ✅ Removed clearSuppliersCache call, just refetch
+    await fetchSuppliers();
   };
 
   const handleOpenModal = (supplier?: SupplierType) => {
@@ -52,7 +53,6 @@ export default function SuppliersPage() {
       pt={3}
       sx={{
         backgroundColor: "#fff",
-
         // pt: "30px",
       }}
       minHeight={"100vh"}

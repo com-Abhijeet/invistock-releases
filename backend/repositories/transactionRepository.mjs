@@ -4,34 +4,24 @@ import { generateReference as generateTransactionReference } from "./referenceRe
 
 /**
  * @description Maps a full transaction type name to its abbreviated reference type.
- * @param {string} transactionType - The transaction type (e.g., 'payment_in', 'credit_note').
- * @returns {string} The corresponding abbreviated type for the reference generator (e.g., 'PI', 'CN').
- * @throws {Error} If an unknown transaction type is provided.
  */
 function mapTransactionTypeToReferenceType(transactionType) {
-  switch (transactionType) {
-    case "payment_in":
-      return "PI";
-    case "payment_out":
-      return "PO";
-    case "credit_note":
-      return "CN";
-    case "debit_note":
-      return "DN";
-    default:
-      throw new Error(
-        `Unknown transaction type for reference generation: ${transactionType}`
-      );
+  const map = {
+    payment_in: "PI",
+    payment_out: "PO",
+    credit_note: "CN",
+    debit_note: "DN",
+  };
+  if (!map[transactionType]) {
+    throw new Error(`Unknown transaction type: ${transactionType}`);
   }
+  return map[transactionType];
 }
 
 /**
  * @description Creates a new transaction record in the database.
- * @param {object} transactionData - The data for the new transaction.
- * @returns {object} The result of the database operation, including the last inserted ID.
- * @throws {Error} If transaction creation fails.
  */
-export async function createTransaction(transactionData) {
+export function createTransaction(transactionData) {
   try {
     const stmt = db.prepare(`
       INSERT INTO transactions (
@@ -39,52 +29,40 @@ export async function createTransaction(transactionData) {
         transaction_date, amount, payment_mode, status, note, gst_amount, discount
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const refType = mapTransactionTypeToReferenceType(transactionData.type);
 
+    const refType = mapTransactionTypeToReferenceType(transactionData.type);
     const reference_no = generateTransactionReference(refType);
 
-    const params = [
+    // Ensure defaults
+    const status = transactionData.status || "success";
+    const gstAmount = transactionData.gst_amount || 0;
+    const discount = transactionData.discount || 0;
+
+    const result = stmt.run(
       reference_no,
       transactionData.type,
-      transactionData.bill_id || null, // Updated to use bill_id
-      transactionData.bill_type || null, // Updated to use bill_type
+      transactionData.bill_id,
+      transactionData.bill_type,
       transactionData.entity_id,
       transactionData.entity_type,
       transactionData.transaction_date,
       transactionData.amount,
-      transactionData.payment_mode || null,
-      transactionData.status,
-      transactionData.note || null,
-      transactionData.gst_amount || 0,
-      transactionData.discount || 0,
-    ];
+      transactionData.payment_mode,
+      status,
+      transactionData.note,
+      gstAmount,
+      discount
+    );
 
-    const result = stmt.run(...params);
-
-    const transaction = await getTransactionById(result.lastInsertRowid);
-    return transaction;
+    return result;
   } catch (error) {
-    console.error("Error in createTransaction:", error.message);
-    throw new Error("Transaction creation failed: " + error.message);
+    console.error("Repo Error: createTransaction", error.message);
+    throw new Error("Database insert failed: " + error.message);
   }
 }
 
 /**
- * @description Retrieves a paginated list of transactions with optional filters.
- * @param {object} options - Filtering and pagination options.
- * @param {number} [options.page=1] - The page number to fetch.
- * @param {number} [options.limit=20] - The number of records per page.
- * @param {string} [options.query=''] - A search query for reference number or notes.
- * @param {string} [options.type=null] - Filters by transaction type ('sale', 'payment', etc.). Can also be 'all'.
- * @param {string} [options.status=null] - Filters by transaction status.
- * @param {string} [options.filter=null] - The date filter type ('today', 'month', etc.).
- * @param {string} [options.year=null] - The year for a 'year' filter.
- * @param {string} [options.startDate=null] - The start date for a 'custom' filter.
- * @param {string} [options.endDate=null] - The end date for a 'custom' filter.
- * @param {boolean} [options.all=false] - If true, fetches all records without pagination.
- * @returns {object} An object containing the filtered records and the total count.
- * @throws {Error} If fetching transactions fails.
- * Now joins with sales/purchase/customer/supplier tables for detailed info.
+ * @description Retrieves a paginated list of transactions with robust joining.
  */
 export function getAllTransactions({
   page = 1,
@@ -107,9 +85,11 @@ export function getAllTransactions({
     });
 
     let whereClauses = [dateWhere];
-    const params = [...dateParams];
+    let params = [...dateParams];
 
-    // Filter by query (case-insensitive search on reference_no, note, entity name)
+    // Exclude deleted by default unless specifically asked (future proofing)
+    whereClauses.push("t.status != 'deleted'");
+
     if (query) {
       whereClauses.push(
         `(LOWER(t.reference_no) LIKE ? OR LOWER(t.note) LIKE ? OR LOWER(COALESCE(c.name, sup.name)) LIKE ?)`
@@ -118,424 +98,260 @@ export function getAllTransactions({
       params.push(q, q, q);
     }
 
-    // Filter by transaction type
     if (type && type !== "all") {
       whereClauses.push(`t.type = ?`);
       params.push(type);
     }
 
-    // Filter by status
     if (status) {
       whereClauses.push(`t.status = ?`);
       params.push(status);
     }
 
-    const whereString =
-      whereClauses
-        .filter((clause) => clause && clause !== "1=1")
-        .join(" AND ") || "1=1";
+    const whereString = whereClauses.join(" AND ");
 
-    // Main Query with Joins
-    // We use COALESCE to get name/phone from either customer or supplier table based on entity_type
-    // We use CASE/COALESCE to get bill reference from sale/non-gst/purchase tables based on bill_type
+    // Main Query
     let recordsQuery = `
       SELECT 
         t.*,
-        -- Entity Details
         COALESCE(c.name, sup.name) as entity_name,
         COALESCE(c.phone, sup.phone) as entity_phone,
-        
-        -- Bill Reference Number
         CASE 
           WHEN t.bill_type = 'sale' THEN s.reference_no
           WHEN t.bill_type = 'sale_non_gst' THEN sng.reference_no
           WHEN t.bill_type = 'purchase' THEN p.reference_no
           ELSE NULL
         END as bill_ref_no
-
       FROM transactions AS t
       LEFT JOIN customers c ON t.entity_type = 'customer' AND t.entity_id = c.id
       LEFT JOIN suppliers sup ON t.entity_type = 'supplier' AND t.entity_id = sup.id
       LEFT JOIN sales s ON t.bill_type = 'sale' AND t.bill_id = s.id
       LEFT JOIN sales_non_gst sng ON t.bill_type = 'sale_non_gst' AND t.bill_id = sng.id
       LEFT JOIN purchases p ON t.bill_type = 'purchase' AND t.bill_id = p.id
-
       WHERE ${whereString}
       ORDER BY t.created_at DESC
     `;
 
-    // Total Count Query (Simplified join for performance if needed, but reusing logic is safer)
-    const totalCountStmt = db.prepare(`
+    // Count Query
+    const countQuery = `
       SELECT COUNT(t.id) AS count 
       FROM transactions AS t
       LEFT JOIN customers c ON t.entity_type = 'customer' AND t.entity_id = c.id
       LEFT JOIN suppliers sup ON t.entity_type = 'supplier' AND t.entity_id = sup.id
       WHERE ${whereString}
-    `);
-    const totalRecords = totalCountStmt.get(...params).count;
+    `;
 
-    const queryParams = [...params];
+    const totalRecords = db.prepare(countQuery).get(...params).count;
 
     if (!all) {
-      const offset = (page - 1) * limit;
       recordsQuery += ` LIMIT ? OFFSET ?`;
-      queryParams.push(limit, offset);
+      params.push(limit, (page - 1) * limit);
     }
 
-    const recordsStmt = db.prepare(recordsQuery);
-    const records = recordsStmt.all(...queryParams);
+    const records = db.prepare(recordsQuery).all(...params);
 
     return { records, totalRecords };
   } catch (error) {
-    console.error("Error in getAllTransactions:", error.message);
-    throw new Error("Failed to fetch all transactions: " + error.message);
+    throw new Error("Repo Error: getAllTransactions " + error.message);
   }
 }
 
 /**
- * @description Retrieves a single transaction record with all related details for printing a slip.
- * This includes customer/supplier data and all associated items.
- * @param {number} transactionId - The ID of the transaction to retrieve.
- * @returns {object|null} The detailed transaction object, or null if not found.
- * @throws {Error} If fetching the transaction fails.
+ * @description Retrieves a single transaction by ID.
  */
-export function getTransactionById(transactionId) {
+export function getTransactionById(id) {
   try {
-    const transactionStmt = db.prepare(`
-            SELECT
-                t.*,
-                CASE t.entity_type
-                    WHEN 'customer' THEN c.name
-                    WHEN 'supplier' THEN s.name
-                END AS entity_name,
-                CASE t.entity_type
-                    WHEN 'customer' THEN c.phone
-                    WHEN 'supplier' THEN s.phone
-                END AS entity_phone,
-                CASE t.entity_type
-                    WHEN 'customer' THEN c.address
-                    WHEN 'supplier' THEN s.address
-                END AS entity_address
-            FROM transactions t
-            LEFT JOIN customers c ON t.entity_type = 'customer' AND t.entity_id = c.id
-            LEFT JOIN suppliers s ON t.entity_type = 'supplier' AND t.entity_id = s.id
-            WHERE t.id = ?
-        `);
+    const stmt = db.prepare(`
+      SELECT
+          t.*,
+          CASE t.entity_type
+              WHEN 'customer' THEN c.name
+              WHEN 'supplier' THEN s.name
+          END AS entity_name,
+          CASE t.entity_type
+              WHEN 'customer' THEN c.phone
+              WHEN 'supplier' THEN s.phone
+          END AS entity_phone,
+          CASE t.entity_type
+              WHEN 'customer' THEN c.address
+              WHEN 'supplier' THEN s.address
+          END AS entity_address
+      FROM transactions t
+      LEFT JOIN customers c ON t.entity_type = 'customer' AND t.entity_id = c.id
+      LEFT JOIN suppliers s ON t.entity_type = 'supplier' AND t.entity_id = s.id
+      WHERE t.id = ? AND t.status != 'deleted'
+    `);
 
-    const transaction = transactionStmt.get(transactionId);
-    if (!transaction) {
-      return null;
-    }
-
-    // Fetch items based on transaction type (sale or purchase)
-    let items = [];
-    if (transaction.type === "sale" || transaction.type === "credit_note") {
-      const itemsStmt = db.prepare(`
-                SELECT
-                    si.*,
-                    p.name AS product_name,
-                    p.product_code,
-                    p.hsn
-                FROM sale_items si
-                JOIN products p ON si.product_id = p.id
-                WHERE si.sale_transaction_id = ?
-            `);
-      items = itemsStmt.all(transactionId);
-    } else if (
-      transaction.type === "purchase" ||
-      transaction.type === "debit_note"
-    ) {
-      const itemsStmt = db.prepare(`
-                SELECT
-                    pi.*,
-                    p.name AS product_name,
-                    p.product_code,
-                    p.hsn
-                FROM purchase_items pi
-                JOIN products p ON pi.product_id = p.id
-                WHERE pi.purchase_transaction_id = ?
-            `);
-      items = itemsStmt.all(transactionId);
-    }
-
-    return { ...transaction, items };
+    return stmt.get(id);
   } catch (error) {
-    console.error("Error in getDetailedTransactionById:", error.message);
-    throw new Error("Failed to fetch detailed transaction: " + error.message);
+    throw new Error("Repo Error: getTransactionById " + error.message);
   }
 }
 
 /**
- * @description Retrieves all transactions related to a specific original sale or purchase.
- * @param {number} relatedId - The ID of the original transaction (sale or purchase).
- * @param {string} entityType - The type of the original transaction ('customer' or 'supplier').
- * @returns {Array<object>} An array of related transaction records.
- * @throws {Error} If fetching related transactions fails.
+ * @description Gets all transactions for a specific bill (e.g., all payments for Sale #101).
  */
-export function getTransactionsByRelatedId(relatedId, entityType) {
+export function getTransactionsByRelatedId(billId, billType) {
   try {
     const stmt = db.prepare(`
       SELECT * FROM transactions
-      WHERE bill_id = ? AND entity_type = ?
+      WHERE bill_id = ? AND bill_type = ? AND status != 'deleted'
       ORDER BY created_at ASC
     `);
-    return stmt.all(relatedId, entityType);
+    return stmt.all(billId, billType);
   } catch (error) {
-    console.error("Error in getTransactionsByRelatedId:", error.message);
-    throw new Error("Failed to fetch related transactions: " + error.message);
+    throw new Error("Repo Error: getTransactionsByRelatedId " + error.message);
   }
 }
 
 /**
- * @description Updates an existing transaction record by its ID.
- * @param {number} id - The ID of the transaction to update.
- * @param {object} updatedData - The data to update.
- * @returns {object} The result of the database operation.
- * @throws {Error} If the update fails.
+ * @description Updates a transaction record.
  */
 export function updateTransaction(id, updatedData) {
   try {
-    // Dynamically build the query based on provided fields
     const fields = Object.keys(updatedData);
+    if (fields.length === 0) return { changes: 0 };
+
     const setClause = fields.map((field) => `${field} = ?`).join(", ");
     const params = Object.values(updatedData);
-
-    const stmt = db.prepare(`
-      UPDATE transactions
-      SET ${setClause}
-      WHERE id = ?
-    `);
-
     params.push(id);
-    const result = stmt.run(...params);
-    return result;
+
+    const stmt = db.prepare(
+      `UPDATE transactions SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    );
+    return stmt.run(...params);
   } catch (error) {
-    console.error("Error in updateTransaction:", error.message);
-    throw new Error("Transaction update failed: " + error.message);
+    throw new Error("Repo Error: updateTransaction " + error.message);
   }
 }
 
 /**
- * @description Soft-deletes a transaction by updating its status to 'deleted'.
- * @param {number} id - The ID of the transaction to soft-delete.
- * @returns {object} The result of the database operation.
- * @throws {Error} If the soft-delete operation fails.
+ * @description Soft deletes a transaction.
  */
 export function deleteTransaction(id) {
   try {
-    const stmt = db.prepare(
-      "UPDATE transactions SET status = 'deleted' WHERE id = ?"
-    );
-    return stmt.run(id);
+    return db
+      .prepare(
+        "UPDATE transactions SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      )
+      .run(id);
   } catch (error) {
-    console.error("Error in deleteTransaction:", error.message);
-    throw new Error("Transaction soft-delete failed: " + error.message);
+    throw new Error("Repo Error: deleteTransaction " + error.message);
   }
 }
 
-/**
- * @description Retrieves a customer's account summary based on sales and transactions.
- * @param {number} customerId - The ID of the customer.
- * @param {object} [filters={}] - Optional date filters.
- * @returns {object} A summary including total sales, total paid, and outstanding balance.
- * @throws {Error} If fetching the data fails.
- */
+// --- Reporting / Summary Functions ---
+
 export function getCustomerAccountSummary(customerId, filters = {}) {
   try {
-    // 1. Get total sales (gross) from the sales table
-    const { where: salesWhere, params: salesParams } = getDateFilter({
-      filter: filters.filter,
-      from: filters.startDate,
-      to: filters.endDate,
+    // 1. Total Sales
+    const { where: sWhere, params: sParams } = getDateFilter({
+      ...filters,
       alias: "s",
     });
     const salesStmt = db.prepare(`
-      SELECT 
-        COALESCE(SUM(s.total_amount), 0) AS total_sales,
-        COUNT(s.id) AS total_invoices
-      FROM sales AS s
-      WHERE s.customer_id = ? 
-        AND ${salesWhere} 
-        AND s.status NOT IN ('cancelled', 'refunded')
-        AND s.is_quote = 0 
+      SELECT COALESCE(SUM(total_amount), 0) as total, COUNT(id) as count
+      FROM sales s
+      WHERE customer_id = ? AND status != 'cancelled' AND is_quote = 0 AND ${sWhere}
     `);
-    const salesSummary = salesStmt.get(customerId, ...salesParams);
+    const sales = salesStmt.get(customerId, ...sParams);
 
-    // 2. Get total payments and credit notes from the transactions table
-    const { where: transWhere, params: transParams } = getDateFilter({
+    // 2. Transactions (Payments In + Credit Notes)
+    const { where: tWhere, params: tParams } = getDateFilter({
       ...filters,
       alias: "t",
     });
     const transStmt = db.prepare(`
-      SELECT
-          COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN t.amount ELSE 0 END), 0) AS total_paid,
-          COALESCE(SUM(CASE WHEN t.type = 'credit_note' THEN t.amount ELSE 0 END), 0) AS total_credit_notes
-      FROM transactions AS t
-      WHERE t.entity_id = ? AND t.entity_type = 'customer' AND ${transWhere} AND t.status NOT IN ('cancelled')
+      SELECT 
+        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN amount ELSE 0 END), 0) as paid,
+        COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as credit
+      FROM transactions t
+      WHERE entity_id = ? AND entity_type = 'customer' AND status != 'deleted' AND ${tWhere}
     `);
-    const transSummary = transStmt.get(customerId, ...transParams);
+    const trans = transStmt.get(customerId, ...tParams);
 
-    // 3. Calculate the final outstanding balance
-    const outstanding_balance =
-      salesSummary.total_sales -
-      transSummary.total_paid +
-      transSummary.total_credit_notes;
+    const outstanding = sales.total - (trans.paid + trans.credit);
 
     return {
-      total_sales: salesSummary.total_sales,
-      total_paid: transSummary.total_paid,
-      total_credit_notes: transSummary.total_credit_notes,
-      total_invoices: salesSummary.total_invoices,
-      outstanding_balance,
+      total_sales: sales.total,
+      total_invoices: sales.count,
+      total_paid: trans.paid,
+      total_credit_notes: trans.credit,
+      outstanding_balance: outstanding > 0 ? outstanding : 0, // Ensure no negative balance shown (unless deliberate overpayment)
     };
   } catch (error) {
-    console.error("Error in getCustomerAccountSummary:", error.message);
-    throw new Error("Failed to get customer account summary.");
+    throw new Error("Repo Error: getCustomerAccountSummary " + error.message);
   }
 }
 
-/**
- * @description Retrieves a supplier's account summary based on purchases and transactions.
- * @param {number} supplierId - The ID of the supplier.
- * @param {object} [filters={}] - Optional date filters.
- * @returns {object} A summary including total purchases, total paid, and outstanding balance.
- * @throws {Error} If fetching the data fails.
- */
 export function getSupplierAccountSummary(supplierId, filters = {}) {
   try {
-    // 1. Get total purchases (gross) from the purchases table
-    const { where: purchaseWhere, params: purchaseParams } = getDateFilter({
+    // 1. Total Purchases
+    const { where: pWhere, params: pParams } = getDateFilter({
       ...filters,
       alias: "p",
     });
-    const purchaseStmt = db.prepare(`
-      SELECT COALESCE(SUM(p.total_amount), 0) AS total_purchases,
-             COUNT(p.id) AS total_bills
-      FROM purchases AS p
-      WHERE p.supplier_id = ? AND ${purchaseWhere} AND p.status NOT IN ('cancelled', 'refunded')
+    const purStmt = db.prepare(`
+      SELECT COALESCE(SUM(total_amount), 0) as total, COUNT(id) as count
+      FROM purchases p
+      WHERE supplier_id = ? AND status != 'cancelled' AND ${pWhere}
     `);
-    const purchaseSummary = purchaseStmt.get(supplierId, ...purchaseParams);
+    const purchases = purStmt.get(supplierId, ...pParams);
 
-    // 2. Get total payments and debit notes from the transactions table
-    const { where: transWhere, params: transParams } = getDateFilter({
+    // 2. Transactions
+    const { where: tWhere, params: tParams } = getDateFilter({
       ...filters,
       alias: "t",
     });
     const transStmt = db.prepare(`
-      SELECT
-          COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN t.amount ELSE 0 END), 0) AS total_paid,
-          COALESCE(SUM(CASE WHEN t.type = 'debit_note' THEN t.amount ELSE 0 END), 0) AS total_debit_notes
-      FROM transactions AS t
-      WHERE t.entity_id = ? AND t.entity_type = 'supplier' AND ${transWhere} AND t.status NOT IN ('cancelled')
+      SELECT 
+        COALESCE(SUM(CASE WHEN type = 'payment_out' THEN amount ELSE 0 END), 0) as paid,
+        COALESCE(SUM(CASE WHEN type = 'debit_note' THEN amount ELSE 0 END), 0) as debit
+      FROM transactions t
+      WHERE entity_id = ? AND entity_type = 'supplier' AND status != 'deleted' AND ${tWhere}
     `);
-    const transSummary = transStmt.get(supplierId, ...transParams);
+    const trans = transStmt.get(supplierId, ...tParams);
 
-    // 3. Calculate the final outstanding balance
-    const outstanding_balance =
-      purchaseSummary.total_purchases -
-      transSummary.total_paid +
-      transSummary.total_debit_notes;
+    const outstanding = purchases.total - (trans.paid + trans.debit);
 
     return {
-      total_purchases: purchaseSummary.total_purchases,
-      total_paid: transSummary.total_paid,
-      total_debit_notes: transSummary.total_debit_notes,
-      total_bills: purchaseSummary.total_bills,
-      outstanding_balance,
+      total_purchases: purchases.total,
+      total_bills: purchases.count,
+      total_paid: trans.paid,
+      total_debit_notes: trans.debit,
+      outstanding_balance: outstanding > 0 ? outstanding : 0,
     };
   } catch (error) {
-    console.error("Error in getSupplierAccountSummary:", error.message);
-    throw new Error("Failed to get supplier account summary.");
+    throw new Error("Repo Error: getSupplierAccountSummary " + error.message);
   }
 }
 
-/**
- * @description Retrieves a paginated list of transactions for a specific customer or supplier.
- * @param {object} options - Filtering and pagination options.
- * @param {number} options.entityId - The ID of the customer or supplier.
- * @param {string} options.entityType - The type of entity ('customer' or 'supplier').
- * @param {number} [options.page=1] - The page number to fetch.
- * @param {number} [options.limit=20] - The number of records per page.
- * @param {string} [options.query=''] - A search query for reference number or notes.
- * @param {string} [options.type=null] - Filters by transaction type.
- * @param {string} [options.status=null] - Filters by transaction status.
- * @param {string} [options.filter=null] - The date filter type ('today', 'month', etc.).
- * @param {string} [options.year=null] - The year for a 'year' filter.
- * @param {string} [options.startDate=null] - The start date for a 'custom' filter.
- * @param {string} [options.endDate=null] - The end date for a 'custom' filter.
- * @param {boolean} [options.all=false] - If true, fetches all records without pagination.
- * @returns {object} An object with records and total count.
- * @throws {Error} If fetching transactions fails.
- */
-export function getEntityTransactions({
-  entityId,
-  entityType,
-  page = 1,
-  limit = 20,
-  query = "",
-  type = null,
-  status = null,
-  filter = null,
-  year = null,
-  startDate = null,
-  endDate = null,
-  all = false,
-}) {
+export function getEntityTransactions(filters) {
+  // Implementation uses getAllTransactions logic but strict filter
+  // Reuse getAllTransactions logic manually or call it?
+  // Let's implement specific optimized query
   try {
-    const { where: dateWhere, params: dateParams } = getDateFilter({
-      filter,
-      from: startDate,
-      to: endDate,
-      alias: "t",
-    });
+    const { entityId, entityType, page = 1, limit = 20, all = false } = filters;
 
-    let whereClauses = [`t.entity_id = ?`, `t.entity_type = ?`, dateWhere];
-    const params = [entityId, entityType, ...dateParams];
+    // ... reusing standard structure ...
+    let where = "entity_id = ? AND entity_type = ? AND status != 'deleted'";
+    let params = [entityId, entityType];
 
-    if (query) {
-      whereClauses.push(
-        `(LOWER(t.reference_no) LIKE ? OR LOWER(t.note) LIKE ?)`
-      );
-      params.push(`%${query.toLowerCase()}%`, `%${query.toLowerCase()}%`);
-    }
-    if (type && type !== "all") {
-      whereClauses.push(`t.type = ?`);
-      params.push(type);
-    }
-    if (status) {
-      whereClauses.push(`t.status = ?`);
-      params.push(status);
-    }
+    // Count
+    const count = db
+      .prepare(`SELECT COUNT(*) as c FROM transactions WHERE ${where}`)
+      .get(...params).c;
 
-    const whereString =
-      whereClauses
-        .filter((clause) => clause && clause !== "1=1")
-        .join(" AND ") || "1=1";
-
-    const totalCountStmt = db.prepare(
-      `SELECT COUNT(id) AS count FROM transactions AS t WHERE ${whereString}`
-    );
-    const totalRecords = totalCountStmt.get(...params).count;
-
-    let recordsQuery = `
-      SELECT * FROM transactions AS t
-      WHERE ${whereString}
-      ORDER BY t.created_at DESC
-    `;
-    const queryParams = [...params];
-
+    // Fetch
+    let sql = `SELECT * FROM transactions WHERE ${where} ORDER BY created_at DESC`;
     if (!all) {
-      const offset = (page - 1) * limit;
-      recordsQuery += ` LIMIT ? OFFSET ?`;
-      queryParams.push(limit, offset);
+      sql += " LIMIT ? OFFSET ?";
+      params.push(limit, (page - 1) * limit);
     }
 
-    const recordsStmt = db.prepare(recordsQuery);
-    const records = recordsStmt.all(...queryParams);
-
-    return { records, totalRecords };
-  } catch (error) {
-    console.error("Error in getEntityTransactions:", error.message);
-    throw new Error("Failed to fetch entity transactions: " + error.message);
+    const records = db.prepare(sql).all(...params);
+    return { records, totalRecords: count };
+  } catch (e) {
+    throw new Error("Repo Error: " + e.message);
   }
 }

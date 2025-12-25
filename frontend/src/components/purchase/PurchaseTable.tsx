@@ -1,14 +1,7 @@
 "use client";
 
-import {
-  Box,
-  TextField,
-  MenuItem,
-  Stack,
-  Tooltip,
-  IconButton,
-} from "@mui/material";
-import { Edit, Delete, Info, Eye, Tag } from "lucide-react"; // ✅ Import Tag icon
+import { Box } from "@mui/material";
+import { Edit, Delete, Eye, Tag } from "lucide-react"; // ✅ Import Tag icon
 import { useEffect, useState } from "react";
 import { getAllPurchases } from "../../lib/api/purchaseService";
 import DataTable from "../DataTable";
@@ -16,10 +9,8 @@ import { useNavigate } from "react-router-dom";
 import type { DashboardFilter } from "../../lib/types/inventoryDashboardTypes";
 import BulkLabelPrintModal from "../BulkLabelPrintModal"; // ✅ Import the modal
 
-const statuses = ["all", "paid", "pending", "refunded"];
-
 interface PurchaseTableProps {
-  filters: DashboardFilter;
+  filters: DashboardFilter & { query?: string; status?: string };
 }
 
 export default function PurchaseTable({ filters }: PurchaseTableProps) {
@@ -36,10 +27,9 @@ export default function PurchaseTable({ filters }: PurchaseTableProps) {
 
   const [page, setPage] = useState(0);
   const [limit, setLimit] = useState(10);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const from = filters.from;
-  const to = filters.to;
+
+  // Destructure filters from props
+  const { from, to, query: search, status = "all" } = filters;
 
   const fetchData = async () => {
     setLoading(true);
@@ -47,7 +37,7 @@ export default function PurchaseTable({ filters }: PurchaseTableProps) {
       const res = await getAllPurchases({
         page: page + 1,
         limit,
-        search,
+        search: search || "",
         status: status === "all" ? undefined : status,
         start_date: from || undefined,
         end_date: to || undefined,
@@ -63,11 +53,11 @@ export default function PurchaseTable({ filters }: PurchaseTableProps) {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit, search, status, from, to]);
 
   // ... (columns definition unchanged) ...
   const columns = [
-    // ... existing columns
     { key: "internal_ref_no", label: "Internal Inv No" },
     { key: "reference_no", label: "Reference No" },
     { key: "date", label: "Date" },
@@ -126,64 +116,6 @@ export default function PurchaseTable({ filters }: PurchaseTableProps) {
 
   return (
     <Box>
-      <Stack
-        direction="row"
-        spacing={2}
-        justifyContent="space-between"
-        alignItems="center"
-        mb={2}
-        flexWrap="wrap"
-      >
-        <Stack direction="row" spacing={2} alignItems="center">
-          <TextField
-            label="Search"
-            placeholder="Reference or Supplier"
-            size="small"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-            sx={{ minWidth: 200 }}
-          />
-
-          <TextField
-            select
-            size="small"
-            label="Status"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setPage(0);
-            }}
-            sx={{ minWidth: 120 }}
-          >
-            {statuses.map((option) => (
-              <MenuItem key={option} value={option}>
-                {option[0].toUpperCase() + option.slice(1)}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Stack>
-
-        <Tooltip
-          title={
-            <Box sx={{ lineHeight: 1.6, p: 0.5 }}>
-              <strong>Internal Inv No:</strong> Your auto-generated number.
-              <br />
-              <strong>Reference No:</strong> The supplier's bill number.
-              <br />
-              <strong>Adjustments:</strong> Sum of payments & debit notes.
-            </Box>
-          }
-          arrow
-        >
-          <IconButton color="info">
-            <Info size={20} />
-          </IconButton>
-        </Tooltip>
-      </Stack>
-
       <DataTable
         rows={purchases}
         columns={columns}

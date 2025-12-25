@@ -55,16 +55,15 @@ export default function DataTable({
         overflow: "hidden",
         borderRadius: 2, // Slightly more rounded
         border: `1px solid ${theme.palette.divider}`,
-        boxShadow: "0px 1px 3px rgba(0, 0, 0, 0.05)", // Very subtle shadow
+        boxShadow: "0px 1px 3px rgba(0, 0, 0, 0.05)",
+        backgroundColor: theme.palette.background.paper,
       }}
     >
       <TableContainer>
         <Table size="small">
-          {" "}
           {/* Keeping small size for density */}
           <TableHead>
             <TableRow sx={{ height: 48 }}>
-              {" "}
               {/* Fixed header height */}
               <TableCell
                 align="center"
@@ -177,7 +176,6 @@ export default function DataTable({
 
                   {actions.length > 0 && (
                     <TableCell align="right" sx={{ pr: 1 }}>
-                      {" "}
                       {/* Reduced padding for action button */}
                       <IconButton
                         size="small"

@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Box } from "@mui/material";
+import Grid from "@mui/material/GridLegacy";
 import PurchaseStatistics from "../components/purchase/PurchaseStatisticsSection";
 import PurchaseTrendChart from "../components/purchase/PurchaseTrendChart";
 import PurchaseCategoryPieChart from "../components/purchase/PurchaseCategoryPieChart";
-import PurchaseTable from "../components/purchase/PurchaseTable";
 import DashboardHeader from "../components/DashboardHeader";
 import type { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
 import {
@@ -20,11 +20,10 @@ import type {
 } from "../lib/types/purchaseStatsTypes";
 import theme from "../../theme";
 
-// ✅ Helper to get the initial state for the DashboardHeader
 const getInitialFilters = (): DashboardFilter => {
   const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 1); // Default to start of the year
-  const end = new Date(now.getFullYear(), 11, 31); // Default to end of the year
+  const start = new Date(now.getFullYear(), 0, 1);
+  const end = new Date(now.getFullYear(), 11, 31);
 
   const formatDate = (date: Date) => {
     const year = date.getFullYear();
@@ -41,21 +40,32 @@ const getInitialFilters = (): DashboardFilter => {
 };
 
 const PurchaseDashboard = () => {
-  // ✅ State is now managed by a single, universal filter object
   const [activeFilters, setActiveFilters] =
     useState<DashboardFilter>(getInitialFilters);
 
-  // State for the page's data
   const [summary, setSummary] = useState<PurchaseSummary | null>(null);
   const [trend, setTrend] = useState<MonthlyStat[] | null>(null);
   const [kpi, setKpi] = useState<PurchaseKPI | null>(null);
 
+  // ✅ ADDED: Stability wrapper
+  const handleFilterChange = useCallback((newFilters: DashboardFilter) => {
+    setActiveFilters((prev) => {
+      if (
+        prev.filter === newFilters.filter &&
+        prev.from === newFilters.from &&
+        prev.to === newFilters.to
+      ) {
+        return prev;
+      }
+      return newFilters;
+    });
+  }, []);
+
   const fetchAll = useCallback(async () => {
-    // The activeFilters object is now passed directly to the API services
     const [summaryData, trendData, kpiData] = await Promise.all([
       fetchPurchaseSummary(activeFilters),
       fetchPurchaseTrend(activeFilters),
-      fetchPurchaseStats(), // This API call doesn't use filters
+      fetchPurchaseStats(),
     ]);
     setSummary(summaryData);
     setTrend(trendData);
@@ -72,42 +82,88 @@ const PurchaseDashboard = () => {
       pt={3}
       sx={{
         backgroundColor: theme.palette.background.default,
+        height: "calc(100vh - 64px)",
+        minHeight: "80vh",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
       }}
     >
-      {/* ✅ DashboardHeader is now connected directly to the state setter */}
       <DashboardHeader
-        title="Purchase Dashboard"
+        title="Purchase Analytics"
         showSearch={false}
         showDateFilters={true}
-        onFilterChange={setActiveFilters}
+        onFilterChange={handleFilterChange} // ✅ Use the wrapper
         onRefresh={fetchAll}
         initialFilter="year"
       />
 
       <Box
         sx={{
-          backgroundColor: "#ffffff",
-          borderRadius: "12px",
-          p: 2.5,
-          mb: 3,
-          boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+          flexGrow: 1,
+          display: "flex",
+          flexDirection: "column",
+          overflowY: "auto",
+          pb: 2,
         }}
       >
         <PurchaseStatistics summary={summary} kpi={kpi} />
 
-        <Box display="flex" gap={2.5} flexWrap="wrap" mt={3}>
-          <Box flex={1} minWidth={{ xs: "100%", md: 400 }}>
-            {/* ✅ Child components now receive the universal filters and necessary data */}
-            <PurchaseTrendChart trend={trend} filters={activeFilters} />
-          </Box>
-          <Box flex={1} minWidth={{ xs: "100%", md: 400 }}>
-            <PurchaseCategoryPieChart /*filter={activeFilters}*/ />
-          </Box>
+        <Box
+          sx={{
+            flexGrow: 1,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+          }}
+        >
+          <Grid container spacing={2} sx={{ flexGrow: 1, height: "100%" }}>
+            <Grid
+              item
+              xs={12}
+              lg={8}
+              sx={{ display: "flex", flexDirection: "column", height: "100%" }}
+            >
+              <Box
+                sx={{
+                  backgroundColor: theme.palette.background.paper,
+                  borderRadius: "12px",
+                  p: 3,
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+                  flexGrow: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: "300px",
+                }}
+              >
+                <PurchaseTrendChart trend={trend} filters={activeFilters} />
+              </Box>
+            </Grid>
+
+            <Grid
+              item
+              xs={12}
+              lg={4}
+              sx={{ display: "flex", flexDirection: "column", height: "100%" }}
+            >
+              <Box
+                sx={{
+                  backgroundColor: theme.palette.background.paper,
+                  borderRadius: "12px",
+                  p: 3,
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+                  flexGrow: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: "300px",
+                }}
+              >
+                <PurchaseCategoryPieChart />
+              </Box>
+            </Grid>
+          </Grid>
         </Box>
       </Box>
-
-      {/* ✅ The table also receives the universal filter object */}
-      <PurchaseTable filters={activeFilters} />
     </Box>
   );
 };

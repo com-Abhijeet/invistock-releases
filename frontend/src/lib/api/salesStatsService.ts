@@ -174,7 +174,6 @@ export async function fetchSalesTable(
 ): Promise<SalesTableResponse> {
   try {
     const res = await api.get(`${BASE_URL}/table`, { params: filters });
-    // Note: This response structure is different, as noted in the original
     return {
       records: res.data?.records ?? [],
       totalRecords: res.data?.totalRecords ?? 0,

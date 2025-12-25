@@ -29,6 +29,8 @@ import expenseRoutes from "./routes/expenseRoutes.mjs";
 import stockAdjustmentRouter from "./routes/stockAdjustmentRoutes.mjs";
 import analyticsRouter from "./routes/analyticsRoutes.mjs";
 import reportRoutes from "./routes/reportRoutes.mjs";
+import userRoutes from "./routes/userRoutes.mjs";
+import searchRoutes from "./routes/searchRoutes.mjs";
 
 import { initializeDatabase, closeDatabase } from "./db/db.mjs";
 import { createRequire } from "module";
@@ -78,6 +80,8 @@ export function startServer(dbPath) {
   app.use("/api/inventory", stockAdjustmentRouter);
   app.use("/api/analytics", analyticsRouter);
   app.use("/api/reports", reportRoutes);
+  app.use("/api/users", userRoutes);
+  app.use("/api/search", searchRoutes);
   // ✅ 1. Serve the Mobile HTML Page
   app.use("/mobile", mobileHtmlRoutes);
 

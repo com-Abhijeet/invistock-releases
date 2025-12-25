@@ -55,6 +55,14 @@ const SaleSummarySection = ({
   const [doPrint, setDoPrint] = useState(true);
   const [doWhatsApp, setDoWhatsApp] = useState(false);
 
+  // Helper to access the reconciled data safely from the repo update
+  // We use 'any' cast here temporarily as the Type definition might not have payment_summary yet
+  const paymentSummary = (sale as any).payment_summary || {
+    total_paid: sale.paid_amount || 0,
+    balance: sale.total_amount - (sale.paid_amount || 0),
+    status: sale.status || "pending",
+  };
+
   useEffect(() => {
     getShopData()
       .then((data) => {
@@ -172,7 +180,7 @@ const SaleSummarySection = ({
   };
 
   return (
-    <Box>
+    <Box sx={{ bgcolor: theme.palette.background.default }}>
       {/* 1. Notes Section (Clean Input) */}
       <Box px={3} py={1}>
         <TextField
@@ -237,8 +245,9 @@ const SaleSummarySection = ({
               {numberToWords(sale.total_amount)}
             </Typography>
 
-            {/* Payment Details (Inline) */}
-            {mode !== "view" && (
+            {/* Payment Details */}
+            {mode !== "view" ? (
+              // EDIT/NEW MODE: Input fields
               <Stack direction="row" spacing={2} alignItems="center" mt={2}>
                 <TextField
                   label="Paid"
@@ -296,6 +305,82 @@ const SaleSummarySection = ({
                   <MenuItem value="paid">Paid</MenuItem>
                   <MenuItem value="pending">Pending</MenuItem>
                 </TextField>
+              </Stack>
+            ) : (
+              // VIEW MODE: Read-Only Reconciled Status
+              <Stack
+                direction="row"
+                spacing={3}
+                alignItems="center"
+                mt={2}
+                sx={{
+                  p: 1.5,
+                  bgcolor: "action.hover",
+                  borderRadius: 2,
+                  width: "fit-content",
+                  border: "1px solid",
+                  borderColor: "divider",
+                }}
+              >
+                <Box>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
+                    Status
+                  </Typography>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={700}
+                    sx={{
+                      textTransform: "uppercase",
+                      color:
+                        paymentSummary.status === "paid"
+                          ? "success.main"
+                          : paymentSummary.status === "partial"
+                          ? "warning.main"
+                          : "error.main",
+                    }}
+                  >
+                    {paymentSummary.status}
+                  </Typography>
+                </Box>
+                <Divider orientation="vertical" flexItem />
+                <Box>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
+                    Paid
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {paymentSummary.total_paid?.toLocaleString("en-IN", {
+                      style: "currency",
+                      currency: "INR",
+                    })}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
+                    Balance
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    color="text.secondary"
+                  >
+                    {paymentSummary.balance?.toLocaleString("en-IN", {
+                      style: "currency",
+                      currency: "INR",
+                    })}
+                  </Typography>
+                </Box>
               </Stack>
             )}
           </Stack>
