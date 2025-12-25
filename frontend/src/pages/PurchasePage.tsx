@@ -125,8 +125,8 @@ const PurchasePage = () => {
           purchase={purchase}
           onPurchaseChange={(p) => !isView && setPurchase(p)}
           setSuccess={setSuccess}
-          readOnly={isView}
-          isEdit={isEdit}
+          mode={isView ? "view" : "new"}
+          resetForm={generateInitialPurchase}
         />
       </Box>
     </Box>
