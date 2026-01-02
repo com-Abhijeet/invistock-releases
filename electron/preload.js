@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld("electron", {
         "whatsapp-send-message",
         "whatsapp-send-invoice-pdf",
         "open-external-url",
+        "whatsapp-restart",
 
         // Auth & Utils
         "login-admin",
@@ -61,6 +62,9 @@ contextBridge.exposeInMainWorld("electron", {
         "check-for-updates",
         "get-app-version",
         "restart-app",
+
+        "license-updated-restart-app",
+        "launch-main-app",
       ];
       if (validInvokeChannels.includes(channel)) {
         return ipcRenderer.invoke(channel, data);
@@ -90,6 +94,7 @@ contextBridge.exposeInMainWorld("electron", {
       const validReceiveChannels = [
         "export-progress",
         "whatsapp-status",
+        "whatsapp-restart",
         "gdrive-connected",
         "update-available",
         "update-not-available",
@@ -144,6 +149,10 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("gdrive-token-expiring", (event, data) => callback(data)),
   onGDriveTokenExpired: (callback) =>
     ipcRenderer.on("gdrive-token-expired", callback),
+  minimizeApp: () => ipcRenderer.send("app-minimize"),
+  maximizeApp: () => ipcRenderer.send("app-maximize"),
+  closeApp: () => ipcRenderer.send("app-close"),
+  launchMainApp: () => ipcRenderer.invoke("launch-main-app"),
 
   // ✅ UPDATER NAMESPACE
   updater: {

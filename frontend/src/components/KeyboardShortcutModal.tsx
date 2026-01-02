@@ -9,32 +9,53 @@ import {
 } from "@mui/material";
 import { X } from "lucide-react";
 import Grid from "@mui/material/GridLegacy";
+import { menuSections } from "../config/menu"; // Ensure path is correct
+
 interface ShortcutGroup {
   category: string;
   shortcuts: { keys: string[]; description: string }[];
 }
 
-const SHORTCUTS: ShortcutGroup[] = [
-  {
-    category: "General",
-    shortcuts: [
-      { keys: ["Ctrl", "K"], description: "Global Search" },
-      { keys: ["?"], description: "Show Keyboard Shortcuts" },
-      { keys: ["Esc"], description: "Close Modals / Focus Mode" },
-      { keys: ["Ctrl", "F"], description: "Toggle Focus Mode" },
-      { keys: ["Ctrl", "Alt", "F"], description: "Lock Focus Mode" },
-    ],
-  },
-  {
-    category: "Navigation",
-    shortcuts: [
-      { keys: ["F1"], description: "Dashboard" },
-      { keys: ["F2"], description: "Point of Sale" },
-      { keys: ["F3"], description: "Sales Analytics" },
-      { keys: ["F4"], description: "Purchase Orders" },
-    ],
-  },
-];
+// 1. Static General Shortcuts
+const GENERAL_SHORTCUTS: ShortcutGroup = {
+  category: "General",
+  shortcuts: [
+    { keys: ["Ctrl", "K"], description: "Global Search" },
+    { keys: ["?"], description: "Show Keyboard Shortcuts" },
+    { keys: ["Esc"], description: "Close Modals / Focus Mode" },
+    { keys: ["Ctrl", "F"], description: "Toggle Focus Mode" },
+    { keys: ["Ctrl", "Alt", "F"], description: "Lock Focus Mode" },
+    { keys: ["Alt", "C"], description: "Toggle GST/Non-GST Mode" },
+  ],
+};
+
+// 2. Dynamic Navigation Shortcuts (from menu.tsx)
+const NAVIGATION_SHORTCUTS: ShortcutGroup = {
+  category: "Navigation",
+  shortcuts: [],
+};
+
+// Populate Navigation Shortcuts from menuSections
+menuSections.forEach((section) => {
+  section.items.forEach((item) => {
+    // Check if the item has a 'shortcut' property
+    if ((item as any).shortcut) {
+      NAVIGATION_SHORTCUTS.shortcuts.push({
+        keys: [(item as any).shortcut],
+        description: item.label,
+      });
+    }
+  });
+});
+
+// Sort shortcuts by F-key number (F1, F2...) for cleaner display
+NAVIGATION_SHORTCUTS.shortcuts.sort((a, b) => {
+  const numA = parseInt(a.keys[0].replace("F", ""), 10);
+  const numB = parseInt(b.keys[0].replace("F", ""), 10);
+  return numA - numB;
+});
+
+const ALL_SHORTCUTS = [GENERAL_SHORTCUTS, NAVIGATION_SHORTCUTS];
 
 interface KeyboardShortcutsModalProps {
   open: boolean;
@@ -70,7 +91,7 @@ export default function KeyboardShortcutsModal({
       </DialogTitle>
       <DialogContent dividers>
         <Grid container spacing={3}>
-          {SHORTCUTS.map((group) => (
+          {ALL_SHORTCUTS.map((group) => (
             <Grid item xs={12} key={group.category}>
               <Typography
                 variant="subtitle2"

@@ -20,8 +20,9 @@ import { setApiBaseUrl } from "./lib/api/api";
 import SidebarLayout from "./components/SidebarLayout";
 import NonGstLayout from "./components/NonGstLayout";
 
-// --- Global ---
-import { flattenedMenu } from "./lib/navigation";
+// --- Menu Configuration ---
+import { menuSections } from "./config/menu"; // Ensure path is correct
+
 import LicensePage from "./pages/LicensePage";
 import ViewLicensePage from "./pages/ViewLicensePage";
 
@@ -47,7 +48,7 @@ import NGSalesPage from "./pages/NGSalesPage";
 import ViewNGSalePage from "./pages/ViewNGSalePage";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoutes from "./components/auth/ProtectedRoutes";
-import PermissionGuard from "./components/auth/PermissionGuard"; // ✅ Import PermissionGuard
+import PermissionGuard from "./components/auth/PermissionGuard";
 import AboutPage from "./pages/AboutPage";
 import ExpensesPage from "./pages/ExpensePage";
 import StockAdjustmentsPage from "./pages/StockAdjustmentsPage";
@@ -65,21 +66,7 @@ import UserManagement from "./pages/UserManagement";
 import AccessLogs from "./pages/AccessLogs";
 import ConnectionsPage from "./pages/ConnectionsPage";
 import CustomerLedgerPage from "./pages/CustomerLedgerPage";
-
-// /**
-//  * Represents the current status of the application persistence layer.
-//  *
-//  * - `"loading"`: The application is initializing or loading resources.
-//  * - `"server"`: The server is active and handling requests.
-//  * - `"client-connected"`: The client has successfully connected to the server.
-//  * - `"client-connecting"`: The client is in the process of connecting to the server.
-//  */
-// let persistedAppStatus:
-//   | "loading"
-//   | "server"
-//   | "client-connected"
-//   | "client-connecting" = "loading";
-// let persistedServerUrl: string | null = null;
+import TitleBar from "./components/TitleBar";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -88,20 +75,30 @@ function GlobalShortcuts() {
 
   useEffect(() => {
     const handleShortcut = (e: KeyboardEvent) => {
+      // Toggle App Mode (GST <-> Non-GST)
       if (e.altKey && e.key.toLowerCase() === "c") {
         e.preventDefault();
         toggleAppMode();
         return;
       }
+
+      // Check for F-keys (F1-F12)
       if (e.key.startsWith("F") && !isNaN(Number(e.key.substring(1)))) {
-        const keyIndex = parseInt(e.key.substring(1), 10) - 1;
-        if (keyIndex >= 0 && keyIndex < flattenedMenu.length) {
-          e.preventDefault();
-          const targetItem = flattenedMenu[keyIndex];
-          navigate(targetItem.path);
+        // Flatten the menu to find a matching shortcut
+        // We use a loop here for efficiency since the menu is small
+        for (const section of menuSections) {
+          for (const item of section.items) {
+            // Check if item has a shortcut defined and it matches the pressed key
+            if ((item as any).shortcut === e.key) {
+              e.preventDefault();
+              navigate(item.path);
+              return; // Stop after finding the match
+            }
+          }
         }
       }
     };
+
     window.addEventListener("keydown", handleShortcut);
     return () => {
       window.removeEventListener("keydown", handleShortcut);
@@ -116,9 +113,6 @@ function AppLayout() {
 
   return (
     <Routes>
-      {/* The mobile view route is handled by the backend now, but keeping for reference if needed */}
-      {/* <Route path="/mobile-view" element={<MobileProductView />} /> */}
-
       {mode === "gst" ? (
         <Route
           path="/*"
@@ -587,6 +581,7 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <TitleBar />
       <Router>
         <UpdateProvider>
           <Routes>

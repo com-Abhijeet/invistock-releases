@@ -18,8 +18,10 @@ import {
 } from "@mui/material";
 import { Trash2, Plus } from "lucide-react";
 import { getAllProducts } from "../../lib/api/productService";
+import { getShopData } from "../../lib/api/shopService";
 import type { Product } from "../../lib/types/product";
 import type { PurchaseItem } from "../../lib/types/purchaseTypes";
+import type { ShopSetupForm } from "../../lib/types/shopTypes";
 
 interface Props {
   items: PurchaseItem[];
@@ -44,6 +46,7 @@ const PurchaseItemSection = ({
 }: Props) => {
   const theme = useTheme();
   const [products, setProducts] = useState<Product[]>([]);
+  const [shop, setShop] = useState<ShopSetupForm | null>(null);
   const autocompleteRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [_hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
 
@@ -55,6 +58,8 @@ const PurchaseItemSection = ({
       isActive: 0,
       all: true,
     }).then((data) => setProducts(data.records || []));
+
+    getShopData().then((res) => setShop(res));
   }, []);
 
   useEffect(() => {
@@ -67,10 +72,31 @@ const PurchaseItemSection = ({
   }, [items.length, readOnly]);
 
   const calculatePrice = (item: PurchaseItem) => {
-    const base = item.rate * item.quantity;
-    const discountAmt = (item.discount * base) / 100;
-    const gstAmt = (item.gst_rate * (base - discountAmt)) / 100;
-    return base - discountAmt + gstAmt;
+    if (!shop) return 0;
+
+    const rate = Number(item.rate) || 0;
+    const qty = Number(item.quantity) || 0;
+    const gstRate = Number(item.gst_rate) || 0;
+    const discountPct = Number(item.discount) || 0;
+
+    const baseAmount = rate * qty;
+    const discountAmount = (baseAmount * discountPct) / 100;
+    const amountAfterDiscount = baseAmount - discountAmount;
+
+    let finalPrice = amountAfterDiscount;
+
+    if (shop.gst_enabled) {
+      if (shop.inclusive_tax_pricing) {
+        // INCLUSIVE
+        finalPrice = amountAfterDiscount;
+      } else {
+        // EXCLUSIVE
+        const gstAmount = (amountAfterDiscount * gstRate) / 100;
+        finalPrice = amountAfterDiscount + gstAmount;
+      }
+    }
+
+    return finalPrice;
   };
 
   const handleAddItem = () => {
@@ -87,14 +113,11 @@ const PurchaseItemSection = ({
       updated[index] = {
         ...updated[index],
         product_id: product.id!,
-        rate: product.mop, // Assuming MOP as base rate
-        gst_rate: product.gst_rate || 0, // Auto-fill GST
-        price: calculatePrice({
-          ...updated[index],
-          rate: product.mop,
-          gst_rate: product.gst_rate || 0,
-        }),
+        rate: product.mop,
+        gst_rate: product.gst_rate || 0,
       };
+      // Must calculate price after setting fields
+      updated[index].price = calculatePrice(updated[index]);
     } else {
       updated[index] = defaultItem();
     }
@@ -122,7 +145,6 @@ const PurchaseItemSection = ({
     onItemsChange(updated);
   };
 
-  // Unified Header Style
   const headerSx = {
     fontWeight: 700,
     color: "text.secondary",
@@ -143,14 +165,21 @@ const PurchaseItemSection = ({
                 #
               </TableCell>
               <TableCell sx={{ ...headerSx, width: "30%" }}>PRODUCT</TableCell>
-              <TableCell sx={{ ...headerSx, width: "12%" }}>RATE</TableCell>
+              {/* Dynamic Rate Header */}
+              <TableCell sx={{ ...headerSx, width: "12%" }}>
+                {shop?.inclusive_tax_pricing ? "RATE (Inc.)" : "RATE"}
+              </TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
-              <TableCell sx={{ ...headerSx, width: "10%" }} align="center">
-                GST%
-              </TableCell>
-              <TableCell sx={{ ...headerSx, width: "8%" }} align="center">
-                DISC%
-              </TableCell>
+              {shop?.gst_enabled && (
+                <TableCell sx={{ ...headerSx, width: "10%" }} align="center">
+                  GST%
+                </TableCell>
+              )}
+              {shop?.show_discount_column && (
+                <TableCell sx={{ ...headerSx, width: "8%" }} align="center">
+                  DISC%
+                </TableCell>
+              )}
               <TableCell sx={{ ...headerSx, width: "15%" }} align="right">
                 AMOUNT
               </TableCell>
@@ -161,10 +190,25 @@ const PurchaseItemSection = ({
           <TableBody>
             {items?.map((item, idx) => {
               const product = products.find((p) => p.id === item.product_id);
-              // Recalculate tax amount for display
-              const taxableAmount =
-                item.rate * item.quantity * (1 - (item.discount || 0) / 100);
-              const gstAmount = (taxableAmount * (item.gst_rate || 0)) / 100;
+
+              const rate = item.rate || 0;
+              const qty = item.quantity || 0;
+              const disc = item.discount || 0;
+              const gst = item.gst_rate || 0;
+
+              const baseVal = rate * qty;
+              const valAfterDisc = baseVal - (baseVal * disc) / 100;
+
+              let gstAmount = 0;
+              if (shop?.gst_enabled) {
+                if (shop.inclusive_tax_pricing) {
+                  const divisor = 1 + gst / 100;
+                  const taxable = valAfterDisc / divisor;
+                  gstAmount = valAfterDisc - taxable;
+                } else {
+                  gstAmount = (valAfterDisc * gst) / 100;
+                }
+              }
 
               return (
                 <TableRow
@@ -247,64 +291,68 @@ const PurchaseItemSection = ({
                     />
                   </TableCell>
 
-                  <TableCell
-                    sx={{ p: 1, borderBottom: "1px dashed #eee" }}
-                    align="center"
-                  >
-                    <TextField
-                      type="number"
-                      variant="standard"
-                      fullWidth
-                      value={item.gst_rate}
-                      onChange={(e) =>
-                        handleFieldChange(
-                          idx,
-                          "gst_rate",
-                          Number(e.target.value)
-                        )
-                      }
-                      inputProps={{ style: { textAlign: "center" } }}
-                      InputProps={{
-                        disableUnderline: true,
-                        readOnly,
-                        sx: { fontSize: "0.95rem" },
-                      }}
-                    />
-                    <Typography
-                      variant="caption"
-                      display="block"
-                      textAlign="center"
-                      color="text.secondary"
-                      fontWeight={600}
+                  {shop?.gst_enabled && (
+                    <TableCell
+                      sx={{ p: 1, borderBottom: "1px dashed #eee" }}
+                      align="center"
                     >
-                      {gstAmount > 0 ? `₹${gstAmount.toFixed(1)}` : ""}
-                    </Typography>
-                  </TableCell>
+                      <TextField
+                        type="number"
+                        variant="standard"
+                        fullWidth
+                        value={item.gst_rate}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            idx,
+                            "gst_rate",
+                            Number(e.target.value)
+                          )
+                        }
+                        inputProps={{ style: { textAlign: "center" } }}
+                        InputProps={{
+                          disableUnderline: true,
+                          readOnly,
+                          sx: { fontSize: "0.95rem" },
+                        }}
+                      />
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        textAlign="center"
+                        color="text.secondary"
+                        fontWeight={600}
+                      >
+                        {gstAmount > 0 ? `₹${gstAmount.toFixed(1)}` : ""}
+                      </Typography>
+                    </TableCell>
+                  )}
 
-                  <TableCell
-                    sx={{ p: 1, borderBottom: "1px dashed #eee" }}
-                    align="center"
-                  >
-                    <TextField
-                      type="number"
-                      variant="standard"
-                      fullWidth
-                      value={item.discount}
-                      onChange={(e) =>
-                        handleFieldChange(
-                          idx,
-                          "discount",
-                          Number(e.target.value)
-                        )
-                      }
-                      inputProps={{ style: { textAlign: "center" } }}
-                      InputProps={{
-                        disableUnderline: true,
-                        readOnly,
-                        sx: { fontSize: "0.95rem" },
-                      }}
-                    />
-                  </TableCell>
+                  {shop?.show_discount_column && (
+                    <TableCell
+                      sx={{ p: 1, borderBottom: "1px dashed #eee" }}
+                      align="center"
+                    >
+                      <TextField
+                        type="number"
+                        variant="standard"
+                        fullWidth
+                        value={item.discount}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            idx,
+                            "discount",
+                            Number(e.target.value)
+                          )
+                        }
+                        inputProps={{ style: { textAlign: "center" } }}
+                        InputProps={{
+                          disableUnderline: true,
+                          readOnly,
+                          sx: { fontSize: "0.95rem" },
+                        }}
+                      />
+                    </TableCell>
+                  )}
 
                   <TableCell
                     align="right"

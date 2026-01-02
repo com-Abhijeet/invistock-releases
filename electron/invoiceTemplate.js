@@ -7,26 +7,46 @@ const {
 } = require("./formatters.js");
 
 function createInvoiceHTML({ sale, shop }) {
-  // Determine boolean flags from preferences
   const gstEnabled = Boolean(shop.gst_enabled);
   const showHSN = Boolean(shop.hsn_required);
   const showDiscount = Boolean(shop.show_discount_column);
+  const inclusiveTax = Boolean(shop.inclusive_tax_pricing);
 
-  // Determine if the sale is interstate for IGST calculation
+  // If GST is enabled but Inclusive Tax is ON, we HIDE the tax breakdown columns.
+  // We only show tax breakdown if GST is enabled AND Tax is Exclusive.
+  const showTaxBreakdown = gstEnabled && !inclusiveTax;
+
   const isInterstate = gstEnabled && shop.state !== sale.customer_state;
 
-  // --- Calculate Totals ---
+  // Calculate Totals
   let totalTaxableValue = 0;
   let totalCgst = 0;
   let totalSgst = 0;
   let totalIgst = 0;
 
   sale.items.forEach((item) => {
-    const taxableValue =
-      item.rate * item.quantity * (1 - (item.discount || 0) / 100);
-    totalTaxableValue += taxableValue;
+    const baseVal = item.rate * item.quantity;
+    const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
+
+    let taxableValue = 0;
+    let gstAmount = 0;
+
     if (gstEnabled) {
-      const gstAmount = taxableValue * (item.gst_rate / 100);
+      if (inclusiveTax) {
+        const divisor = 1 + item.gst_rate / 100;
+        taxableValue = valAfterDisc / divisor;
+        gstAmount = valAfterDisc - taxableValue;
+      } else {
+        taxableValue = valAfterDisc;
+        gstAmount = taxableValue * (item.gst_rate / 100);
+      }
+    } else {
+      taxableValue = valAfterDisc;
+    }
+
+    totalTaxableValue += taxableValue;
+
+    if (gstEnabled) {
       if (isInterstate) {
         totalIgst += gstAmount;
       } else {
@@ -36,16 +56,33 @@ function createInvoiceHTML({ sale, shop }) {
     }
   });
 
-  // --- Generate HTML for each item row ---
+  // Generate Item Rows
   const itemsHTML = sale.items
     .map((item, index) => {
-      const taxableValue =
-        item.rate * item.quantity * (1 - (item.discount || 0) / 100);
-      const gstRate = item.gst_rate || 0;
-      const gstAmount = taxableValue * (gstRate / 100);
+      const baseVal = item.rate * item.quantity;
+      const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
 
-      let gstColumns = "";
+      let taxableValue = 0;
+      let gstAmount = 0;
+
       if (gstEnabled) {
+        if (inclusiveTax) {
+          const divisor = 1 + item.gst_rate / 100;
+          taxableValue = valAfterDisc / divisor;
+          gstAmount = valAfterDisc - taxableValue;
+        } else {
+          taxableValue = valAfterDisc;
+          gstAmount = taxableValue * (item.gst_rate / 100);
+        }
+      } else {
+        taxableValue = valAfterDisc;
+      }
+
+      const gstRate = item.gst_rate || 0;
+      let gstColumns = "";
+
+      // Only generate GST columns if breakdown is enabled
+      if (showTaxBreakdown) {
         if (isInterstate) {
           gstColumns = `
           <td>${gstRate.toFixed(2)}%</td>
@@ -66,8 +103,9 @@ function createInvoiceHTML({ sale, shop }) {
         <td>${index + 1}</td>
         ${showHSN ? `<td>${item.hsn_code || ""}</td>` : ""}
         <td style="text-align: left;">${item.product_name}</td>
-        <td>${formatAmount(taxableValue)}</td>
+        <td>${formatAmount(item.rate)}</td>
         <td>${item.quantity}</td>
+        ${showTaxBreakdown ? `<td>${formatAmount(taxableValue)}</td>` : ""}
         ${gstColumns}
         ${showDiscount ? `<td>${item.discount || 0}%</td>` : ""}
         <td>${formatAmount(item.price)}</td>
@@ -76,10 +114,10 @@ function createInvoiceHTML({ sale, shop }) {
     })
     .join("");
 
-  // --- Generate GST headers based on preferences ---
   let gstHeader = "";
   let gstSubHeader = "";
-  if (gstEnabled) {
+
+  if (showTaxBreakdown) {
     if (isInterstate) {
       gstHeader = `<th colspan="2">IGST</th>`;
       gstSubHeader = `<th>Rate</th><th>Amt</th>`;
@@ -89,7 +127,9 @@ function createInvoiceHTML({ sale, shop }) {
     }
   }
 
-  // --- Return the full HTML string ---
+  // Dynamic Rate Header
+  const rateHeader = inclusiveTax ? "Rate" : "Rate";
+
   return `
     <html>
       <head>
@@ -110,20 +150,18 @@ function createInvoiceHTML({ sale, shop }) {
             .footer { margin-top: 40px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; }
             .footer .bank-details { text-align: left; }
             .footer .signature { text-align: right; padding-top: 40px; border-top: 1px solid #333; }
-            .toolbar { display:none; } @media print { .toolbar { display: none !important; } }
+            .note { margin-top: 15px; font-style: italic; font-size: 11px; color: #555; }
         </style>
       </head>
       <body>
         <div class="bill-container">
           <div class="header">
             <h1>${shop.gst_invoice_format || "Tax Invoice"}</h1>
-            
             <h2>${
               shop.use_alias_on_bills && shop.shop_alias
                 ? shop.shop_alias
                 : shop.shop_name
             }</h2>
-
             <p>${
               shop.use_alias_on_bills && shop.shop_alias
                 ? " "
@@ -173,37 +211,42 @@ function createInvoiceHTML({ sale, shop }) {
                   <th rowspan="2">#</th>
                   ${showHSN ? `<th rowspan="2">HSN</th>` : ""}
                   <th rowspan="2">Item Description</th>
-                  <th rowspan="2">Taxable Val</th>
+                  <th rowspan="2">${rateHeader}</th>
                   <th rowspan="2">Qty</th>
+                  ${showTaxBreakdown ? `<th rowspan="2">Taxable Val</th>` : ""}
                   ${gstHeader}
                   ${showDiscount ? `<th rowspan="2">Disc</th>` : ""}
                   <th rowspan="2">Total</th>
                 </tr>
-                ${gstEnabled ? `<tr>${gstSubHeader}</tr>` : ""}
+                ${showTaxBreakdown ? `<tr>${gstSubHeader}</tr>` : ""}
               </thead>
               <tbody>${itemsHTML}</tbody>
             </table>
 
             <table class="totals-table">
-                <tr><td>Taxable Amount:</td><td>${formatAmount(
-                  totalTaxableValue
-                )}</td></tr>
                 ${
-                  gstEnabled && !isInterstate
+                  showTaxBreakdown
+                    ? `<tr><td>Taxable Amount:</td><td>${formatAmount(
+                        totalTaxableValue
+                      )}</td></tr>`
+                    : ""
+                }
+                ${
+                  showTaxBreakdown && !isInterstate
                     ? `<tr><td>CGST:</td><td>${formatAmount(
                         totalCgst
                       )}</td></tr>`
                     : ""
                 }
                 ${
-                  gstEnabled && !isInterstate
+                  showTaxBreakdown && !isInterstate
                     ? `<tr><td>SGST:</td><td>${formatAmount(
                         totalSgst
                       )}</td></tr>`
                     : ""
                 }
                 ${
-                  gstEnabled && isInterstate
+                  showTaxBreakdown && isInterstate
                     ? `<tr><td>IGST:</td><td>${formatAmount(
                         totalIgst
                       )}</td></tr>`
@@ -223,6 +266,12 @@ function createInvoiceHTML({ sale, shop }) {
                 )}
             </div>
             
+            ${
+              inclusiveTax
+                ? `<div class="note"><strong>Note:</strong> All prices/rates shown are inclusive of GST.</div>`
+                : ""
+            }
+
             <div class="footer">
                 <div class="bank-details">
                     <strong>Bank Details:</strong><br/>

@@ -2,11 +2,22 @@ const {
   getWhatsAppStatus,
   sendWhatsAppMessage,
   sendWhatsAppPdf,
+  restartWhatsApp, // ✅ Import restart function
 } = require("../whatsappService");
 
 function registerWhatsAppHandlers(ipcMain) {
   ipcMain.handle("whatsapp-get-status", () => {
     return getWhatsAppStatus();
+  });
+
+  // ✅ New handler for manual restart
+  ipcMain.handle("whatsapp-restart", async () => {
+    try {
+      await restartWhatsApp();
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
   });
 
   ipcMain.handle("whatsapp-send-message", async (event, { phone, message }) => {

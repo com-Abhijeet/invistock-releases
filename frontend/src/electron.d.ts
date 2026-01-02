@@ -81,6 +81,9 @@ declare global {
       ) => void;
       onGDriveTokenExpired: (callback: () => void) => void;
     };
+    minimizeApp: () => void;
+    maximizeApp: () => void;
+    closeApp: () => void;
   }
 }
 

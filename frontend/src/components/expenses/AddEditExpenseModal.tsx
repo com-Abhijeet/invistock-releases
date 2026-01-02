@@ -10,6 +10,7 @@ import {
   TextField,
   MenuItem,
   InputAdornment,
+  Autocomplete, // Imported Autocomplete
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { Save } from "lucide-react";
@@ -132,23 +133,28 @@ export default function AddEditExpenseModal({
               />
             </FormField>
           </Grid>
+
+          {/* REPLACED DROPDOWN WITH AUTOCOMPLETE SEARCH */}
           <Grid item xs={12} sm={6}>
             <FormField label="Category *">
-              <TextField
-                select
-                fullWidth
-                size="small"
-                value={form.category}
-                onChange={(e) => handleChange("category", e.target.value)}
-              >
-                {EXPENSE_CATEGORIES.map((cat) => (
-                  <MenuItem key={cat} value={cat}>
-                    {cat}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <Autocomplete
+                options={EXPENSE_CATEGORIES}
+                value={form.category || null} // Handle initial empty state
+                onChange={(_, newValue) =>
+                  handleChange("category", newValue || "")
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    fullWidth
+                    size="small"
+                    placeholder="Search category..."
+                  />
+                )}
+              />
             </FormField>
           </Grid>
+
           <Grid item xs={12} sm={6}>
             <FormField label="Payment Mode">
               <TextField

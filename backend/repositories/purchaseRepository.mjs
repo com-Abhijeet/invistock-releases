@@ -382,33 +382,48 @@ export function getAllPurchases({
 /**
  * @description Retrieves a paginated list of purchases for a specific supplier, along with real-time financial summaries.
  * @param {number} supplierId - The ID of the supplier.
- * @param {object} [filters={}] - Optional filters, including pagination ({ page: number, limit: number }).
+ * @param {object} [filters={}] - Optional filters, including pagination ({ page: number, limit: number, all: boolean }).
  * @returns {Promise<{records: Array<object>, totalRecords: number}>} An object containing the paginated records and the total record count.
  * @throws {Error} If fetching purchases fails.
  */
-export function getPurchasesBySupplierId(supplierId, filters) {
+export function getPurchasesBySupplierId(supplierId, filters = {}) {
   try {
-    // 1. Extract pagination parameters from filters, providing defaults.
-    const { page, limit, ...otherFilters } = filters;
+    // 1. Destructure parameters with defaults, including 'all'
+    const { page = 1, limit = 10, filter, startDate, endDate, all } = filters;
+
     const offset = (page - 1) * limit;
 
+    // Get date filter clause (always get it, but conditionally apply it)
     const { where: dateWhere, params: dateParams } = getDateFilter({
-      from: filters.startDate,
-      to: filters.endDate,
-      filter: filters.filter,
+      from: startDate,
+      to: endDate,
+      filter: filter,
       alias: "p",
     });
 
-    // 2. Create and run a query to get the total count of matching records.
+    // 2. Build dynamic WHERE clauses and parameters
+    const whereClauses = ["p.supplier_id = ?"];
+    const queryParams = [supplierId];
+
+    // ✅ UPDATED: Only add date filter if 'all' is FALSE and the filter is not default
+    if (!all && dateWhere !== "1=1") {
+      whereClauses.push(dateWhere);
+      queryParams.push(...dateParams);
+    }
+
+    const finalWhereClause = whereClauses.join(" AND ");
+
+    // 3. Create and run a query to get the total count of matching records.
     const countQuery = `
       SELECT COUNT(p.id) as totalRecords
       FROM purchases p
-      WHERE p.supplier_id = ? AND ${dateWhere}
+      WHERE ${finalWhereClause}
     `;
     const countStmt = db.prepare(countQuery);
-    const { totalRecords } = countStmt.get(supplierId, ...dateParams);
+    const { totalRecords } = countStmt.get(...queryParams);
 
-    // 3. Modify the main query to include LIMIT and OFFSET for pagination.
+    // 4. Modify the main query to include LIMIT and OFFSET for pagination.
+    // Note: GROUP BY is necessary because of the LEFT JOIN with transactions
     const dataQuery = `
       SELECT
         p.id,
@@ -421,22 +436,22 @@ export function getPurchasesBySupplierId(supplierId, filters) {
         p.total_amount + COALESCE(SUM(CASE WHEN t.type = 'debit_note' THEN t.amount ELSE 0 END), 0) AS adjusted_total_amount
       FROM purchases p
       LEFT JOIN transactions t ON t.bill_id = p.id AND t.bill_type = 'purchase'
-      WHERE p.supplier_id = ? AND ${dateWhere}
+      WHERE ${finalWhereClause}
       GROUP BY p.id
       ORDER BY p.date DESC
       LIMIT ? OFFSET ?
     `;
     const dataStmt = db.prepare(dataQuery);
 
-    // 4. Execute the main query with all parameters, including new pagination ones.
-    const records = dataStmt.all(supplierId, ...dateParams, limit, offset);
+    // 5. Execute the main query with all parameters + pagination limits
+    const records = dataStmt.all(...queryParams, limit, offset);
 
     const processedRecords = records.map((p) => ({
       ...p,
       outstanding_amount: p.adjusted_total_amount - p.total_paid_amount,
     }));
 
-    // 5. Return the paginated data and the total count.
+    // 6. Return the paginated data and the total count.
     return {
       records: processedRecords,
       totalRecords,

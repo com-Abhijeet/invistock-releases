@@ -94,7 +94,7 @@ export default function CustomerLedgerPage() {
         setCustomer(response.customer);
         processLedger(response.ledger);
       }
-      console.log(response);
+      // console.log(response);
     } catch (error) {
       console.error(error);
       toast.error("Failed to load ledger.");

@@ -5,7 +5,8 @@ import {
   getLicenseInfo,
   saveLicenseInfo,
 } from "../repositories/licenseRepository.mjs";
-import { app } from "electron";
+import pkg from "electron";
+const { app } = pkg;
 
 // ✅ Your Public Key
 const publicKey = `-----BEGIN PUBLIC KEY-----

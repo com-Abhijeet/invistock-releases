@@ -10,54 +10,88 @@ let qrCodeDataUrl = "";
 let status = "disconnected";
 let mainWindow = null;
 let isInitializing = false;
+let initTimer = null;
+let initRetryCount = 0;
+const MAX_RETRIES = 3;
 
 /**
  * ✅ Helper to find the user's installed Chrome or Edge browser.
- * This prevents the "spawn ENOENT" error by avoiding the bundled Chromium.
  */
 function getBrowserExecutablePath() {
+  console.log("[WHATSAPP] STEP 2: Searching for browser executable...");
+
   const possiblePaths = [
-    // Microsoft Edge (Standard on Windows 10/11 - Most reliable)
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
     path.join(
       os.homedir(),
       "AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe"
     ),
-
-    // Google Chrome
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
     path.join(
       os.homedir(),
       "AppData\\Local\\Google\\Chrome\\Application\\chrome.exe"
     ),
-
-    // Brave (Good fallback for some users)
     "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
   ];
 
   for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      console.log("[WHATSAPP] Using system browser at:", p);
-      return p;
+    try {
+      if (fs.existsSync(p)) {
+        console.log(`[WHATSAPP] ✅ Found browser at: ${p}`);
+        return p;
+      }
+    } catch (err) {
+      console.error(`[WHATSAPP] Error checking path ${p}:`, err.message);
     }
   }
 
-  console.warn("[WHATSAPP] No system browser found in standard paths.");
+  console.warn("[WHATSAPP] ❌ No system browser found in standard paths.");
   return null;
 }
 
-/**
- * Initializes WhatsApp. If already running, it just updates the window reference.
- */
-function initializeWhatsApp(win) {
-  mainWindow = win;
+// ✅ Clean up function to prevent zombies
+async function cleanupService() {
+  console.log("[WHATSAPP] Cleaning up service...");
+  if (initTimer) clearTimeout(initTimer);
+  initTimer = null;
 
-  // If client exists, just update the UI with current status
-  if (client || isInitializing) {
+  isInitializing = false;
+  status = "disconnected";
+  qrCodeDataUrl = null;
+
+  if (client) {
+    try {
+      await client.destroy();
+      console.log("[WHATSAPP] Old client destroyed.");
+    } catch (e) {
+      console.error("[WHATSAPP] Error destroying client:", e.message);
+    }
+    client = null;
+  }
+
+  // Notify UI
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("whatsapp-status", {
+      status: "disconnected",
+      qr: null,
+    });
+  }
+}
+
+/**
+ * Initializes WhatsApp.
+ */
+async function initializeWhatsApp(win) {
+  console.log("[WHATSAPP] STEP 1: initializeWhatsApp called");
+
+  // Update window reference even if already running
+  if (win) mainWindow = win;
+
+  if (client && (status === "ready" || status === "scanning")) {
+    console.log("[WHATSAPP] Client already running. Sending status to UI.");
     if (mainWindow && !mainWindow.isDestroyed()) {
-      console.log("[WHATSAPP] Service already running, sending status.");
       mainWindow.webContents.send("whatsapp-status", {
         status,
         qr: qrCodeDataUrl,
@@ -66,34 +100,63 @@ function initializeWhatsApp(win) {
     return;
   }
 
+  if (isInitializing) {
+    console.log("[WHATSAPP] Initialization already in progress... skipping.");
+    return;
+  }
+
   isInitializing = true;
+  console.log(`[WHATSAPP] Starting Client (Attempt ${initRetryCount + 1})...`);
 
-  try {
-    console.log("[WHATSAPP] Starting Client...");
-
-    const execPath = getBrowserExecutablePath();
-
-    // If no browser is found, we cannot start Puppeteer in production (asar)
-    // In Dev, puppeteer might download its own chrome, so we can try without execPath
-    // But in Prod, this is fatal.
-    if (!execPath) {
-      console.error(
-        "[WHATSAPP] CRITICAL: No browser found. WhatsApp feature disabled."
-      );
+  // SAFETY TIMEOUT
+  if (initTimer) clearTimeout(initTimer);
+  initTimer = setTimeout(async () => {
+    console.error(
+      "[WHATSAPP] ⚠️ Initialization timed out (Stuck). Restarting..."
+    );
+    await cleanupService();
+    if (initRetryCount < MAX_RETRIES) {
+      initRetryCount++;
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("whatsapp-status", {
-          status: "error",
+          status: "disconnected",
           qr: null,
         });
       }
-      isInitializing = false;
+      setTimeout(() => initializeWhatsApp(mainWindow), 2000);
+    } else {
+      console.error("[WHATSAPP] Max retries reached. Giving up.");
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("whatsapp-status", {
+          status: "error", // Use specific error status
+          qr: null,
+        });
+      }
+    }
+  }, 30000); // Increased to 30s
+
+  try {
+    const execPath = getBrowserExecutablePath();
+
+    if (!execPath) {
+      console.error("[WHATSAPP] CRITICAL: No browser found. CANNOT START.");
+      // Force status update so UI shows error instead of spinning forever
+      status = "error";
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("whatsapp-status", {
+          status: "error", // Update UI to handle 'error' state if possible
+          qr: null,
+        });
+      }
+      await cleanupService();
       return;
     }
+
+    console.log("[WHATSAPP] STEP 3: Creating Client instance...");
 
     client = new Client({
       authStrategy: new LocalAuth({
         clientId: "KOSH-client",
-        // Store session data in userData to persist between updates/restarts
         dataPath: path.join(
           require("electron").app.getPath("userData"),
           ".wwebjs_auth"
@@ -110,13 +173,17 @@ function initializeWhatsApp(win) {
           "--no-first-run",
           "--no-zygote",
           "--disable-gpu",
-          "--disable-extensions", // Disable extensions for speed/stability
+          "--disable-extensions",
+          "--disable-software-rasterizer",
         ],
       },
     });
 
     client.on("qr", (qr) => {
-      // console.log("[WHATSAPP] QR Code received");
+      console.log("[WHATSAPP] STEP 4: QR Code Received!");
+      if (initTimer) clearTimeout(initTimer);
+      initRetryCount = 0;
+
       QRCode.toDataURL(qr, (err, url) => {
         if (err) {
           console.error("[WHATSAPP] QR Gen Error:", err);
@@ -125,6 +192,7 @@ function initializeWhatsApp(win) {
         qrCodeDataUrl = url;
         status = "scanning";
         if (mainWindow && !mainWindow.isDestroyed()) {
+          console.log("[WHATSAPP] Sending QR to UI...");
           mainWindow.webContents.send("whatsapp-status", {
             status,
             qr: qrCodeDataUrl,
@@ -134,110 +202,82 @@ function initializeWhatsApp(win) {
     });
 
     client.on("ready", () => {
+      console.log("[WHATSAPP] STEP 5: Client is READY!");
+      if (initTimer) clearTimeout(initTimer);
+      initRetryCount = 0;
       status = "ready";
       qrCodeDataUrl = null;
       isInitializing = false;
-      console.log("[WHATSAPP] Client is ready!");
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("whatsapp-status", { status, qr: null });
       }
     });
 
     client.on("authenticated", () => {
+      console.log("[WHATSAPP] Client Authenticated");
       status = "authenticated";
       qrCodeDataUrl = null;
-      console.log("[WHATSAPP] Client authenticated");
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("whatsapp-status", { status, qr: null });
       }
     });
 
-    client.on("disconnected", (reason) => {
-      status = "disconnected";
-      client = null;
-      isInitializing = false;
-      console.log("[WHATSAPP] Client was logged out:", reason);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("whatsapp-status", { status, qr: null });
-      }
-      // Optional: Retry logic could go here
+    client.on("disconnected", async (reason) => {
+      console.log("[WHATSAPP] Disconnected:", reason);
+      await cleanupService();
     });
 
-    // Handle authentication failure (e.g. changed password, banned)
-    client.on("auth_failure", (msg) => {
-      console.error("[WHATSAPP] AUTH FAILURE", msg);
-      status = "disconnected";
-      isInitializing = false;
-      client = null;
+    client.on("auth_failure", async (msg) => {
+      console.error("[WHATSAPP] Auth Failure:", msg);
+      await cleanupService();
     });
 
-    client.initialize().catch((err) => {
-      console.error("[WHATSAPP] Client Initialize Error:", err);
-      isInitializing = false;
-      client = null;
-    });
+    console.log("[WHATSAPP] STEP 3.5: Await client.initialize()...");
+    await client.initialize();
   } catch (e) {
-    console.error("[WHATSAPP] Initialization exception:", e);
-    isInitializing = false;
-    client = null;
+    console.error("[WHATSAPP] Init Exception:", e);
+    await cleanupService();
+    if (initRetryCount < MAX_RETRIES) {
+      initRetryCount++;
+      setTimeout(() => initializeWhatsApp(mainWindow), 2000);
+    }
   }
 }
-async function sendWhatsAppMessage(number, message) {
-  if (status !== "ready" || !client) {
-    throw new Error("WhatsApp is not connected. Please scan QR in Settings.");
-  }
 
+async function sendWhatsAppMessage(number, message) {
+  if (status !== "ready" || !client)
+    throw new Error("WhatsApp is not connected.");
   let cleanPhone = number.replace(/[^0-9]/g, "");
   if (cleanPhone.length === 10) cleanPhone = "91" + cleanPhone;
   const chatId = `${cleanPhone}@c.us`;
 
   try {
-    if (client.pupPage && client.pupPage.isClosed()) {
-      throw new Error(
-        "Browser session closed unexpectedly. Restarting service..."
-      );
-    }
-
+    if (client.pupPage && client.pupPage.isClosed())
+      throw new Error("Browser closed");
     const response = await client.sendMessage(chatId, message);
     return { success: true, response };
   } catch (error) {
-    console.error("[WHATSAPP] Send failed:", error);
-
+    console.error("[WHATSAPP] Send Error:", error);
+    // Add logic to restart if session died
     if (
-      error.message.includes("Session closed") ||
-      error.message.includes("Protocol error")
+      error.message &&
+      (error.message.includes("Session closed") ||
+        error.message.includes("Protocol error"))
     ) {
-      status = "disconnected";
-      client = null;
-      isInitializing = false;
+      await cleanupService();
       initializeWhatsApp(mainWindow);
-      throw new Error(
-        "Connection lost. Restarting WhatsApp service... Please try again in a moment."
-      );
     }
-
-    throw new Error("Failed to send message: " + error.message);
+    throw new Error("Failed to send: " + error.message);
   }
 }
 
-// ... (Keep sendWhatsAppPdf as it was, no changes needed there)
 async function sendWhatsAppPdf(number, pdfBase64, fileName, caption) {
-  // ... (Paste your existing sendWhatsAppPdf function here if you used it)
-  // If you need me to provide this again, let me know.
-  // But for the TEXT message error, the code above is what matters.
-
-  // Reuse logic from sendWhatsAppMessage for connection check...
-  if (status !== "ready" || !client) {
+  if (status !== "ready" || !client)
     throw new Error("WhatsApp is not connected.");
-  }
-
   let cleanPhone = number.replace(/[^0-9]/g, "");
   if (cleanPhone.length === 10) cleanPhone = "91" + cleanPhone;
   const chatId = `${cleanPhone}@c.us`;
-
-  // We need MessageMedia, make sure to import it at the top if you use this
   const { MessageMedia } = require("whatsapp-web.js");
-
   const media = new MessageMedia("application/pdf", pdfBase64, fileName);
   await client.sendMessage(chatId, media, { caption });
   return { success: true };
@@ -247,9 +287,20 @@ function getWhatsAppStatus() {
   return { status, qr: qrCodeDataUrl };
 }
 
+async function restartWhatsApp() {
+  console.log("[WHATSAPP] Manual Restart Triggered");
+  await cleanupService();
+  initRetryCount = 0;
+  if (mainWindow) {
+    setTimeout(() => initializeWhatsApp(mainWindow), 1000);
+  }
+  return { success: true };
+}
+
 module.exports = {
   initializeWhatsApp,
   sendWhatsAppMessage,
   getWhatsAppStatus,
   sendWhatsAppPdf,
+  restartWhatsApp,
 };

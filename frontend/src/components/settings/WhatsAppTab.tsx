@@ -11,15 +11,24 @@ import {
   CardContent,
   Divider,
   Alert,
+  Button,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { CheckCircle, Smartphone, HelpCircle, QrCode } from "lucide-react";
+import {
+  CheckCircle,
+  Smartphone,
+  HelpCircle,
+  QrCode,
+  RefreshCw,
+} from "lucide-react";
+import toast from "react-hot-toast";
 
 const { electron } = window;
 
 export default function WhatsAppTab() {
   const [status, setStatus] = useState("disconnected");
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     // 1. Get initial status
@@ -34,6 +43,31 @@ export default function WhatsAppTab() {
       setQrCode(data.qr);
     });
   }, []);
+
+  const handleRestart = async () => {
+    if (restarting) return;
+    setRestarting(true);
+    const toastId = toast.loading("Restarting WhatsApp Service...");
+
+    try {
+      // Clear current state visually immediately
+      setQrCode(null);
+      setStatus("disconnected");
+
+      const res = await electron.ipcRenderer.invoke("whatsapp-restart");
+      if (res.success) {
+        toast.success("Service restarted. Please wait for QR code.", {
+          id: toastId,
+        });
+      } else {
+        toast.error("Failed to restart: " + res.error, { id: toastId });
+      }
+    } catch (e: any) {
+      toast.error("Error invoking restart: " + e.message, { id: toastId });
+    } finally {
+      setRestarting(false);
+    }
+  };
 
   return (
     <Grid container spacing={3}>
@@ -108,17 +142,43 @@ export default function WhatsAppTab() {
                     <Stack alignItems="center" spacing={1}>
                       <CircularProgress size={30} color="inherit" />
                       <Typography variant="caption" color="text.secondary">
-                        Generating QR Code...
+                        {restarting
+                          ? "Restarting Service..."
+                          : "Generating QR Code..."}
                       </Typography>
                     </Stack>
                   )}
                 </Box>
 
-                <Chip
-                  label={`Status: ${status.toUpperCase()}`}
-                  color={status === "scanning" ? "warning" : "default"}
-                  variant="outlined"
-                />
+                <Stack
+                  direction="row"
+                  spacing={2}
+                  justifyContent="center"
+                  alignItems="center"
+                >
+                  <Chip
+                    label={`Status: ${status.toUpperCase()}`}
+                    color={status === "scanning" ? "warning" : "default"}
+                    variant="outlined"
+                  />
+
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    onClick={handleRestart}
+                    disabled={restarting}
+                    startIcon={
+                      restarting ? (
+                        <CircularProgress size={14} />
+                      ) : (
+                        <RefreshCw size={14} />
+                      )
+                    }
+                  >
+                    {restarting ? "Restarting..." : "Restart Service"}
+                  </Button>
+                </Stack>
               </Box>
             )}
           </CardContent>
@@ -180,8 +240,9 @@ export default function WhatsAppTab() {
                 <Typography variant="body2" color="text.secondary">
                   <strong>Stuck on "Scanning"?</strong>
                   <br />
-                  If the QR code expires or doesn't work, try navigating away
-                  from this tab and coming back to refresh the session.
+                  If the QR code expires or doesn't work, try clicking the
+                  <strong> "Restart Service"</strong> button or navigating away
+                  and coming back.
                 </Typography>
               </Stack>
             </CardContent>

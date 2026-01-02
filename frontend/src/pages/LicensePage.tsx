@@ -128,15 +128,19 @@ export default function LicensePage() {
 
       if (result.status === "valid" || result.status === "grace_period") {
         toast.success("License activated successfully!");
+
         if (electron) {
-          setTimeout(() => {
-            // Restarting allows main process to re-run startup checks
-            if (electron.restartApp) electron.restartApp();
-            else {
-              navigate("/");
+          setTimeout(async () => {
+            // ❌ REMOVE: electron.restartApp();
+
+            // ✅ ADD: Smoothly swap to main window
+            if (electron.launchMainApp) {
+              await electron.launchMainApp();
+            } else {
+              // Fallback if preload isn't updated yet
               window.location.reload();
             }
-          }, 1500);
+          }, 1000); // Small delay to let the user see the success toast
         } else {
           navigate("/");
         }

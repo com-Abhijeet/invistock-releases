@@ -30,6 +30,7 @@ export const menuSections = [
         label: "Business Dashboard",
         icon: <LayoutDashboard size={20} />,
         path: "/dashboard",
+        shortcut: "F1",
       },
     ],
   },
@@ -40,11 +41,13 @@ export const menuSections = [
         label: "Point of Sale",
         icon: <ScanBarcode size={20} />,
         path: "/billing",
+        shortcut: "F2",
       },
       {
         label: "Sales Analytics",
         icon: <BarChart3 size={20} />,
         path: "/sales",
+        shortcut: "F3",
       },
       {
         label: "Sales History",
@@ -60,6 +63,7 @@ export const menuSections = [
         label: "Purchase Orders",
         icon: <FileText size={20} />,
         path: "/purchase",
+        shortcut: "F4",
       },
       {
         label: "Purchase Analytics",
@@ -75,6 +79,7 @@ export const menuSections = [
         label: "Suppliers",
         icon: <Truck size={20} />,
         path: "/suppliers",
+        shortcut: "F5",
       },
     ],
   },
@@ -85,11 +90,13 @@ export const menuSections = [
         label: "Inventory Overview",
         icon: <ClipboardList size={20} />,
         path: "/inventory",
+        shortcut: "F6",
       },
       {
         label: "Product Catalog",
         icon: <Boxes size={20} />,
         path: "/products",
+        shortcut: "F7",
       },
       {
         label: "Stock Adjustments",
@@ -125,6 +132,7 @@ export const menuSections = [
         label: "Payments",
         icon: <IndianRupee size={20} />,
         path: "/transactions",
+        shortcut: "F8",
       },
 
       { label: "Expenses", icon: <FileText size={20} />, path: "/expenses" },
@@ -132,6 +140,7 @@ export const menuSections = [
         label: "DayBook",
         icon: <BookA size={20} />,
         path: "/daybook",
+        shortcut: "F9",
       },
     ],
   },
@@ -142,6 +151,7 @@ export const menuSections = [
         label: "Customer Directory",
         icon: <User size={20} />,
         path: "/customers",
+        shortcut: "F10",
       },
       {
         label: "Customer Analytics",
@@ -174,7 +184,12 @@ export const menuSections = [
   {
     title: "System",
     items: [
-      { label: "Preferences", icon: <Settings size={20} />, path: "/settings" },
+      {
+        label: "Preferences",
+        icon: <Settings size={20} />,
+        path: "/settings",
+        shortcut: "F12",
+      },
     ],
   },
 ];

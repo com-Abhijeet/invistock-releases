@@ -13,7 +13,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { Edit, Eye, Trash2, Plus, Download } from "lucide-react";
+import { Edit, Eye, Trash2, Plus, Download, FileText } from "lucide-react";
 import AddEditTransactionModal from "../components/transactions/AddEditTransactionModal";
 import {
   getAllTransactions,
@@ -28,6 +28,7 @@ import type {
   DashboardFilterType,
 } from "../lib/types/inventoryDashboardTypes";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom"; // ✅ Import useNavigate
 
 // Get electron from window
 const { electron } = window;
@@ -42,6 +43,7 @@ const getInitialFilters = (): DashboardFilter => {
 };
 
 export default function TransactionsPage() {
+  const navigate = useNavigate(); // ✅ Initialize hook
   // ✅ Simplified Filter States
   const [activeFilters, setActiveFilters] =
     useState<DashboardFilter>(getInitialFilters);
@@ -80,6 +82,7 @@ export default function TransactionsPage() {
       });
       setTransactions(res.data || []);
       setTotalRecords(res.totalRecords || 0);
+      console.log(res);
     } catch (error) {
       console.error("Failed to fetch transactions:", error);
       toast.error("Failed to fetch transactions.");
@@ -216,9 +219,35 @@ export default function TransactionsPage() {
 
   const actions: Action[] = [
     {
-      label: "View",
+      label: "View Transaction",
       icon: <Eye size={18} />,
       onClick: (row: Transaction) => handleOpenModal(row),
+    },
+    // ✅ New "View Bill" Action
+    {
+      label: "View Bill",
+      icon: <FileText size={18} color="#1976d2" />, // Blue icon to distinguish
+      // Only show/enable if there is a linked bill
+      onClick: (row: Transaction) => {
+        if (row.bill_id && row.bill_type) {
+          // Determine route based on bill type
+          // Assuming 'sale' maps to /billing/:id/view and 'purchase' maps to /purchase/view/:id (or similar)
+          // Adjust paths as per your routing structure
+          if (row.bill_type === "sale") {
+            navigate(`/billing/view/${row.bill_id}`);
+          } else if (row.bill_type === "purchase") {
+            navigate(`/purchase/view/${row.bill_id}`);
+          } else {
+            toast.error("Unknown bill type linked.");
+          }
+        } else {
+          toast.error("No bill linked to this transaction.");
+        }
+      },
+      // Optional: You might want to filter this action out entirely if no bill is linked
+      // But DataTable types usually don't support dynamic action filtering per row easily
+      // without checking inside onClick or using a custom render.
+      // For now, we'll keep it and handle the logic inside onClick.
     },
     {
       label: "Edit",

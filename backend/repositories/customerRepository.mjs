@@ -1,4 +1,4 @@
-import db from "../db/db.mjs";
+import db from "../db/db.mjs"; // ✅ Corrected: Default import
 import { getDateFilter } from "../utils/dateFilter.mjs";
 
 /**
@@ -15,7 +15,7 @@ import { getDateFilter } from "../utils/dateFilter.mjs";
  * @param {string} [customerData.additional_info] Any additional notes about the customer.
  * @returns {Promise<object>} On success, returns the newly created customer object with its new ID. On failure, returns an error object.
  */
-export async function createCustomer(customerData) {
+export function createCustomer(customerData) {
   try {
     const {
       name,
@@ -112,40 +112,45 @@ export function getAllCustomers({ page = 1, limit = 10, query = "", all }) {
   }
 }
 
-export async function getCustomerById(id) {
+export function getCustomerById(id) {
   // The parameters must be passed to the .all() method, not the .prepare() method.
-  return await db.prepare(`SELECT * FROM customers WHERE id = ?`).get(id);
+  return db.prepare(`SELECT * FROM customers WHERE id = ?`).get(id);
 }
 
-export async function updateCustomer(id, updates) {
+export function updateCustomer(id, updates) {
   const keys = Object.keys(updates);
   const values = Object.values(updates);
 
   if (keys.length === 0) return getCustomerById(id);
 
   const setClause = keys.map((key) => `${key} = ?`).join(", ");
-  await db.run(
-    `UPDATE customers SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-    [...values, id]
+
+  // ✅ FIX: Replaced invalid db.run() with db.prepare().run()
+  const stmt = db.prepare(
+    `UPDATE customers SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   );
+
+  stmt.run(...values, id);
 
   return getCustomerById(id);
 }
 
-export async function deleteCustomer(id) {
-  return db.run(`DELETE FROM customers WHERE id = ?`, [id]);
+export function deleteCustomer(id) {
+  // ✅ FIX: Replaced invalid db.run() with db.prepare().run()
+  const stmt = db.prepare(`DELETE FROM customers WHERE id = ?`);
+  return stmt.run(id);
 }
 
-export const getCustomerByPhone = async (phone) => {
+export function getCustomerByPhone(phone) {
   try {
-    const stmt = await db.prepare("SELECT * FROM customers WHERE phone = ?");
-    const customer = await stmt.get(phone); // ✅ Run the statement and get the result
+    const stmt = db.prepare("SELECT * FROM customers WHERE phone = ?");
+    const customer = stmt.get(phone);
     return customer || null;
   } catch (error) {
     console.error("❌ Error in getCustomerByPhone:", error);
     throw error;
   }
-};
+}
 
 /**
  * Inserts multiple customers in a single transaction after validation and sanitization.

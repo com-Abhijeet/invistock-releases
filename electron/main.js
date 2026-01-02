@@ -73,6 +73,7 @@ const dbPath = config.paths.database;
 let lastKnownServerUrl = null;
 let lastKnownAppMode = config.isClientMode ? "client" : "server";
 let mainWindow = null;
+let licenseWin = null;
 let isQuitting = false;
 
 const { startServer, shutdownBackend } = require("../backend/index.mjs");
@@ -86,7 +87,7 @@ const {
 const { machineIdSync } = require("node-machine-id");
 
 function createLicenseWindow() {
-  const licenseWin = new BrowserWindow({
+  licenseWin = new BrowserWindow({
     minWidth: 1100,
     minHeight: 700,
     width: 1280,
@@ -108,20 +109,45 @@ function createLicenseWindow() {
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: "KOSH - Inventory Management",
-    icon: path.join(__dirname, "..", "assets", "icon.ico"),
+    icon: path.join(__dirname, "..", "assets", "icon.png"),
     minWidth: 1100,
     minHeight: 700,
-    autoHideMenuBar: true,
     width: 1280,
     height: 800,
+    backgroundColor: "#ffffff",
+    show: false,
+
+    // ✅ 1. DISABLE SYSTEM FRAME
+    frame: false,
+    // (Optional) If you want native traffic lights on Mac but hidden:
+    // titleBarStyle: 'hidden',
+
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
+      devTools: config.isDev,
     },
   });
 
+  mainWindow.maximize();
+
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (event, errorCode, errorDescription) => {
+      console.error(
+        "❌ FAILED TO LOAD:",
+        errorDescription,
+        "(Code: " + errorCode + ")"
+      );
+    }
+  );
+
   mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.show();
+    console.log("Did finish load");
+    console.log("INTIALIZING WHATSAPP");
+    initializeWhatsApp(mainWindow);
     const appMode = config.isClientMode ? "client" : "server";
     mainWindow.webContents.send("set-app-mode", appMode);
 
@@ -138,11 +164,10 @@ function createWindow() {
     );
   });
 
-  initializeWhatsApp(mainWindow);
-  
   if (config.isDev) {
     mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools();
+    // mainWindow.autoHideMenuBar();
   } else {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
   }
@@ -152,7 +177,7 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   console.log("🟢 App is ready. User data path:", app.getPath("userData"));
 
   // Register license handlers early
@@ -210,7 +235,7 @@ app.whenReady().then(() => {
 
     let licenseStatus = { status: "invalid" };
     try {
-      licenseStatus = checkAppLicense();
+      licenseStatus = await checkAppLicense();
     } catch (e) {
       console.warn(
         "License check failed (expected on fresh install):",
@@ -228,6 +253,19 @@ app.whenReady().then(() => {
       createLicenseWindow();
     }
   }
+
+  ipcMain.handle("launch-main-app", () => {
+    console.log("👉 License Validated. Swapping to Main Window...");
+
+    // Create the main dashboard window
+    createWindow();
+
+    // Close the license window if it exists
+    if (licenseWin && !licenseWin.isDestroyed()) {
+      licenseWin.close();
+    }
+    return { success: true };
+  });
 
   // Register grouped IPC handlers (use getters for dynamic values)
   const { registerCoreHandlers } = require("./ipc/coreHandlers.js");
@@ -253,6 +291,14 @@ app.whenReady().then(() => {
   registerPrintHandlers(ipcMain, { mainWindow });
   registerExportHandlers(ipcMain, { mainWindow });
   registerWhatsAppHandlers(ipcMain);
+});
+
+// Single Instance - Focus window if second instance launched
+app.on("second-instance", (event, commandLine, workingDirectory) => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
 });
 
 app.on("window-all-closed", () => {
@@ -303,5 +349,15 @@ app.on("before-quit", async (event) => {
     app.quit();
   }
 });
+
+ipcMain.on("app-minimize", () => mainWindow.minimize());
+ipcMain.on("app-maximize", () => {
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
+});
+ipcMain.on("app-close", () => mainWindow.close());
 
 module.exports = {};

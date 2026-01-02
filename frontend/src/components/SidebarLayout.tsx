@@ -34,6 +34,7 @@ import {
   Lock,
   LogOut,
   HelpCircle, // Icon for help
+  Tag, // Icon for Label Info
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -43,7 +44,8 @@ import { getShopData } from "../lib/api/shopService";
 import { ShopSetupForm } from "../lib/types/shopTypes";
 import { useAuth } from "../context/AuthContext";
 import GlobalSearch from "./GlobalSearch";
-import KeyboardShortcutsModal from "./KeyboardShortcutModal"; // ✅ Import Modal
+import KeyboardShortcutsModal from "./KeyboardShortcutModal";
+import LabelInfoModal from "./inventory/LabelInfoModal";
 
 import theme from "../../theme";
 import { menuSections } from "../config/menu";
@@ -290,6 +292,8 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
 
   // Shortcuts Modal
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // Label Info Modal
+  const [labelInfoOpen, setLabelInfoOpen] = useState(false);
 
   // Profile Menu State
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -532,6 +536,17 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
                   </IconButton>
                 </Tooltip>
 
+                {/* Label Info Icon */}
+                <Tooltip title="Label & Price Decoder">
+                  <IconButton
+                    size="small"
+                    onClick={() => setLabelInfoOpen(true)}
+                    sx={{ color: "text.secondary" }}
+                  >
+                    <Tag size={20} />
+                  </IconButton>
+                </Tooltip>
+
                 <LowStockNotification />
                 <OverduePaymentsNotification />
 
@@ -684,6 +699,12 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
       <KeyboardShortcutsModal
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
+      />
+
+      {/* Label Info Modal */}
+      <LabelInfoModal
+        open={labelInfoOpen}
+        onClose={() => setLabelInfoOpen(false)}
       />
     </Box>
   );

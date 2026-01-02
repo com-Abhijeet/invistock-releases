@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS shop(
   low_stock_threshold INTEGER DEFAULT 5,
   
 
-  label_printer_name TEX,
+  label_printer_name TEXT,
   invoice_printer_name TEXT,
   invoice_printer_width_mm INTEGER DEFAULT 80,
   default_printer TEXT,

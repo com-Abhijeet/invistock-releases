@@ -19,9 +19,11 @@ import {
   TrendingUp,
   MessageCircle,
   Info,
-  Megaphone, // ✅ Icon for bulk action
+  Megaphone,
+  User, // ✅ Icon for View Customer
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
 
 import DashboardHeader from "../components/DashboardHeader";
 import DataTable from "../components/DataTable";
@@ -31,16 +33,17 @@ import {
   CustomerInsight,
 } from "../lib/api/analyticsService";
 import AnalyticsInfoModal from "../components/analytics/AnalyticsInfoModal";
-import WhatsAppTemplateModal from "../components/analytics/WhatsAppTemplateModal"; // ✅ Import Template Modal
+import WhatsAppTemplateModal from "../components/analytics/WhatsAppTemplateModal";
 import { DataCard } from "../components/DataCard";
 
 export default function CustomerAnalyticsPage() {
+  const navigate = useNavigate();
   const [data, setData] = useState<CustomerInsight[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(0); // 0 = Leaderboard, 1 = Retention
 
-  // ✅ Modal States
+  // Modal States
   const [infoOpen, setInfoOpen] = useState(false);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
   const [selectedRecipients, setSelectedRecipients] = useState<
@@ -73,26 +76,28 @@ export default function CustomerAnalyticsPage() {
     setWhatsappOpen(true);
   };
 
-  // 2. Bulk Dormant Message (Header Action)
-  const handleBulkDormantMessage = () => {
-    // Filter for dormant customers who actually have phone numbers
-    const dormant = data.filter(
-      (c) => c.segment === "Dormant" && c.phone && c.phone.length >= 10
+  // 2. Bulk Message Handler (Generic)
+  const handleBulkMessage = (customers: CustomerInsight[]) => {
+    // Filter for customers who actually have valid phone numbers
+    const validRecipients = customers.filter(
+      (c) => c.phone && c.phone.length >= 10
     );
 
-    if (dormant.length === 0) {
-      return toast.error(
-        "No dormant customers found with valid phone numbers."
-      );
+    if (validRecipients.length === 0) {
+      return toast.error("No valid phone numbers found in this list.");
     }
 
-    setSelectedRecipients(dormant);
+    setSelectedRecipients(validRecipients);
     setWhatsappOpen(true);
   };
 
-  // --- Columns (Unchanged) ---
+  // --- Columns ---
   const columns = [
-    { key: "name", label: "Customer" },
+    {
+      key: "name",
+      label: "Customer",
+      // Removed custom format with onClick, now handled via Actions
+    },
     {
       key: "segment",
       label: "Segment",
@@ -139,11 +144,17 @@ export default function CustomerAnalyticsPage() {
           .filter((c) => c.segment === "Dormant")
           .sort((a, b) => b.days_inactive - a.days_inactive);
 
-  const retentionActions = [
+  // Common Actions for both tabs
+  const rowActions = [
+    {
+      label: "View Profile", // ✅ New Action
+      icon: <User size={16} color="blue" />,
+      onClick: (row: CustomerInsight) => navigate(`/customer/${row.id}`),
+    },
     {
       label: "Send Message",
       icon: <MessageCircle size={16} color="green" />,
-      onClick: (row: CustomerInsight) => handleSingleMessage(row), // ✅ Open Modal
+      onClick: (row: CustomerInsight) => handleSingleMessage(row),
     },
   ];
 
@@ -164,25 +175,24 @@ export default function CustomerAnalyticsPage() {
         showDateFilters={false}
         actions={
           <Stack direction="row" spacing={1.5}>
-            {/* ✅ Show "Message All" only on Retention Tab */}
-            {tab === 1 && (
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={<Megaphone size={18} />}
-                onClick={handleBulkDormantMessage}
-                sx={{
-                  borderRadius: "12px",
-                  fontWeight: 600,
-                  textTransform: "none",
-                  boxShadow: "none",
-                  bgcolor: "#2e7d32", // WhatsApp Green
-                  "&:hover": { bgcolor: "#1b5e20" },
-                }}
-              >
-                Message All ({filteredData.length})
-              </Button>
-            )}
+            {/* ✅ Bulk Message Button (Dynamic based on Tab) */}
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<Megaphone size={18} />}
+              onClick={() => handleBulkMessage(filteredData)}
+              disabled={filteredData.length === 0}
+              sx={{
+                borderRadius: "12px",
+                fontWeight: 600,
+                textTransform: "none",
+                boxShadow: "none",
+                bgcolor: "#2e7d32", // WhatsApp Green
+                "&:hover": { bgcolor: "#1b5e20" },
+              }}
+            >
+              Message All ({filteredData.length})
+            </Button>
 
             <Button
               variant="outlined"
@@ -262,8 +272,7 @@ export default function CustomerAnalyticsPage() {
               total={filteredData.length}
               page={0}
               rowsPerPage={10}
-              // Only show actions on Retention tab
-              actions={tab === 1 ? retentionActions : undefined}
+              actions={rowActions} // ✅ Enable actions for both tabs
               onPageChange={() => {}}
               onRowsPerPageChange={() => {}}
             />
@@ -274,7 +283,7 @@ export default function CustomerAnalyticsPage() {
       {/* Info Modal */}
       <AnalyticsInfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
 
-      {/* ✅ WhatsApp Template Modal */}
+      {/* WhatsApp Template Modal */}
       <WhatsAppTemplateModal
         open={whatsappOpen}
         onClose={() => setWhatsappOpen(false)}

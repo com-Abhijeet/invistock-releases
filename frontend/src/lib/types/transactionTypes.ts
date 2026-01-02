@@ -1,18 +1,28 @@
 // src/lib/types/transactionTypes.ts
 
-export type TransactionType = 'payment_in' | 'payment_out'  | 'credit_note' | 'debit_note';
-export type TransactionStatus = 'paid' | 'pending' | 'cancelled' | 'refunded' | 'issued';
-export type BillType = 'sale' | 'purchase';
-export type EntityType = 'customer' | 'supplier';
+export type TransactionType =
+  | "payment_in"
+  | "payment_out"
+  | "credit_note"
+  | "debit_note";
+export type TransactionStatus =
+  | "paid"
+  | "pending"
+  | "cancelled"
+  | "refunded"
+  | "issued";
+export type BillType = "sale" | "purchase";
+export type EntityType = "customer" | "supplier";
 
 export interface Transaction {
   id: number;
   reference_no: string;
   type: TransactionType;
 
-  // New fields for linking to original bills
   bill_id?: number | null;
   bill_type?: BillType | null;
+
+  bill_ref_no?: string;
 
   entity_id: number;
   entity_type: EntityType;
@@ -38,7 +48,7 @@ export interface GetEntityTransactionsParams {
   query?: string;
   type?: string;
   status?: string;
-  filter?: 'today' | 'month' | 'year' | 'custom';
+  filter?: "today" | "month" | "year" | "custom";
   year?: string;
   startDate?: string;
   endDate?: string;

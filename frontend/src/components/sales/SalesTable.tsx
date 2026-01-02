@@ -1,7 +1,15 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Chip } from "@mui/material";
-import { Printer, Eye, Users, Truck, Undo2, MessageCircle } from "lucide-react"; // ✅ Added MessageCircle
+import {
+  Printer,
+  Eye,
+  Users,
+  Truck,
+  Undo2,
+  MessageCircle,
+  Wallet, // ✅ Import Wallet icon
+} from "lucide-react";
 import type {
   SalesFilter,
   SalesTable as SalesTableType,
@@ -10,7 +18,7 @@ import { fetchSalesTable } from "../../lib/api/salesStatsService";
 import DataTable from "../../components/DataTable";
 import { useNavigate } from "react-router-dom";
 import { getSaleById } from "../../lib/api/salesService";
-import { getShopData } from "../../lib/api/shopService"; // ✅ Import getShopData
+import { getShopData } from "../../lib/api/shopService";
 import { handlePrint } from "../../lib/handleInvoicePrint";
 import toast from "react-hot-toast";
 
@@ -20,9 +28,10 @@ import type { SalePayload } from "../../lib/types/salesTypes";
 
 interface SalesTableProps {
   filters: SalesFilter;
+  onMarkPayment?: (sale: SalesTableType) => void; // ✅ New Prop for lifting state
 }
 
-const SalesTable = ({ filters }: SalesTableProps) => {
+const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
   const [sales, setSales] = useState<SalesTableType[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -96,7 +105,7 @@ const SalesTable = ({ filters }: SalesTableProps) => {
     }
   };
 
-  // ✅ NEW: Handler for WhatsApp Sharing
+  // ✅ Handler for WhatsApp Sharing
   const handleWhatsAppShare = async (saleId: number) => {
     const toastId = toast.loading("Preparing WhatsApp message...");
     try {
@@ -272,6 +281,16 @@ const SalesTable = ({ filters }: SalesTableProps) => {
       icon: <Eye size={18} />,
       onClick: (row: SalesTableType) => navigate(`/billing/view/${row.id}`),
     },
+    // ✅ "Mark Payment" action (Only if onMarkPayment prop is passed)
+    ...(onMarkPayment
+      ? [
+          {
+            label: "Mark Payment",
+            icon: <Wallet size={18} color="green" />,
+            onClick: (row: SalesTableType) => onMarkPayment(row),
+          },
+        ]
+      : []),
     {
       label: "Print Invoice",
       icon: <Printer size={18} />,

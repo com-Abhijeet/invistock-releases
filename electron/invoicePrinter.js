@@ -76,16 +76,18 @@ async function createInvoiceHTML(payload) {
   const gstEnabled = shop.gst_enabled;
   const showHSN = shop.hsn_required;
   const showDiscount = shop.show_discount_column;
+  const inclusiveTax = Boolean(shop.inclusive_tax_pricing);
   const currencySymbol = shop.currency_symbol || "₹";
 
-  // ✅ Compare states in a case-insensitive way
+  // Hide Breakdown if Inclusive Tax is ON
+  const showTaxBreakdown = gstEnabled && !inclusiveTax;
+
   const isInterstate =
     gstEnabled &&
     shop.state &&
     sale.customer_state &&
     shop.state.toLowerCase() !== sale.customer_state.toLowerCase();
 
-  // Helper Functions
   const formatAmount = (amount) =>
     `${currencySymbol}${(amount || 0).toLocaleString("en-IN", {
       minimumFractionDigits: 2,
@@ -100,30 +102,40 @@ async function createInvoiceHTML(payload) {
   const formatAddress = (addr, city, state, pincode) =>
     [addr, city, state, pincode].filter(Boolean).join(", ");
 
-  // Calculate Invoice Totals (logic is unchanged)
   let totalTaxableValue = 0,
     totalCgst = 0,
     totalSgst = 0,
     totalIgst = 0;
   sale.items.forEach((item) => {
-    const taxableValue =
-      item.rate * item.quantity * (1 - (item.discount || 0) / 100);
+    const baseVal = item.rate * item.quantity;
+    const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
+    let taxableValue = 0,
+      gstAmount = 0;
+    if (gstEnabled) {
+      if (inclusiveTax) {
+        const divisor = 1 + item.gst_rate / 100;
+        taxableValue = valAfterDisc / divisor;
+        gstAmount = valAfterDisc - taxableValue;
+      } else {
+        taxableValue = valAfterDisc;
+        gstAmount = taxableValue * (item.gst_rate / 100);
+      }
+    } else {
+      taxableValue = valAfterDisc;
+    }
     totalTaxableValue += taxableValue;
     if (gstEnabled) {
-      const gstAmount = taxableValue * (item.gst_rate / 100);
-      if (isInterstate) {
-        totalIgst += gstAmount;
-      } else {
+      if (isInterstate) totalIgst += gstAmount;
+      else {
         totalCgst += gstAmount / 2;
         totalSgst += gstAmount / 2;
       }
     }
   });
 
-  // Dynamic GST Table Headers (logic is unchanged)
   let gstHeader = "",
     gstSubHeader = "";
-  if (gstEnabled) {
+  if (showTaxBreakdown) {
     if (isInterstate) {
       gstHeader = `<th colspan="2" style="text-align:center;">IGST</th>`;
       gstSubHeader = `<th>Rate</th><th>Amt</th>`;
@@ -133,48 +145,60 @@ async function createInvoiceHTML(payload) {
     }
   }
 
-  // Dynamic Item Rows (logic is unchanged)
   const itemsHTML = (
     await Promise.all(
       sale.items.map(async (item, index) => {
         const marathiName = await getMarathiName(item.product_name || "");
-        const taxableValue =
-          item.rate * item.quantity * (1 - (item.discount || 0) / 100);
-        let gstCells = "";
+        const baseVal = item.rate * item.quantity;
+        const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
+        let taxableValue = 0,
+          gstAmount = 0;
         if (gstEnabled) {
-          const gstAmount = taxableValue * (item.gst_rate / 100);
-          if (isInterstate) {
+          if (inclusiveTax) {
+            const divisor = 1 + item.gst_rate / 100;
+            taxableValue = valAfterDisc / divisor;
+            gstAmount = valAfterDisc - taxableValue;
+          } else {
+            taxableValue = valAfterDisc;
+            gstAmount = taxableValue * (item.gst_rate / 100);
+          }
+        } else {
+          taxableValue = valAfterDisc;
+        }
+
+        let gstCells = "";
+        if (showTaxBreakdown) {
+          if (isInterstate)
             gstCells = `<td>${item.gst_rate || 0}%</td><td>${gstAmount.toFixed(
               2
             )}</td>`;
-          } else {
+          else
             gstCells = `<td>${item.gst_rate / 2 || 0}%</td><td>${(
               gstAmount / 2
-            ).toFixed(2)}</td>
-                        <td>${item.gst_rate / 2 || 0}%</td><td>${(
+            ).toFixed(2)}</td><td>${item.gst_rate / 2 || 0}%</td><td>${(
               gstAmount / 2
             ).toFixed(2)}</td>`;
-          }
         }
         return `
-        <tr>
-          <td>${index + 1}</td>
-          ${showHSN ? `<td>${item.hsn || ""}</td>` : ""}
-          <td style="text-align:left;">${item.product_name}
-            <br><span class="local-name">${marathiName}</span>
-          </td>
-          <td>${taxableValue.toFixed(2)}</td>
-          <td>${item.quantity}</td>
-          ${gstCells}
-          ${showDiscount ? `<td>${item.discount || 0}%</td>` : ""}
-          <td>${formatAmount(item.price)}</td>
-        </tr>
-      `;
+    <tr>
+      <td>${index + 1}</td>
+      ${showHSN ? `<td>${item.hsn || ""}</td>` : ""}
+      <td style="text-align:left;">${
+        item.product_name
+      }<br><span class="local-name">${marathiName}</span></td>
+      <td>${formatAmount(item.rate)}</td>
+      <td>${item.quantity}</td>
+      ${showTaxBreakdown ? `<td>${formatAmount(taxableValue)}</td>` : ""}
+      ${gstCells}
+      ${showDiscount ? `<td>${item.discount || 0}%</td>` : ""}
+      <td>${formatAmount(item.price)}</td>
+    </tr>`;
       })
     )
   ).join("");
 
   const customerMarathiName = await getMarathiName(sale.customer_name || "");
+  const rateHeader = inclusiveTax ? "Rate" : "Rate";
 
   return `
     <html>
@@ -196,25 +220,20 @@ async function createInvoiceHTML(payload) {
             .footer { margin-top: 40px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; }
             .footer .bank-details { text-align: left; }
             .footer .signature { text-align: right; padding-top: 40px; border-top: 1px solid #333; }
+            .note { margin-top: 15px; font-style: italic; font-size: 11px; color: #555; }
+            .local-name { font-size: 0.9em; color: #333; font-style: italic; }
             .toolbar { display:none; } @media print { .toolbar { display: none !important; } }
-            .local-name {
-              font-size: 0.9em;
-              color: #333;
-              font-style: italic;
-            }
         </style>
       </head>
       <body>
         <div class="bill-container">
           <div class="header">
             <h1>${shop.gst_invoice_format || "Tax Invoice"}</h1>
-            
             <h2>${
               shop.use_alias_on_bills && shop.shop_alias
                 ? shop.shop_alias
                 : shop.shop_name
             }</h2>
-
             <p>${
               shop.use_alias_on_bills && shop.shop_alias
                 ? " "
@@ -224,18 +243,14 @@ async function createInvoiceHTML(payload) {
                     shop.state,
                     shop.pincode
                   )
-            }</p>${
-    gstEnabled &&
-    `<p>
-        <strong>GSTIN:</strong> ${
-          shop.gstin || "N/A"
-        } | <strong>Phone:</strong>{" "}
-        ${shop.contact_number || "N/A"}
-      </p>`
-  }
-            
+            }</p>
+            ${
+              gstEnabled &&
+              `<p><strong>GSTIN:</strong> ${
+                shop.gstin || "N/A"
+              } | <strong>Phone:</strong> ${shop.contact_number || "N/A"}</p>`
+            }
           </div>
-            
             <table class="details-table">
                 <tr>
                     <td style="width: 50%; text-align: left;">
@@ -271,37 +286,42 @@ async function createInvoiceHTML(payload) {
                   <th rowspan="2">#</th>
                   ${showHSN ? `<th rowspan="2">HSN</th>` : ""}
                   <th rowspan="2">Item Description</th>
-                  <th rowspan="2">Taxable Val</th>
+                  <th rowspan="2">${rateHeader}</th>
                   <th rowspan="2">Qty</th>
+                  ${showTaxBreakdown ? `<th rowspan="2">Taxable Val</th>` : ""}
                   ${gstHeader}
                   ${showDiscount ? `<th rowspan="2">Disc</th>` : ""}
                   <th rowspan="2">Total</th>
                 </tr>
-                ${gstEnabled ? `<tr>${gstSubHeader}</tr>` : ""}
+                ${showTaxBreakdown ? `<tr>${gstSubHeader}</tr>` : ""}
               </thead>
               <tbody>${itemsHTML}</tbody>
             </table>
 
             <table class="totals-table">
-                <tr><td>Taxable Amount:</td><td>${formatAmount(
-                  totalTaxableValue
-                )}</td></tr>
                 ${
-                  gstEnabled && !isInterstate
+                  showTaxBreakdown
+                    ? `<tr><td>Taxable Amount:</td><td>${formatAmount(
+                        totalTaxableValue
+                      )}</td></tr>`
+                    : ""
+                }
+                ${
+                  showTaxBreakdown && !isInterstate
                     ? `<tr><td>CGST:</td><td>${formatAmount(
                         totalCgst
                       )}</td></tr>`
                     : ""
                 }
                 ${
-                  gstEnabled && !isInterstate
+                  showTaxBreakdown && !isInterstate
                     ? `<tr><td>SGST:</td><td>${formatAmount(
                         totalSgst
                       )}</td></tr>`
                     : ""
                 }
                 ${
-                  gstEnabled && isInterstate
+                  showTaxBreakdown && isInterstate
                     ? `<tr><td>IGST:</td><td>${formatAmount(
                         totalIgst
                       )}</td></tr>`
@@ -320,7 +340,11 @@ async function createInvoiceHTML(payload) {
                   sale.total_amount
                 )}
             </div>
-            
+            ${
+              inclusiveTax
+                ? `<div class="note"><strong>Note:</strong> All prices/rates shown are inclusive of GST.</div>`
+                : ""
+            }
             <div class="footer">
                 <div class="bank-details">
                     <strong>Bank Details:</strong><br/>
@@ -336,26 +360,20 @@ async function createInvoiceHTML(payload) {
                     ? `<div class="qr-wrap"><img src="${shop.generated_upi_qr}" style="width:120px;height:120px;" /></div>`
                     : ""
                 }
-                <div class="signature">
-                    Authorized Signature
-                </div>
+                <div class="signature">Authorized Signature</div>
             </div>
         </div>
       </body>
-    </html>
-  `;
+    </html>`;
 }
 
 async function printInvoice(payload) {
-  // ✅ Destructure 'copies' from the payload, with a default of 1
   const { sale, shop, copies = 1 } = payload;
-
   if (!sale || !shop) {
     console.error("❌ Missing sale or shop data for invoice printing.");
     return;
   }
 
-  // Generate QR code if UPI details are available
   if (shop?.upi_id && shop?.upi_banking_name) {
     const upiUrl = `upi://pay?pa=${encodeURIComponent(
       shop.upi_id
@@ -370,11 +388,10 @@ async function printInvoice(payload) {
   const printWin = new BrowserWindow({
     width: 900,
     height: 1000,
-    show: !Boolean(shop.silent_printing), // The window is created hidden and closed after printing
+    show: !Boolean(shop.silent_printing),
     title: "Invoice Print",
   });
 
-  // ✅ Set the CSP for this window to allow Base64 images (for the QR code)
   printWin.webContents.session.webRequest.onHeadersReceived(
     (details, callback) => {
       callback({
@@ -391,7 +408,6 @@ async function printInvoice(payload) {
     "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent)
   );
 
-  // ✅ Add the print logic
   printWin.webContents.on("did-finish-load", () => {
     printWin.webContents.print(
       {
@@ -402,7 +418,7 @@ async function printInvoice(payload) {
       },
       (success, errorType) => {
         if (!success) console.error("❌ Invoice print failed:", errorType);
-        printWin.close(); // Close the hidden window after printing is done
+        printWin.close();
       }
     );
   });

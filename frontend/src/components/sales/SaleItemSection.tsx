@@ -67,8 +67,6 @@ export default function SaleItemSection({
     {}
   );
 
-  console.log("Items in sales item section", items);
-
   useEffect(() => {
     if (inputValue.trim() === "") {
       setSearchResults([]);
@@ -111,24 +109,33 @@ export default function SaleItemSection({
   }, [items.length]);
 
   const calculateItemPrice = (item: SaleItemPayload) => {
+    if (!shop) return 0;
+
     const rate = Number(item.rate) || 0;
     const qty = Number(item.quantity) || 0;
     const gstRate = Number(item.gst_rate) || 0;
     const discountPct = Number(item.discount) || 0;
-    const base = rate * qty;
-    const discountedAmount = base - (discountPct / 100) * base;
-    let finalPrice = discountedAmount;
-    if (shop?.gst_enabled) {
-      if (shop?.inclusive_tax_pricing) {
-        const divisor = 1 + gstRate / 100;
-        const taxableValue = discountedAmount / divisor;
-        const gstAmount = discountedAmount - taxableValue;
-        finalPrice = taxableValue + gstAmount;
+
+    // 1. Calculate Base Amount (Rate * Qty)
+    const baseAmount = rate * qty;
+
+    // 2. Apply Discount
+    const discountAmount = (baseAmount * discountPct) / 100;
+    const amountAfterDiscount = baseAmount - discountAmount;
+
+    let finalPrice = amountAfterDiscount;
+
+    if (shop.gst_enabled) {
+      if (shop.inclusive_tax_pricing) {
+        // INCLUSIVE: The Rate entered ALREADY includes Tax.
+        finalPrice = amountAfterDiscount;
       } else {
-        const gstAmount = (discountedAmount * gstRate) / 100;
-        finalPrice = discountedAmount + gstAmount;
+        // EXCLUSIVE: The Rate entered is Taxable Value. Add Tax on top.
+        const gstAmount = (amountAfterDiscount * gstRate) / 100;
+        finalPrice = amountAfterDiscount + gstAmount;
       }
     }
+
     return parseFloat(finalPrice.toFixed(2));
   };
 
@@ -155,10 +162,10 @@ export default function SaleItemSection({
       nextItems = items.map((item, i) => {
         if (i === existingItemIndex) {
           const newQuantity = item.quantity + currentItem.quantity;
+          const updatedItem = { ...item, quantity: newQuantity };
           return {
-            ...item,
-            quantity: newQuantity,
-            price: calculateItemPrice({ ...item, quantity: newQuantity }),
+            ...updatedItem,
+            price: calculateItemPrice(updatedItem),
           };
         }
         return item;
@@ -220,7 +227,6 @@ export default function SaleItemSection({
     onItemsChange(newItems);
   };
 
-  // Reusable header style matching Summary
   const headerSx = {
     fontWeight: 700,
     color: "text.secondary",
@@ -244,7 +250,10 @@ export default function SaleItemSection({
                 <TableCell sx={{ ...headerSx, width: "8%" }}>HSN</TableCell>
               )}
               <TableCell sx={{ ...headerSx, width: "30%" }}>PRODUCT</TableCell>
-              <TableCell sx={{ ...headerSx, width: "10%" }}>RATE</TableCell>
+              {/* Dynamic Header for Rate */}
+              <TableCell sx={{ ...headerSx, width: "10%" }}>
+                {shop?.inclusive_tax_pricing ? "RATE (Inc.)" : "RATE"}
+              </TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
               {shop?.gst_enabled && (
                 <>
@@ -270,14 +279,36 @@ export default function SaleItemSection({
           <TableBody>
             {items.map((item, idx) => {
               const product = productCache[item.product_id];
-              const taxableAmount =
-                item.rate * item.quantity * (1 - (item.discount || 0) / 100);
-              const gstRate = item.gst_rate ?? 0;
-              const gstAmount = (taxableAmount * gstRate) / 100;
-              const cgstRate = gstRate / 2;
-              const sgstRate = gstRate / 2;
-              const cgstAmount = gstAmount / 2;
-              const sgstAmount = gstAmount / 2;
+
+              const rate = item.rate || 0;
+              const qty = item.quantity || 0;
+              const disc = item.discount || 0;
+              const gst = item.gst_rate || 0;
+
+              const baseVal = rate * qty;
+              const valAfterDisc = baseVal - (baseVal * disc) / 100;
+
+              let cgstAmount = 0;
+              let sgstAmount = 0;
+
+              if (shop?.gst_enabled) {
+                if (shop.inclusive_tax_pricing) {
+                  // Back-calculate tax from inclusive amount
+                  const divisor = 1 + gst / 100;
+                  const taxable = valAfterDisc / divisor;
+                  const taxAmt = valAfterDisc - taxable;
+                  cgstAmount = taxAmt / 2;
+                  sgstAmount = taxAmt / 2;
+                } else {
+                  // Forward-calculate tax on exclusive amount
+                  const taxAmt = (valAfterDisc * gst) / 100;
+                  cgstAmount = taxAmt / 2;
+                  sgstAmount = taxAmt / 2;
+                }
+              }
+
+              const cgstRate = gst / 2;
+              const sgstRate = gst / 2;
 
               return (
                 <TableRow
@@ -308,7 +339,7 @@ export default function SaleItemSection({
                     </TableCell>
                   )}
 
-                  {/* Product Input / Display */}
+                  {/* Product Input */}
                   <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
                     {editingRowIndex === idx && mode !== "view" ? (
                       <Autocomplete
@@ -402,6 +433,7 @@ export default function SaleItemSection({
                     />
                   </TableCell>
 
+                  {/* GST Display */}
                   {shop?.gst_enabled && (
                     <>
                       <TableCell
@@ -416,7 +448,7 @@ export default function SaleItemSection({
                           {cgstRate}%
                         </Typography>
                         <Typography variant="caption" fontWeight={600}>
-                          {cgstAmount.toFixed(1)}
+                          {cgstAmount.toFixed(2)}
                         </Typography>
                       </TableCell>
                       <TableCell
@@ -431,12 +463,13 @@ export default function SaleItemSection({
                           {sgstRate}%
                         </Typography>
                         <Typography variant="caption" fontWeight={600}>
-                          {sgstAmount.toFixed(1)}
+                          {sgstAmount.toFixed(2)}
                         </Typography>
                       </TableCell>
                     </>
                   )}
 
+                  {/* Discount Input */}
                   {shop?.show_discount_column && (
                     <TableCell
                       sx={{ p: 1, borderBottom: "1px dashed #eee" }}
@@ -540,7 +573,6 @@ export default function SaleItemSection({
         </Box>
       )}
 
-      {/* Error Dialog */}
       <Dialog open={!!error} onClose={() => setError(null)}>
         <DialogTitle>Error</DialogTitle>
         <DialogContent>{error}</DialogContent>

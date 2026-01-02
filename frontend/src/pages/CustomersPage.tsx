@@ -41,6 +41,7 @@ export default function CustomersPage() {
       });
       setCustomers(data.records);
       setTotalRecords(data.totalRecords);
+      console.log(data);
     } catch (error) {
       toast.error("Failed to fetch customers.");
       console.error(error);

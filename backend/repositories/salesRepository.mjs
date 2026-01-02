@@ -481,7 +481,7 @@ export function getSalesForCustomer(customerId, filters = {}) {
       throw new Error("Customer ID is required.");
     }
 
-    // ✅ Destructure all parameters from the single 'filters' object with defaults
+    // ✅ Destructure 'all' along with other parameters
     const {
       page = 1,
       limit = 10,
@@ -489,6 +489,7 @@ export function getSalesForCustomer(customerId, filters = {}) {
       filter,
       startDate,
       endDate,
+      all, // boolean: if true, ignore date filtering
     } = filters;
 
     const offset = (page - 1) * limit;
@@ -505,8 +506,8 @@ export function getSalesForCustomer(customerId, filters = {}) {
     const whereClauses = ["s.customer_id = ?"];
     const params = [customerId];
 
-    // Add date filter if it's not the default '1=1'
-    if (dateWhere !== "1=1") {
+    // ✅ UPDATED: Only add date filter if 'all' is FALSE and the filter is not default
+    if (!all && dateWhere !== "1=1") {
       whereClauses.push(dateWhere);
       params.push(...dateParams);
     }

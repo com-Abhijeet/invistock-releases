@@ -15,7 +15,9 @@ import SalesTable from "../components/sales/SalesTable";
 import theme from "../../theme";
 import toast from "react-hot-toast";
 import ExportDateRangeModal from "../components/ExportDateRangeModal";
-import { FileDownIcon as FileDownloadIcon } from "lucide-react";
+import { FileDownIcon as FileDownloadIcon } from "lucide-react"; // Wallet icon for payment
+import AddEditTransactionModal from "../components/transactions/AddEditTransactionModal"; // ✅ Import Modal
+import type { Transaction } from "../lib/types/transactionTypes";
 
 const { ipcRenderer } = window.electron || {};
 
@@ -44,7 +46,7 @@ export default function SalesTablePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const shop = JSON.parse(localStorage.getItem("shop") || "{}");
 
-  // ✅ ADDED: Stability wrapper
+  // ✅ Stability wrapper
   const handleFilterChange = useCallback((newFilters: DashboardFilter) => {
     setActiveFilters((prev) => {
       if (
@@ -57,6 +59,11 @@ export default function SalesTablePage() {
       return newFilters;
     });
   }, []);
+
+  // --- Payment Modal State ---
+  const [transactionModalOpen, setTransactionModalOpen] = useState(false);
+  const [transactionInitialData, setTransactionInitialData] =
+    useState<Partial<Transaction> | null>(null);
 
   // --- Export State ---
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -137,6 +144,31 @@ export default function SalesTablePage() {
     };
   }, []);
 
+  // ✅ Action Handler for "Mark Payment"
+  const handleMarkPayment = (sale: any) => {
+    // Check if fully paid first?
+    const pending = (sale.total_amount || 0) - (sale.paid_amount || 0);
+
+    if (pending <= 0.9) {
+      // Using standard buffer
+      toast("This bill is already fully paid.", { icon: "ℹ️" });
+      // We allow opening anyway in case they want to overpay or record a specific adjustment,
+      // but typically we'd return. Let's proceed but warn or just set amount to 0.
+    }
+
+    setTransactionInitialData({
+      type: "payment_in",
+      bill_type: "sale",
+      entity_type: "customer",
+      entity_id: sale.customer_id,
+      bill_id: sale.id,
+      amount: pending > 0 ? pending : 0, // Auto-fill pending amount
+      transaction_date: new Date().toISOString().split("T")[0],
+      status: "paid",
+    });
+    setTransactionModalOpen(true);
+  };
+
   const finalFilters = {
     from: activeFilters.from,
     to: activeFilters.to,
@@ -158,7 +190,7 @@ export default function SalesTablePage() {
         showSearch={true}
         showDateFilters={true}
         onSearch={setSearchQuery}
-        onFilterChange={handleFilterChange} // ✅ Use the wrapper
+        onFilterChange={handleFilterChange}
         actions={
           <>
             <Button
@@ -229,7 +261,25 @@ export default function SalesTablePage() {
         </Box>
       )}
 
-      <SalesTable filters={finalFilters} />
+      {/* ✅ Pass the custom action to SalesTable */}
+      <SalesTable filters={finalFilters} onMarkPayment={handleMarkPayment} />
+
+      {/* ✅ Add Edit Transaction Modal */}
+      <AddEditTransactionModal
+        open={transactionModalOpen}
+        onClose={() => setTransactionModalOpen(false)}
+        onSuccess={() => {
+          // Force refresh of table?
+          // SalesTable uses its own internal fetch based on props.
+          // We might need to trigger a refetch.
+          // Since activeFilters is state, we can toggle it slightly or add a refresh trigger prop.
+          // For now, reloading the page or relying on user refresh is simple,
+          // but ideally we pass a 'refreshTrigger' prop to SalesTable.
+          // We'll update state to trigger re-render:
+          setActiveFilters((prev) => ({ ...prev }));
+        }}
+        initialData={transactionInitialData}
+      />
     </Box>
   );
 }
