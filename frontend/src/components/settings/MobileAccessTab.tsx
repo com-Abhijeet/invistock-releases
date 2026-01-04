@@ -55,9 +55,9 @@ export default function MobileAccessTab() {
     <Grid container spacing={3}>
       {/* --- Left Column: QR Code & Connection --- */}
       <Grid item xs={12} md={6}>
-        <Card variant="outlined" sx={{ height: "100%" }}>
+        <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
           <CardContent sx={{ textAlign: "center" }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" fontWeight={600} gutterBottom>
               Connect Mobile Device
             </Typography>
             <Divider sx={{ mb: 3 }} />
@@ -73,9 +73,10 @@ export default function MobileAccessTab() {
                 display: "inline-block",
                 p: 2,
                 border: "1px solid #eee",
-                borderRadius: 2,
+                borderRadius: 3,
                 bgcolor: "#fff",
                 mb: 3,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
               }}
             >
               <QRCodeCanvas
@@ -89,7 +90,7 @@ export default function MobileAccessTab() {
             <Alert
               icon={<Wifi size={20} />}
               severity="info"
-              sx={{ textAlign: "left" }}
+              sx={{ textAlign: "left", borderRadius: 2 }}
             >
               Ensure your phone is connected to the same Wi-Fi network as this
               computer.
@@ -102,9 +103,9 @@ export default function MobileAccessTab() {
       <Grid item xs={12} md={6}>
         <Stack spacing={3} sx={{ height: "100%" }}>
           {/* Manual Connection Card */}
-          <Card variant="outlined">
+          <Card variant="outlined" sx={{ borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" fontWeight={600} gutterBottom>
                 Manual Connection
               </Typography>
               <Divider sx={{ mb: 3 }} />
@@ -141,11 +142,13 @@ export default function MobileAccessTab() {
           </Card>
 
           {/* Troubleshooting Card */}
-          <Card variant="outlined" sx={{ flexGrow: 1 }}>
+          <Card variant="outlined" sx={{ flexGrow: 1, borderRadius: 3 }}>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1} mb={1}>
                 <HelpCircle size={20} color="#ed6c02" /> {/* Warning Color */}
-                <Typography variant="h6">Troubleshooting</Typography>
+                <Typography variant="h6" fontWeight={600}>
+                  Troubleshooting
+                </Typography>
               </Stack>
               <Divider sx={{ mb: 2 }} />
 

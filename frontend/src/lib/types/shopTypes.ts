@@ -47,11 +47,15 @@ export type ShopSetupForm = {
   label_printer_name: string;
   invoice_printer_name: string;
   invoice_printer_width_mm: string;
+  invoice_template_id: string;
   silent_printing: boolean;
   print_after_save: boolean;
   default_printer: string;
+
   label_printer_width_mm: number;
   label_template_default: string;
+  label_template_id: string;
+
   theme: "light" | "dark";
   language: string;
   round_off_total: boolean;

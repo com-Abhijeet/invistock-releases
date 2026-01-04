@@ -7,6 +7,7 @@ import {
   CardContent,
   Divider,
   Box,
+  Stack,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { FormField } from "../FormField";
@@ -21,42 +22,80 @@ interface Props {
 export default function ProfileSettingsTab({ data, onChange }: Props) {
   return (
     <Grid container spacing={3}>
-      {/* --- Left Column: Branding --- */}
+      {/* --- Left Column: Branding & Contact (Stacked) --- */}
       <Grid item xs={12} md={4}>
-        <Card variant="outlined" sx={{ height: "100%" }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Branding
-            </Typography>
-            <Divider sx={{ mb: 3 }} />
-
-            <Box display="flex" flexDirection="column" alignItems="center">
-              <LogoPicker
-                currentLogo={data.logo_url}
-                onLogoSelect={(path: any) => onChange("logo_url", path)}
-              />
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                align="center"
-                sx={{ mt: 2, display: "block" }}
-              >
-                This logo will appear on your invoices and reports.
-                <br />
-                Recommended size: 300x300px.
+        <Stack spacing={3}>
+          {/* Branding Card */}
+          <Card variant="outlined" sx={{ borderRadius: 3 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} gutterBottom>
+                Branding
               </Typography>
-            </Box>
-          </CardContent>
-        </Card>
+              <Divider sx={{ mb: 3 }} />
+
+              <Box display="flex" flexDirection="column" alignItems="center">
+                <LogoPicker
+                  currentLogo={data.logo_url}
+                  onLogoSelect={(path: any) => onChange("logo_url", path)}
+                />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  align="center"
+                  sx={{ mt: 2, display: "block" }}
+                >
+                  Recommended size: 300x300px.
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+
+          {/* Contact Details Card (Moved here to balance height) */}
+          <Card variant="outlined" sx={{ borderRadius: 3 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} gutterBottom>
+                Contact Details
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+
+              <Stack spacing={2}>
+                <FormField label="Owner Name">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={data.owner_name}
+                    onChange={(e) => onChange("owner_name", e.target.value)}
+                  />
+                </FormField>
+                <FormField label="Contact Number">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={data.contact_number}
+                    onChange={(e) => onChange("contact_number", e.target.value)}
+                  />
+                </FormField>
+                <FormField label="Email Address">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={data.email}
+                    onChange={(e) => onChange("email", e.target.value)}
+                  />
+                </FormField>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Stack>
       </Grid>
 
-      {/* --- Right Column: Details & Address --- */}
+      {/* --- Right Column: Shop Info & Address --- */}
       <Grid item xs={12} md={8}>
-        <Card variant="outlined">
+        <Card variant="outlined" sx={{ borderRadius: 3, height: "100%" }}>
           <CardContent>
-            {/* Business Details Section */}
-            <Typography variant="h6" gutterBottom>
-              Business Details
+            {/* Business Identity Section */}
+            <Typography variant="h6" fontWeight={600} gutterBottom>
+              Shop Identity
             </Typography>
             <Divider sx={{ mb: 3 }} />
 
@@ -100,41 +139,11 @@ export default function ProfileSettingsTab({ data, onChange }: Props) {
                   }
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormField label="Owner Name">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={data.owner_name}
-                    onChange={(e) => onChange("owner_name", e.target.value)}
-                  />
-                </FormField>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormField label="Contact Number">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={data.contact_number}
-                    onChange={(e) => onChange("contact_number", e.target.value)}
-                  />
-                </FormField>
-              </Grid>
-              <Grid item xs={12}>
-                <FormField label="Email Address">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={data.email}
-                    onChange={(e) => onChange("email", e.target.value)}
-                  />
-                </FormField>
-              </Grid>
             </Grid>
 
-            {/* Business Address Section */}
+            {/* Location Section */}
             <Box mt={4}>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" fontWeight={600} gutterBottom>
                 Location & Address
               </Typography>
               <Divider sx={{ mb: 3 }} />

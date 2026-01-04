@@ -281,7 +281,7 @@ export default function AboutPage() {
                         Phone
                       </Typography>
                       <Typography variant="body2" fontWeight="500">
-                        +91 9370294078
+                        +91 8180904072
                       </Typography>
                     </Box>
                   </Stack>

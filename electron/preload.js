@@ -65,6 +65,12 @@ contextBridge.exposeInMainWorld("electron", {
 
         "license-updated-restart-app",
         "launch-main-app",
+
+        "generate-template-preview",
+        "generate-label-preview",
+
+        "get-app-mode",
+        "get-server-url",
       ];
       if (validInvokeChannels.includes(channel)) {
         return ipcRenderer.invoke(channel, data);

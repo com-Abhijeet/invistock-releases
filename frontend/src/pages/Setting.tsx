@@ -9,9 +9,8 @@ import {
   Typography,
   Button,
   Paper,
-  Divider,
-  useTheme,
-  useMediaQuery,
+  Container,
+  Fade,
 } from "@mui/material";
 import {
   User,
@@ -20,13 +19,14 @@ import {
   DatabaseBackup,
   Smartphone,
   MessageCircle,
+  Printer,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import DashboardHeader from "../components/DashboardHeader";
 import ProfileSettingsTab from "../components/settings/ProfileSettingsTab";
 import TaxBankSettingsTab from "../components/settings/TaxBankSettingsTab";
 import PreferencesTab from "../components/settings/PreferencesTab";
+import PrintSettingsTab from "../components/settings/PrintSettingsTab"; // ✅ New Import
 import BackupRestoreTab from "../components/settings/BackupRestoreTab";
 import MobileAccessTab from "../components/settings/MobileAccessTab";
 import WhatsAppTab from "../components/settings/WhatsAppTab";
@@ -39,10 +39,6 @@ export default function SettingsPage() {
   const [shopData, setShopData] = useState<ShopSetupForm | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const theme = useTheme();
-  // Check if screen is small to switch back to scrollable tabs if needed
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -87,150 +83,165 @@ export default function SettingsPage() {
         height="80vh"
       >
         <CircularProgress />
-        <Typography ml={2} color="text.secondary">
-          Loading Settings...
-        </Typography>
       </Box>
     );
   }
 
   return (
     <Box
-      p={2}
-      pt={3}
       sx={{
-        backgroundColor: "#fff",
-
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
+        backgroundColor: "#f8fafc",
+        minHeight: "80vh",
+        pb: 10,
       }}
     >
-      <DashboardHeader title="Application Settings" showDateFilters={false} />
-
-      {/* --- TABS HEADER --- */}
-      <Paper
-        variant="outlined"
-        sx={{
-          mb: 3,
-          borderRadius: 2,
-          borderBottomLeftRadius: 0,
-          borderBottomRightRadius: 0,
-          borderBottom: "none",
-          backgroundColor: "background.paper",
-          overflow: "hidden", // Keeps the active indicator clean
-        }}
-      >
-        <Tabs
-          value={activeTab}
-          onChange={(_, newValue) => setActiveTab(newValue)}
-          // ✅ Auto-switch layout based on screen size
-          variant={isMobile ? "scrollable" : "fullWidth"}
-          scrollButtons="auto"
-          textColor="primary"
-          indicatorColor="primary"
+      <Container maxWidth="lg" sx={{ pt: 2 }}>
+        {/* --- FLOATING PILL NAVIGATION --- */}
+        <Box
           sx={{
-            "& .MuiTab-root": {
-              minHeight: 64,
-              textTransform: "none",
-              fontWeight: 600,
-              fontSize: "0.95rem",
-              gap: 1.5,
-              color: "text.secondary",
-              transition: "all 0.2s",
-              "&.Mui-selected": {
-                color: "primary.main",
-                backgroundColor: (theme) => theme.palette.primary.light + "15", // Subtle background highlight
-              },
-              "&:hover": {
-                backgroundColor: (theme) => theme.palette.action.hover,
-              },
-            },
-            "& .MuiTabs-indicator": {
-              height: 3, // Thicker indicator
-              borderTopLeftRadius: 3,
-              borderTopRightRadius: 3,
-            },
-          }}
-        >
-          <Tab icon={<User size={20} />} iconPosition="start" label="Profile" />
-          <Tab
-            icon={<FileText size={20} />}
-            iconPosition="start"
-            label="Tax & Bank"
-          />
-          <Tab
-            icon={<SettingsIcon size={20} />}
-            iconPosition="start"
-            label="Preferences"
-          />
-          <Tab
-            icon={<DatabaseBackup size={20} />}
-            iconPosition="start"
-            label="Backup"
-          />
-          <Tab
-            icon={<Smartphone size={20} />}
-            iconPosition="start"
-            label="Mobile"
-          />
-          <Tab
-            icon={<MessageCircle size={20} />}
-            iconPosition="start"
-            label="WhatsApp"
-          />
-        </Tabs>
-        <Divider />
-      </Paper>
-
-      {/* --- TAB CONTENT --- */}
-      <Box sx={{ flexGrow: 1, pb: 4 }}>
-        {/* Form-based Tabs */}
-        {activeTab === 0 && shopData && (
-          <ProfileSettingsTab data={shopData} onChange={handleChange} />
-        )}
-        {activeTab === 1 && shopData && (
-          <TaxBankSettingsTab data={shopData} onChange={handleChange} />
-        )}
-        {activeTab === 2 && shopData && (
-          <PreferencesTab data={shopData} onChange={handleChange} />
-        )}
-
-        {/* Component-based Tabs */}
-        {activeTab === 3 && <BackupRestoreTab />}
-        {activeTab === 4 && <MobileAccessTab />}
-        {activeTab === 5 && <WhatsAppTab />}
-      </Box>
-
-      {/* --- SAVE ACTIONS (Floating Footer) --- */}
-      {[0, 1, 2].includes(activeTab) && (
-        <Paper
-          elevation={3}
-          sx={{
-            position: "sticky",
-            bottom: 0,
-            p: 2,
-            mt: 2,
-            borderRadius: 2,
             display: "flex",
-            justifyContent: "flex-end",
-            backgroundColor: "background.paper",
-            zIndex: 10,
-            borderTop: `1px solid ${theme.palette.divider}`,
+            justifyContent: "center",
+            mb: 4,
           }}
         >
+          <Paper
+            elevation={0}
+            sx={{
+              p: 0.5,
+              backgroundColor: "rgba(0, 0, 0, 0.04)",
+              borderRadius: 3,
+              display: "inline-flex",
+            }}
+          >
+            <Tabs
+              value={activeTab}
+              onChange={(_, v) => setActiveTab(v)}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{
+                minHeight: "auto",
+                "& .MuiTabs-indicator": { display: "none" },
+                "& .MuiTab-root": {
+                  textTransform: "none",
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                  minHeight: 40,
+                  minWidth: "auto",
+                  borderRadius: 2.5,
+                  px: 2.5,
+                  py: 1,
+                  mx: 0.5,
+                  color: "text.secondary",
+                  transition: "all 0.2s ease",
+                  "&.Mui-selected": {
+                    color: "text.primary",
+                    backgroundColor: "background.paper",
+                    boxShadow: "0px 2px 8px rgba(0,0,0,0.08)",
+                  },
+                  "&:hover:not(.Mui-selected)": {
+                    backgroundColor: "rgba(0,0,0,0.04)",
+                  },
+                },
+              }}
+            >
+              <Tab
+                icon={<User size={18} />}
+                iconPosition="start"
+                label="Profile"
+              />
+              <Tab
+                icon={<FileText size={18} />}
+                iconPosition="start"
+                label="Tax"
+              />
+              {/* ✅ New Print Tab */}
+              <Tab
+                icon={<Printer size={18} />}
+                iconPosition="start"
+                label="Print"
+              />
+              <Tab
+                icon={<SettingsIcon size={18} />}
+                iconPosition="start"
+                label="Preferences"
+              />
+              <Tab
+                icon={<DatabaseBackup size={18} />}
+                iconPosition="start"
+                label="Backup"
+              />
+              <Tab
+                icon={<Smartphone size={18} />}
+                iconPosition="start"
+                label="Mobile"
+              />
+              <Tab
+                icon={<MessageCircle size={18} />}
+                iconPosition="start"
+                label="WhatsApp"
+              />
+            </Tabs>
+          </Paper>
+        </Box>
+
+        {/* --- CONTENT AREA --- */}
+        <Fade in={true} key={activeTab} timeout={300}>
+          <Box>
+            {activeTab === 0 && shopData && (
+              <ProfileSettingsTab data={shopData} onChange={handleChange} />
+            )}
+            {activeTab === 1 && shopData && (
+              <TaxBankSettingsTab data={shopData} onChange={handleChange} />
+            )}
+            {/* ✅ New Print Tab Content */}
+            {activeTab === 2 && shopData && (
+              <PrintSettingsTab data={shopData} onChange={handleChange} />
+            )}
+            {activeTab === 3 && shopData && (
+              <PreferencesTab data={shopData} onChange={handleChange} />
+            )}
+            {activeTab === 4 && <BackupRestoreTab />}
+            {activeTab === 5 && <MobileAccessTab />}
+            {activeTab === 6 && <WhatsAppTab />}
+          </Box>
+        </Fade>
+      </Container>
+
+      {/* --- SAVE FOOTER --- */}
+      {/* Show for tabs 0-3 (Profile, Tax, Print, Prefs) */}
+      {[0, 1, 2, 3].includes(activeTab) && (
+        <Paper
+          elevation={5}
+          sx={{
+            position: "fixed",
+            bottom: 30,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 1200,
+            borderRadius: 50,
+            px: 1,
+            py: 1,
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            backgroundColor: "#fff",
+            border: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Box px={2}>
+            <Typography variant="body2" color="text.secondary" fontWeight={500}>
+              Unsaved changes
+            </Typography>
+          </Box>
           <Button
             variant="contained"
-            size="large"
+            color="primary"
             onClick={handleSave}
             disabled={saving}
-            sx={{ minWidth: 160, fontWeight: 600 }}
+            sx={{ borderRadius: 50, px: 4 }}
           >
-            {saving ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : (
-              "Save Changes"
-            )}
+            {saving ? "Saving..." : "Save Updates"}
           </Button>
         </Paper>
       )}

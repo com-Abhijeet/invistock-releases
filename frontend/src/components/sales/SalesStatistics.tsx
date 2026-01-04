@@ -113,7 +113,7 @@ const SalesStatistics = ({ filters }: SalesStatisticsProps) => {
       color: theme.palette.error.main,
     },
     {
-      title: "Customers",
+      title: "Repeat Customers",
       value: order?.repeatCustomers ?? 0,
       icon: <Users size={24} />,
       color: theme.palette.secondary.main,

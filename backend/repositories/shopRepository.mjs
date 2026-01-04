@@ -52,6 +52,7 @@ function getFinancialYear(date = new Date()) {
  * @property {boolean} [print_after_save]
  * @property {number} [label_printer_width_mm]
  * @property {string} [label_template_default]
+ * @property {string} [invoice_template_id]
  * @property {string} [theme]
  * @property {string} [language]
  * @property {boolean} [round_off_total]
@@ -98,12 +99,12 @@ export const createShop = async (shopData) => {
         gst_invoice_format, show_gst_breakup,
         currency_symbol, currency_position, date_format, time_format,
         default_payment_mode, allow_negative_stock, low_stock_threshold,
-        default_printer, print_after_save, label_printer_width_mm, label_template_default,
+        default_printer, print_after_save, label_printer_width_mm, label_template_default, invoice_template_id,
         theme, language, round_off_total, show_discount_column, barcode_prefix,
         enable_auto_backup, backup_path,
         bank_account_no, bank_account_ifsc_code, bank_account_holder_name,
         bank_account_type, bank_account_branch, bank_name, upi_id, upi_banking_name,
-        last_reset_fy
+        last_reset_fy, invoice_template_id, label_template_id
       ) VALUES (
         @shop_name, @owner_name, @contact_number, @email,
         @address_line1, @address_line2, @city, @state, @pincode, @country,
@@ -113,12 +114,12 @@ export const createShop = async (shopData) => {
         @gst_invoice_format, @show_gst_breakup,
         @currency_symbol, @currency_position, @date_format, @time_format,
         @default_payment_mode, @allow_negative_stock, @low_stock_threshold,
-        @default_printer, @print_after_save, @label_printer_width_mm, @label_template_default,
+        @default_printer, @print_after_save, @label_printer_width_mm, @label_template_default, @invoice_template_id,
         @theme, @language, @round_off_total, @show_discount_column, @barcode_prefix,
         @enable_auto_backup, @backup_path,
         @bank_account_no, @bank_account_ifsc_code, @bank_account_holder_name,
         @bank_account_type, @bank_account_branch, @bank_name, @upi_id, @upi_banking_name,
-        @last_reset_fy
+        @last_reset_fy, @invoice_template_id, @label_template_id
       )
     `);
 

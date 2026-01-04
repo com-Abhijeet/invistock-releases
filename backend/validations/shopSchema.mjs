@@ -74,6 +74,9 @@ export const shopSchema = z.object({
   //UPI Details
   upi_id: z.string().optional(),
   upi_banking_name: z.string().optional(),
+
+  invoice_template_id: z.string().optional(),
+  label_template_id: z.string().default("1").optional(),
 });
 
 export const createShopSchema = z.object({

@@ -117,6 +117,8 @@ CREATE TABLE IF NOT EXISTS shop(
   label_printer_name TEXT,
   invoice_printer_name TEXT,
   invoice_printer_width_mm INTEGER DEFAULT 80,
+  invoice_template_id TEXT DEFAULT 1,
+  label_template_id TEXT DEFAULT 1,
   default_printer TEXT,
   print_after_save INTEGER DEFAULT 0,
   label_printer_width_mm INTEGER DEFAULT 50,

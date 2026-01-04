@@ -5,7 +5,6 @@ import {
   TextField,
   Switch,
   FormControlLabel,
-  MenuItem,
   InputAdornment,
   IconButton,
   Tooltip,
@@ -18,8 +17,7 @@ import {
 import Grid from "@mui/material/GridLegacy";
 import { FormField } from "../FormField";
 import { type ShopSetupForm } from "../../lib/types/shopTypes";
-import { useState, useEffect } from "react";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Settings2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const { ipcRenderer } = window.electron;
@@ -30,17 +28,6 @@ interface Props {
 }
 
 export default function PreferencesTab({ data, onChange }: Props) {
-  const [availablePrinters, setAvailablePrinters] = useState([]);
-
-  useEffect(() => {
-    async function fetchPrinters() {
-      if (!ipcRenderer) return;
-      const printers = await ipcRenderer.invoke("get-printers");
-      setAvailablePrinters(printers || []);
-    }
-    fetchPrinters();
-  }, []);
-
   const handleSelectPath = async () => {
     if (!ipcRenderer) return;
     const result = await ipcRenderer.invoke("dialog:open-directory");
@@ -53,151 +40,143 @@ export default function PreferencesTab({ data, onChange }: Props) {
 
   return (
     <Box>
-      {/* --- Section 1: Invoicing & Inventory --- */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
+      <Grid container spacing={3}>
+        {/* --- Left Column: Invoicing Rules --- */}
         <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ height: "100%" }}>
+          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Invoicing Rules
-              </Typography>
+              <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
+                <Settings2 size={20} className="text-gray-600" />
+                <Typography variant="h6" fontWeight={600}>
+                  Business Logic
+                </Typography>
+              </Stack>
               <Divider sx={{ mb: 3 }} />
 
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <FormField label="Invoice Prefix">
-                    <TextField
-                      fullWidth
-                      size="small"
-                      value={data.invoice_prefix || ""}
-                      onChange={(e) =>
-                        onChange("invoice_prefix", e.target.value)
-                      }
-                      placeholder="e.g. INV-"
-                    />
-                  </FormField>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormField label="Default GST Rate (%)">
-                    <TextField
-                      type="number"
-                      fullWidth
-                      size="small"
-                      value={data.default_gst_rate || ""}
-                      onChange={(e) =>
-                        onChange("default_gst_rate", Number(e.target.value))
-                      }
-                    />
-                  </FormField>
-                </Grid>
-                <Grid item xs={12}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={Boolean(data.gst_enabled)}
-                        onChange={(e) =>
-                          onChange("gst_enabled", e.target.checked)
-                        }
-                      />
-                    }
-                    label="Enable GST Calculation"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={Boolean(data.inclusive_tax_pricing)}
-                        onChange={(e) =>
-                          onChange("inclusive_tax_pricing", e.target.checked)
-                        }
-                      />
-                    }
-                    label="Product Prices are Inclusive of Tax"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={Boolean(data.hsn_required)}
-                        onChange={(e) =>
-                          onChange("hsn_required", e.target.checked)
-                        }
-                      />
-                    }
-                    label="HSN Code is Mandatory"
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={Boolean(data.show_discount_column)}
-                        onChange={(e) =>
-                          onChange("show_discount_column", e.target.checked)
-                        }
-                      />
-                    }
-                    label="Show Discount Column on Invoice"
-                  />
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Stack spacing={3} sx={{ height: "100%" }}>
-            <Card variant="outlined">
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Inventory Settings
-                </Typography>
-                <Divider sx={{ mb: 3 }} />
-
+              <Stack spacing={3}>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
-                    <FormField label="Low Stock Threshold">
+                    <FormField label="Invoice Prefix">
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={data.invoice_prefix || ""}
+                        onChange={(e) =>
+                          onChange("invoice_prefix", e.target.value)
+                        }
+                        placeholder="e.g. INV-"
+                      />
+                    </FormField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormField label="Default GST Rate (%)">
                       <TextField
                         type="number"
                         fullWidth
                         size="small"
-                        value={data.low_stock_threshold || ""}
+                        value={data.default_gst_rate || ""}
                         onChange={(e) =>
-                          onChange(
-                            "low_stock_threshold",
-                            Number(e.target.value)
-                          )
+                          onChange("default_gst_rate", Number(e.target.value))
                         }
-                        helperText="Default alert level"
                       />
                     </FormField>
                   </Grid>
-                  <Grid item xs={12}>
+                </Grid>
+
+                <Box
+                  sx={{
+                    bgcolor: "grey.50",
+                    p: 2,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                  }}
+                >
+                  <Stack spacing={1}>
                     <FormControlLabel
                       control={
                         <Switch
-                          checked={Boolean(data.allow_negative_stock)}
+                          size="small"
+                          checked={Boolean(data.gst_enabled)}
                           onChange={(e) =>
-                            onChange("allow_negative_stock", e.target.checked)
+                            onChange("gst_enabled", e.target.checked)
                           }
                         />
                       }
-                      label="Allow Negative Stock (Sell without stock)"
+                      label={
+                        <Typography variant="body2">
+                          Enable GST Calculation
+                        </Typography>
+                      }
                     />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={Boolean(data.inclusive_tax_pricing)}
+                          onChange={(e) =>
+                            onChange("inclusive_tax_pricing", e.target.checked)
+                          }
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          Product Prices are Inclusive of Tax
+                        </Typography>
+                      }
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={Boolean(data.hsn_required)}
+                          onChange={(e) =>
+                            onChange("hsn_required", e.target.checked)
+                          }
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          HSN Code is Mandatory
+                        </Typography>
+                      }
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={Boolean(data.show_discount_column)}
+                          onChange={(e) =>
+                            onChange("show_discount_column", e.target.checked)
+                          }
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          Show Discount Column on Invoice
+                        </Typography>
+                      }
+                    />
+                  </Stack>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
 
-            <Card variant="outlined" sx={{ flexGrow: 1 }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
+        {/* --- Right Column: System Backup --- */}
+        <Grid item xs={12} md={6}>
+          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
+            <CardContent>
+              <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
+                <FolderOpen size={20} className="text-blue-600" />
+                <Typography variant="h6" fontWeight={600}>
                   System Backup
                 </Typography>
-                <Divider sx={{ mb: 3 }} />
+              </Stack>
+              <Divider sx={{ mb: 3 }} />
 
+              <Stack spacing={2}>
                 <FormControlLabel
                   control={
                     <Switch
@@ -208,8 +187,12 @@ export default function PreferencesTab({ data, onChange }: Props) {
                     />
                   }
                   label="Auto-Backup on Exit"
-                  sx={{ mb: 2 }}
                 />
+
+                <Typography variant="body2" color="text.secondary">
+                  Automatically save a copy of your database when closing the
+                  app to prevent data loss.
+                </Typography>
 
                 {data.enable_auto_backup && (
                   <FormField label="Backup Location">
@@ -222,8 +205,8 @@ export default function PreferencesTab({ data, onChange }: Props) {
                         endAdornment: (
                           <InputAdornment position="end">
                             <Tooltip title="Select Backup Folder">
-                              <IconButton onClick={handleSelectPath}>
-                                <FolderOpen />
+                              <IconButton onClick={handleSelectPath} edge="end">
+                                <FolderOpen size={18} />
                               </IconButton>
                             </Tooltip>
                           </InputAdornment>
@@ -232,141 +215,7 @@ export default function PreferencesTab({ data, onChange }: Props) {
                     />
                   </FormField>
                 )}
-              </CardContent>
-            </Card>
-          </Stack>
-        </Grid>
-      </Grid>
-
-      {/* --- Section 3: Printing --- */}
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <Card variant="outlined">
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Printer Configuration
-              </Typography>
-              <Divider sx={{ mb: 3 }} />
-
-              <Grid container spacing={3}>
-                {/* Label Printer */}
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="primary" gutterBottom>
-                    Product Label / Barcode Printer
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={8}>
-                      <FormField label="Printer Name">
-                        <TextField
-                          select
-                          fullWidth
-                          size="small"
-                          value={data.label_printer_name || ""}
-                          onChange={(e) =>
-                            onChange("label_printer_name", e.target.value)
-                          }
-                        >
-                          <MenuItem value="">System Default</MenuItem>
-                          {availablePrinters.map((p: any) => (
-                            <MenuItem key={p.name} value={p.name}>
-                              {p.name}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-                      </FormField>
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                      <FormField label="Width (mm)">
-                        <TextField
-                          type="number"
-                          fullWidth
-                          size="small"
-                          value={data.label_printer_width_mm || ""}
-                          onChange={(e) =>
-                            onChange(
-                              "label_printer_width_mm",
-                              Number(e.target.value)
-                            )
-                          }
-                        />
-                      </FormField>
-                    </Grid>
-                  </Grid>
-                </Grid>
-
-                {/* Invoice Printer */}
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="primary" gutterBottom>
-                    Invoice / Receipt Printer
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={8}>
-                      <FormField label="Printer Name">
-                        <TextField
-                          select
-                          fullWidth
-                          size="small"
-                          value={data.invoice_printer_name || ""}
-                          onChange={(e) =>
-                            onChange("invoice_printer_name", e.target.value)
-                          }
-                        >
-                          <MenuItem value="">System Default</MenuItem>
-                          {availablePrinters.map((p: any) => (
-                            <MenuItem key={p.name} value={p.name}>
-                              {p.name}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-                      </FormField>
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                      <FormField label="Width (mm)">
-                        <TextField
-                          type="number"
-                          fullWidth
-                          size="small"
-                          value={data.invoice_printer_width_mm || ""}
-                          onChange={(e) =>
-                            onChange(
-                              "invoice_printer_width_mm",
-                              Number(e.target.value)
-                            )
-                          }
-                        />
-                      </FormField>
-                    </Grid>
-                  </Grid>
-                </Grid>
-
-                {/* General Print Settings */}
-                <Grid item xs={12}>
-                  <Stack direction="row" spacing={4}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={Boolean(data.silent_printing)}
-                          onChange={(e) =>
-                            onChange("silent_printing", e.target.checked)
-                          }
-                        />
-                      }
-                      label="Enable Silent Printing (Skip dialog)"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={Boolean(data.print_after_save)}
-                          onChange={(e) =>
-                            onChange("print_after_save", e.target.checked)
-                          }
-                        />
-                      }
-                      label="Auto-Print Invoice after Saving"
-                    />
-                  </Stack>
-                </Grid>
-              </Grid>
+              </Stack>
             </CardContent>
           </Card>
         </Grid>

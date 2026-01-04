@@ -65,7 +65,7 @@ export default function OnboardingScreen({
           <Stack spacing={2} mt={2}>
             <Box display="flex" alignItems="center" gap={2}>
               <Phone size={18} />
-              <Typography variant="body2">+91 93702 94078</Typography>
+              <Typography variant="body2">+91 81809 04072</Typography>
             </Box>
             <Box display="flex" alignItems="center" gap={2}>
               <Mail size={18} />

@@ -9,9 +9,14 @@ import {
   Button,
   IconButton,
   Typography,
+  Stack,
+  Box,
+  Divider,
+  InputAdornment,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Tag, Layers, Hash, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Category, Subcategory } from "../../lib/types/categoryTypes";
 import {
@@ -26,7 +31,7 @@ interface CategoryModalProps {
   onClose: () => void;
   onSave: (data: Category) => void;
   existingCategories: Category[];
-  initialData?: Category | null; // ✅ Prop to accept data for editing
+  initialData?: Category | null;
 }
 
 const defaultCategory = { name: "", code: "" };
@@ -37,7 +42,7 @@ export default function CategoryModalForm({
   onClose,
   onSave,
   existingCategories,
-  initialData, // Destructure the new prop
+  initialData,
 }: CategoryModalProps) {
   const [category, setCategory] = useState(defaultCategory);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([
@@ -48,12 +53,11 @@ export default function CategoryModalForm({
   const [codeError, setCodeError] = useState(false);
   const [subErrors, setSubErrors] = useState<boolean[]>([false]);
 
-  // ✅ State to track if the user has manually edited the code fields
+  // Track manual edits
   const [isCategoryCodeEdited, setIsCategoryCodeEdited] = useState(false);
   const [isSubCodeEdited, setIsSubCodeEdited] = useState<boolean[]>([false]);
 
   // ✅ EFFECT 1: Populate form for Add/Edit mode
-  // This runs only when the modal opens to set the initial state.
   useEffect(() => {
     if (open) {
       if (initialData) {
@@ -64,7 +68,7 @@ export default function CategoryModalForm({
             ? initialData.subcategories
             : [defaultSubcategory]
         );
-        setIsCategoryCodeEdited(true); // Pre-filled codes are considered "manual"
+        setIsCategoryCodeEdited(true);
         setIsSubCodeEdited(Array(initialData.subcategories.length).fill(true));
       } else {
         // Add Mode
@@ -73,20 +77,32 @@ export default function CategoryModalForm({
         setIsCategoryCodeEdited(false);
         setIsSubCodeEdited([false]);
       }
-      // Reset validation errors
       setCodeError(false);
       setSubErrors([false]);
     }
   }, [open, initialData]);
 
   // ✅ EFFECT 2: Auto-generate Category Code
-  // This runs when the category name changes, but respects manual edits.
   useEffect(() => {
     if (category.name && !isCategoryCodeEdited) {
-      const autoCode = generateCodeFromName(category.name, 3); // Force 3 letters
+      const autoCode = generateCodeFromName(category.name, 3);
       setCategory((prev) => ({ ...prev, code: autoCode }));
     }
   }, [category.name, isCategoryCodeEdited]);
+
+  // ✅ EFFECT 3: Live Validation for Category Code (Handles both auto & manual)
+  useEffect(() => {
+    if (category.code) {
+      const isDup = isDuplicateCategoryCode(
+        category.code,
+        existingCategories,
+        initialData?.id
+      );
+      setCodeError(isDup);
+    } else {
+      setCodeError(false);
+    }
+  }, [category.code, existingCategories, initialData]);
 
   // --- HANDLER FUNCTIONS ---
 
@@ -94,14 +110,7 @@ export default function CategoryModalForm({
     setCategory((prev) => ({ ...prev, [field]: value.toUpperCase() }));
 
     if (field === "code") {
-      setIsCategoryCodeEdited(true); // User is typing in the code field
-
-      const isDup = isDuplicateCategoryCode(
-        value,
-        existingCategories, // ✅ Pass the full array of category objects
-        initialData?.id
-      );
-      setCodeError(isDup);
+      setIsCategoryCodeEdited(true); // User is typing, stop auto-gen
     }
   };
 
@@ -118,20 +127,24 @@ export default function CategoryModalForm({
       [field]: value.toUpperCase(),
     };
 
+    // Auto-gen sub code if name changes and code wasn't manually edited
     if (field === "name" && !updatedEdits[index]) {
-      updatedSubs[index].code = generateCodeFromName(value, 3); // Auto-gen sub code
+      updatedSubs[index].code = generateCodeFromName(value, 3);
     }
 
+    // Mark as manually edited if code changes
     if (field === "code") {
-      updatedEdits[index] = true; // User is typing in the code field
-      const dup = isDuplicateSubCode(value, updatedSubs, index);
-      const newErrors = [...subErrors];
-      newErrors[index] = dup;
-      setSubErrors(newErrors);
+      updatedEdits[index] = true;
     }
+
+    // Validate Sub Code immediately
+    const dup = isDuplicateSubCode(updatedSubs[index].code, updatedSubs, index);
+    const newErrors = [...subErrors];
+    newErrors[index] = dup;
 
     setSubcategories(updatedSubs);
     setIsSubCodeEdited(updatedEdits);
+    setSubErrors(newErrors);
   };
 
   const addSubcategory = () => {
@@ -148,17 +161,20 @@ export default function CategoryModalForm({
 
   const handleSave = () => {
     if (!category.name || !category.code || codeError)
-      return toast.error("Category name and unique code are required.");
+      return toast.error(
+        "Please provide a valid Category Name and unique Code."
+      );
+
     if (
       subcategories.some(
         (s) => (!s.name || !s.code) && subcategories.length > 1
       )
     )
       return toast.error("Subcategory fields cannot be empty.");
+
     if (subErrors.some((e) => e))
       return toast.error("Please fix duplicate subcategory codes.");
 
-    // Filter out the initial empty subcategory if it was never filled
     const finalSubcategories = subcategories.filter((s) => s.name && s.code);
 
     onSave({ ...initialData, ...category, subcategories: finalSubcategories });
@@ -166,85 +182,218 @@ export default function CategoryModalForm({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>
-        {initialData ? "Edit Category" : "Add New Category"}
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="sm"
+      PaperProps={{
+        sx: { borderRadius: 3 },
+      }}
+    >
+      <DialogTitle sx={{ pb: 1, pt: 3 }}>
+        <Stack direction="row" alignItems="center" spacing={1.5}>
+          <Box
+            sx={{
+              bgcolor: "primary.light",
+              p: 0.8,
+              borderRadius: 2,
+              color: "primary.main",
+              opacity: 0.1,
+            }}
+          >
+            <Tag size={24} />
+          </Box>
+          <Box>
+            <Typography variant="h6" fontWeight={700}>
+              {initialData ? "Edit Category" : "Add New Category"}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Organize your products with categories and sub-codes.
+            </Typography>
+          </Box>
+        </Stack>
       </DialogTitle>
-      <DialogContent dividers>
-        <Grid container spacing={2} alignItems="center" mb={3}>
-          <Grid item xs={6}>
-            <TextField
-              fullWidth
-              label="Category Name"
-              value={category.name}
-              onChange={(e) => handleCategoryChange("name", e.target.value)}
-            />
-          </Grid>
-          <Grid item xs={6}>
-            <TextField
-              fullWidth
-              label="Category Code"
-              value={category.code}
-              onChange={(e) => handleCategoryChange("code", e.target.value)}
-              error={codeError}
-              helperText={codeError ? "Duplicate code" : "3-letter unique code"}
-              inputProps={{ maxLength: 3 }}
-            />
-          </Grid>
-        </Grid>
 
-        <Typography variant="subtitle1" gutterBottom>
-          Subcategories
-        </Typography>
-        {subcategories.map((sub, index) => (
-          <Grid container spacing={1} alignItems="center" key={index} mb={1.5}>
-            <Grid item xs={5}>
-              <TextField
-                label="Name"
-                fullWidth
-                size="small"
-                value={sub.name}
-                onChange={(e) => handleSubChange(index, "name", e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={5}>
-              <TextField
-                label="Code"
-                fullWidth
-                size="small"
-                value={sub.code}
-                onChange={(e) => handleSubChange(index, "code", e.target.value)}
-                error={subErrors[index]}
-                helperText={subErrors[index] ? "Duplicate code" : ""}
-                inputProps={{ maxLength: 3 }}
-              />
-            </Grid>
-            <Grid item xs={2}>
-              <IconButton
-                onClick={() => removeSubcategory(index)}
-                color="error"
-                disabled={subcategories.length === 1 && !sub.name && !sub.code}
-              >
-                <Trash2 size={18} />
-              </IconButton>
-            </Grid>
-          </Grid>
-        ))}
+      <Divider sx={{ my: 1 }} />
 
-        <Button
-          onClick={addSubcategory}
-          variant="outlined"
-          startIcon={<Plus />}
-          sx={{ mt: 1 }}
-        >
-          Add Subcategory
-        </Button>
+      <DialogContent sx={{ py: 3 }}>
+        <Stack spacing={4}>
+          {/* --- Section 1: Main Category --- */}
+          <Box>
+            <Typography
+              variant="subtitle2"
+              fontWeight={600}
+              color="text.secondary"
+              mb={2}
+            >
+              CATEGORY DETAILS
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={8}>
+                <TextField
+                  fullWidth
+                  label="Category Name"
+                  placeholder="e.g. Electronics"
+                  value={category.name}
+                  onChange={(e) => handleCategoryChange("name", e.target.value)}
+                  InputProps={{
+                    sx: { borderRadius: 2 },
+                  }}
+                />
+              </Grid>
+              <Grid item xs={4}>
+                <TextField
+                  fullWidth
+                  label="Code"
+                  placeholder="ELE"
+                  value={category.code}
+                  onChange={(e) => handleCategoryChange("code", e.target.value)}
+                  error={codeError}
+                  helperText={codeError ? "Duplicate" : ""}
+                  inputProps={{ maxLength: 3 }}
+                  InputProps={{
+                    sx: { borderRadius: 2 },
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Hash size={16} className="text-gray-400" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+            </Grid>
+          </Box>
+
+          {/* --- Section 2: Subcategories --- */}
+          <Box>
+            <Stack
+              direction="row"
+              justifyContent="space-between"
+              alignItems="center"
+              mb={2}
+            >
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Layers size={18} className="text-gray-500" />
+                <Typography
+                  variant="subtitle2"
+                  fontWeight={600}
+                  color="text.secondary"
+                >
+                  SUBCATEGORIES
+                </Typography>
+              </Stack>
+              {/* Optional info tooltip */}
+              <Tooltip title="Subcategories allow for finer product organization.">
+                <Info size={16} className="text-gray-400 cursor-help" />
+              </Tooltip>
+            </Stack>
+
+            <Stack spacing={2}>
+              {subcategories.map((sub, index) => (
+                <Grid
+                  container
+                  spacing={1.5}
+                  alignItems="flex-start"
+                  key={index}
+                >
+                  <Grid item xs={7}>
+                    <TextField
+                      label={index === 0 ? "Subcategory Name" : ""}
+                      placeholder="e.g. Mobile Phones"
+                      fullWidth
+                      size="small"
+                      value={sub.name}
+                      onChange={(e) =>
+                        handleSubChange(index, "name", e.target.value)
+                      }
+                      InputProps={{ sx: { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={3}>
+                    <TextField
+                      label={index === 0 ? "Code" : ""}
+                      placeholder="MOB"
+                      fullWidth
+                      size="small"
+                      value={sub.code}
+                      onChange={(e) =>
+                        handleSubChange(index, "code", e.target.value)
+                      }
+                      error={subErrors[index]}
+                      helperText={subErrors[index] ? "Taken" : ""}
+                      inputProps={{ maxLength: 3 }}
+                      InputProps={{ sx: { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid
+                    item
+                    xs={2}
+                    display="flex"
+                    justifyContent="center"
+                    pt={index === 0 ? 0.5 : 0}
+                  >
+                    <IconButton
+                      onClick={() => removeSubcategory(index)}
+                      color="error"
+                      size="small"
+                      disabled={
+                        subcategories.length === 1 && !sub.name && !sub.code
+                      }
+                      sx={{
+                        mt: index === 0 ? 0.5 : 0,
+                        bgcolor: "error.lighter",
+                        "&:hover": { bgcolor: "error.light", color: "white" },
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Grid>
+                </Grid>
+              ))}
+            </Stack>
+
+            <Button
+              onClick={addSubcategory}
+              fullWidth
+              variant="outlined"
+              startIcon={<Plus size={18} />}
+              sx={{
+                mt: 2,
+                borderStyle: "dashed",
+                borderWidth: 1.5,
+                borderRadius: 2,
+                color: "text.secondary",
+                "&:hover": {
+                  borderWidth: 1.5,
+                  borderColor: "primary.main",
+                  color: "primary.main",
+                  bgcolor: "primary.lighter",
+                },
+              }}
+            >
+              Add Subcategory
+            </Button>
+          </Box>
+        </Stack>
       </DialogContent>
 
-      <DialogActions sx={{ p: 2 }}>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave}>
-          Save
+      <DialogActions sx={{ p: 3, pt: 0 }}>
+        <Button
+          onClick={onClose}
+          size="large"
+          sx={{ borderRadius: 2, color: "text.secondary" }}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          size="large"
+          disableElevation
+          sx={{ borderRadius: 2, px: 4, fontWeight: 600 }}
+        >
+          Save Category
         </Button>
       </DialogActions>
     </Dialog>

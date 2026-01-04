@@ -1,7 +1,7 @@
 const { BrowserWindow } = require("electron");
 const { getShop } = require("../../backend/repositories/shopRepository.mjs");
 const { printBulkLabels } = require("../bulkLabelPrinter.js");
-const { createPrintWindow } = require("../printWindow.js");
+const { createPrintWindow } = require("../printLabel.js");
 const { printInvoice } = require("../invoicePrinter.js");
 const { createShippingLabelHTML } = require("../shippingLabelTemplate.js");
 const { printShippingLabel } = require("../shippingLabelPrinter.js");

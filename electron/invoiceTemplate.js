@@ -1,35 +1,117 @@
-// You'll need to create and import these helper functions
-const {
-  formatAddress,
-  formatDate,
-  formatAmount,
-  numberToWords,
-} = require("./formatters.js");
+// invoiceTemplate.js - Standard A4 Template & Helpers
 
+// --- HELPERS ---
+const formatAmount = (amount) =>
+  `₹${(amount || 0).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const formatDate = (dateString) =>
+  new Date(dateString).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+const formatAddress = (addr, city, state, pincode) =>
+  [addr, city, state, pincode].filter(Boolean).join(", ");
+
+function numberToWords(num) {
+  const a = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const b = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
+  function inWords(n) {
+    if (n < 20) return a[n];
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
+    if (n < 1000)
+      return (
+        a[Math.floor(n / 100)] +
+        " Hundred" +
+        (n % 100 === 0 ? "" : " and " + inWords(n % 100))
+      );
+    if (n < 100000)
+      return (
+        inWords(Math.floor(n / 1000)) +
+        " Thousand" +
+        (n % 1000 ? " " + inWords(n % 1000) : "")
+      );
+    if (n < 10000000)
+      return (
+        inWords(Math.floor(n / 100000)) +
+        " Lakh" +
+        (n % 100000 ? " " + inWords(n % 100000) : "")
+      );
+    return "Number too large";
+  }
+  const rupees = Math.floor(num);
+  const paise = Math.round((num - rupees) * 100);
+  let words = inWords(rupees) + " Rupees";
+  if (paise > 0) {
+    words += " and " + inWords(paise) + " Paise";
+  }
+  return words + " Only";
+}
+
+// --- STANDARD A4 GENERATOR (STRUCTURED) ---
 function createInvoiceHTML({ sale, shop }) {
   const gstEnabled = Boolean(shop.gst_enabled);
   const showHSN = Boolean(shop.hsn_required);
-  const showDiscount = Boolean(shop.show_discount_column);
   const inclusiveTax = Boolean(shop.inclusive_tax_pricing);
+  // Default to showing breakup if undefined, otherwise respect preference
+  const showGstBreakup =
+    shop.show_gst_breakup !== undefined ? Boolean(shop.show_gst_breakup) : true;
 
-  // If GST is enabled but Inclusive Tax is ON, we HIDE the tax breakdown columns.
-  // We only show tax breakdown if GST is enabled AND Tax is Exclusive.
-  const showTaxBreakdown = gstEnabled && !inclusiveTax;
+  // GST Calculations for Footer
+  const isInterstate =
+    gstEnabled &&
+    shop.state &&
+    sale.customer_state &&
+    shop.state.toLowerCase() !== sale.customer_state.toLowerCase();
 
-  const isInterstate = gstEnabled && shop.state !== sale.customer_state;
+  let totalTaxableValue = 0,
+    totalCgst = 0,
+    totalSgst = 0,
+    totalIgst = 0,
+    totalTaxAmount = 0;
 
-  // Calculate Totals
-  let totalTaxableValue = 0;
-  let totalCgst = 0;
-  let totalSgst = 0;
-  let totalIgst = 0;
-
+  // Pre-calculate totals for footer
   sale.items.forEach((item) => {
     const baseVal = item.rate * item.quantity;
     const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
-
-    let taxableValue = 0;
-    let gstAmount = 0;
+    let taxableValue = 0,
+      gstAmount = 0;
 
     if (gstEnabled) {
       if (inclusiveTax) {
@@ -45,256 +127,311 @@ function createInvoiceHTML({ sale, shop }) {
     }
 
     totalTaxableValue += taxableValue;
+    totalTaxAmount += gstAmount;
 
     if (gstEnabled) {
-      if (isInterstate) {
-        totalIgst += gstAmount;
-      } else {
+      if (isInterstate) totalIgst += gstAmount;
+      else {
         totalCgst += gstAmount / 2;
         totalSgst += gstAmount / 2;
       }
     }
   });
 
-  // Generate Item Rows
+  // --- COLUMN HEADERS LOGIC ---
   const itemsHTML = sale.items
     .map((item, index) => {
+      // Per Item Calculation
       const baseVal = item.rate * item.quantity;
       const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
-
-      let taxableValue = 0;
       let gstAmount = 0;
 
       if (gstEnabled) {
         if (inclusiveTax) {
           const divisor = 1 + item.gst_rate / 100;
-          taxableValue = valAfterDisc / divisor;
+          const taxableValue = valAfterDisc / divisor;
           gstAmount = valAfterDisc - taxableValue;
         } else {
-          taxableValue = valAfterDisc;
-          gstAmount = taxableValue * (item.gst_rate / 100);
-        }
-      } else {
-        taxableValue = valAfterDisc;
-      }
-
-      const gstRate = item.gst_rate || 0;
-      let gstColumns = "";
-
-      // Only generate GST columns if breakdown is enabled
-      if (showTaxBreakdown) {
-        if (isInterstate) {
-          gstColumns = `
-          <td>${gstRate.toFixed(2)}%</td>
-          <td>${formatAmount(gstAmount)}</td>
-        `;
-        } else {
-          gstColumns = `
-          <td>${(gstRate / 2).toFixed(2)}%</td>
-          <td>${formatAmount(gstAmount / 2)}</td>
-          <td>${(gstRate / 2).toFixed(2)}%</td>
-          <td>${formatAmount(gstAmount / 2)}</td>
-        `;
+          gstAmount = valAfterDisc * (item.gst_rate / 100);
         }
       }
 
       return `
-      <tr>
-        <td>${index + 1}</td>
-        ${showHSN ? `<td>${item.hsn_code || ""}</td>` : ""}
-        <td style="text-align: left;">${item.product_name}</td>
-        <td>${formatAmount(item.rate)}</td>
-        <td>${item.quantity}</td>
-        ${showTaxBreakdown ? `<td>${formatAmount(taxableValue)}</td>` : ""}
-        ${gstColumns}
-        ${showDiscount ? `<td>${item.discount || 0}%</td>` : ""}
-        <td>${formatAmount(item.price)}</td>
-      </tr>
-    `;
+    <tr>
+      <td class="text-center">${index + 1}</td>
+      <td style="text-align:left;">
+        <div style="font-size:10px; font-weight:500;">${item.product_name}</div>
+      </td>
+      ${showHSN ? `<td class="text-center">${item.hsn || "-"}</td>` : ""}
+      <td class="text-center">${item.quantity}</td>
+      <td class="text-right">${formatAmount(item.rate)}</td>
+      
+      ${gstEnabled ? `<td class="text-center">${item.gst_rate}%</td>` : ""}
+      ${
+        gstEnabled && showGstBreakup
+          ? `<td class="text-right">${formatAmount(gstAmount)}</td>`
+          : ""
+      }
+      
+      <td class="text-right bold">${formatAmount(item.price)}</td>
+    </tr>`;
     })
     .join("");
-
-  let gstHeader = "";
-  let gstSubHeader = "";
-
-  if (showTaxBreakdown) {
-    if (isInterstate) {
-      gstHeader = `<th colspan="2">IGST</th>`;
-      gstSubHeader = `<th>Rate</th><th>Amt</th>`;
-    } else {
-      gstHeader = `<th colspan="2">CGST</th><th colspan="2">SGST</th>`;
-      gstSubHeader = `<th>Rate</th><th>Amt</th><th>Rate</th><th>Amt</th>`;
-    }
-  }
-
-  // Dynamic Rate Header
-  const rateHeader = inclusiveTax ? "Rate" : "Rate";
 
   return `
     <html>
       <head>
         <meta charset="UTF-8" />
         <style>
-            body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; }
-            .bill-container { background: #fff; margin: 20px auto; padding: 20px; border: 1px solid #ccc; width: 210mm; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { padding: 6px; text-align: right; }
-            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 10px; }
-            .header h1 { margin: 0; color: #333; }
-            .details-table td { padding: 8px; border: 1px solid #eee; vertical-align: top; }
-            .items-table { margin-top: 20px; }
-            .items-table th { background-color: #f2f2f2; border: 1px solid #ddd; }
-            .items-table td { border: 1px solid #ddd; }
-            .totals-table { width: 50%; margin-left: auto; margin-top: 20px; }
-            .totals-table td { padding: 6px; }
-            .footer { margin-top: 40px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; }
-            .footer .bank-details { text-align: left; }
-            .footer .signature { text-align: right; padding-top: 40px; border-top: 1px solid #333; }
-            .note { margin-top: 15px; font-style: italic; font-size: 11px; color: #555; }
+            /* STRICT A4 SIZE */
+            @page { size: A4; margin: 10mm; }
+            
+            body { 
+                font-family: 'Arial', sans-serif; 
+                font-size: 11px; 
+                margin: 0; 
+                padding: 10px; 
+                width: 100%; 
+                box-sizing: border-box;
+                background-color: #fff;
+                color: #000;
+            }
+            
+            /* Utility Classes */
+            .text-right { text-align: right; } 
+            .text-center { text-align: center; } 
+            .bold { font-weight: bold; }
+            .flex { display: flex; } 
+            
+            /* Header */
+            .header-box { display: flex; border: 1px solid #000; border-bottom: 0; }
+            .shop-info { flex: 1; padding: 8px; border-right: 1px solid #000; }
+            .invoice-meta { width: 40%; padding: 8px; }
+            h1 { margin: 0 0 5px 0; font-size: 18px; text-transform: uppercase; }
+            
+            /* Customer Row */
+            .customer-row { display: flex; border: 1px solid #000; border-bottom: 0; }
+            .bill-to { flex: 1; padding: 5px 8px; border-right: 1px solid #000; }
+            .extra-meta { width: 40%; padding: 5px 8px; }
+            
+            /* Table */
+            table { width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 0; }
+            th { background: #eee; border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 6px; font-size: 10px; text-transform: uppercase; }
+            /* Reduced padding and font-size for compact item rows */
+            td { border-right: 1px solid #000; border-bottom: 1px solid #eee; padding: 4px 6px; vertical-align: middle; font-size: 9px; }
+            tr:last-child td { border-bottom: 1px solid #000; }
+            
+            /* Footer Section */
+            .footer-section { display: flex; border: 1px solid #000; border-top: 0; }
+            .amount-words { flex: 1; padding: 8px; border-right: 1px solid #000; font-size: 10px; }
+            .bank-details { flex: 1; padding: 8px; border-right: 1px solid #000; font-size: 10px; }
+            .totals-area { width: 30%; padding: 8px; }
+            
+            .signature-area { display: flex; justify-content: space-between; border: 1px solid #000; border-top: 0; padding: 8px; height: 60px; align-items: flex-end; }
+
+            .qr-wrap { text-align: center; margin-top: 5px; }
+            
+            @media print { 
+                body { padding: 0; margin: 0; width: 100%; }
+            }
         </style>
       </head>
       <body>
-        <div class="bill-container">
-          <div class="header">
+        <!-- Header -->
+        <div class="header-box">
+          <div class="shop-info">
             <h1>${shop.gst_invoice_format || "Tax Invoice"}</h1>
-            <h2>${
+            <div style="font-weight:bold; font-size:14px; margin-bottom:4px;">${
               shop.use_alias_on_bills && shop.shop_alias
                 ? shop.shop_alias
                 : shop.shop_name
-            }</h2>
-            <p>${
+            }</div>
+            <div>${
               shop.use_alias_on_bills && shop.shop_alias
-                ? " "
+                ? ""
                 : formatAddress(
                     shop.address_line1,
                     shop.city,
                     shop.state,
                     shop.pincode
                   )
-            }</p>
-            <p><strong>GSTIN:</strong> ${
-              shop.gstin || "N/A"
-            } | <strong>Phone:</strong> ${shop.contact_number || "N/A"}</p>
+            }</div>
+            ${
+              gstEnabled
+                ? `<div style="margin-top:4px;"><strong>GSTIN: ${
+                    shop.gstin || "N/A"
+                  }</strong> | Ph: ${shop.contact_number || ""}</div>`
+                : `<div>Ph: ${shop.contact_number || ""}</div>`
+            }
           </div>
-            
-            <table class="details-table">
-                <tr>
-                    <td style="width: 50%; text-align: left;">
-                        <strong>Billed To:</strong><br/>
-                        <strong>${
-                          sale.customer_name || "Walking Customer"
-                        }</strong><br/>
-                        ${formatAddress(
-                          sale.customer_address,
-                          sale.customer_city,
-                          sale.customer_state,
-                          sale.customer_pincode
-                        )}<br/>
-                        Phone: ${sale.customer_phone || "N/A"}<br/>
-                        GSTIN: ${sale.customer_gst_no || "Unregistered"}
-                    </td>
-                    <td style="width: 50%; text-align: left;">
-                        <strong>Invoice No:</strong> ${sale.reference_no}<br/>
-                        <strong>Date:</strong> ${formatDate(
-                          sale.created_at
-                        )}<br/>
-                        <strong>Place of Supply:</strong> ${
-                          sale.customer_state || shop.state
-                        }
-                    </td>
-                </tr>
-            </table>
-
-            <table class="items-table">
-              <thead>
-                <tr>
-                  <th rowspan="2">#</th>
-                  ${showHSN ? `<th rowspan="2">HSN</th>` : ""}
-                  <th rowspan="2">Item Description</th>
-                  <th rowspan="2">${rateHeader}</th>
-                  <th rowspan="2">Qty</th>
-                  ${showTaxBreakdown ? `<th rowspan="2">Taxable Val</th>` : ""}
-                  ${gstHeader}
-                  ${showDiscount ? `<th rowspan="2">Disc</th>` : ""}
-                  <th rowspan="2">Total</th>
-                </tr>
-                ${showTaxBreakdown ? `<tr>${gstSubHeader}</tr>` : ""}
-              </thead>
-              <tbody>${itemsHTML}</tbody>
-            </table>
-
-            <table class="totals-table">
-                ${
-                  showTaxBreakdown
-                    ? `<tr><td>Taxable Amount:</td><td>${formatAmount(
-                        totalTaxableValue
-                      )}</td></tr>`
-                    : ""
-                }
-                ${
-                  showTaxBreakdown && !isInterstate
-                    ? `<tr><td>CGST:</td><td>${formatAmount(
-                        totalCgst
-                      )}</td></tr>`
-                    : ""
-                }
-                ${
-                  showTaxBreakdown && !isInterstate
-                    ? `<tr><td>SGST:</td><td>${formatAmount(
-                        totalSgst
-                      )}</td></tr>`
-                    : ""
-                }
-                ${
-                  showTaxBreakdown && isInterstate
-                    ? `<tr><td>IGST:</td><td>${formatAmount(
-                        totalIgst
-                      )}</td></tr>`
-                    : ""
-                }
-                <tr><td><strong>Grand Total:</strong></td><td><strong>${formatAmount(
-                  sale.total_amount
-                )}</strong></td></tr>
-                <tr><td>Paid Amount:</td><td>${formatAmount(
-                  sale.paid_amount
-                )}</td></tr>
-            </table>
-
-            <div style="margin-top: 20px; font-size: 12px;">
-                <strong>Amount in Words:</strong> ${numberToWords(
-                  sale.total_amount
-                )}
+          <div class="invoice-meta">
+            <div class="flex" style="justify-content:space-between; margin-bottom:4px;">
+                <span>Invoice No:</span> <span class="bold">${
+                  sale.reference_no
+                }</span>
             </div>
+            <div class="flex" style="justify-content:space-between; margin-bottom:4px;">
+                <span>Date:</span> <span class="bold">${formatDate(
+                  sale.created_at
+                )}</span>
+            </div>
+            <div class="flex" style="justify-content:space-between;">
+                <span>State:</span> <span>${
+                  sale.customer_state || shop.state
+                }</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Customer -->
+        <div class="customer-row">
+          <div class="bill-to">
+            <span style="font-size:9px; color:#555; text-transform:uppercase;">Billed To:</span><br>
+            <span class="bold" style="font-size:12px;">${
+              sale.customer_name || "Cash Customer"
+            }</span><br>
+            ${formatAddress(
+              sale.customer_address,
+              sale.customer_city,
+              sale.customer_state,
+              sale.customer_pincode
+            )}
+            ${sale.customer_phone ? `<br>Ph: ${sale.customer_phone}` : ""}
+          </div>
+          <div class="extra-meta">
+             ${
+               gstEnabled
+                 ? `<div>Cust GST: ${
+                     sale.customer_gst_no || "Unregistered"
+                   }</div>`
+                 : ""
+             }
+             <div style="margin-top:4px;">Mode: ${
+               sale.payment_mode || "Cash"
+             }</div>
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <table>
+          <thead>
+            <tr>
+              <th width="5%" class="text-center">#</th>
+              <th width="35%" style="text-align:left;">Item Name</th>
+              ${showHSN ? `<th width="10%" class="text-center">HSN</th>` : ""}
+              <th width="8%" class="text-center">Qty</th>
+              <th width="12%" class="text-right">Rate</th>
+              
+              ${
+                gstEnabled ? `<th width="8%" class="text-center">GST%</th>` : ""
+              }
+              ${
+                gstEnabled && showGstBreakup
+                  ? `<th width="12%" class="text-right">GST Amt</th>`
+                  : ""
+              }
+              
+              <th width="15%" class="text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHTML}
+          </tbody>
+        </table>
+
+        <!-- Footer Section -->
+        <div class="footer-section">
+          
+          <!-- Words & Tax Summary (if needed) -->
+          <div class="amount-words">
+            <div style="font-weight:bold; margin-bottom:4px;">Amount in Words:</div>
+            <div style="font-style:italic; margin-bottom:8px;">${numberToWords(
+              sale.total_amount
+            )}</div>
             
             ${
-              inclusiveTax
-                ? `<div class="note"><strong>Note:</strong> All prices/rates shown are inclusive of GST.</div>`
+              gstEnabled
+                ? `
+            <div style="border-top:1px dotted #ccc; padding-top:4px; font-size:9px;">
+               <div>Taxable: ${formatAmount(totalTaxableValue)}</div>
+               ${
+                 isInterstate
+                   ? `<div>IGST: ${formatAmount(totalIgst)}</div>`
+                   : `<div>CGST: ${formatAmount(
+                       totalCgst
+                     )} | SGST: ${formatAmount(totalSgst)}</div>`
+               }
+               <div class="bold">Total Tax: ${formatAmount(
+                 totalTaxAmount
+               )}</div>
+            </div>`
                 : ""
             }
+          </div>
+          
+          <!-- Bank & QR -->
+          <div class="bank-details">
+             <div class="bold" style="margin-bottom:2px;">Bank Details:</div>
+             <div>${shop.bank_name || ""}</div>
+             <div>A/C: ${shop.bank_account_no || ""}</div>
+             <div>IFSC: ${shop.bank_account_ifsc_code || ""}</div>
+             ${
+               shop.generated_upi_qr
+                 ? `<div class="qr-wrap"><img src="${shop.generated_upi_qr}" style="width:70px;height:70px;" /></div>`
+                 : ""
+             }
+          </div>
 
-            <div class="footer">
-                <div class="bank-details">
-                    <strong>Bank Details:</strong><br/>
-                    A/C Name: ${shop.bank_account_holder_name || ""}<br/>
-                    A/C No: ${shop.bank_account_no || ""}<br/>
-                    IFSC: ${shop.bank_account_ifsc_code || ""}<br/>
-                    Bank: ${shop.bank_name || ""} - ${
-    shop.bank_account_branch || ""
-  }
-                </div>
-                ${
-                  shop.generated_upi_qr
-                    ? `<div class="qr-wrap"><img src="${shop.generated_upi_qr}" style="width:120px;height:120px;" /></div>`
-                    : ""
-                }
-                <div class="signature">
-                    Authorized Signature
-                </div>
-            </div>
+          <!-- Totals -->
+          <div class="totals-area">
+             <div class="flex" style="justify-content:space-between; margin-bottom:4px;">
+                <span>Subtotal:</span> 
+                <span>${formatAmount(
+                  sale.total_amount + (sale.discount || 0)
+                )}</span>
+             </div>
+             ${
+               sale.discount > 0
+                 ? `<div class="flex" style="justify-content:space-between; margin-bottom:4px; color:red;">
+                      <span>Discount:</span> 
+                      <span>-${formatAmount(sale.discount)}</span>
+                    </div>`
+                 : ""
+             }
+             
+             <div class="flex bold" style="justify-content:space-between; font-size:14px; margin-top:8px; border-top:1px solid #000; padding-top:6px;">
+                <span>TOTAL:</span> 
+                <span>${formatAmount(sale.total_amount)}</span>
+             </div>
+             
+             <div class="flex" style="justify-content:space-between; font-size:10px; margin-top:4px;">
+                <span>Paid:</span> 
+                <span>${formatAmount(sale.paid_amount)}</span>
+             </div>
+          </div>
+        </div>
+
+        <div class="signature-area">
+           <div style="font-size:9px; width:60%;">
+              <strong>Terms:</strong><br>
+              1. Goods once sold will not be taken back.<br>
+              2. Subject to ${shop.city} jurisdiction.
+           </div>
+           <div style="text-align:right; width:40%;">
+              <div style="font-weight:bold; font-size:10px;">For ${
+                shop.shop_name
+              }</div>
+              <div style="font-size:9px;">Authorized Signature</div>
+           </div>
         </div>
       </body>
-    </html>
-  `;
+    </html>`;
 }
 
-module.exports = { createInvoiceHTML };
+module.exports = {
+  createInvoiceHTML,
+  formatAmount,
+  formatDate,
+  formatAddress,
+  numberToWords,
+};

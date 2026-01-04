@@ -73,7 +73,7 @@ export default function WhatsAppTab() {
     <Grid container spacing={3}>
       {/* --- Left Column: Connection Status & QR --- */}
       <Grid item xs={12} md={6}>
-        <Card variant="outlined" sx={{ height: "100%" }}>
+        <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
           <CardContent sx={{ textAlign: "center" }}>
             <Stack
               direction="row"
@@ -83,7 +83,9 @@ export default function WhatsAppTab() {
               mb={1}
             >
               <QrCode size={20} color="#25D366" />
-              <Typography variant="h6">Connection Status</Typography>
+              <Typography variant="h6" fontWeight={600}>
+                Connection Status
+              </Typography>
             </Stack>
             <Divider sx={{ mb: 3 }} />
 
@@ -122,7 +124,7 @@ export default function WhatsAppTab() {
                     alignItems: "center",
                     justifyContent: "center",
                     bgcolor: "#f5f5f5",
-                    borderRadius: 2,
+                    borderRadius: 3,
                     mb: 3,
                     border: "1px dashed #ddd",
                   }}
@@ -189,11 +191,13 @@ export default function WhatsAppTab() {
       <Grid item xs={12} md={6}>
         <Stack spacing={3} sx={{ height: "100%" }}>
           {/* Instructions Card */}
-          <Card variant="outlined">
+          <Card variant="outlined" sx={{ borderRadius: 3 }}>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
                 <Smartphone size={20} color="#1976d2" />
-                <Typography variant="h6">How to Connect</Typography>
+                <Typography variant="h6" fontWeight={600}>
+                  How to Connect
+                </Typography>
               </Stack>
               <Divider sx={{ mb: 2 }} />
 
@@ -203,17 +207,29 @@ export default function WhatsAppTab() {
               </Typography>
 
               <Stack spacing={1}>
-                <Alert severity="info" sx={{ py: 0, alignItems: "center" }}>
+                <Alert
+                  severity="info"
+                  sx={{ py: 0, alignItems: "center", borderRadius: 2 }}
+                >
                   1. Open <strong>WhatsApp</strong> on your phone.
                 </Alert>
-                <Alert severity="info" sx={{ py: 0, alignItems: "center" }}>
+                <Alert
+                  severity="info"
+                  sx={{ py: 0, alignItems: "center", borderRadius: 2 }}
+                >
                   2. Tap <strong>Menu</strong> (⋮) or <strong>Settings</strong>.
                 </Alert>
-                <Alert severity="info" sx={{ py: 0, alignItems: "center" }}>
+                <Alert
+                  severity="info"
+                  sx={{ py: 0, alignItems: "center", borderRadius: 2 }}
+                >
                   3. Select <strong>Linked Devices</strong> &gt;{" "}
                   <strong>Link a Device</strong>.
                 </Alert>
-                <Alert severity="info" sx={{ py: 0, alignItems: "center" }}>
+                <Alert
+                  severity="info"
+                  sx={{ py: 0, alignItems: "center", borderRadius: 2 }}
+                >
                   4. Point your phone at the QR code on the left.
                 </Alert>
               </Stack>
@@ -221,11 +237,13 @@ export default function WhatsAppTab() {
           </Card>
 
           {/* Troubleshooting Card */}
-          <Card variant="outlined" sx={{ flexGrow: 1 }}>
+          <Card variant="outlined" sx={{ flexGrow: 1, borderRadius: 3 }}>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
                 <HelpCircle size={20} color="#ed6c02" />
-                <Typography variant="h6">Troubleshooting</Typography>
+                <Typography variant="h6" fontWeight={600}>
+                  Troubleshooting
+                </Typography>
               </Stack>
               <Divider sx={{ mb: 2 }} />
 

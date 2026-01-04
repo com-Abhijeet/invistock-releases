@@ -37,6 +37,9 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const config = require("../electron/config.js");
 
+// ✅ Import separate logger for backend
+const { backendLogger } = require("../electron/logger.js");
+
 // ✅ We'll store the bonjour instance here to manage it
 let bonjourInstance;
 let serverInstance; // To properly close the server
@@ -91,7 +94,7 @@ export function startServer(dbPath) {
     const imagesDir = config.paths?.images;
 
     if (!imagesDir || !relativePath) {
-      console.error("[IMAGE ERROR] Invalid path or filename.");
+      backendLogger.error("[IMAGE ERROR] Invalid path or filename.");
       return res.status(400).send("Invalid Request");
     }
 
@@ -104,7 +107,7 @@ export function startServer(dbPath) {
     if (fs.existsSync(imagePath)) {
       res.sendFile(imagePath);
     } else {
-      console.error(`[IMAGE ERROR] File not found: ${imagePath}`);
+      backendLogger.error(`[IMAGE ERROR] File not found: ${imagePath}`);
       res.status(404).send("Image not found");
     }
   });
@@ -117,7 +120,7 @@ export function startServer(dbPath) {
   serverInstance = https
     .createServer({ key: pems.private, cert: pems.cert }, app)
     .listen(PORT, "0.0.0.0", () => {
-      console.log(
+      backendLogger.info(
         `[BACKEND] Secure Server running at https://localhost:${PORT}`
       );
 
@@ -130,11 +133,11 @@ export function startServer(dbPath) {
           port: PORT,
           txt: { version: "1.0.0" }, // You can add extra info here
         });
-        console.log(
+        backendLogger.info(
           "[BONJOUR] KOSH Server is now discoverable on the local network."
         );
       } catch (error) {
-        console.error("[BONJOUR] Failed to announce service:", error);
+        backendLogger.error("[BONJOUR] Failed to announce service:", error);
       }
     });
 }
@@ -143,19 +146,19 @@ export function startServer(dbPath) {
  * Gracefully shuts down the backend services.
  */
 export function shutdownBackend() {
-  console.log("[BACKEND] Shutting down services...");
+  backendLogger.info("[BACKEND] Shutting down services...");
   closeDatabase();
 
   // ✅ Stop the server
   if (serverInstance) {
     serverInstance.close(() => {
-      console.log("[BACKEND] Server has been shut down.");
+      backendLogger.info("[BACKEND] Server has been shut down.");
     });
   }
 
   // ✅ Stop the network announcement
   if (bonjourInstance) {
     bonjourInstance.destroy();
-    console.log("[BONJOUR] Service announcement stopped.");
+    backendLogger.info("[BONJOUR] Service announcement stopped.");
   }
 }

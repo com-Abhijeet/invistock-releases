@@ -18,8 +18,7 @@ const {
 const os = require("os");
 const path = require("path");
 const fs = require("fs");
-const log = require("electron-log");
-const logger = require("./logger.js");
+const { mainLogger, rendererLogger } = require("./logger.js"); // ✅ Import separate loggers
 const xlsx = require("xlsx");
 const { Bonjour } = require("bonjour-service");
 const http = require("http");
@@ -31,7 +30,7 @@ const {
   isConnected,
 } = require("./googleDriveService.js");
 const { initializeLicenseHandlers } = require("./ipc/licenseHandlers.js");
-const { createPrintWindow } = require("./printWindow.js");
+const { createPrintWindow } = require("./printLabel.js");
 const { printInvoice } = require("./invoicePrinter.js");
 const { generateExcelReport } = require("./generateExcelReport.js");
 const { createInvoiceHTML } = require("./invoiceTemplate.js");
@@ -86,6 +85,22 @@ const {
 } = require("../backend/repositories/categoryRepository.mjs");
 const { machineIdSync } = require("node-machine-id");
 
+// ✅ HANDLE RENDERER LOGS (Frontend console logs)
+ipcMain.on("log", (event, { level, data }) => {
+  // If data is an array, join it, otherwise just stringify
+  const message = Array.isArray(data)
+    ? data
+        .map((item) => (typeof item === "object" ? JSON.stringify(item) : item))
+        .join(" ")
+    : data;
+
+  if (rendererLogger[level]) {
+    rendererLogger[level](message);
+  } else {
+    rendererLogger.info(message);
+  }
+});
+
 function createLicenseWindow() {
   licenseWin = new BrowserWindow({
     minWidth: 1100,
@@ -135,7 +150,7 @@ function createWindow() {
   mainWindow.webContents.on(
     "did-fail-load",
     (event, errorCode, errorDescription) => {
-      console.error(
+      mainLogger.error(
         "❌ FAILED TO LOAD:",
         errorDescription,
         "(Code: " + errorCode + ")"
@@ -145,8 +160,8 @@ function createWindow() {
 
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow.show();
-    console.log("Did finish load");
-    console.log("INTIALIZING WHATSAPP");
+    mainLogger.info("Did finish load");
+    mainLogger.info("INTIALIZING WHATSAPP");
     initializeWhatsApp(mainWindow);
     const appMode = config.isClientMode ? "client" : "server";
     mainWindow.webContents.send("set-app-mode", appMode);
@@ -178,7 +193,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  console.log("🟢 App is ready. User data path:", app.getPath("userData"));
+  mainLogger.info("🟢 App is ready. User data path:", app.getPath("userData"));
 
   // Register license handlers early
   initializeLicenseHandlers();
@@ -190,7 +205,7 @@ app.whenReady().then(async () => {
     const manualServer = loadManualConfigSync();
 
     if (manualServer) {
-      console.log("🔵 Using Manual Server URL:", manualServer);
+      mainLogger.info("🔵 Using Manual Server URL:", manualServer);
       lastKnownServerUrl = manualServer;
 
       // Retry sending to window a few times to ensure it receives it after load
@@ -202,13 +217,13 @@ app.whenReady().then(async () => {
       );
     } else {
       // ✅ 2. Fallback to Bonjour Discovery
-      console.log("🔵 Starting Bonjour Discovery...");
+      mainLogger.info("🔵 Starting Bonjour Discovery...");
       const bonjour = new Bonjour();
       const browser = bonjour.find({ type: "https" }, (service) => {
         if (service.name === "KOSH-Main-Server") {
           const serverUrl = `https://${service.host}:${service.port}`;
           lastKnownServerUrl = serverUrl;
-          console.log("🔵 Bonjour discovered server:", serverUrl);
+          mainLogger.info("🔵 Bonjour discovered server:", serverUrl);
 
           [0, 500, 1500, 3000].forEach((delay) =>
             setTimeout(() => {
@@ -227,7 +242,7 @@ app.whenReady().then(async () => {
       startServer(dbPath);
       serverStarted = true;
     } catch (err) {
-      console.error(
+      mainLogger.error(
         "[CRITICAL] Backend failed to start (ignoring for fresh install):",
         err
       );
@@ -237,7 +252,7 @@ app.whenReady().then(async () => {
     try {
       licenseStatus = await checkAppLicense();
     } catch (e) {
-      console.warn(
+      mainLogger.warn(
         "License check failed (expected on fresh install):",
         e.message
       );
@@ -255,7 +270,7 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.handle("launch-main-app", () => {
-    console.log("👉 License Validated. Swapping to Main Window...");
+    mainLogger.info("👉 License Validated. Swapping to Main Window...");
 
     // Create the main dashboard window
     createWindow();
@@ -275,6 +290,8 @@ app.whenReady().then(async () => {
   const { registerPrintHandlers } = require("./ipc/printHandlers.js");
   const { registerExportHandlers } = require("./ipc/exportHandlers.js");
   const { registerWhatsAppHandlers } = require("./ipc/whatsappHandlers.js");
+  const { registerTemplateHandlers } = require("./ipc/templateHandlers.js");
+  const { registerLabelHandlers } = require("./labelHandlers.js");
 
   registerCoreHandlers(ipcMain, {
     getLastKnownServerUrl: () => lastKnownServerUrl,
@@ -291,6 +308,8 @@ app.whenReady().then(async () => {
   registerPrintHandlers(ipcMain, { mainWindow });
   registerExportHandlers(ipcMain, { mainWindow });
   registerWhatsAppHandlers(ipcMain);
+  registerTemplateHandlers(ipcMain);
+  registerLabelHandlers(ipcMain);
 });
 
 // Single Instance - Focus window if second instance launched
@@ -307,7 +326,7 @@ app.on("window-all-closed", () => {
       try {
         shutdownBackend();
       } catch (e) {
-        console.error("[ELECTRON] : ERROR IN SHUTTING DOWN", e);
+        mainLogger.error("[ELECTRON] : ERROR IN SHUTTING DOWN", e);
       }
     }
     app.quit();
@@ -322,26 +341,26 @@ app.on("before-quit", async (event) => {
   isQuitting = true;
 
   if (!config.isClientMode) {
-    console.log("--- Application Shutting Down ---");
+    mainLogger.info("--- Application Shutting Down ---");
 
     try {
       const { isConnected, uploadBackup } = require("./googleDriveService.js");
       if (isConnected()) {
         const date = new Date().toISOString().split("T")[0];
         const backupFileName = `KOSH-Backup-${date}.db`;
-        console.log("[GDRIVE] Uploading backup...");
+        mainLogger.info("[GDRIVE] Uploading backup...");
         try {
           await uploadBackup(dbPath, backupFileName);
-          console.log("[GDRIVE] Upload complete.");
+          mainLogger.info("[GDRIVE] Upload complete.");
         } catch (backupError) {
-          console.error("[GDRIVE] Upload failed:", backupError.message);
+          mainLogger.error("[GDRIVE] Upload failed:", backupError.message);
         }
       } else {
-        console.log("[GDRIVE] Not connected. Skipping backup.");
+        mainLogger.info("[GDRIVE] Not connected. Skipping backup.");
       }
       shutdownBackend();
     } catch (error) {
-      console.error("[SHUTDOWN] Error during shutdown:", error);
+      mainLogger.error("[SHUTDOWN] Error during shutdown:", error);
     } finally {
       app.quit();
     }

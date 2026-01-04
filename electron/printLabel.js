@@ -32,42 +32,33 @@ const createPrintWindow = async (payload) => {
   }
 
   // 1. Generate Barcode
-  const code = product.barcode || product.product_code;
+  const code = product.barcode || product.product_code || "0000";
   const barcodeBase64 = await generateBarcodeBase64(code);
 
-  // 2. Get Width from Settings
-  const printerWidth = shop.label_printer_width_mm || 58;
+  // 2. Get Settings
+  const printerWidth = shop.label_printer_width_mm || 50;
+  const templateId = shop.label_template_id || "lbl_standard";
 
   // 3. Generate HTML
   const { style, content } = createLabelHTML(
     product,
     shop,
     barcodeBase64,
-    printerWidth
+    printerWidth,
+    templateId
   );
 
   const fullHtml = `<html><head><title>Label Print</title>${style}</head><body>${content}</body></html>`;
 
-  // 4. Create Window - VISIBLE temporarily to ensure dialogs attach correctly
-  // Hiding the window completely often suppresses print dialogs on Windows
+  // 4. Create Window
   const win = new BrowserWindow({
-    show: true,
+    show: false, // hidden
     width: 400,
-    height: 600,
-    title: "Label Printer",
+    height: 400,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
-  });
-
-  win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        "Content-Security-Policy": ["img-src 'self' data:"],
-      },
-    });
   });
 
   await win.loadURL(
@@ -81,8 +72,6 @@ const createPrintWindow = async (payload) => {
         ? shop.label_printer_name
         : undefined;
 
-    // FIX: PDF Printers typically fail in silent mode because they can't ask for a filename.
-    // We FORCE the system dialog to appear if a PDF printer is selected or detected.
     if (printerName && printerName.toLowerCase().includes("pdf")) {
       isSilent = false;
     }
@@ -97,19 +86,14 @@ const createPrintWindow = async (payload) => {
       printerOptions.deviceName = printerName;
     }
 
-    // If we are showing the dialog (silent: false), we usually need the window to be somewhat 'active' logic-wise.
-    // However, Electron can print from background.
-    // If you are still not seeing a dialog, setting silent to ALWAYS false here for testing might reveal if settings are stuck.
-
     // Attempt print
     win.webContents.print(printerOptions, (success, errorType) => {
       if (!success) {
         console.error("❌ Label print failed:", errorType);
       }
-      // Delay closing slightly to ensure OS handoff, especially for PDF drivers
       setTimeout(() => {
         win.close();
-      }, 500);
+      }, 1000);
     });
   });
 };

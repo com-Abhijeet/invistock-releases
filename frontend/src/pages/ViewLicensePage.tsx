@@ -273,7 +273,7 @@ export default function ViewLicensePage() {
               alignItems="center"
               gap={0.5}
             >
-              <Phone size={16} /> +91 9370294078
+              <Phone size={16} /> +91 8180904072
             </Typography>
             <Typography variant="body2" color="primary.main">
               invistock@gmail.com

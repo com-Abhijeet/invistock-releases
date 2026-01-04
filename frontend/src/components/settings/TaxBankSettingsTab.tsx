@@ -20,9 +20,9 @@ export default function TaxBankSettingsTab({ data, onChange }: Props) {
   return (
     <Box>
       {/* --- Section 1: Tax Details --- */}
-      <Card variant="outlined" sx={{ mb: 3 }}>
+      <Card variant="outlined" sx={{ mb: 3, borderRadius: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" fontWeight={600} gutterBottom>
             Tax Information
           </Typography>
           <Divider sx={{ mb: 3 }} />
@@ -75,9 +75,9 @@ export default function TaxBankSettingsTab({ data, onChange }: Props) {
       <Grid container spacing={3}>
         {/* Left Column: Bank Account */}
         <Grid item xs={12} md={8}>
-          <Card variant="outlined" sx={{ height: "100%" }}>
+          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" fontWeight={600} gutterBottom>
                 Bank Account Details
               </Typography>
               <Divider sx={{ mb: 3 }} />
@@ -167,9 +167,9 @@ export default function TaxBankSettingsTab({ data, onChange }: Props) {
 
         {/* Right Column: UPI / Digital Payments */}
         <Grid item xs={12} md={4}>
-          <Card variant="outlined" sx={{ height: "100%" }}>
+          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" fontWeight={600} gutterBottom>
                 Digital Payments (UPI)
               </Typography>
               <Divider sx={{ mb: 3 }} />

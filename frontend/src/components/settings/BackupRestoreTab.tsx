@@ -140,11 +140,13 @@ export default function BackupRestoreTab() {
       <Grid container spacing={3}>
         {/* --- Section 1: Local Backup --- */}
         <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ height: "100%" }}>
+          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
                 <Database size={20} color="#1976d2" />
-                <Typography variant="h6">Local Backup</Typography>
+                <Typography variant="h6" fontWeight={600}>
+                  Local Backup
+                </Typography>
               </Stack>
               <Divider sx={{ mb: 3 }} />
 
@@ -164,6 +166,7 @@ export default function BackupRestoreTab() {
                   startIcon={<Download />}
                   onClick={handleBackup}
                   fullWidth
+                  sx={{ borderRadius: 2 }}
                 >
                   Create Local Backup
                 </Button>
@@ -174,11 +177,13 @@ export default function BackupRestoreTab() {
 
         {/* --- Section 2: Restore --- */}
         <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ height: "100%" }}>
+          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
                 <ArchiveRestore size={20} color="#d32f2f" />
-                <Typography variant="h6">Restore Data</Typography>
+                <Typography variant="h6" fontWeight={600}>
+                  Restore Data
+                </Typography>
               </Stack>
               <Divider sx={{ mb: 3 }} />
 
@@ -190,7 +195,7 @@ export default function BackupRestoreTab() {
               <Alert
                 severity="warning"
                 icon={<AlertTriangle size={20} />}
-                sx={{ mb: 3, alignItems: "center" }}
+                sx={{ mb: 3, alignItems: "center", borderRadius: 2 }}
               >
                 <Typography variant="body2" fontWeight="bold">
                   Warning: Destructive Action
@@ -209,6 +214,7 @@ export default function BackupRestoreTab() {
                   startIcon={<Upload />}
                   onClick={handleRestore}
                   fullWidth
+                  sx={{ borderRadius: 2 }}
                 >
                   Select File & Restore
                 </Button>
@@ -224,12 +230,15 @@ export default function BackupRestoreTab() {
             sx={{
               borderColor: isTokenExpired ? "#d32f2f" : "inherit",
               borderWidth: isTokenExpired ? 2 : 1,
+              borderRadius: 3,
             }}
           >
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
                 <Cloud size={20} color="#0F9D58" />
-                <Typography variant="h6">Google Drive Backup</Typography>
+                <Typography variant="h6" fontWeight={600}>
+                  Google Drive Backup
+                </Typography>
               </Stack>
               <Divider sx={{ mb: 3 }} />
 
@@ -244,7 +253,7 @@ export default function BackupRestoreTab() {
                       <Check size={20} />
                     )
                   }
-                  sx={{ mb: 2 }}
+                  sx={{ mb: 2, borderRadius: 2 }}
                 >
                   <Typography variant="body2">
                     {isTokenExpired
@@ -290,7 +299,7 @@ export default function BackupRestoreTab() {
                         icon={<Check fontSize="inherit" />}
                         severity="success"
                         variant="outlined"
-                        sx={{ flex: 1 }}
+                        sx={{ flex: 1, borderRadius: 2 }}
                       >
                         <strong>Connected</strong>
                         <Typography variant="caption" display="block">
@@ -303,6 +312,7 @@ export default function BackupRestoreTab() {
                         startIcon={<RefreshCw size={16} />}
                         onClick={handleGDriveLogin}
                         disabled={reAuthLoading}
+                        sx={{ borderRadius: 2 }}
                       >
                         Re-auth
                       </Button>
@@ -323,6 +333,7 @@ export default function BackupRestoreTab() {
                       fullWidth
                       sx={{
                         bgcolor: "#0F9D58",
+                        borderRadius: 2,
                         "&:hover": { bgcolor: "#0B874B" },
                       }}
                     >

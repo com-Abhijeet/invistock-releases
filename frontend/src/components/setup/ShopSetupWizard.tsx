@@ -119,6 +119,8 @@ export default function ShopSetupWizard({ onSuccess }: Props) {
     silent_printing: false,
     use_alias_on_bills: false,
     last_reset_fy: getCurrentFinancialYear(),
+    invoice_template_id: "1",
+    label_template_id: "gen_standard",
   });
 
   const updateForm = <K extends keyof ShopSetupForm>(
@@ -130,9 +132,19 @@ export default function ShopSetupWizard({ onSuccess }: Props) {
 
   const handlePickLogo = async () => {
     if (window.electron?.ipcRenderer?.invoke) {
-      const filePath = await window.electron.ipcRenderer.invoke("select-logo");
-      if (filePath) {
-        updateForm("logo_url", filePath);
+      try {
+        const result = await window.electron.ipcRenderer.invoke("select-logo");
+
+        // Backend returns: { success: boolean, fileName?: string, error?: string }
+        if (result && result.success && result.fileName) {
+          updateForm("logo_url", result.fileName);
+          toast.success("Logo selected successfully");
+        } else if (result && result.error) {
+          toast.error(result.error);
+        }
+      } catch (err) {
+        console.error("Failed to select logo:", err);
+        toast.error("Could not select logo");
       }
     }
   };
@@ -438,7 +450,9 @@ export default function ShopSetupWizard({ onSuccess }: Props) {
           <Box>
             <Typography variant="subtitle2">Shop Logo</Typography>
             <Typography variant="caption" color="text.secondary">
-              {form.logo_url ? "Logo selected" : "No logo uploaded"}
+              {form.logo_url && typeof form.logo_url === "string"
+                ? "Logo selected"
+                : "No logo uploaded"}
             </Typography>
           </Box>
           <Button
@@ -450,12 +464,13 @@ export default function ShopSetupWizard({ onSuccess }: Props) {
             Select File
           </Button>
         </Paper>
-        {form.logo_url && (
+        {form.logo_url && typeof form.logo_url === "string" && (
           <Typography
             variant="caption"
             color="success.main"
             mt={1}
             display="block"
+            sx={{ wordBreak: "break-all" }}
           >
             ✓ {form.logo_url}
           </Typography>
@@ -596,8 +611,6 @@ export default function ShopSetupWizard({ onSuccess }: Props) {
           </Grid>
         </>
       )}
-
-      {/* Removed PRINTING Section as per request */}
     </Grid>
   );
 

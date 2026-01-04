@@ -53,7 +53,7 @@ export const updateShop = async (req, res) => {
       data: updatedShop,
     });
   } catch (error) {
-    console.error("Error in updateShop controller:", error.message);
+    console.error("Error in updateShop controller:", error);
     res.status(500).json({
       success: false,
       message: "Failed to update shop settings.",
