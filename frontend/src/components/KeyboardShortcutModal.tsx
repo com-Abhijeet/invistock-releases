@@ -21,11 +21,12 @@ const GENERAL_SHORTCUTS: ShortcutGroup = {
   category: "General",
   shortcuts: [
     { keys: ["Ctrl", "K"], description: "Global Search" },
-    { keys: ["?"], description: "Show Keyboard Shortcuts" },
+    { keys: ["shift", "?"], description: "Show Keyboard Shortcuts" },
     { keys: ["Esc"], description: "Close Modals / Focus Mode" },
     { keys: ["Ctrl", "F"], description: "Toggle Focus Mode" },
     { keys: ["Ctrl", "Alt", "F"], description: "Lock Focus Mode" },
     { keys: ["Alt", "C"], description: "Toggle GST/Non-GST Mode" },
+    { keys: ["Alt", "P"], description: "Toggle Product Overview In Sales" },
   ],
 };
 

@@ -22,17 +22,17 @@ import {
   Tooltip,
   Stack,
   CircularProgress,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import { getAllProducts } from "../../lib/api/productService";
 import type { Product } from "../../lib/types/product";
-// ✅ Import the new Non-GST types
 import type { NonGstSaleItem } from "../../lib/types/nonGstSalesTypes";
-import { Eye, Trash2 } from "lucide-react";
+import { Eye, Trash2, ChevronDown } from "lucide-react";
 import theme from "../../../theme";
 import toast from "react-hot-toast";
 
-// ✅ Updated to return the NonGstSaleItem, removing gst_rate
 const defaultItem = (): NonGstSaleItem => ({
   sr_no: "",
   product_id: 0,
@@ -48,6 +48,8 @@ interface Props {
   onOpenOverview: (productId: string) => void;
 }
 
+type PriceType = "mrp" | "mop" | "mfw";
+
 export default function NGSaleItemSection({
   items,
   onItemsChange,
@@ -56,6 +58,7 @@ export default function NGSaleItemSection({
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
+  const [priceType, setPriceType] = useState<PriceType>("mrp");
 
   const autocompleteRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +69,6 @@ export default function NGSaleItemSection({
     {}
   );
 
-  // ✅ Debounced product search (unchanged)
   useEffect(() => {
     if (inputValue.trim() === "") {
       setSearchResults([]);
@@ -88,7 +90,6 @@ export default function NGSaleItemSection({
     return () => clearTimeout(timer);
   }, [inputValue]);
 
-  // ✅ Focus logic (simplified)
   useEffect(() => {
     if (items.length > 0) {
       const lastIndex = items.length - 1;
@@ -99,11 +100,6 @@ export default function NGSaleItemSection({
     }
   }, [items.length]);
 
-  // ✅ Removed the useEffect that fetches shop data
-
-  /**
-   * ✅ SIMPLIFIED: Price calculation without GST
-   */
   const calculateItemPrice = (item: NonGstSaleItem) => {
     const rate = Number(item.rate) || 0;
     const qty = Number(item.quantity) || 0;
@@ -113,6 +109,30 @@ export default function NGSaleItemSection({
     const discountedAmount = base - (discountPct / 100) * base;
 
     return parseFloat(discountedAmount.toFixed(2));
+  };
+
+  const getProductPrice = (product: Product, type: PriceType) => {
+    const p = product as any;
+    const val = Number(p[type]);
+    if (val && val > 0) return val;
+    return Number(p.mrp) || 0;
+  };
+
+  const handlePriceTypeChange = (newType: PriceType) => {
+    setPriceType(newType);
+
+    const updatedItems = items.map((item) => {
+      if (!item.product_id) return item;
+      const product = productCache[item.product_id];
+      if (!product) return item;
+
+      const newRate = getProductPrice(product, newType);
+      const updatedItem = { ...item, rate: newRate };
+      return { ...updatedItem, price: calculateItemPrice(updatedItem) };
+    });
+
+    onItemsChange(updatedItems);
+    toast.success(`Updated prices to ${newType.toUpperCase()}`);
   };
 
   const handleAddRow = (currentItems: NonGstSaleItem[]): NonGstSaleItem[] => {
@@ -158,7 +178,7 @@ export default function NGSaleItemSection({
           const newItem: NonGstSaleItem = {
             ...item,
             product_id: product.id!,
-            rate: product.mrp,
+            rate: getProductPrice(product, priceType),
             quantity: 1,
             discount: 0,
             price: 0,
@@ -187,7 +207,7 @@ export default function NGSaleItemSection({
     }
     if (e.altKey && e.key.toLowerCase() === "a") {
       e.preventDefault();
-      onItemsChange(handleAddRow(items)); // Correctly call onItemsChange
+      onItemsChange(handleAddRow(items));
     }
   };
 
@@ -224,14 +244,46 @@ export default function NGSaleItemSection({
         sx={{ borderRadius: 2, borderColor: theme.palette.divider }}
       >
         <Table size="small">
-          {/* ✅ SIMPLIFIED Table Head */}
           <TableHead sx={{ backgroundColor: theme.palette.grey[50] }}>
             <TableRow>
               <TableCell sx={{ fontWeight: 600, width: "5%" }}>Sr.</TableCell>
               <TableCell sx={{ fontWeight: 600, width: "40%" }}>
                 Product
               </TableCell>
-              <TableCell sx={{ fontWeight: 600, width: "15%" }}>Rate</TableCell>
+              {/* ✅ Rate Header is now the Selector */}
+              <TableCell sx={{ fontWeight: 600, width: "15%", p: 0.5 }}>
+                <Select
+                  value={priceType}
+                  onChange={(e) =>
+                    handlePriceTypeChange(e.target.value as PriceType)
+                  }
+                  variant="standard"
+                  disableUnderline
+                  IconComponent={ChevronDown}
+                  sx={{
+                    fontWeight: 700,
+                    fontSize: "0.875rem",
+                    color: "text.primary",
+                    "& .MuiSelect-select": {
+                      paddingRight: "24px !important",
+                      py: 1,
+                    },
+                    "& .MuiSvgIcon-root": {
+                      right: -4,
+                      fontSize: "1.1rem",
+                    },
+                  }}
+                  renderValue={(selected) => {
+                    if (selected === "mrp") return "Rate (MRP)";
+                    if (selected === "mop") return "Rate (MOP)";
+                    return "Rate (MFW)";
+                  }}
+                >
+                  <MenuItem value="mrp">Rate (Retail / MRP)</MenuItem>
+                  <MenuItem value="mop">Rate (Operating / MOP)</MenuItem>
+                  <MenuItem value="mfw">Rate (Wholesale / MFW)</MenuItem>
+                </Select>
+              </TableCell>
               <TableCell sx={{ fontWeight: 600, width: "10%" }}>Qty</TableCell>
               <TableCell align="center" sx={{ fontWeight: 600, width: "10%" }}>
                 Disc(%)
@@ -262,8 +314,6 @@ export default function NGSaleItemSection({
                   }}
                 >
                   <TableCell align="center">{idx + 1}</TableCell>
-
-                  {/* ✅ Removed HSN Cell */}
 
                   <TableCell sx={{ p: 0.5 }}>
                     {editingRowIndex === idx ? (
@@ -373,9 +423,6 @@ export default function NGSaleItemSection({
                     />
                   </TableCell>
 
-                  {/* ✅ Removed GST Cells */}
-
-                  {/* ✅ Unconditional Discount Cell */}
                   <TableCell sx={{ p: 0.5 }}>
                     <TextField
                       type="number"

@@ -12,8 +12,9 @@ import {
   Chip,
   Paper,
   Stack,
+  Tooltip,
 } from "@mui/material";
-import { X, Tag, Hash, Percent, ShoppingCart } from "lucide-react";
+import { X, Tag, Hash, Percent, ShoppingCart, Info } from "lucide-react";
 import Grid from "@mui/material/GridLegacy";
 import { type ProductOverviewType } from "../../lib/types/product"; // Adjust path as needed
 import { useEffect, useState } from "react";
@@ -26,6 +27,30 @@ interface Props {
   onClose: () => void;
   productId: string;
 }
+
+// ✅ Helper to encode price to cipher (A=1, B=2 ... J=0)
+const encodePriceCode = (price: number | undefined | null): string => {
+  if (!price || price <= 0) return "—";
+
+  const map: { [key: string]: string } = {
+    "1": "A",
+    "2": "B",
+    "3": "C",
+    "4": "D",
+    "5": "E",
+    "6": "F",
+    "7": "G",
+    "8": "H",
+    "9": "I",
+    "0": "J",
+  };
+
+  return Math.floor(price)
+    .toString()
+    .split("")
+    .map((char) => map[char] || char)
+    .join("");
+};
 
 // Helper for displaying key-value details
 const DetailItem = ({
@@ -59,6 +84,8 @@ export default function ProductOverviewModal({
   const [product, setProduct] = useState<ProductOverviewType | null>(null);
   const [shop, setShop] = useState<ShopSetupForm | null>(null);
   const [_loading, setLoading] = useState(true);
+
+  // ✅ Removed key listener from here as requested (handled in Item Section now)
 
   useEffect(() => {
     // Don't fetch if the modal isn't open or there's no ID
@@ -98,6 +125,9 @@ export default function ProductOverviewModal({
     return "success";
   };
 
+  // ✅ Updated variable name to use mfw_price
+  const mfw = (product as any)?.mfw_price;
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle
@@ -116,7 +146,7 @@ export default function ProductOverviewModal({
       </DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2.5}>
-          {/* ✅ ADDED: Conditionally rendered product image cover */}
+          {/* Product Image */}
           {product?.image_url && (
             <Box
               component="img"
@@ -153,48 +183,131 @@ export default function ProductOverviewModal({
           </Box>
 
           {/* --- Section 2: Pricing & Stock --- */}
-          <Paper variant="outlined" sx={{ p: 2 }}>
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: "grey.50" }}>
             <Grid container spacing={2}>
+              {/* Row 1: The Three Prices */}
+
+              {/* Retail Price (MRP) */}
               <Grid item xs={4} sx={{ textAlign: "center" }}>
-                <Typography variant="caption" color="text.secondary">
-                  Selling Price (MOP)
-                </Typography>
-                <Typography variant="h6" fontWeight={600}>
-                  ₹{product?.mop?.toLocaleString("en-IN")}
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                >
+                  Retail (MRP)
                 </Typography>
                 <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ textDecoration: "line-through" }}
+                  variant="h6"
+                  fontWeight={600}
+                  sx={{ color: "text.primary" }}
                 >
-                  MRP: ₹{product?.mrp?.toLocaleString("en-IN")}
+                  ₹{product?.mrp?.toLocaleString("en-IN") || 0}
                 </Typography>
               </Grid>
+
+              {/* Operating Price (MOP) */}
               <Grid
                 item
                 xs={4}
                 sx={{
                   textAlign: "center",
-                  borderLeft: 1,
-                  borderRight: 1,
+                  borderLeft: "1px solid",
+                  borderRight: "1px solid",
+                  borderColor: "divider",
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                >
+                  Selling (MOP)
+                </Typography>
+                <Typography variant="h6" fontWeight={600} color="primary.main">
+                  ₹{product?.mop?.toLocaleString("en-IN") || 0}
+                </Typography>
+              </Grid>
+
+              {/* Wholesale Price (MFW) + Code */}
+              <Grid item xs={4} sx={{ textAlign: "center" }}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="center"
+                  gap={0.5}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Wholesale (MFW)
+                  </Typography>
+                  <Tooltip title={`Cipher: 1=A, 2=B ... 0=J`}>
+                    <Info size={12} style={{ opacity: 0.5 }} />
+                  </Tooltip>
+                </Stack>
+                <Typography
+                  variant="h6"
+                  fontWeight={600}
+                  sx={{ lineHeight: 1.2 }}
+                >
+                  ₹{mfw?.toLocaleString("en-IN") || 0}
+                </Typography>
+                {/* Encoded Value */}
+                {mfw > 0 && (
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontFamily: "monospace",
+                      bgcolor: "grey.300",
+                      px: 0.8,
+                      py: 0,
+                      borderRadius: 1,
+                      fontWeight: 700,
+                      color: "text.primary",
+                      letterSpacing: 1,
+                    }}
+                  >
+                    {encodePriceCode(mfw)}
+                  </Typography>
+                )}
+              </Grid>
+
+              {/* Divider between Rows */}
+              <Grid item xs={12}>
+                <Box
+                  sx={{ borderBottom: "1px dashed", borderColor: "divider" }}
+                />
+              </Grid>
+
+              {/* Row 2: Purchase & Stock */}
+
+              <Grid item xs={6} sx={{ textAlign: "center" }}>
+                <Typography variant="caption" color="text.secondary">
+                  Latest Purchase Price
+                </Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  ₹
+                  {product?.latest_purchase_price?.toLocaleString("en-IN") ||
+                    "0"}
+                </Typography>
+              </Grid>
+
+              <Grid
+                item
+                xs={6}
+                sx={{
+                  textAlign: "center",
+                  borderLeft: "1px solid",
                   borderColor: "divider",
                 }}
               >
                 <Typography variant="caption" color="text.secondary">
-                  Latest Purchase Price
-                </Typography>
-                <Typography variant="h6" fontWeight={600}>
-                  ₹{product?.latest_purchase_price?.toLocaleString("en-IN")}
-                </Typography>
-              </Grid>
-              <Grid item xs={4} sx={{ textAlign: "center" }}>
-                <Typography variant="caption" color="text.secondary">
                   Current Stock
                 </Typography>
-                <Box mt={1}>
+                <Box mt={0.5}>
                   <Chip
-                    label={`${product?.quantity} Units`}
+                    label={`${product?.quantity || 0} Units`}
                     color={getStockChipColor()}
+                    size="small"
+                    sx={{ fontWeight: 600 }}
                   />
                 </Box>
               </Grid>
@@ -249,7 +362,9 @@ export default function ProductOverviewModal({
         </Stack>
       </DialogContent>
       <DialogActions sx={{ p: 2 }}>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose} variant="outlined" color="inherit">
+          Close
+        </Button>
       </DialogActions>
     </Dialog>
   );

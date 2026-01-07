@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import {
   Autocomplete,
@@ -20,6 +21,8 @@ import {
   Stack,
   CircularProgress,
   useTheme,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import { getAllProducts } from "../../lib/api/productService";
@@ -27,7 +30,7 @@ import type { Product } from "../../lib/types/product";
 import type { SaleItemPayload } from "../../lib/types/salesTypes";
 import { getShopData } from "../../lib/api/shopService";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
-import { Eye, Plus, Trash2 } from "lucide-react";
+import { Eye, Plus, Trash2, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 
 const defaultItem = (): SaleItemPayload => ({
@@ -46,13 +49,20 @@ interface SaleItemSectionProps {
   onItemsChange: (items: SaleItemPayload[]) => void;
   mode: "new" | "view";
   onOpenOverview: (productId: string) => void;
+  // ✅ Added props to control modal state from here
+  isOverviewOpen?: boolean;
+  onCloseOverview?: () => void;
 }
+
+type PriceType = "mrp" | "mop" | "mfw";
 
 export default function SaleItemSection({
   items,
   onItemsChange,
   mode,
   onOpenOverview,
+  isOverviewOpen,
+  onCloseOverview,
 }: SaleItemSectionProps) {
   const theme = useTheme();
   const [searchResults, setSearchResults] = useState<Product[]>([]);
@@ -66,6 +76,8 @@ export default function SaleItemSection({
   const [productCache, setProductCache] = useState<{ [id: number]: Product }>(
     {}
   );
+
+  const [priceType, setPriceType] = useState<PriceType>("mrp");
 
   useEffect(() => {
     if (inputValue.trim() === "") {
@@ -108,6 +120,42 @@ export default function SaleItemSection({
       );
   }, [items.length]);
 
+  // ✅ Global Listener for Alt+P Toggle
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Check for Alt + P (supports Left Alt, Right Alt/AltGr)
+      if (e.altKey && (e.code === "KeyP" || e.key.toLowerCase() === "p")) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // 1. If Modal is Open -> Close it
+        if (isOverviewOpen && onCloseOverview) {
+          onCloseOverview();
+          return;
+        }
+
+        // 2. If Modal is Closed -> Open for current active row
+        if (!isOverviewOpen) {
+          // Use editingRowIndex or fallback to last row if available
+          const targetIndex =
+            editingRowIndex !== null ? editingRowIndex : items.length - 1;
+
+          if (targetIndex >= 0 && items[targetIndex]) {
+            const currentItem = items[targetIndex];
+            if (currentItem.product_id) {
+              onOpenOverview(currentItem.product_id.toString());
+            } else {
+              toast.error("Please select a product first");
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [items, editingRowIndex, isOverviewOpen, onCloseOverview, onOpenOverview]);
+
   const calculateItemPrice = (item: SaleItemPayload) => {
     if (!shop) return 0;
 
@@ -116,10 +164,7 @@ export default function SaleItemSection({
     const gstRate = Number(item.gst_rate) || 0;
     const discountPct = Number(item.discount) || 0;
 
-    // 1. Calculate Base Amount (Rate * Qty)
     const baseAmount = rate * qty;
-
-    // 2. Apply Discount
     const discountAmount = (baseAmount * discountPct) / 100;
     const amountAfterDiscount = baseAmount - discountAmount;
 
@@ -127,16 +172,46 @@ export default function SaleItemSection({
 
     if (shop.gst_enabled) {
       if (shop.inclusive_tax_pricing) {
-        // INCLUSIVE: The Rate entered ALREADY includes Tax.
         finalPrice = amountAfterDiscount;
       } else {
-        // EXCLUSIVE: The Rate entered is Taxable Value. Add Tax on top.
         const gstAmount = (amountAfterDiscount * gstRate) / 100;
         finalPrice = amountAfterDiscount + gstAmount;
       }
     }
 
     return parseFloat(finalPrice.toFixed(2));
+  };
+
+  const getProductPrice = (product: Product, type: PriceType) => {
+    const p = product as any;
+    let val = Number(p[type]);
+
+    if ((!val || val === 0) && type === "mfw") {
+      val = Number(p.mfw_price);
+    }
+    if ((!val || val === 0) && type === "mop") {
+      val = Number(p.mop_price);
+    }
+
+    if (val && val > 0) return val;
+    return Number(p.mrp) || 0;
+  };
+
+  const handlePriceTypeChange = (newType: PriceType) => {
+    setPriceType(newType);
+
+    const updatedItems = items.map((item) => {
+      if (!item.product_id) return item;
+      const product = productCache[item.product_id];
+      if (!product) return item;
+
+      const newRate = getProductPrice(product, newType);
+      const updatedItem = { ...item, rate: newRate };
+      return { ...updatedItem, price: calculateItemPrice(updatedItem) };
+    });
+
+    onItemsChange(updatedItems);
+    toast.success(`Updated prices to ${newType.toUpperCase()}`);
   };
 
   const handleAddRow = (currentItems: SaleItemPayload[]) => {
@@ -177,7 +252,7 @@ export default function SaleItemSection({
           const newItem = {
             ...item,
             product_id: product.id!,
-            rate: product.mrp,
+            rate: getProductPrice(product, priceType),
             gst_rate: product.gst_rate ?? 0,
             quantity: 1,
           };
@@ -196,15 +271,18 @@ export default function SaleItemSection({
 
   const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key === "Enter") {
-      if (!loading && searchResults.length === 1) {
+      if (!loading && searchResults.length === 1 && inputValue) {
         e.preventDefault();
         handleProductSelect(index, searchResults[0]);
       }
     }
-    if (e.altKey && e.key.toLowerCase() === "a") {
+
+    if (e.altKey && (e.key.toLowerCase() === "a" || e.code === "KeyA")) {
       e.preventDefault();
       onItemsChange(handleAddRow(items));
     }
+
+    // Removed specific Alt+P listener from here since the global useEffect handles it now
   };
 
   const handleFieldChange = (
@@ -250,10 +328,58 @@ export default function SaleItemSection({
                 <TableCell sx={{ ...headerSx, width: "8%" }}>HSN</TableCell>
               )}
               <TableCell sx={{ ...headerSx, width: "30%" }}>PRODUCT</TableCell>
-              {/* Dynamic Header for Rate */}
-              <TableCell sx={{ ...headerSx, width: "10%" }}>
-                {shop?.inclusive_tax_pricing ? "RATE (Inc.)" : "RATE"}
+
+              <TableCell sx={{ ...headerSx, width: "10%", p: 0.5 }}>
+                {mode === "view" ? (
+                  shop?.inclusive_tax_pricing ? (
+                    "RATE (Inc.)"
+                  ) : (
+                    "RATE"
+                  )
+                ) : (
+                  <Select
+                    value={priceType}
+                    onChange={(e) =>
+                      handlePriceTypeChange(e.target.value as PriceType)
+                    }
+                    variant="standard"
+                    disableUnderline
+                    IconComponent={ChevronDown}
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: "0.75rem",
+                      color: "text.secondary",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                      "& .MuiSelect-select": {
+                        paddingRight: "16px !important",
+                        py: 0,
+                      },
+                      "& .MuiSvgIcon-root": {
+                        right: -4,
+                        fontSize: "1rem",
+                        color: "text.secondary",
+                      },
+                    }}
+                    renderValue={(selected) => {
+                      const label =
+                        selected === "mrp"
+                          ? "Retail"
+                          : selected === "mop"
+                          ? "Offer"
+                          : "Wholesale";
+                      return `Rate (${label})${
+                        shop?.inclusive_tax_pricing ? " (Inc.)" : ""
+                      }`;
+                    }}
+                  >
+                    <MenuItem value="mrp">Rate (Retail / MRP)</MenuItem>
+                    <MenuItem value="mop">Rate (Operating / MOP)</MenuItem>
+                    <MenuItem value="mfw">Rate (Wholesale / MFW)</MenuItem>
+                  </Select>
+                )}
               </TableCell>
+
               <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
               {shop?.gst_enabled && (
                 <>
@@ -293,14 +419,12 @@ export default function SaleItemSection({
 
               if (shop?.gst_enabled) {
                 if (shop.inclusive_tax_pricing) {
-                  // Back-calculate tax from inclusive amount
                   const divisor = 1 + gst / 100;
                   const taxable = valAfterDisc / divisor;
                   const taxAmt = valAfterDisc - taxable;
                   cgstAmount = taxAmt / 2;
                   sgstAmount = taxAmt / 2;
                 } else {
-                  // Forward-calculate tax on exclusive amount
                   const taxAmt = (valAfterDisc * gst) / 100;
                   cgstAmount = taxAmt / 2;
                   sgstAmount = taxAmt / 2;
@@ -404,6 +528,7 @@ export default function SaleItemSection({
                       onChange={(e) =>
                         handleFieldChange(idx, "rate", Number(e.target.value))
                       }
+                      onKeyDown={(e) => handleKeyDown(e, idx)}
                       InputProps={{
                         disableUnderline: true,
                         sx: { fontSize: "0.95rem" },
@@ -426,6 +551,7 @@ export default function SaleItemSection({
                           Number(e.target.value)
                         )
                       }
+                      onKeyDown={(e) => handleKeyDown(e, idx)}
                       InputProps={{
                         disableUnderline: true,
                         style: { fontWeight: "bold", fontSize: "0.95rem" },
@@ -488,6 +614,7 @@ export default function SaleItemSection({
                             Number(e.target.value)
                           )
                         }
+                        onKeyDown={(e) => handleKeyDown(e, idx)}
                         inputProps={{ style: { textAlign: "center" } }}
                         InputProps={{
                           disableUnderline: true,
