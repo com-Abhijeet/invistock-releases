@@ -1,179 +1,253 @@
-// ✅ 1. Import the transliteration service
-const { getMarathiName } = require("./transliterationService.js");
-
 /**
- * Generates the HTML content for a Non-GST cash receipt with Marathi names.
+ * Generates the HTML content for a Non-GST cash receipt.
+ * Structure: Boxed/Bordered Table style.
+ * Header and Table Columns repeat on page break.
+ *
+ * UPDATES:
+ * - CommonJS Module format.
+ * - Uses Shop Alias strictly (no address/contact).
+ * - Responsive width handling for various paper sizes.
+ * - Added padding to body.
+ *
  * @param {object} shop - The shop details.
  * @param {object} sale - The non-GST sale data.
- * @param {number} printerWidthMM - The width of the printer in millimeters.
+ * @param {number} printerWidthMM - The width of the printer in millimeters (default 80).
  * @returns {Promise<string>} The complete HTML string for the receipt.
  */
 async function createNonGstReceiptHTML(shop, sale, printerWidthMM = 80) {
-  // ✅ Helper function to format the address
-  const formatAddress = (addr, city, state, pincode) =>
-    [addr, city, state, pincode].filter(Boolean).join(", ");
-
   const style = `
     <style>
+      @page { margin: 2mm; size: auto; } /* Minimal margin for thermal */
       body {
-        font-family: Arial, sans-serif;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         margin: 0;
-        padding: 5px;
-        width: ${printerWidthMM}mm;
+        padding: 5px; /* Added padding as requested */
+        width: 100%;
+        max-width: ${printerWidthMM}mm; /* Prevents stretching on A4, fills thermal */
         box-sizing: border-box;
+        font-size: 12px;
+        color: #000;
       }
-      .receipt-container {
-        padding: 10px;
-        text-align: center;
-      }
-      h3, h4 { margin: 5px 0; }
-      p { margin: 2px 0; font-size: 0.9em; }
-      .header p { margin: 0; }
-      .divider { border-top: 1px dashed #333; margin: 10px 0; }
       
-      .items-table {
+      /* Main Layout Table */
+      .main-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.9em;
-        margin-top: 10px;
+        border: 1px solid #000;
+        border-bottom: none; /* Bottom border handled by summary table */
+        table-layout: fixed; /* Ensures columns respect widths */
       }
-      .items-table th, .items-table td {
-        padding: 6px 2px;
-        text-align: left;
-        vertical-align: top;
+
+      /* Header Elements inside Thead */
+      .header-row td {
+        border: none;
+        text-align: center;
+        padding: 5px;
       }
-      .items-table .right { text-align: right; }
-      .items-table .center { text-align: center; }
-      .items-table thead tr { border-bottom: 1px solid #333; }
+
+      .shop-title { 
+        font-size: 18px; 
+        font-weight: bold; 
+        text-transform: uppercase; 
+        margin: 5px 0; 
+      }
       
+      .info-row td {
+        border-top: 1px solid #000;
+        border-bottom: 1px solid #000;
+        padding: 5px;
+        font-size: 11px;
+      }
+      
+      .customer-row td {
+        border-bottom: 1px solid #000;
+        padding: 5px;
+        font-size: 11px;
+        text-align: left;
+      }
+
+      /* Column Headers */
+      .col-header th {
+        border-bottom: 1px solid #000;
+        padding: 4px 2px;
+        /* text-align: left;  <-- Removed to allow specific column alignment */
+        font-weight: bold;
+        font-size: 11px;
+        background-color: #f0f0f0 !important;
+        -webkit-print-color-adjust: exact; 
+      }
+
+      /* Item Rows */
+      .item-row td {
+        padding: 4px 2px;
+        vertical-align: top;
+        border-bottom: 1px dotted #ccc;
+        font-size: 11px;
+        word-wrap: break-word; /* Prevents overflow on small paper */
+      }
+      .item-row:last-child td {
+        border-bottom: none;
+      }
+
+      /* Column Widths & Alignments (Applied to both th and td) */
+      .col-item { width: 45%; text-align: left; }
+      .col-qty { width: 15%; text-align: center; }
+      .col-rate { width: 20%; text-align: right; }
+      .col-total { width: 20%; text-align: right; }
+
+      /* Summary Section (Separate Table) */
       .summary-table {
         width: 100%;
-        margin-top: 10px;
-        font-size: 0.95em;
+        border-collapse: collapse;
+        border: 1px solid #000;
+        border-top: 1px solid #000; /* Distinct separation */
       }
-      .summary-table td { padding: 2px 4px; }
-      .summary-table .label { text-align: left; }
-      .summary-table .value { text-align: right; }
-      .summary-table .total .value { font-size: 1.1em; font-weight: bold; }
+      .summary-row td {
+        padding: 4px 5px;
+        font-size: 12px;
+      }
+      .grand-total {
+        font-weight: bold;
+        font-size: 14px;
+        border-top: 1px solid #000;
+      }
       
-      .local-name {
-        font-size: 0.9em;
-        color: #333;
+      .footer-msg {
+        text-align: center;
+        font-size: 10px;
+        margin-top: 10px;
         font-style: italic;
       }
-      .text-left { text-align: left; }
+      
+      /* Ensure header repeats on new pages */
+      thead { display: table-header-group; }
+      
+      /* Utility */
+      .right { text-align: right; }
+      .left { text-align: left; }
+      .bold { font-weight: bold; }
     </style>
   `;
 
-  // ✅ 3. Generate item rows and customer name asynchronously
-  const [itemsHtml, customerMarathiName] = await Promise.all([
-    Promise.all(
-      sale.items.map(async (item) => {
-        const marathiName = await getMarathiName(item.product_name || "");
-        return `
-          <tr>
-            <td>
-              ${item.product_name || "N/A"}
-              <br>
-              <span class="local-name">${marathiName}</span>
-            </td>
-            <td class="center">${item.quantity}</td>
-            <td class="right">₹${item.rate.toLocaleString("en-IN")}</td>
-            <td class="right">₹${item.price.toLocaleString("en-IN")}</td>
-          </tr>
-        `;
-      })
-    ).then((rows) => rows.join("")),
-    getMarathiName(sale.customer_name || ""),
-  ]);
+  // Generate item rows
+  const itemsHtml = sale.items
+    .map(
+      (item) => `
+    <tr class="item-row">
+      <td class="col-item">${item.product_name || "Item"}</td>
+      <td class="col-qty">${item.quantity}</td>
+      <td class="col-rate">${item.rate.toLocaleString("en-IN")}</td>
+      <td class="col-total">${item.price.toLocaleString("en-IN")}</td>
+    </tr>
+  `
+    )
+    .join("");
 
   // Calculate totals
   const subTotal = sale.items.reduce((acc, item) => acc + item.price, 0);
   const discount = Number(sale.discount || 0);
   const grandTotal = subTotal - discount;
 
+  // Use Alias if available, fallback to Name only if Alias is missing
+  const displayName =
+    shop.shop_alias && shop.shop_alias.trim() !== ""
+      ? shop.shop_alias
+      : shop.shop_name;
+
   const html = `
     <!DOCTYPE html>
     <html>
-      <head><title>Receipt</title>${style}</head>
+      <head>
+        <meta charset="UTF-8">
+        <title>Receipt ${sale.reference_no}</title>
+        ${style}
+      </head>
       <body>
-        <div class="receipt-container">
-          <div class="header">
-            <h3>${
-              shop.use_alias_on_bills ? shop.shop_alias : shop.shop_name
-            }</h3>
-            <h4>CASH MEMO</h4>
-          </div>
+        
+        <table class="main-table">
+          <thead>
+            <!-- 1. Shop Details (Alias Only) -->
+            <tr class="header-row">
+              <td colspan="4">
+                <div class="shop-title">${displayName}</div>
+                <!-- Address and Contact removed as requested -->
+              </td>
+            </tr>
 
-          <div class="divider"></div>
+            <!-- 2. Bill Info -->
+            <tr class="info-row">
+              <td colspan="4">
+                <div style="display: flex; justify-content: space-between;">
+                  <span><strong>Bill No:</strong> ${sale.reference_no}</span>
+                  <span>${new Date(sale.created_at).toLocaleDateString(
+                    "en-IN"
+                  )}</span>
+                </div>
+              </td>
+            </tr>
+            
+            <!-- 3. Customer Info -->
+            <tr class="customer-row">
+              <td colspan="4">
+                <div><strong>To:</strong> ${
+                  sale.customer_name || "Walk-in Customer"
+                }</div>
+              </td>
+            </tr>
+
+            <!-- 4. Column Headers -->
+            <tr class="col-header">
+              <th class="col-item">Item</th>
+              <th class="col-qty">Qty</th>
+              <th class="col-rate">Rate</th>
+              <th class="col-total">Amt</th>
+            </tr>
+          </thead>
           
-          <div class="text-left">
-            <p><strong>Bill No:</strong> ${sale.reference_no}</p>
-            <p><strong>Date:</strong> ${new Date(
-              sale.created_at
-            ).toLocaleString("en-IN")}</p>
-          </div>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
 
-          <div class="divider"></div>
-          <div class="text-left">
-            <p><strong>Billed To:</strong></p>
-            <p>
-              <strong>${sale.customer_name || "Walk-in Customer"}</strong>
-              ${
-                customerMarathiName
-                  ? `<br><span class="local-name">${customerMarathiName}</span>`
-                  : ""
-              }
-            </p>
-            <p>${formatAddress(
-              sale.customer_address,
-              sale.customer_city,
-              sale.customer_state,
-              sale.customer_pincode
-            )}</p>
-            <p>Phone: ${sale.customer_phone || "N/A"}</p>
-          </div>
+        <!-- Summary Section -->
+        <table class="summary-table">
+          <tr class="summary-row">
+            <td class="left">Sub Total</td>
+            <td class="right">${subTotal.toLocaleString("en-IN", {
+              minimumFractionDigits: 2,
+            })}</td>
+          </tr>
+          ${
+            discount > 0
+              ? `
+          <tr class="summary-row">
+            <td class="left">Discount</td>
+            <td class="right">- ${discount.toLocaleString("en-IN", {
+              minimumFractionDigits: 2,
+            })}</td>
+          </tr>`
+              : ""
+          }
+          <tr class="summary-row grand-total">
+            <td class="left">GRAND TOTAL</td>
+            <td class="right">₹${grandTotal.toLocaleString("en-IN", {
+              minimumFractionDigits: 2,
+            })}</td>
+          </tr>
+          <tr class="summary-row">
+            <td class="left" style="font-size: 10px;">Paid via ${
+              sale.payment_mode
+            }</td>
+            <td class="right" style="font-size: 10px;">Items: ${
+              sale.items.length
+            }</td>
+          </tr>
+        </table>
 
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th class="center">Qty</th>
-                <th class="right">Rate</th>
-                <th class="right">Total</th>
-              </tr>
-            </thead>
-            <tbody>${itemsHtml}</tbody>
-          </table>
-
-          <div class="divider"></div>
-
-          <table class="summary-table">
-            <tbody>
-              <tr>
-                <td class="label">Sub-Total</td>
-                <td class="value">₹${subTotal.toLocaleString("en-IN")}</td>
-              </tr>
-              <tr>
-                <td class="label">Discount</td>
-                <td classs="value">- ₹${discount.toLocaleString("en-IN")}</td>
-              </tr>
-              <tr class="total">
-                <td class="label" style="font-weight: bold;">Grand Total</td>
-                <td class="value">₹${grandTotal.toLocaleString("en-IN")}</td>
-              </tr>
-              <tr>
-                <td class="label">Paid via ${sale.payment_mode}</td>
-                <td class="value">₹${sale.paid_amount.toLocaleString(
-                  "en-IN"
-                )}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div class="divider"></div>
-          <p>Thank you for your visit!</p>
+        <div class="footer-msg">
+          Thank you! Visit Again.
         </div>
+
       </body>
     </html>
   `;

@@ -3,6 +3,7 @@ import { getDateFilter } from "../utils/dateFilter.mjs";
 
 /**
  * The Mega-Query function for the dashboard.
+ * Decoupled: Only fetches GST-compliant sales statistics.
  */
 export function getDashboardStats(filters) {
   const { where: sWhere, params: sParams } = getDateFilter({
@@ -21,6 +22,7 @@ export function getDashboardStats(filters) {
   // --------------------------------------------------------------------------
   // 1. FINANCIALS: Sales, COGS, and Gross Profit
   // --------------------------------------------------------------------------
+  // REMOVED: sales_non_gst UNION
   const profitQuery = `
     SELECT 
       SUM(si.quantity * si.rate) as revenue,
@@ -29,30 +31,20 @@ export function getDashboardStats(filters) {
     JOIN sales s ON si.sale_id = s.id
     JOIN products pr ON si.product_id = pr.id
     WHERE s.is_quote = 0 AND ${sWhere}
-    
-    UNION ALL
-    
-    SELECT 
-      SUM(si.quantity * si.rate) as revenue,
-      SUM(si.quantity * pr.average_purchase_price) as cogs
-    FROM sales_items_non_gst si
-    JOIN sales_non_gst s ON si.sale_id = s.id
-    JOIN products pr ON si.product_id = pr.id
-    WHERE ${sWhere}
   `;
 
   const profitData = db
     .prepare(
       `SELECT SUM(revenue) as revenue, SUM(cogs) as cogs FROM (${profitQuery})`
     )
-    .get(...sParams, ...sParams);
+    .get(...sParams);
 
   const totalRevenue = profitData.revenue || 0;
   const totalCOGS = profitData.cogs || 0;
   const grossProfit = totalRevenue - totalCOGS;
 
   // --------------------------------------------------------------------------
-  // 2. OPERATIONAL COSTS (Expenses) - ✅ UPDATED
+  // 2. OPERATIONAL COSTS (Expenses)
   // --------------------------------------------------------------------------
   // Now querying the dedicated 'expenses' table
   const expenses = db
@@ -69,7 +61,7 @@ export function getDashboardStats(filters) {
   const netProfit = grossProfit - totalOperationalExpenses;
 
   // --------------------------------------------------------------------------
-  // 3. CASH FLOW (Actual Money In/Out) - ✅ UPDATED
+  // 3. CASH FLOW (Actual Money In/Out)
   // --------------------------------------------------------------------------
   // Money In = Payment In transactions
   // Money Out = Payment Out transactions (Purchases) + Expenses
@@ -93,12 +85,14 @@ export function getDashboardStats(filters) {
   // --------------------------------------------------------------------------
   // 4. OUTSTANDING (Debts)
   // --------------------------------------------------------------------------
+  // REMOVED: sales_non_gst UNION
   const receivables =
     db
       .prepare(
         `
     SELECT SUM(total_amount - paid_amount) as pending 
-    FROM (SELECT total_amount, paid_amount FROM sales WHERE status != 'paid' UNION ALL SELECT total_amount, paid_amount FROM sales_non_gst WHERE status != 'paid')
+    FROM sales
+    WHERE status != 'paid' AND is_quote = 0
   `
       )
       .get().pending || 0;
@@ -133,15 +127,14 @@ export function getDashboardStats(filters) {
   // --------------------------------------------------------------------------
   // 6. COUNTS
   // --------------------------------------------------------------------------
+  // REMOVED: sales_non_gst count
   const invoiceCount = db
     .prepare(
       `
-    SELECT 
-      (SELECT COUNT(*) FROM sales s WHERE s.is_quote=0 AND ${sWhere}) +
-      (SELECT COUNT(*) FROM sales_non_gst s WHERE ${sWhere}) as count
+    SELECT COUNT(*) as count FROM sales s WHERE s.is_quote=0 AND ${sWhere}
   `
     )
-    .get(...sParams, ...sParams).count;
+    .get(...sParams).count;
 
   const totalCustomers = db
     .prepare(`SELECT COUNT(*) as c FROM customers`)
@@ -151,13 +144,13 @@ export function getDashboardStats(filters) {
     revenue: totalRevenue,
     cogs: totalCOGS,
     grossProfit,
-    expenses: totalOperationalExpenses, // ✅ Send dedicated expense total
+    expenses: totalOperationalExpenses,
     netProfit,
     margin:
       totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0,
 
     moneyIn,
-    moneyOut, // ✅ Includes both purchases and expenses
+    moneyOut,
     netCashFlow: moneyIn - moneyOut,
 
     receivables,
@@ -178,14 +171,15 @@ export function getDashboardStats(filters) {
   };
 }
 
-// ... getDashboardChartData (remains unchanged unless you want to add an expense line to the chart)
 /**
  * Fetches complex data series for multiple charts.
+ * Decoupled: Only fetches GST-compliant sales data.
  */
 export function getDashboardChartData(filters) {
   const { where, params } = getDateFilter(filters);
 
   // Chart 1: Revenue vs Profit vs Expense (Area Chart)
+  // REMOVED: sales_non_gst UNION
   const financialTrend = db
     .prepare(
       `
@@ -194,16 +188,18 @@ export function getDashboardChartData(filters) {
       SUM(revenue) as revenue,
       SUM(profit) as profit
     FROM (
-      SELECT date(created_at) as date, total_amount as revenue, (total_amount - (total_amount * 0.8)) as profit FROM sales WHERE ${where}
-      UNION ALL
-      SELECT date(created_at) as date, total_amount as revenue, (total_amount - (total_amount * 0.8)) as profit FROM sales_non_gst WHERE ${where}
+      SELECT 
+        date(created_at) as date, 
+        total_amount as revenue, 
+        (total_amount - (total_amount * 0.8)) as profit 
+      FROM sales 
+      WHERE ${where} AND is_quote = 0
     )
     GROUP BY date(date) ORDER BY date(date)
   `
     )
-    .all(...params, ...params);
+    .all(...params);
   // Note: Profit here is an estimation for the graph speed (assuming 20% margin if not joining every item)
-  // For exact graph profit, you'd need the heavy JOIN query from above grouped by day.
 
   // Chart 2: Payment Modes (Pie Chart)
   const paymentModes = db
@@ -229,7 +225,7 @@ export function getDashboardChartData(filters) {
     JOIN products p ON si.product_id = p.id
     JOIN categories c ON p.category = c.id
     JOIN sales s ON si.sale_id = s.id
-    WHERE ${where.replace(/created_at/g, "s.created_at")}
+    WHERE ${where.replace(/created_at/g, "s.created_at")} AND s.is_quote = 0
     GROUP BY c.name
     ORDER BY value DESC LIMIT 5
   `

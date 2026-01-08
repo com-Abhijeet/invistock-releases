@@ -1,5 +1,4 @@
 import { createNonGstSaleWithItems } from "../services/nonGstSalesService.mjs";
-// You can add more repo functions here for list/get
 import * as NonGstRepo from "../repositories/nonGstSalesRepository.mjs";
 
 /**
@@ -7,11 +6,20 @@ import * as NonGstRepo from "../repositories/nonGstSalesRepository.mjs";
  */
 export async function createNonGstSaleController(req, res) {
   try {
-    // Filter out the empty row from the frontend
+    // Filter out invalid items.
+    // Since we decoupled from products table, we check for product_name instead of product_id
     const payload = {
       ...req.body,
-      items: req.body.items.filter((item) => item.product_id > 0),
+      items: req.body.items.filter(
+        (item) => item.product_name && item.product_name.trim() !== ""
+      ),
     };
+
+    if (payload.items.length === 0) {
+      return res
+        .status(400)
+        .json({ status: "error", error: "No valid items provided." });
+    }
 
     const sale = createNonGstSaleWithItems(payload);
     res.status(201).json({ status: "success", data: sale });
@@ -58,6 +66,21 @@ export async function getNonGstSalesController(req, res) {
   } catch (error) {
     console.error(
       `[BACKEND] - NG SALES CONTROLLER - ERROR IN GETTING NG SALES CONTROLLER ${error}`
+    );
+    res.status(500).json({ status: "error", error: error.message });
+  }
+}
+
+/**
+ * Controller to fetch unique product names for autocomplete suggestions.
+ */
+export async function getUniqueProductNamesController(req, res) {
+  try {
+    const names = NonGstRepo.getUniqueProductNames();
+    res.status(200).json({ status: "success", data: names });
+  } catch (error) {
+    console.error(
+      `[BACKEND] - NG SALES CONTROLLER - ERROR IN GETTING UNIQUE PRODUCTS ${error}`
     );
     res.status(500).json({ status: "error", error: error.message });
   }

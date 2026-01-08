@@ -13,19 +13,11 @@ export function getReorderRecommendations(lookbackDays = 30, targetDays = 30) {
 
   const query = `
     WITH SalesData AS (
-      -- 1. Combine GST and Non-GST Sales for the period
+      -- 1. Get Sales for the period (GST Only)
       SELECT product_id, SUM(quantity) as total_sold
       FROM sales_items si
       JOIN sales s ON si.sale_id = s.id
       WHERE date(s.created_at) >= ? AND s.is_quote = 0
-      GROUP BY product_id
-      
-      UNION ALL
-      
-      SELECT product_id, SUM(quantity) as total_sold
-      FROM sales_items_non_gst si
-      JOIN sales_non_gst s ON si.sale_id = s.id
-      WHERE date(s.created_at) >= ?
       GROUP BY product_id
     ),
     AggregatedSales AS (
@@ -49,7 +41,8 @@ export function getReorderRecommendations(lookbackDays = 30, targetDays = 30) {
     AND (agg.sold_in_period > 0 OR p.quantity <= p.low_stock_threshold)
   `;
 
-  const products = db.prepare(query).all(dateStr, dateStr);
+  // Note: We only pass dateStr once now since there is only one placeholder
+  const products = db.prepare(query).all(dateStr);
 
   // 3. Perform Logic Calculation in JS (Easier/Faster than complex SQL math)
   return products
@@ -103,7 +96,7 @@ export function getDeadStockReport(days = 180) {
 
   // The Logic:
   // 1. Get all active products with stock > 0.
-  // 2. Join with sales items (GST & Non-GST) filtered by date > cutoff.
+  // 2. Join with sales items (GST Only) filtered by date > cutoff.
   // 3. Group by product.
   // 4. Filter for products where total_sold IS NULL (meaning no sales found in period).
 
@@ -123,12 +116,9 @@ export function getDeadStockReport(days = 180) {
     FROM products p
     LEFT JOIN categories c ON p.category = c.id
     LEFT JOIN (
-        -- Combine GST and Non-GST sales dates
+        -- Get GST sales dates only
         SELECT si.product_id, s.created_at as sale_date 
         FROM sales_items si JOIN sales s ON si.sale_id = s.id
-        UNION ALL
-        SELECT si.product_id, s.created_at as sale_date 
-        FROM sales_items_non_gst si JOIN sales_non_gst s ON si.sale_id = s.id
     ) all_sales ON p.id = all_sales.product_id
     
     WHERE p.is_active = 1 
@@ -153,15 +143,10 @@ export function getDeadStockReport(days = 180) {
 export function getCustomerAnalytics(dormantThresholdDays = 90) {
   const query = `
     WITH AllSales AS (
+        -- GST Sales Only
         SELECT customer_id, total_amount, created_at 
         FROM sales 
         WHERE is_quote = 0 AND status != 'cancelled'
-        
-        UNION ALL
-        
-        SELECT customer_id, total_amount, created_at 
-        FROM sales_non_gst 
-        WHERE status != 'cancelled'
     )
     SELECT 
         c.id,
@@ -241,24 +226,19 @@ export function getProductABCAnalysis(days = 365) {
       COALESCE(SUM(all_sales.item_total), 0) as total_revenue
     FROM products p
     LEFT JOIN (
+        -- GST Sales Only
         SELECT si.product_id, (si.quantity * si.rate) as item_total 
         FROM sales_items si 
         JOIN sales s ON si.sale_id = s.id 
         WHERE date(s.created_at) >= ? AND s.is_quote = 0 AND s.status != 'cancelled'
-        
-        UNION ALL
-        
-        SELECT si.product_id, (si.quantity * si.rate) as item_total 
-        FROM sales_items_non_gst si 
-        JOIN sales_non_gst s ON si.sale_id = s.id 
-        WHERE date(s.created_at) >= ? AND s.status != 'cancelled'
     ) all_sales ON p.id = all_sales.product_id
     WHERE p.is_active = 1
     GROUP BY p.id
     ORDER BY total_revenue DESC
   `;
 
-  const products = db.prepare(query).all(dateStr, dateStr);
+  // Note: Only one date parameter needed now
+  const products = db.prepare(query).all(dateStr);
 
   // 2. Calculate Cumulative Revenue & Assign Class
   const grandTotalRevenue = products.reduce(

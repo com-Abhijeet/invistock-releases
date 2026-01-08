@@ -221,7 +221,7 @@ export function bulkInsertCustomers(customers) {
 
 /**
  * Fetches a complete financial ledger for a customer, grouped by sale.
- * This now combines both GST and Non-GST sales.
+ * This now ONLY fetches GST sales (Main App).
  * @param {number} customerId The customer's ID.
  * @param {object} filters Date filters (startDate, endDate).
  * @returns {object} An object containing the customer details and their sale/transaction history.
@@ -234,20 +234,16 @@ export function getCustomerLedger(customerId, filters) {
     .get(customerId);
   if (!customer) throw new Error("Customer not found");
 
-  // 2. Build separate date filters for each table
+  // 2. Build date filter for sales table
   const { where: gstWhere, params: gstParams } = getDateFilter({
     from: filters.startDate,
     to: filters.endDate,
     alias: "s",
   });
-  const { where: nonGstWhere, params: nonGstParams } = getDateFilter({
-    from: filters.startDate,
-    to: filters.endDate,
-    alias: "sng",
-  });
 
   // 3. Fetch all main GST sales (that aren't quotes)
-  const gstSales = db
+  // REMOVED Non-GST Sales fetch
+  const allSales = db
     .prepare(
       `
     SELECT
@@ -257,37 +253,15 @@ export function getCustomerLedger(customerId, filters) {
       total_amount,
       paid_amount,
       (total_amount - paid_amount) AS amount_pending,
-      'sale' AS bill_type  -- ✅ Tag the bill type
+      'sale' AS bill_type
     FROM sales s
     WHERE customer_id = ? AND is_quote = 0 AND ${gstWhere}
+    ORDER BY created_at DESC
   `
     )
     .all(customerId, ...gstParams);
 
-  // 4. ✅ Fetch all Non-GST sales
-  const nonGstSales = db
-    .prepare(
-      `
-    SELECT
-      id,
-      created_at AS bill_date,
-      reference_no,
-      total_amount,
-      paid_amount,
-      (total_amount - paid_amount) AS amount_pending,
-      'sale_non_gst' AS bill_type  -- ✅ Tag the bill type
-    FROM sales_non_gst sng
-    WHERE customer_id = ? AND ${nonGstWhere}
-  `
-    )
-    .all(customerId, ...nonGstParams);
-
-  // 5. ✅ Combine and sort all sales into one list (newest first)
-  const allSales = [...gstSales, ...nonGstSales].sort(
-    (a, b) => new Date(b.bill_date) - new Date(a.bill_date)
-  );
-
-  // 6. ✅ Update the payments query to use a dynamic bill_type
+  // 4. Update the payments query
   const getPaymentsStmt = db.prepare(`
     SELECT transaction_date, amount, payment_mode
     FROM transactions
@@ -295,7 +269,7 @@ export function getCustomerLedger(customerId, filters) {
     ORDER BY transaction_date ASC
   `);
 
-  // 7. ✅ Map over the combined list
+  // 5. Map over the list
   const ledger = allSales.map((sale) => {
     // Pass both the id AND the bill_type to find correct payments
     const transactions = getPaymentsStmt.all(sale.id, sale.bill_type);

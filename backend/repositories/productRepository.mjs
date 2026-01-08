@@ -167,7 +167,8 @@ export const getProductById = (id) => {
 
 /**
  * Fetches complete details and a unified transaction history for a single product
- * from all sales channels (GST, Non-GST), Purchases, and Stock Adjustments.
+ * from Sales (GST), Purchases, and Stock Adjustments.
+ * Decoupled: Non-GST logic removed.
  * @param {number} productId The ID of the product.
  * @returns {object} An object containing product details and its history.
  */
@@ -186,6 +187,10 @@ export function getProductHistory(productId) {
     `
     )
     .get(productId);
+
+  if (!product) {
+    throw new Error("Product not found");
+  }
 
   // 1. Fetch all purchase items (+)
   const purchases = db
@@ -213,20 +218,9 @@ export function getProductHistory(productId) {
     )
     .all(productId);
 
-  // 3. Fetch all NON-GST sale items (-)
-  const nonGstSales = db
-    .prepare(
-      `
-    SELECT s.created_at as date, si.quantity, si.rate
-    FROM sales_items_non_gst si
-    JOIN sales_non_gst s ON si.sale_id = s.id
-    WHERE si.product_id = ?
-    ORDER BY s.created_at ASC
-  `
-    )
-    .all(productId);
+  // 3. REMOVED: Non-GST sale items fetch
 
-  // 4. ✅ Fetch Stock Adjustments (+/-)
+  // 4. Fetch Stock Adjustments (+/-)
   const adjustments = db
     .prepare(
       `
@@ -254,11 +248,7 @@ export function getProductHistory(productId) {
       type: "Sale",
       quantity: `-${s.quantity}`,
     })),
-    ...nonGstSales.map((s) => ({
-      date: s.date,
-      type: "Sale",
-      quantity: `-${s.quantity}`,
-    })),
+    // REMOVED: Non-GST sales map
     ...adjustments.map((a) => ({
       date: a.date,
       type: `Adjustment (${a.category})`,
@@ -270,12 +260,12 @@ export function getProductHistory(productId) {
   // 6. Calculate totals and discrepancies
   const totalPurchased = purchases.reduce((sum, p) => sum + p.quantity, 0);
   const totalGstSold = gstSales.reduce((sum, s) => sum + s.quantity, 0);
-  const totalNonGstSold = nonGstSales.reduce((sum, s) => sum + s.quantity, 0);
+  // REMOVED: totalNonGstSold calculation
 
   // Net adjustment (sum of all +/- adjustments)
   const totalAdjusted = adjustments.reduce((sum, a) => sum + a.quantity, 0);
 
-  const totalSold = totalGstSold + totalNonGstSold;
+  const totalSold = totalGstSold; // Only GST sales count now
 
   // The "Expected" quantity is what the math says should be there
   // Purchases - Sales + (Net Adjustments)
@@ -283,7 +273,6 @@ export function getProductHistory(productId) {
 
   // Discrepancy is the difference between what is currently in the DB field
   // and what the history math says should be there.
-  // Ideally, this should be 0.
   const discrepancy = product.quantity - expectedQuantity;
 
   let unmarkedAdded = 0;

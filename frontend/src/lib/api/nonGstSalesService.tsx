@@ -1,8 +1,5 @@
 import { api } from "./api";
-import type {
-  NonGstSaleItem,
-  NonGstSalePayload,
-} from "../types/nonGstSalesTypes";
+import type { NonGstSalePayload } from "../types/nonGstSalesTypes";
 
 /**
  * Creates a new Non-GST Sale.
@@ -26,7 +23,7 @@ export async function createNonGstSale(
 export interface NonGstSaleRow {
   id: number;
   reference: string;
-  customer: string;
+  customer: string; // The backend aliases customer_name as customer
   total: number;
   paid_amount: number;
   payment_mode: string;
@@ -65,13 +62,8 @@ export async function getNonGstSales(
 }
 
 export interface FullNonGstSale extends NonGstSalePayload {
-  customer_name?: string;
-  customer_phone?: string;
-  customer_address?: string;
-  customer_city?: string;
-  customer_state?: string;
-  customer_pincode?: string;
-  items: (NonGstSaleItem & { product_name?: string })[]; // Ensure items include product_name
+  // The payload types now directly include customer_name/phone
+  // so we don't need extra fields here unless backend adds audit info
 }
 
 /**
@@ -80,5 +72,14 @@ export interface FullNonGstSale extends NonGstSalePayload {
  */
 export async function getNonGstSaleById(id: number): Promise<FullNonGstSale> {
   const response = await api.get(`/api/sales-non-gst/${id}`);
-  return response.data.data; // The backend wraps it in a 'data' object
+  return response.data.data;
+}
+
+/**
+ * Fetches a list of unique product names for autocomplete suggestions.
+ * Calls GET /api/sales-non-gst/unique-products
+ */
+export async function getUniqueProductNames(): Promise<string[]> {
+  const response = await api.get("/api/sales-non-gst/unique-products");
+  return response.data.data;
 }

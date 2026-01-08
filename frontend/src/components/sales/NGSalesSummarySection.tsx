@@ -8,44 +8,34 @@ import {
   Typography,
   Dialog,
   InputAdornment,
-  Paper,
   Stack,
   Menu,
   ButtonGroup,
   CircularProgress,
+  Divider,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useRef, useState } from "react";
-// ✅ Import the correct NON-GST types
 import type { NonGstSalePayload } from "../../lib/types/nonGstSalesTypes";
-// ✅ Import the new NON-GST create function
 import { createNonGstSale } from "../../lib/api/nonGstSalesService";
-// import { handleNonGstPrint } from "../../lib/handleNonGstPrint"; // TODO: You'll need a print handler for this
-import { createCustomer } from "../../lib/api/customerService";
-import type { CustomerType } from "../../lib/types/customerTypes";
 import { numberToWords } from "../../utils/numberToWords";
-import { XCircle, Save, Banknote, CreditCard, Smartphone } from "lucide-react";
-import theme from "../../../theme";
-import { FormField } from "../FormField";
+import { Save, ArrowDown as ArrowDropDown } from "lucide-react";
 import toast from "react-hot-toast";
-import { ArrowDown as ArrowDropDown } from "lucide-react";
 
-// ✅ Simplified save actions for Non-GST
 type SaveAction = "save" | "print";
 const actionLabels: Record<SaveAction, string> = {
   save: "Save Only",
-  print: "Save & Print Bill",
+  print: "Save & Print",
 };
 
 interface Props {
   sale: NonGstSalePayload;
   onSaleChange: (field: keyof NonGstSalePayload, value: any) => void;
-  customer?: CustomerType;
+  customer?: { name: string; phone: string };
   resetForm: () => void;
 }
 const { ipcRenderer } = window.electron;
 
-// ✅ Create the new print handler function
 const handleNonGstPrint = async (saleData: NonGstSalePayload) => {
   try {
     const result = await ipcRenderer.invoke("print-non-gst-receipt", saleData);
@@ -65,7 +55,7 @@ export default function NGSaleSummarySection({
   resetForm,
 }: Props) {
   const [warningOpen, setWarningOpen] = useState(false);
-  const [saveAction, setSaveAction] = useState<SaveAction>("print"); // 'print' is the default
+  const [saveAction, setSaveAction] = useState<SaveAction>("print");
   const [menuOpen, setMenuOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,6 +75,14 @@ export default function NGSaleSummarySection({
   };
 
   const handleSubmit = async () => {
+    if (
+      sale.items.filter((i) => i.product_name && i.product_name.trim() !== "")
+        .length === 0
+    ) {
+      toast.error("Please add at least one valid item.");
+      return;
+    }
+
     if (sale.status === "paid" && sale.paid_amount < sale.total_amount) {
       setWarningOpen(true);
       return;
@@ -92,289 +90,312 @@ export default function NGSaleSummarySection({
 
     setIsSubmitting(true);
     try {
-      let saleDataWithCustomer: NonGstSalePayload = { ...sale };
-
-      // --- Create New Customer if Necessary ---
-      if (!sale.customer_id) {
-        const customerData = {
-          name: customer?.name!,
-          phone: customer?.phone!,
-          address: customer?.address,
-          city: customer?.city,
-          state: customer?.state,
-          pincode: customer?.pincode,
-          gst_no: undefined, // No GST for cash sale customer
-        };
-        const customerRes = await createCustomer(customerData);
-        saleDataWithCustomer = {
-          ...saleDataWithCustomer,
-          customer_id: customerRes.id!,
-        };
-      }
-
-      // --- Prepare Final Payload ---
-      const payload = {
-        ...saleDataWithCustomer,
-        items: saleDataWithCustomer.items.filter((item) => item.product_id > 0),
+      const payload: NonGstSalePayload = {
+        ...sale,
+        customer_name: customer?.name || "Walk-in Customer",
+        customer_phone: customer?.phone || "",
+        items: sale.items.filter(
+          (item) => item.product_name && item.product_name.trim() !== ""
+        ),
       };
 
-      // ✅ Call the correct NON-GST create function
       const response = await createNonGstSale(payload);
 
       if (response?.status === "success") {
-        toast.success("Cash Sale saved successfully!");
-
+        toast.success("Bill saved successfully!");
         if (saveAction === "print") {
           handleNonGstPrint(response.data);
         }
-
-        resetForm(); // Clear the form
+        resetForm();
       } else {
         toast.error(response?.error || "Failed to save sale.");
       }
     } catch (err: any) {
       console.log(err);
-      toast.error(err.message || `An unexpected error occurred, ${err}`);
+      toast.error(err.message || `An unexpected error occurred.`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <>
-      {/* Non-sticky part of the summary */}
-      <Box sx={{ p: 2, backgroundColor: "#fff", borderRadius: 2 }}>
-        <Grid container spacing={4}>
-          <Grid item xs={12} md={7}>
-            <FormField label="Notes / Remarks">
-              <TextField
-                fullWidth
-                variant="outlined"
-                size="small"
-                multiline
-                rows={2}
-                value={sale.note}
-                onChange={(e) => handleFieldChange("note", e.target.value)}
-                placeholder="Add any notes about the sale..."
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} md={5}>
-            <FormField label="Amount in Words">
+    <Box sx={{ p: 1.5 }}>
+      <Grid container spacing={2}>
+        {/* Left Side: Notes & Amount in Words */}
+        <Grid item xs={12} md={6}>
+          <Stack spacing={1}>
+            <Box display="flex" alignItems="center" gap={1}>
               <Typography
+                variant="caption"
+                fontWeight={600}
+                color="textSecondary"
+                sx={{ minWidth: 80 }}
+              >
+                Amount in Words:
+              </Typography>
+              <Typography
+                variant="body2"
                 fontStyle="italic"
                 color="text.primary"
-                fontWeight={500}
-                variant="body2"
               >
-                {numberToWords(sale.total_amount)}
+                {numberToWords(sale.total_amount) || "Zero"}
               </Typography>
-            </FormField>
-          </Grid>
-        </Grid>
-      </Box>
-
-      {/* ✅ Removed the "Advanced GST Options" Box */}
-
-      {/* Sticky Bottom Action Bar */}
-      <Paper
-        elevation={3}
-        sx={{
-          position: "sticky",
-          bottom: 0,
-          py: 1.5,
-          px: 2,
-          mt: 2,
-          borderTop: `1px solid ${theme.palette.divider}`,
-          backgroundColor: theme.palette.primary.contrastText,
-        }}
-      >
-        <Stack
-          direction={{ xs: "column", lg: "row" }}
-          justifyContent="space-between"
-          alignItems="center"
-          spacing={2}
-        >
-          {/* Left side: Payment Inputs */}
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            alignItems="center"
-            spacing={2}
-          >
-            <FormField label="Paid Amount">
-              <Stack direction="row" spacing={1} alignItems="center">
-                <TextField
-                  variant="outlined"
-                  size="small"
-                  type="number"
-                  value={sale.paid_amount}
-                  onChange={(e) =>
-                    handleFieldChange(
-                      "paid_amount",
-                      parseFloat(e.target.value) || 0
-                    )
-                  }
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">₹</InputAdornment>
-                    ),
-                  }}
-                  sx={{ width: 150 }}
-                />
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={handlePaidInFull}
-                  disabled={sale.paid_amount >= sale.total_amount}
-                >
-                  Full
-                </Button>
-              </Stack>
-            </FormField>
-
-            <FormField label="Payment Mode">
-              <TextField
-                select
-                size="small"
-                variant="outlined"
-                value={sale.payment_mode}
-                onChange={(e) =>
-                  handleFieldChange("payment_mode", e.target.value)
-                }
-                sx={{ width: 180 }}
-              >
-                {/* ... (All MenuItems are the same) ... */}
-                <MenuItem value="cash">
-                  <Banknote size={18} style={{ marginRight: 8 }} /> Cash
-                </MenuItem>
-                <MenuItem value="card">
-                  <CreditCard size={18} style={{ marginRight: 8 }} /> Card
-                </MenuItem>
-                <MenuItem value="upi">
-                  <Smartphone size={18} style={{ marginRight: 8 }} /> UPI
-                </MenuItem>
-                {/* ... etc ... */}
-              </TextField>
-            </FormField>
-
-            <FormField label="Status">
-              <TextField
-                select
-                size="small"
-                variant="outlined"
-                value={sale.status}
-                onChange={(e) => handleFieldChange("status", e.target.value)}
-                sx={{ width: 160 }}
-              >
-                <MenuItem value="pending">Pending</MenuItem>
-                <MenuItem value="paid">Paid</MenuItem>
-                <MenuItem value="partial_payment">Partial Payment</MenuItem>
-                {/* ... (other statuses) ... */}
-              </TextField>
-            </FormField>
-          </Stack>
-
-          {/* Right side: Total & Action Buttons */}
-          <Stack
-            direction="row"
-            alignItems="center"
-            spacing={3}
-            flexGrow={1}
-            justifyContent="flex-end"
-          >
-            <Box sx={{ textAlign: "right", minWidth: 180 }}>
+            </Box>
+            <Box display="flex" alignItems="center" gap={1}>
               <Typography
-                variant="body1"
-                color="text.secondary"
-                lineHeight={1.2}
+                variant="caption"
+                fontWeight={600}
+                color="textSecondary"
+                sx={{ minWidth: 80 }}
               >
-                GRAND TOTAL
+                Remarks:
               </Typography>
-              <Typography variant="h4" fontWeight="bold" color="primary.main">
+              <TextField
+                fullWidth
+                variant="standard"
+                size="small"
+                value={sale.note}
+                onChange={(e) => handleFieldChange("note", e.target.value)}
+                placeholder="Enter remarks..."
+                InputProps={{
+                  disableUnderline: true,
+                  style: { fontSize: "0.9rem" },
+                }}
+                sx={{ borderBottom: "1px dashed #ccc" }}
+              />
+            </Box>
+          </Stack>
+        </Grid>
+
+        {/* Right Side: Totals & Payments */}
+        <Grid item xs={12} md={6}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 4,
+              textAlign: "right",
+            }}
+          >
+            {/* Total Display */}
+            <Box>
+              <Typography
+                variant="caption"
+                display="block"
+                color="text.secondary"
+              >
+                Total Amount
+              </Typography>
+              <Typography variant="h4" fontWeight={700} color="primary">
                 {sale.total_amount.toLocaleString("en-IN", {
                   style: "currency",
                   currency: "INR",
+                  maximumFractionDigits: 0,
                 })}
               </Typography>
             </Box>
+          </Box>
+        </Grid>
+      </Grid>
 
-            <Stack direction="row" spacing={1.5}>
+      <Divider sx={{ my: 1.5 }} />
+
+      {/* Action Bar */}
+      <Stack direction="row" alignItems="center" justifyContent="space-between">
+        {/* Payment Details Inputs */}
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Box>
+            <Typography
+              variant="caption"
+              display="block"
+              fontWeight={600}
+              mb={0.5}
+            >
+              Paid Amt.
+            </Typography>
+            <Stack direction="row" spacing={0.5}>
+              <TextField
+                variant="outlined"
+                size="small"
+                type="number"
+                value={sale.paid_amount}
+                onChange={(e) =>
+                  handleFieldChange(
+                    "paid_amount",
+                    parseFloat(e.target.value) || 0
+                  )
+                }
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">₹</InputAdornment>
+                  ),
+                  style: { height: 32, fontSize: "0.9rem" },
+                }}
+                sx={{
+                  width: 120,
+                  "& .MuiOutlinedInput-root": { borderRadius: 1 },
+                }}
+              />
               <Button
                 variant="outlined"
-                color="error"
-                onClick={handleCancel}
-                sx={{ minWidth: 110 }}
-                startIcon={<XCircle />}
-                disabled={isSubmitting}
+                size="small"
+                onClick={handlePaidInFull}
+                disabled={sale.paid_amount >= sale.total_amount}
+                sx={{ minWidth: 40, height: 32, p: 0, borderRadius: 1 }}
               >
-                Cancel
+                All
               </Button>
-
-              <ButtonGroup
-                variant="contained"
-                ref={anchorRef}
-                aria-label="split button"
-              >
-                <Button
-                  onClick={handleSubmit}
-                  sx={{ minWidth: 180 }}
-                  startIcon={
-                    isSubmitting ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <Save />
-                    )
-                  }
-                  disabled={isSubmitting}
-                >
-                  {actionLabels[saveAction]}
-                </Button>
-                <Button
-                  size="small"
-                  aria-controls={menuOpen ? "split-button-menu" : undefined}
-                  aria-expanded={menuOpen ? "true" : undefined}
-                  aria-haspopup="menu"
-                  onClick={() => setMenuOpen(true)}
-                  disabled={isSubmitting}
-                >
-                  <ArrowDropDown />
-                </Button>
-              </ButtonGroup>
-              <Menu
-                anchorEl={anchorRef.current}
-                open={menuOpen}
-                onClose={() => setMenuOpen(false)}
-              >
-                <MenuItem
-                  onClick={() => {
-                    setSaveAction("print");
-                    setMenuOpen(false);
-                  }}
-                  selected={saveAction === "print"}
-                >
-                  Save & Print Bill
-                </MenuItem>
-
-                {/* ✅ Removed the "printBoth" MenuItem */}
-
-                <MenuItem
-                  onClick={() => {
-                    setSaveAction("save");
-                    setMenuOpen(false);
-                  }}
-                  selected={saveAction === "save"}
-                >
-                  Save Only
-                </MenuItem>
-              </Menu>
             </Stack>
-          </Stack>
+          </Box>
+
+          <Box>
+            <Typography
+              variant="caption"
+              display="block"
+              fontWeight={600}
+              mb={0.5}
+            >
+              Mode
+            </Typography>
+            <TextField
+              select
+              size="small"
+              variant="outlined"
+              value={sale.payment_mode}
+              onChange={(e) =>
+                handleFieldChange("payment_mode", e.target.value)
+              }
+              InputProps={{ style: { height: 32, fontSize: "0.9rem" } }}
+              sx={{
+                width: 100,
+                "& .MuiOutlinedInput-root": { borderRadius: 1 },
+              }}
+            >
+              <MenuItem value="cash">Cash</MenuItem>
+              <MenuItem value="card">Card</MenuItem>
+              <MenuItem value="upi">UPI</MenuItem>
+            </TextField>
+          </Box>
+          <Box>
+            <Typography
+              variant="caption"
+              display="block"
+              fontWeight={600}
+              mb={0.5}
+            >
+              Status
+            </Typography>
+            <TextField
+              select
+              size="small"
+              variant="outlined"
+              value={sale.status}
+              onChange={(e) => handleFieldChange("status", e.target.value)}
+              InputProps={{ style: { height: 32, fontSize: "0.9rem" } }}
+              sx={{
+                width: 110,
+                "& .MuiOutlinedInput-root": { borderRadius: 1 },
+              }}
+            >
+              <MenuItem value="paid">Paid</MenuItem>
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="partial_payment">Partial</MenuItem>
+            </TextField>
+          </Box>
         </Stack>
-      </Paper>
+
+        {/* Buttons */}
+        <Stack direction="row" spacing={1}>
+          <Button
+            onClick={handleCancel}
+            disabled={isSubmitting}
+            color="inherit"
+            sx={{ textTransform: "none" }}
+          >
+            Reset
+          </Button>
+
+          <ButtonGroup
+            variant="contained"
+            ref={anchorRef}
+            sx={{ boxShadow: "none" }}
+          >
+            <Button
+              onClick={handleSubmit}
+              sx={{
+                px: 3,
+                textTransform: "none",
+                fontWeight: 600,
+                borderRadius: "4px 0 0 4px",
+              }}
+              startIcon={
+                isSubmitting ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : (
+                  <Save size={18} />
+                )
+              }
+              disabled={isSubmitting}
+            >
+              {actionLabels[saveAction]}
+            </Button>
+            <Button
+              size="small"
+              onClick={() => setMenuOpen(true)}
+              disabled={isSubmitting}
+              sx={{ borderRadius: "0 4px 4px 0" }}
+            >
+              <ArrowDropDown size={18} />
+            </Button>
+          </ButtonGroup>
+          <Menu
+            anchorEl={anchorRef.current}
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+          >
+            <MenuItem
+              onClick={() => {
+                setSaveAction("print");
+                setMenuOpen(false);
+              }}
+            >
+              Save & Print
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setSaveAction("save");
+                setMenuOpen(false);
+              }}
+            >
+              Save Only
+            </MenuItem>
+          </Menu>
+        </Stack>
+      </Stack>
 
       <Dialog open={warningOpen} onClose={() => setWarningOpen(false)}>
-        {/* ... (Warning dialog is unchanged) ... */}
+        <Box p={3} minWidth={300}>
+          <Typography variant="h6" gutterBottom>
+            Payment Mismatch
+          </Typography>
+          <Typography variant="body2" color="text.secondary" paragraph>
+            You have marked the status as <b>Paid</b>, but the paid amount is
+            less than the total.
+          </Typography>
+          <Stack direction="row" justifyContent="flex-end" spacing={2} mt={2}>
+            <Button onClick={() => setWarningOpen(false)}>Edit</Button>
+            <Button
+              variant="contained"
+              onClick={() => {
+                setWarningOpen(false);
+                handleSubmit();
+              }}
+            >
+              Save Anyway
+            </Button>
+          </Stack>
+        </Box>
       </Dialog>
-    </>
+    </Box>
   );
 }

@@ -1,28 +1,32 @@
 /**
  * Defines the structure for a single item in a Non-GST sale.
- * Note: It does not include 'gst_rate'.
+ * Decoupled: Uses product_name instead of product_id.
  */
 export interface NonGstSaleItem {
   id?: number;
-  sale_id?: number; // Set by the backend
+  sale_id?: number;
   sr_no: string;
-  product_id: number;
+
+  // Primary identifier for the item in Non-GST mode
+  product_name: string;
+
   rate: number;
   quantity: number;
   discount?: number;
   price: number;
-
-  // These are for display/joins and may not be part of the payload
-  product_name?: string;
 }
 
 /**
  * Defines the complete payload for creating a new Non-GST sale.
- * Note: It does not include GST flags (is_reverse_charge, etc.).
+ * Decoupled: Uses customer_name/phone instead of customer_id.
  */
 export interface NonGstSalePayload {
   id?: number;
-  customer_id: number | null;
+
+  // Decoupled customer info
+  customer_name: string;
+  customer_phone: string;
+
   reference_no: string;
   payment_mode: string;
   paid_amount: number;

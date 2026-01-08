@@ -1,6 +1,7 @@
-import db from "../db/db.mjs";
+import { nonGstDb as db } from "../db/db.mjs";
 import { buildInsertQuery, buildUpdateQuery } from "../utils/dbUtils.mjs";
 import { getDateFilter } from "../utils/dateFilter.mjs";
+
 /**
  * Creates a new non-GST sale.
  * @param {object} saleData - Data for the new sale.
@@ -33,7 +34,7 @@ export function updateNonGstSale(id, saleData) {
 
 /**
  * Retrieves a non-GST sale and its items by ID.
- * (Read operations are specific and not dynamic)
+ * Decoupled: Fetches directly from non-gst tables without Joins.
  * @param {number} saleId - The ID of the non-GST sale.
  * @returns {object} The sale object with a nested 'items' array.
  */
@@ -41,12 +42,9 @@ export function getNonGstSaleWithItemsById(saleId) {
   const sale = db
     .prepare(
       `
-    SELECT 
-      s.*, 
-      c.name as customer_name, c.phone as customer_phone, c.address as customer_address
-    FROM sales_non_gst s
-    LEFT JOIN customers c ON s.customer_id = c.id
-    WHERE s.id = ?
+    SELECT *
+    FROM sales_non_gst
+    WHERE id = ?
   `
     )
     .get(saleId);
@@ -56,13 +54,10 @@ export function getNonGstSaleWithItemsById(saleId) {
   const items = db
     .prepare(
       `
-    SELECT 
-      si.*, 
-      p.name as product_name
-    FROM sales_items_non_gst si
-    LEFT JOIN products p ON si.product_id = p.id
-    WHERE si.sale_id = ?
-    ORDER BY si.sr_no ASC
+    SELECT *
+    FROM sales_items_non_gst
+    WHERE sale_id = ?
+    ORDER BY sr_no ASC
   `
     )
     .all(saleId);
@@ -72,6 +67,7 @@ export function getNonGstSaleWithItemsById(saleId) {
 
 /**
  * Fetches a paginated and searchable list of non-GST sales.
+ * Decoupled: Searches customer_name directly in sales_non_gst.
  */
 export function getPaginatedNonGstSales({ page = 1, limit = 20, query = "" }) {
   const offset = (page - 1) * limit;
@@ -81,7 +77,7 @@ export function getPaginatedNonGstSales({ page = 1, limit = 20, query = "" }) {
   const params = [];
 
   if (query && query.trim() !== "") {
-    whereClauses.push(`(s.reference_no LIKE ? OR c.name LIKE ?)`);
+    whereClauses.push(`(reference_no LIKE ? OR customer_name LIKE ?)`);
     const searchQuery = `%${query.trim()}%`;
     params.push(searchQuery, searchQuery);
   }
@@ -94,18 +90,17 @@ export function getPaginatedNonGstSales({ page = 1, limit = 20, query = "" }) {
     .prepare(
       `
     SELECT
-      s.id,
-      s.reference_no as reference,
-      c.name AS customer,
-      s.total_amount AS total,
-      s.paid_amount,
-      s.payment_mode,
-      s.status,
-      s.created_at
-    FROM sales_non_gst s
-    LEFT JOIN customers c ON s.customer_id = c.id
+      id,
+      reference_no as reference,
+      customer_name as customer,
+      total_amount as total,
+      paid_amount,
+      payment_mode,
+      status,
+      created_at
+    FROM sales_non_gst
     ${where}
-    ORDER BY s.created_at DESC
+    ORDER BY created_at DESC
     LIMIT ? OFFSET ?
   `
     )
@@ -116,8 +111,7 @@ export function getPaginatedNonGstSales({ page = 1, limit = 20, query = "" }) {
     .prepare(
       `
     SELECT COUNT(*) AS count
-    FROM sales_non_gst s
-    LEFT JOIN customers c ON s.customer_id = c.id
+    FROM sales_non_gst
     ${where}
   `
     )
@@ -128,6 +122,7 @@ export function getPaginatedNonGstSales({ page = 1, limit = 20, query = "" }) {
 
 /**
  * Fetches all non-GST sales and their items for PDF export within a date range.
+ * Decoupled: No Joins.
  */
 export function getNonGstSalesForPDFExport(filters) {
   const { where, params } = getDateFilter({ ...filters, alias: "s" });
@@ -136,12 +131,8 @@ export function getNonGstSalesForPDFExport(filters) {
   const sales = db
     .prepare(
       `
-    SELECT 
-      s.*, 
-      c.name as customer_name, c.phone as customer_phone, c.address as customer_address,
-      c.city as customer_city, c.state as customer_state, c.pincode as customer_pincode
+    SELECT *
     FROM sales_non_gst s
-    LEFT JOIN customers c ON s.customer_id = c.id
     WHERE ${where}
     ORDER BY s.created_at ASC
   `
@@ -154,13 +145,10 @@ export function getNonGstSalesForPDFExport(filters) {
 
   // 2. Fetch items for each sale
   const itemsStmt = db.prepare(`
-    SELECT 
-      si.*, 
-      p.name as product_name
-    FROM sales_items_non_gst si
-    LEFT JOIN products p ON si.product_id = p.id
-    WHERE si.sale_id = ?
-    ORDER BY si.sr_no ASC
+    SELECT *
+    FROM sales_items_non_gst
+    WHERE sale_id = ?
+    ORDER BY sr_no ASC
   `);
 
   return sales.map((sale) => ({
@@ -171,6 +159,7 @@ export function getNonGstSalesForPDFExport(filters) {
 
 /**
  * Fetches an itemized (flat) list of all non-GST sale items for Excel export.
+ * Decoupled: No Joins.
  */
 export function getNonGstSaleItemsForExport(filters) {
   const { where, params } = getDateFilter({ ...filters, alias: "s" });
@@ -181,21 +170,35 @@ export function getNonGstSaleItemsForExport(filters) {
     SELECT
       s.created_at,
       s.reference_no,
-      c.name as customer_name,
-      p.product_code,
-      p.name as product_name,
-      p.hsn,
+      s.customer_name,
+      si.product_name,
       si.quantity,
       si.rate,
       si.discount,
       si.price
     FROM sales_items_non_gst si
     JOIN sales_non_gst s ON si.sale_id = s.id
-    LEFT JOIN products p ON si.product_id = p.id
-    LEFT JOIN customers c ON s.customer_id = c.id
     WHERE ${where}
     ORDER BY s.created_at ASC
   `
     )
     .all(...params);
+}
+
+/**
+ * Fetches all unique product names from the sales items table for autocomplete suggestions.
+ */
+export function getUniqueProductNames() {
+  const result = db
+    .prepare(
+      `
+    SELECT DISTINCT product_name
+    FROM sales_items_non_gst
+    WHERE product_name IS NOT NULL AND product_name != ''
+    ORDER BY product_name ASC
+  `
+    )
+    .all();
+
+  return result.map((row) => row.product_name);
 }
