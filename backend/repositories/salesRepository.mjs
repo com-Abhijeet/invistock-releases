@@ -213,7 +213,8 @@ export function getSaleWithItemsById(saleId) {
       return null;
     }
 
-    // 2. Fetch the related sale items.
+    // 2. Fetch the related sale items with Batch & Serial Info
+    // UPDATED: Joined with product_batches and product_serials
     const itemsStmt = db.prepare(`
       SELECT
         si.*,
@@ -223,16 +224,21 @@ export function getSaleWithItemsById(saleId) {
         p.brand,
         p.mrp,
         p.mop,
-        p.barcode
+        p.barcode,
+        -- Tracking Details
+        pb.batch_number,
+        pb.expiry_date,
+        ps.serial_number
       FROM sales_items si
       LEFT JOIN products p ON si.product_id = p.id
+      LEFT JOIN product_batches pb ON si.batch_id = pb.id
+      LEFT JOIN product_serials ps ON si.serial_id = ps.id
       WHERE si.sale_id = ?
       ORDER BY si.sr_no ASC
     `);
     const items = itemsStmt.all(saleId);
 
     // 3. Reconcile with transactions to get actual payment status
-    // UPDATE: Now checks for 'payment_in' AND 'sale' type transactions for payments made at time of bill
     const transactionStmt = db.prepare(`
       SELECT 
         COALESCE(SUM(CASE WHEN type IN ('payment_in', 'sale') THEN amount ELSE 0 END), 0) as total_paid,
@@ -258,7 +264,6 @@ export function getSaleWithItemsById(saleId) {
     // Determine status based on reconciliation
     let paymentStatus = "pending";
     if (balance <= 0.9) {
-      // Floating point buffer
       paymentStatus = "paid";
     } else if (reconciledPaidAmount > 0) {
       paymentStatus = "partial";

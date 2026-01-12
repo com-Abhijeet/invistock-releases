@@ -1,5 +1,6 @@
 import { api } from "./api";
 import type { NonGstSalePayload } from "../types/nonGstSalesTypes";
+import { ReactNode } from "react";
 
 /**
  * Creates a new Non-GST Sale.
@@ -62,6 +63,10 @@ export async function getNonGstSales(
 }
 
 export interface FullNonGstSale extends NonGstSalePayload {
+  customer_address: ReactNode;
+  customer_city: ReactNode;
+  customer_state: ReactNode;
+  customer_pincode: ReactNode;
   // The payload types now directly include customer_name/phone
   // so we don't need extra fields here unless backend adds audit info
 }

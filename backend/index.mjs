@@ -31,6 +31,7 @@ import analyticsRouter from "./routes/analyticsRoutes.mjs";
 import reportRoutes from "./routes/reportRoutes.mjs";
 import userRoutes from "./routes/userRoutes.mjs";
 import searchRoutes from "./routes/searchRoutes.mjs";
+import batchRoutes from "./routes/batchRoutes.mjs";
 
 import { initializeDatabase, closeDatabase } from "./db/db.mjs";
 import { createRequire } from "module";
@@ -85,6 +86,7 @@ export function startServer(dbPath) {
   app.use("/api/reports", reportRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/search", searchRoutes);
+  app.use("/api/batches", batchRoutes);
   // ✅ 1. Serve the Mobile HTML Page
   app.use("/mobile", mobileHtmlRoutes);
 

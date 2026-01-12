@@ -84,6 +84,20 @@ function numberToWords(num) {
   return words + " Only";
 }
 
+// --- NEW HELPER: Tracking Details Formatter ---
+const getTrackingHtml = (item) => {
+  const parts = [];
+  if (item.batch_number) parts.push(`Batch: ${item.batch_number}`);
+  if (item.expiry_date) parts.push(`Exp: ${formatDate(item.expiry_date)}`);
+  if (item.serial_number) parts.push(`S/N: ${item.serial_number}`);
+
+  if (parts.length === 0) return "";
+
+  return `<div style="font-size: 9px; color: #555; font-style: italic; margin-top: 2px;">
+    ${parts.join(" | ")}
+  </div>`;
+};
+
 // --- STANDARD A4 GENERATOR (STRUCTURED) ---
 function createInvoiceHTML({ sale, shop }) {
   const gstEnabled = Boolean(shop.gst_enabled);
@@ -161,6 +175,7 @@ function createInvoiceHTML({ sale, shop }) {
       <td class="text-center">${index + 1}</td>
       <td style="text-align:left;">
         <div style="font-size:10px; font-weight:500;">${item.product_name}</div>
+        ${getTrackingHtml(item)} <!-- Added Tracking Info Here -->
       </td>
       ${showHSN ? `<td class="text-center">${item.hsn || "-"}</td>` : ""}
       <td class="text-center">${item.quantity}</td>

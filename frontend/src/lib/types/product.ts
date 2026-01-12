@@ -20,7 +20,10 @@ export interface Product {
   low_stock_threshold?: number;
   mfw_price?: string;
   size?: string;
-  weight?: String;
+  weight?: string; // Changed String to string for TS primitive best practice
+
+  // Added to support Batch/Serial logic
+  tracking_type?: "none" | "batch" | "serial";
 
   created_at?: string;
   updated_at?: string;
@@ -43,7 +46,7 @@ export type ProductOverviewType = {
   low_stock_threshold?: number;
   mfw_price?: string;
   size?: string;
-  weight?: String;
+  weight?: string;
 
   // These are fields that would be joined or calculated in your backend query
   category_name?: string | null;
@@ -59,7 +62,7 @@ export type productDetails = {
   name: string;
   product_code: string;
   hsn: string;
-  gst_rate: number; // ✅ New GST rate field
+  gst_rate: number;
   mrp: number;
   mop: number; // Optional MOP
   category?: number | null;
@@ -78,7 +81,9 @@ export type productDetails = {
   low_stock_threshold?: number;
   mfw_price?: string;
   size?: string;
-  weight?: String;
+  weight?: string;
+
+  tracking_type?: "none" | "batch" | "serial";
 
   created_at?: string;
   updated_at?: string;

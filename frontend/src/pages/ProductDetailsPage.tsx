@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -21,52 +21,70 @@ import {
   Boxes,
   TrendingUp,
   TrendingDown,
-  HelpCircle,
   AlertTriangle,
+  Sliders,
+  ScanBarcode,
+  Package,
+  ExternalLink,
+  BarChart3,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import Barcode from "react-barcode";
-import { fetchProductHistory } from "../lib/api/productService"; // Adjust import path
-import DashboardHeader from "../components/DashboardHeader"; // Your header component
-import DataTable from "../components/DataTable"; // Your data table component
+
+import { fetchProductHistory } from "../lib/api/productService";
+import DashboardHeader from "../components/DashboardHeader";
+import DataTable from "../components/DataTable";
 import StatisticCard from "../components/StatisticCard";
 import theme from "../../theme";
 import AddProductModal from "../components/products/AddProductModal";
 import { productDetails } from "../lib/types/product";
-
 import StockAdjustmentModal from "../components/inventory/StockAdjustmentModal";
-import { Sliders } from "lucide-react"; // Icon for the button
-// Define the type for the data state
+
 type ProductHistoryData = Awaited<ReturnType<typeof fetchProductHistory>>;
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ProductHistoryData | null>(null);
 
-  //edit states
+  // Edit states
   const [editProduct, setEditProduct] = useState<productDetails | null>();
   const [editOpen, setEditOpen] = useState(false);
-  // Pagination state for the history DataTable
+
+  // Pagination state for history
   const [historyPage, setHistoryPage] = useState(0);
   const [historyRowsPerPage, setHistoryRowsPerPage] = useState(5);
-
   const [adjustOpen, setAdjustOpen] = useState(false);
 
-  const handleStockUpdateSuccess = () => {
-    // Refresh the data to show the new stock and the new history entry
-    fetchProductHistory(Number(id)).then(setData);
+  const fetchData = async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const historyData = await fetchProductHistory(Number(id));
+      setData(historyData);
+    } catch (error) {
+      toast.error("Failed to fetch product details.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (id) {
-      setLoading(true);
-      fetchProductHistory(Number(id))
-        .then(setData)
-        .catch(() => toast.error("Failed to fetch product history."))
-        .finally(() => setLoading(false));
-    }
+    fetchData();
   }, [id]);
+
+  const handleStockUpdateSuccess = () => {
+    fetchData();
+  };
+
+  const handleOnSuccess = () => {
+    fetchData();
+  };
+
+  const handleEdit = () => {
+    setEditOpen(true);
+    setEditProduct(data?.productDetails);
+  };
 
   if (loading) {
     return (
@@ -80,24 +98,11 @@ export default function ProductDetailPage() {
     return <Typography sx={{ p: 3 }}>Product not found.</Typography>;
   }
 
-  console.log(data);
   const { productDetails: product, history, summary } = data;
-
-  const handleOnSuccess = () => {
-    if (id) {
-      setLoading(true);
-      fetchProductHistory(Number(id))
-        .then(setData)
-        .catch(() => toast.error("Failed to fetch product history."))
-        .finally(() => setLoading(false));
-    }
-  };
-
   const isLowStock =
     (product.low_stock_threshold ?? 0) > 0 &&
     product.quantity <= (product.low_stock_threshold ?? 0);
 
-  // Define columns for the DataTable
   const historyColumns = [
     {
       key: "date",
@@ -134,31 +139,47 @@ export default function ProductDetailPage() {
     },
   ];
 
-  function handleEdit() {
-    setEditOpen(true);
-    setEditProduct(data?.productDetails);
-  }
-
   return (
-    <Box
-      p={2}
-      pt={3}
-      sx={{
-        // backgroundColor: "#F4F6F8",
-
-        minHeight: "100vh",
-      }}
-    >
+    <Box p={2} pt={3} sx={{ minHeight: "100vh" }}>
       {/* --- HEADER --- */}
       <DashboardHeader
         title={product.name}
-        onRefresh={() => {
-          fetchProductHistory(Number(id)).then(setData);
-        }}
+        onRefresh={fetchData}
         showDateFilters={false}
         actions={
           <Stack direction="row" spacing={1.5}>
-            {/* ✅ Adjust Stock Button (Rounded & Outlined) */}
+            {/* NEW Analysis Button */}
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={() => navigate(`/products/${id}/analysis`)}
+              startIcon={<BarChart3 size={18} />}
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                fontWeight: 600,
+              }}
+            >
+              Analysis
+            </Button>
+
+            {/* Batch View Button */}
+            {(product.tracking_type === "batch" ||
+              product.tracking_type === "serial") && (
+              <Button
+                variant="outlined"
+                color="secondary"
+                onClick={() => navigate(`/products/${id}/batches`)}
+                startIcon={<Boxes size={18} />}
+                sx={{
+                  borderRadius: "12px",
+                  textTransform: "none",
+                  fontWeight: 600,
+                }}
+              >
+                View Batches
+              </Button>
+            )}
             <Button
               variant="outlined"
               color="warning"
@@ -168,16 +189,10 @@ export default function ProductDetailPage() {
                 borderRadius: "12px",
                 textTransform: "none",
                 fontWeight: 600,
-                borderWidth: "1px",
-                "&:hover": {
-                  borderWidth: "1px", // Prevent border width jump on hover
-                },
               }}
             >
               Adjust Stock
             </Button>
-
-            {/* ✅ Edit Product Button (Rounded & Primary) */}
             <Button
               variant="contained"
               onClick={handleEdit}
@@ -187,10 +202,6 @@ export default function ProductDetailPage() {
                 textTransform: "none",
                 fontWeight: 600,
                 px: 3,
-                boxShadow: "none",
-                "&:hover": {
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                },
               }}
             >
               Edit Product
@@ -198,6 +209,7 @@ export default function ProductDetailPage() {
           </Stack>
         }
       />
+
       {isLowStock && (
         <Alert
           severity="warning"
@@ -218,10 +230,8 @@ export default function ProductDetailPage() {
           p: 1,
           mb: 3,
           borderRadius: 2,
-          variant: "outlined",
-          backgroundColor: theme.palette.primary.contrastText,
-          borderColor: theme.palette.divider,
-          boxShadow: "none",
+          bgcolor: theme.palette.primary.contrastText,
+          border: "none",
         }}
       >
         <Grid container spacing={3}>
@@ -258,7 +268,6 @@ export default function ProductDetailPage() {
 
           {/* Right Column: Details */}
           <Grid item xs={12} md={8}>
-            {/* --- Top Info: Name, Dates, Description, and Status --- */}
             <Box>
               <Stack
                 direction="row"
@@ -285,45 +294,45 @@ export default function ProductDetailPage() {
                   Created:{" "}
                   {new Date(
                     product.created_at ?? new Date()
-                  ).toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </Typography>
-                <Typography variant="caption">
-                  Updated:{" "}
-                  {new Date(
-                    product.updated_at ?? new Date()
-                  ).toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
+                  ).toLocaleDateString("en-IN")}
                 </Typography>
               </Stack>
               <Typography variant="body1" color="text.secondary" mt={1.5}>
                 {product.description || "No description provided."}
               </Typography>
+
+              {/* Tracking Badge */}
+              {product.tracking_type !== "none" && (
+                <Stack direction="row" spacing={1} mt={1}>
+                  <Chip
+                    icon={
+                      product.tracking_type === "serial" ? (
+                        <ScanBarcode size={14} />
+                      ) : (
+                        <Package size={14} />
+                      )
+                    }
+                    label={`${product.tracking_type?.toUpperCase()} TRACKING`}
+                    color="info"
+                    variant="outlined"
+                    size="small"
+                    sx={{ fontWeight: 600 }}
+                  />
+                  {/* Link to Batches Page */}
+                  <Chip
+                    label="View Inventory"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => navigate(`/products/${id}/batches`)}
+                    icon={<ExternalLink size={12} />}
+                    sx={{ cursor: "pointer", fontWeight: 600 }}
+                  />
+                </Stack>
+              )}
             </Box>
 
             <Divider sx={{ my: 2 }} />
 
-            {/* --- Barcode --- */}
-            <Box sx={{ display: "flex", justifyContent: "center" }}>
-              <Barcode
-                value={product.barcode || product.product_code}
-                height={50}
-                fontSize={12}
-                textMargin={2}
-                margin={0}
-                width={1.5}
-              />
-            </Box>
-
-            <Divider sx={{ my: 2 }} />
-
-            {/* --- Main Details Grid --- */}
             <Grid container spacing={2}>
               <Grid item xs={6} sm={4}>
                 <DetailItem label="Product Code" value={product.product_code} />
@@ -344,12 +353,8 @@ export default function ProductDetailPage() {
                 <DetailItem label="HSN Code" value={product.hsn} />
               </Grid>
               <Grid item xs={6} sm={4}>
-                <DetailItem
-                  label="Storage Location"
-                  value={product.storage_location}
-                />
+                <DetailItem label="Location" value={product.storage_location} />
               </Grid>
-              {/* --- ✅ NEWLY ADDED FIELDS --- */}
               <Grid item xs={6} sm={4}>
                 <DetailItem label="Size" value={product.size} />
               </Grid>
@@ -358,47 +363,8 @@ export default function ProductDetailPage() {
               </Grid>
               <Grid item xs={6} sm={4}>
                 <DetailItem
-                  label="Low Stock Alert"
+                  label="Low Stock Threshold"
                   value={product.low_stock_threshold}
-                />
-              </Grid>
-              {/* --- END OF NEW FIELDS --- */}
-            </Grid>
-
-            <Divider sx={{ my: 2 }} />
-
-            {/* --- Pricing Grid --- */}
-            <Grid container spacing={2}>
-              <Grid item xs={6} sm={3}>
-                <DetailItem
-                  label="MRP"
-                  value={`₹${product.mrp?.toLocaleString("en-IN")}`}
-                />
-              </Grid>
-              <Grid item xs={6} sm={3}>
-                <DetailItem
-                  label="MOP"
-                  value={`₹${product.mop?.toLocaleString("en-IN")}`}
-                />
-              </Grid>
-              {/* --- ✅ NEWLY ADDED FIELD --- */}
-              <Grid item xs={6} sm={3}>
-                <DetailItem
-                  label="MF/W Price"
-                  value={product.mfw_price ? `₹${product.mfw_price}` : "—"}
-                />
-              </Grid>
-              {/* --- END OF NEW FIELD --- */}
-              <Grid item xs={6} sm={3}>
-                <DetailItem
-                  label="Avg. Purchase Price"
-                  value={
-                    product.average_purchase_price
-                      ? `₹${Number(
-                          product.average_purchase_price
-                        ).toLocaleString("en-IN")}`
-                      : "—"
-                  }
                 />
               </Grid>
             </Grid>
@@ -406,87 +372,59 @@ export default function ProductDetailPage() {
         </Grid>
       </Paper>
 
-      {/* --- BOTTOM SECTION: INVENTORY & HISTORY --- */}
-      <Paper
-        // variant="outlined"
-        sx={{
-          mb: 3,
-          borderRadius: 2,
-          variant: "outlined",
-          backgroundColor: theme.palette.primary.contrastText,
-          borderColor: theme.palette.divider,
-          boxShadow: "none",
-        }}
-      >
+      {/* --- BOTTOM SECTION: HISTORY --- */}
+      <Paper sx={{ mb: 3, borderRadius: 2, border: "none" }}>
         <Typography
           variant="h6"
-          gutterBottom
           sx={{
-            py: 1,
+            py: 1.5,
             px: 2,
-            borderRadius: 0,
             color: "primary.main",
             fontWeight: 600,
-            // Creates a colored underline for the active tab
-            borderBottom: `2px solid ${theme.palette.primary.main}`,
-
-            // This makes the active tab's underline sit perfectly on the container's border
-            marginBottom: "-1px",
+            borderBottom: `2px solid ${theme.palette.divider}`,
           }}
         >
-          Inventory & Stock History
+          Stock Movement History
         </Typography>
-        <Box
-          my={2}
-          display="grid"
-          gridTemplateColumns={{
-            xs: "1fr",
-            sm: "repeat(2, 1fr)",
-            md: "repeat(4, 1fr)",
-          }}
-          gap={2}
-        >
-          <StatisticCard
-            icon={<TrendingUp size={28} />}
-            title="Total Purchased"
-            value={summary.totalPurchased}
+
+        <Box p={2}>
+          <Grid container spacing={2} mb={3}>
+            <Grid item xs={12} sm={4}>
+              <StatisticCard
+                icon={<TrendingUp size={28} />}
+                title="Total Purchased"
+                value={summary.totalPurchased}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <StatisticCard
+                icon={<TrendingDown size={28} />}
+                title="Total Sold"
+                value={summary.totalSold}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <StatisticCard
+                icon={<Boxes size={28} />}
+                title="Current Stock"
+                value={summary.currentQuantity}
+              />
+            </Grid>
+          </Grid>
+
+          <DataTable
+            columns={historyColumns}
+            rows={history}
+            loading={loading}
+            total={history.length}
+            page={historyPage}
+            rowsPerPage={historyRowsPerPage}
+            onPageChange={setHistoryPage}
+            onRowsPerPageChange={setHistoryRowsPerPage}
           />
-          <StatisticCard
-            icon={<TrendingDown size={28} />}
-            title="Total Sold"
-            value={summary.totalSold}
-          />
-          <StatisticCard
-            icon={<Boxes size={28} />}
-            title="Current Stock"
-            value={summary.currentQuantity}
-          />
-          {summary.unmarkedAdded > 0 && (
-            <StatisticCard
-              icon={<HelpCircle size={28} />}
-              title="Unmarked Added"
-              value={summary.unmarkedAdded}
-            />
-          )}
-          {summary.unmarkedRemoved > 0 && (
-            <StatisticCard
-              icon={<HelpCircle size={28} />}
-              title="Unmarked Removed"
-              value={summary.unmarkedRemoved}
-            />
-          )}
         </Box>
-        <DataTable
-          columns={historyColumns}
-          rows={history}
-          loading={loading}
-          total={history.length}
-          page={historyPage}
-          rowsPerPage={historyRowsPerPage}
-          onPageChange={setHistoryPage}
-          onRowsPerPageChange={setHistoryRowsPerPage}
-        />
       </Paper>
+
       {product.id && (
         <StockAdjustmentModal
           open={adjustOpen}
@@ -513,7 +451,6 @@ export default function ProductDetailPage() {
   );
 }
 
-// Helper component for details grid
 const DetailItem = ({
   label,
   value,
