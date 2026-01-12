@@ -125,7 +125,12 @@ export interface LabelItem {
   size?: string;
   weight?: string;
   purchase_quantity: number;
-  printQuantity?: number; // Added by frontend
+  printQuantity?: number; // Added by frontend logic
+
+  // Tracking fields
+  tracking_type?: "none" | "batch" | "serial";
+  batch_uid?: string;
+  batch_number?: string;
 }
 
 export async function fetchPurchaseItemsForLabels(

@@ -14,6 +14,13 @@ import {
   Typography,
   IconButton,
   Tooltip,
+  Stepper,
+  Step,
+  StepLabel,
+  Box,
+  Switch,
+  FormControlLabel,
+  Alert,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect } from "react";
@@ -42,6 +49,9 @@ import {
   AlertTriangle,
   Scale,
   Ruler,
+  Layers,
+  ScanBarcode,
+  Package,
 } from "lucide-react";
 import { FormField } from "../FormField";
 
@@ -64,7 +74,7 @@ const defaultForm: Product = {
   mop: 0,
   category: null,
   subcategory: null,
-  storage_location: "",
+  storage_location: "Store", // Smart Default
   quantity: 0,
   description: "",
   brand: "",
@@ -72,11 +82,14 @@ const defaultForm: Product = {
   image_url: "",
   mfw_price: "",
   average_purchase_price: 0,
-  low_stock_threshold: 0,
+  low_stock_threshold: 5, // Smart Default
   size: "",
   weight: "",
   is_active: 1,
+  tracking_type: "none", // Default tracking
 };
+
+const steps = ["Essential Details", "Inventory & Tracking", "Additional Info"];
 
 export default function AddEditProductModal({
   open,
@@ -85,9 +98,12 @@ export default function AddEditProductModal({
   initialData = {},
   mode = "add",
 }: Props) {
-  const [form, setForm] = useState<Partial<Product>>(
-    initialData || defaultForm
-  );
+  const [activeStep, setActiveStep] = useState(0);
+  // Merge default form with initial data to ensure tracking_type exists
+  const [form, setForm] = useState<Partial<Product>>({
+    ...defaultForm,
+    ...initialData,
+  });
   const [loading, setLoading] = useState(false);
   const [availableCategories, setAvailableCategories] = useState<Category[]>(
     []
@@ -95,12 +111,17 @@ export default function AddEditProductModal({
   const [filteredSubcategories, setFilteredSubcategories] = useState<
     Subcategory[]
   >([]);
+  const [error, setError] = useState<string | null>(null);
 
   // ✅ EFFECT 1: Initialize form state when modal opens or initialData changes
   useEffect(() => {
     if (open) {
+      setActiveStep(0);
+      setError(null);
       // Set the form data from initialData in edit mode, or default in add mode
-      setForm(mode === "edit" ? initialData : defaultForm);
+      setForm(
+        mode === "edit" ? { ...defaultForm, ...initialData } : defaultForm
+      );
 
       // If in "add" mode, immediately fetch the next available barcode
       if (mode === "add") {
@@ -180,21 +201,50 @@ export default function AddEditProductModal({
 
       return newForm;
     });
+    if (error) setError(null);
+  };
+
+  const validateStep = (step: number) => {
+    if (step === 0) {
+      if (!form.name?.trim()) return "Product Name is required.";
+      if (!form.category) return "Category is required.";
+      if (form.gst_rate === undefined || form.gst_rate === null)
+        return "GST Rate is required.";
+      if (!form.product_code) return "Product Code is required.";
+    }
+    return null;
+  };
+
+  const handleNext = () => {
+    const err = validateStep(activeStep);
+    if (err) {
+      setError(err);
+      return;
+    }
+    setActiveStep((prev) => prev + 1);
+  };
+
+  const handleBack = () => {
+    setActiveStep((prev) => prev - 1);
   };
 
   const handleSubmit = async () => {
-    if (!form.name || !form.category || form.gst_rate == null) {
-      toast.error("Name, Category, HSN, and GST Rate are required.");
-      return;
-    }
-
     setLoading(true);
     try {
+      // Ensure defaults for optional fields if they are empty/undefined
+      const finalPayload: Product = {
+        ...(form as Product),
+        storage_location: form.storage_location || "Store",
+        low_stock_threshold: form.low_stock_threshold || 5,
+        hsn: form.hsn || "",
+        tracking_type: form.tracking_type || "none",
+      };
+
       let result;
       if (mode === "add") {
-        result = await createProduct(form as Product);
+        result = await createProduct(finalPayload);
       } else {
-        result = await updateProduct(form.id!, form as Product);
+        result = await updateProduct(form.id!, finalPayload);
       }
 
       if (!result) {
@@ -223,15 +273,12 @@ export default function AddEditProductModal({
     }
 
     try {
-      // Step 1: Ask the main process to open the file dialog
       const originalPath = await window.electron.ipcRenderer.invoke(
         "dialog:open-image"
       );
 
-      // If the user cancelled the dialog, do nothing
       if (!originalPath) return;
 
-      // Step 2: Send the path we received back to the main process to be copied
       toast.loading("Saving image...");
       const result = await window.electron.ipcRenderer.invoke(
         "copy-product-image",
@@ -253,416 +300,528 @@ export default function AddEditProductModal({
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle>
+      <DialogTitle sx={{ bgcolor: "primary.main", color: "white", pb: 3 }}>
         <Stack direction="row" alignItems="center" spacing={1.5}>
-          <PackagePlus />
-          <Typography variant="h6">
+          <PackagePlus color="white" />
+          <Typography variant="h6" color="white">
             {mode === "add" ? "Add New Product" : "Edit Product"}
           </Typography>
         </Stack>
       </DialogTitle>
-      <DialogContent dividers>
+
+      <Box sx={{ width: "100%", px: 3, mt: 3 }}>
+        <Stepper activeStep={activeStep} alternativeLabel>
+          {steps.map((label) => (
+            <Step key={label}>
+              <StepLabel>{label}</StepLabel>
+            </Step>
+          ))}
+        </Stepper>
+      </Box>
+
+      <DialogContent sx={{ mt: 2, minHeight: "320px" }}>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
         <Grid container spacing={2.5} mt={0.5}>
-          {/* --- Section 1: Naming & Category --- */}
-          <Grid item xs={12} sm={4}>
-            <FormField label="Product Name *">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                value={form.name || ""}
-                onChange={(e) => handleChange("name", e.target.value)}
-                placeholder="Enter product name"
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <FormField label="Category *">
-              <TextField
-                select
-                fullWidth
-                size="small"
-                variant="outlined"
-                value={form.category ?? ""}
-                onChange={(e) => {
-                  const catId = Number(e.target.value);
-                  handleChange("category", catId);
-                  const selectedCat = availableCategories.find(
-                    (cat) => cat.id === catId
-                  );
-                  setFilteredSubcategories(selectedCat?.subcategories || []);
-                  handleChange("subcategory", null);
-                }}
-              >
-                <MenuItem value="">Select Category</MenuItem>
-                {availableCategories.map((cat) => (
-                  <MenuItem key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <FormField label="Subcategory">
-              <TextField
-                select
-                fullWidth
-                size="small"
-                variant="outlined"
-                value={form.subcategory ?? ""}
-                onChange={(e) =>
-                  handleChange("subcategory", Number(e.target.value))
-                }
-                disabled={!form.category}
-              >
-                <MenuItem value="">Select Subcategory</MenuItem>
-                {filteredSubcategories.map((sub) => (
-                  <MenuItem key={sub.id} value={sub.id}>
-                    {sub.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </FormField>
-          </Grid>
+          {/* ---------------- STEP 1: ESSENTIAL DETAILS ---------------- */}
+          {activeStep === 0 && (
+            <>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Product Name *">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    value={form.name || ""}
+                    onChange={(e) => handleChange("name", e.target.value)}
+                    placeholder="Enter product name"
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Category *">
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    value={form.category ?? ""}
+                    onChange={(e) => {
+                      const catId = Number(e.target.value);
+                      handleChange("category", catId);
+                      const selectedCat = availableCategories.find(
+                        (cat) => cat.id === catId
+                      );
+                      setFilteredSubcategories(
+                        selectedCat?.subcategories || []
+                      );
+                      handleChange("subcategory", null);
+                    }}
+                  >
+                    <MenuItem value="">Select Category</MenuItem>
+                    {availableCategories.map((cat) => (
+                      <MenuItem key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Subcategory">
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    value={form.subcategory ?? ""}
+                    onChange={(e) =>
+                      handleChange("subcategory", Number(e.target.value))
+                    }
+                    disabled={!form.category}
+                  >
+                    <MenuItem value="">Select Subcategory</MenuItem>
+                    {filteredSubcategories.map((sub) => (
+                      <MenuItem key={sub.id} value={sub.id}>
+                        {sub.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </FormField>
+              </Grid>
 
-          {/* --- Section 2: Codes & Identification --- */}
-          <Grid item xs={12} sm={4}>
-            <FormField label="Product Code *">
-              <TextField
-                fullWidth
-                size="small"
-                value={form.product_code || ""}
-                onChange={(e) => handleChange("product_code", e.target.value)}
-                placeholder={mode === "add" ? "Select category first" : ""}
-                // ✅ Make the field read-only in 'add' mode to prevent manual changes
-                InputProps={{
-                  readOnly: mode === "add",
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Hash size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <FormField label="HSN Code">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                value={form.hsn || ""}
-                onChange={(e) => handleChange("hsn", e.target.value)}
-                placeholder="Enter HSN/SAC code"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Hash size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <FormField label="Barcode (EAN)">
-              <TextField
-                fullWidth
-                size="small"
-                value={form.barcode || ""}
-                onChange={(e) => handleChange("barcode", e.target.value)}
-                placeholder="Auto-generated"
-                // ✅ Make the field read-only in 'add' mode
-                InputProps={{
-                  readOnly: mode === "add",
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Barcode size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Product Code *">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={form.product_code || ""}
+                    onChange={(e) =>
+                      handleChange("product_code", e.target.value)
+                    }
+                    placeholder={mode === "add" ? "Select category first" : ""}
+                    InputProps={{
+                      readOnly: mode === "add",
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Hash size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormField label="HSN Code">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    value={form.hsn || ""}
+                    onChange={(e) => handleChange("hsn", e.target.value)}
+                    placeholder="Enter HSN/SAC code"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Hash size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Barcode (EAN)">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={form.barcode || ""}
+                    onChange={(e) => handleChange("barcode", e.target.value)}
+                    placeholder="Auto-generated"
+                    InputProps={{
+                      readOnly: mode === "add",
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Barcode size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
 
-          {/* --- Section 3: Pricing & Tax --- */}
-          <Grid item xs={12} sm={3}>
-            <FormField label="MRP">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                type="number"
-                value={form.mrp ?? ""}
-                onChange={(e) => handleChange("mrp", Number(e.target.value))}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">₹</InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <FormField label="Max. offer price MOP">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                type="number"
-                value={form.mop ?? ""}
-                onChange={(e) => handleChange("mop", Number(e.target.value))}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">₹</InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <FormField label="Avg. Purchase Price">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                type="number"
-                value={form.average_purchase_price ?? 0}
-                onChange={(e) =>
-                  handleChange("average_purchase_price", Number(e.target.value))
-                }
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">₹</InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <FormField label="MF/W Price">
-              <TextField
-                fullWidth
-                size="small"
-                type="text"
-                value={form.mfw_price ?? ""}
-                onChange={(e) => handleChange("mfw_price", e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">₹</InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <FormField label="GST Rate (%) *">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                type="number"
-                value={form.gst_rate ?? ""}
-                onChange={(e) =>
-                  handleChange("gst_rate", parseFloat(e.target.value))
-                }
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Percent size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormField label="MRP">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    type="number"
+                    value={form.mrp ?? ""}
+                    onChange={(e) =>
+                      handleChange("mrp", Number(e.target.value))
+                    }
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">₹</InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormField label="Max. offer price MOP">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    type="number"
+                    value={form.mop ?? ""}
+                    onChange={(e) =>
+                      handleChange("mop", Number(e.target.value))
+                    }
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">₹</InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormField label="MF/W Price">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="text"
+                    value={form.mfw_price ?? ""}
+                    onChange={(e) => handleChange("mfw_price", e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">₹</InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormField label="GST Rate (%) *">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    type="number"
+                    value={form.gst_rate ?? ""}
+                    onChange={(e) =>
+                      handleChange("gst_rate", parseFloat(e.target.value))
+                    }
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Percent size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+            </>
+          )}
 
-          {/* --- Section 4: Inventory --- */}
-          {/* ✅ ADDED: Low Stock Threshold */}
-          <Grid item xs={12} sm={6}>
-            <FormField label="Low Stock Threshold">
-              <TextField
-                fullWidth
-                size="small"
-                type="number"
-                value={form.low_stock_threshold ?? ""}
-                onChange={(e) =>
-                  handleChange("low_stock_threshold", Number(e.target.value))
-                }
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <AlertTriangle size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <FormField label="Brand">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                value={form.brand || ""}
-                onChange={(e) => handleChange("brand", e.target.value)}
-                placeholder="e.g., Samsung, Apple"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Tag size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          {/* ✅ ADDED: Size */}
-          <Grid item xs={12} sm={4}>
-            <FormField label="Size">
-              <TextField
-                fullWidth
-                size="small"
-                value={form.size || ""}
-                onChange={(e) => handleChange("size", e.target.value)}
-                placeholder="e.g., L, 10x20cm"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Ruler size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          {/* ✅ ADDED: Weight */}
-          <Grid item xs={12} sm={4}>
-            <FormField label="Weight">
-              <TextField
-                fullWidth
-                size="small"
-                value={form.weight || ""}
-                onChange={(e) => handleChange("weight", e.target.value)}
-                placeholder="e.g., 2.5kg"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Scale size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <FormField label="Opening Quantity">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                type="number"
-                value={form.quantity ?? ""}
-                onChange={(e) =>
-                  handleChange("quantity", Number(e.target.value))
-                }
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Boxes size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <FormField label="Storage Location">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                value={form.storage_location || ""}
-                onChange={(e) =>
-                  handleChange("storage_location", e.target.value)
-                }
-                placeholder="e.g., Shelf A, Rack 2"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Warehouse size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
+          {/* ---------------- STEP 2: INVENTORY & TRACKING ---------------- */}
+          {activeStep === 1 && (
+            <>
+              <Grid item xs={12}>
+                <Alert severity="info" sx={{ mb: 1 }}>
+                  These fields have smart defaults. Review and change only if
+                  required.
+                </Alert>
+              </Grid>
 
-          {/* --- Section 5: Other Details --- */}
-          <Grid item xs={12}>
-            <FormField label="Image URL">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                value={form.image_url || ""}
-                onChange={(e) => handleChange("image_url", e.target.value)}
-                placeholder="Paste image URL or upload a file..."
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <ImageIcon size={18} />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Tooltip title="Upload from computer">
-                        {/* ✅ The button now calls our new handler */}
-                        <IconButton onClick={handleUploadClick} edge="end">
-                          <Upload size={18} />
-                        </IconButton>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </FormField>
-          </Grid>
-          <Grid item xs={12}>
-            <FormField label="Description">
-              <TextField
-                fullWidth
-                size="small"
-                variant="outlined"
-                multiline
-                rows={2}
-                value={form.description || ""}
-                onChange={(e) => handleChange("description", e.target.value)}
-              />
-            </FormField>
-          </Grid>
+              {/* ✅ ADDED: Tracking Type */}
+              <Grid item xs={12} md={6}>
+                <FormField label="Tracking Type">
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    value={form.tracking_type || "none"}
+                    onChange={(e) =>
+                      handleChange("tracking_type", e.target.value)
+                    }
+                    helperText="How do you want to track this item?"
+                  >
+                    <MenuItem value="none">
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      >
+                        <Layers size={16} /> Standard (Quantity Only)
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="batch">
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      >
+                        <Package size={16} /> Batch Tracking (Expiry/Mfg)
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="serial">
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      >
+                        <ScanBarcode size={16} /> Serialized (IMEI/Unique ID)
+                      </Box>
+                    </MenuItem>
+                  </TextField>
+                </FormField>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormField label="Storage Location">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    value={form.storage_location || ""}
+                    onChange={(e) =>
+                      handleChange("storage_location", e.target.value)
+                    }
+                    placeholder="e.g., Shelf A, Rack 2"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Warehouse size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormField label="Opening Quantity">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    type="number"
+                    value={form.quantity ?? ""}
+                    onChange={(e) =>
+                      handleChange("quantity", Number(e.target.value))
+                    }
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Boxes size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormField label="Low Stock Threshold">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    value={form.low_stock_threshold ?? ""}
+                    onChange={(e) =>
+                      handleChange(
+                        "low_stock_threshold",
+                        Number(e.target.value)
+                      )
+                    }
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <AlertTriangle size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+            </>
+          )}
+
+          {/* ---------------- STEP 3: ADDITIONAL INFO ---------------- */}
+          {activeStep === 2 && (
+            <>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Brand">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    value={form.brand || ""}
+                    onChange={(e) => handleChange("brand", e.target.value)}
+                    placeholder="e.g., Samsung, Apple"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Tag size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Size">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={form.size || ""}
+                    onChange={(e) => handleChange("size", e.target.value)}
+                    placeholder="e.g., L, 10x20cm"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Ruler size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Weight">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={form.weight || ""}
+                    onChange={(e) => handleChange("weight", e.target.value)}
+                    placeholder="e.g., 2.5kg"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Scale size={18} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Avg. Purchase Price">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    type="number"
+                    value={form.average_purchase_price ?? 0}
+                    onChange={(e) =>
+                      handleChange(
+                        "average_purchase_price",
+                        Number(e.target.value)
+                      )
+                    }
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">₹</InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+
+              <Grid item xs={12}>
+                <FormField label="Image URL">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    value={form.image_url || ""}
+                    onChange={(e) => handleChange("image_url", e.target.value)}
+                    placeholder="Paste image URL or upload a file..."
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <ImageIcon size={18} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip title="Upload from computer">
+                            <IconButton onClick={handleUploadClick} edge="end">
+                              <Upload size={18} />
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12}>
+                <FormField label="Description">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    multiline
+                    rows={2}
+                    value={form.description || ""}
+                    onChange={(e) =>
+                      handleChange("description", e.target.value)
+                    }
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={Boolean(form.is_active)}
+                      onChange={(e) =>
+                        handleChange("is_active", e.target.checked)
+                      }
+                      color="primary"
+                    />
+                  }
+                  label="Product is Active"
+                />
+              </Grid>
+            </>
+          )}
         </Grid>
       </DialogContent>
+
       <DialogActions sx={{ p: 2 }}>
         <Button onClick={onClose} color="inherit">
           Cancel
         </Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          color="primary"
-          disabled={loading}
-          startIcon={<Save size={18} />}
-        >
-          {loading
-            ? "Saving..."
-            : mode === "add"
-            ? "Add Product"
-            : "Update Product"}
+        <Box sx={{ flex: "1 1 auto" }} />
+
+        <Button disabled={activeStep === 0} onClick={handleBack} sx={{ mr: 1 }}>
+          Back
         </Button>
+
+        {activeStep === steps.length - 1 ? (
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            color="primary"
+            disabled={loading}
+            startIcon={<Save size={18} />}
+          >
+            {loading
+              ? "Saving..."
+              : mode === "add"
+              ? "Finish & Add"
+              : "Finish & Update"}
+          </Button>
+        ) : (
+          <Button onClick={handleNext} variant="contained">
+            Next
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );

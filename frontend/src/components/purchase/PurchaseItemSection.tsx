@@ -5,6 +5,10 @@ import {
   Autocomplete,
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Table,
   TableBody,
@@ -15,21 +19,37 @@ import {
   TextField,
   Typography,
   useTheme,
+  Chip,
+  Stack,
 } from "@mui/material";
-import { Trash2, Plus } from "lucide-react";
+import Grid from "@mui/material/GridLegacy";
+import { Trash2, Plus, ScanBarcode, Settings } from "lucide-react";
 import { getAllProducts } from "../../lib/api/productService";
 import { getShopData } from "../../lib/api/shopService";
 import type { Product } from "../../lib/types/product";
 import type { PurchaseItem } from "../../lib/types/purchaseTypes";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
 
+// Extended interface for local state to include batch details
+interface ExtendedPurchaseItem extends PurchaseItem {
+  tracking_type?: "none" | "batch" | "serial";
+  batch_number?: string;
+  expiry_date?: string;
+  mfg_date?: string;
+  mrp?: number;
+  mop?: number; // Added MOP
+  mfw_price?: string; // Added MFW Price
+  location?: string; // Added Storage Location
+  serial_numbers?: string[]; // Array of serial strings
+}
+
 interface Props {
-  items: PurchaseItem[];
-  onItemsChange: (items: PurchaseItem[]) => void;
+  items: ExtendedPurchaseItem[];
+  onItemsChange: (items: ExtendedPurchaseItem[]) => void;
   readOnly?: boolean;
 }
 
-const defaultItem = (): PurchaseItem => ({
+const defaultItem = (): ExtendedPurchaseItem => ({
   sr_no: 0,
   product_id: 0,
   quantity: 1,
@@ -37,6 +57,11 @@ const defaultItem = (): PurchaseItem => ({
   gst_rate: 0,
   discount: 0,
   price: 0,
+  tracking_type: "none",
+  batch_number: "",
+  expiry_date: "",
+  location: "",
+  serial_numbers: [],
 });
 
 const PurchaseItemSection = ({
@@ -50,6 +75,16 @@ const PurchaseItemSection = ({
   const autocompleteRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [_hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
 
+  // Batch Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [currentModalItemIndex, setCurrentModalItemIndex] = useState<
+    number | null
+  >(null);
+  const [tempBatchData, setTempBatchData] = useState<
+    Partial<ExtendedPurchaseItem>
+  >({});
+  const [serialInput, setSerialInput] = useState("");
+
   useEffect(() => {
     getAllProducts({
       page: 1,
@@ -62,18 +97,8 @@ const PurchaseItemSection = ({
     getShopData().then((res) => setShop(res));
   }, []);
 
-  useEffect(() => {
-    if (!readOnly && items.length > 0) {
-      setTimeout(
-        () => autocompleteRefs.current[items.length - 1]?.focus(),
-        100
-      );
-    }
-  }, [items.length, readOnly]);
-
-  const calculatePrice = (item: PurchaseItem) => {
+  const calculatePrice = (item: ExtendedPurchaseItem) => {
     if (!shop) return 0;
-
     const rate = Number(item.rate) || 0;
     const qty = Number(item.quantity) || 0;
     const gstRate = Number(item.gst_rate) || 0;
@@ -84,19 +109,15 @@ const PurchaseItemSection = ({
     const amountAfterDiscount = baseAmount - discountAmount;
 
     let finalPrice = amountAfterDiscount;
-
     if (shop.gst_enabled) {
       if (shop.inclusive_tax_pricing) {
-        // INCLUSIVE
         finalPrice = amountAfterDiscount;
       } else {
-        // EXCLUSIVE
         const gstAmount = (amountAfterDiscount * gstRate) / 100;
         finalPrice = amountAfterDiscount + gstAmount;
       }
     }
-
-    return finalPrice;
+    return parseFloat(finalPrice.toFixed(2));
   };
 
   const handleAddItem = () => {
@@ -115,8 +136,8 @@ const PurchaseItemSection = ({
         product_id: product.id!,
         rate: product.mop,
         gst_rate: product.gst_rate || 0,
+        tracking_type: (product as any).tracking_type || "none", // Assuming product has this field
       };
-      // Must calculate price after setting fields
       updated[index].price = calculatePrice(updated[index]);
     } else {
       updated[index] = defaultItem();
@@ -126,8 +147,8 @@ const PurchaseItemSection = ({
 
   const handleFieldChange = (
     index: number,
-    field: keyof PurchaseItem,
-    value: number
+    field: keyof ExtendedPurchaseItem,
+    value: any
   ) => {
     if (readOnly) return;
     const updated = [...items];
@@ -143,6 +164,63 @@ const PurchaseItemSection = ({
       item.sr_no = index + 1;
     });
     onItemsChange(updated);
+  };
+
+  // --- BATCH MODAL LOGIC ---
+  const openBatchModal = (index: number) => {
+    if (readOnly) return;
+    setCurrentModalItemIndex(index);
+    setTempBatchData({ ...items[index] });
+    setModalOpen(true);
+  };
+
+  const handleSaveBatchData = () => {
+    if (currentModalItemIndex !== null) {
+      const updated = [...items];
+
+      // If tracking serials, quantity is determined by serial count
+      let finalQty = tempBatchData.quantity || 0;
+      if (
+        tempBatchData.tracking_type === "serial" &&
+        tempBatchData.serial_numbers
+      ) {
+        finalQty = tempBatchData.serial_numbers.length;
+      }
+
+      updated[currentModalItemIndex] = {
+        ...updated[currentModalItemIndex],
+        ...tempBatchData,
+        quantity: finalQty,
+      };
+      updated[currentModalItemIndex].price = calculatePrice(
+        updated[currentModalItemIndex]
+      );
+      onItemsChange(updated);
+    }
+    setModalOpen(false);
+  };
+
+  const handleAddSerial = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && serialInput.trim()) {
+      e.preventDefault();
+      const currentSerials = tempBatchData.serial_numbers || [];
+      // Prevent duplicates
+      if (!currentSerials.includes(serialInput.trim())) {
+        setTempBatchData({
+          ...tempBatchData,
+          serial_numbers: [...currentSerials, serialInput.trim()],
+        });
+      }
+      setSerialInput("");
+    }
+  };
+
+  const removeSerial = (serialToRemove: string) => {
+    const currentSerials = tempBatchData.serial_numbers || [];
+    setTempBatchData({
+      ...tempBatchData,
+      serial_numbers: currentSerials.filter((s) => s !== serialToRemove),
+    });
   };
 
   const headerSx = {
@@ -164,20 +242,15 @@ const PurchaseItemSection = ({
               <TableCell sx={{ ...headerSx, width: "5%" }} align="center">
                 #
               </TableCell>
-              <TableCell sx={{ ...headerSx, width: "30%" }}>PRODUCT</TableCell>
-              {/* Dynamic Rate Header */}
-              <TableCell sx={{ ...headerSx, width: "12%" }}>
-                {shop?.inclusive_tax_pricing ? "RATE (Inc.)" : "RATE"}
+              <TableCell sx={{ ...headerSx, width: "25%" }}>PRODUCT</TableCell>
+              <TableCell sx={{ ...headerSx, width: "10%" }} align="center">
+                DETAILS
               </TableCell>
+              <TableCell sx={{ ...headerSx, width: "12%" }}>RATE</TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
               {shop?.gst_enabled && (
-                <TableCell sx={{ ...headerSx, width: "10%" }} align="center">
-                  GST%
-                </TableCell>
-              )}
-              {shop?.show_discount_column && (
                 <TableCell sx={{ ...headerSx, width: "8%" }} align="center">
-                  DISC%
+                  GST%
                 </TableCell>
               )}
               <TableCell sx={{ ...headerSx, width: "15%" }} align="right">
@@ -190,25 +263,8 @@ const PurchaseItemSection = ({
           <TableBody>
             {items?.map((item, idx) => {
               const product = products.find((p) => p.id === item.product_id);
-
-              const rate = item.rate || 0;
-              const qty = item.quantity || 0;
-              const disc = item.discount || 0;
-              const gst = item.gst_rate || 0;
-
-              const baseVal = rate * qty;
-              const valAfterDisc = baseVal - (baseVal * disc) / 100;
-
-              let gstAmount = 0;
-              if (shop?.gst_enabled) {
-                if (shop.inclusive_tax_pricing) {
-                  const divisor = 1 + gst / 100;
-                  const taxable = valAfterDisc / divisor;
-                  gstAmount = valAfterDisc - taxable;
-                } else {
-                  gstAmount = (valAfterDisc * gst) / 100;
-                }
-              }
+              const hasTracking =
+                item.tracking_type && item.tracking_type !== "none";
 
               return (
                 <TableRow
@@ -222,7 +278,6 @@ const PurchaseItemSection = ({
                     sx={{
                       borderBottom: "1px dashed #eee",
                       color: "text.secondary",
-                      fontSize: "0.9rem",
                     }}
                   >
                     {item.sr_no}
@@ -246,11 +301,43 @@ const PurchaseItemSection = ({
                           InputProps={{
                             ...params.InputProps,
                             disableUnderline: true,
-                            sx: { fontSize: "0.95rem", fontWeight: 500 },
                           }}
                         />
                       )}
                     />
+                    {/* Show small badge for tracking type */}
+                    {hasTracking && (
+                      <Typography
+                        variant="caption"
+                        color="primary"
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          mt: 0.5,
+                        }}
+                      >
+                        <ScanBarcode size={12} />{" "}
+                        {item.tracking_type?.toUpperCase()} TRACKED
+                      </Typography>
+                    )}
+                  </TableCell>
+
+                  <TableCell
+                    align="center"
+                    sx={{ p: 1, borderBottom: "1px dashed #eee" }}
+                  >
+                    <Button
+                      size="small"
+                      variant={hasTracking ? "outlined" : "text"}
+                      color={hasTracking ? "primary" : "inherit"}
+                      onClick={() => openBatchModal(idx)}
+                      startIcon={<Settings size={14} />}
+                      disabled={!item.product_id}
+                      sx={{ fontSize: "0.7rem", py: 0.5 }}
+                    >
+                      {hasTracking ? "Batch Info" : "Details"}
+                    </Button>
                   </TableCell>
 
                   <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
@@ -262,11 +349,7 @@ const PurchaseItemSection = ({
                       onChange={(e) =>
                         handleFieldChange(idx, "rate", Number(e.target.value))
                       }
-                      InputProps={{
-                        disableUnderline: true,
-                        readOnly,
-                        sx: { fontSize: "0.95rem" },
-                      }}
+                      InputProps={{ disableUnderline: true, readOnly }}
                     />
                   </TableCell>
 
@@ -276,6 +359,8 @@ const PurchaseItemSection = ({
                       variant="standard"
                       fullWidth
                       value={item.quantity}
+                      // Disable manual quantity if tracking via serials (auto-calculated)
+                      disabled={item.tracking_type === "serial"}
                       onChange={(e) =>
                         handleFieldChange(
                           idx,
@@ -286,7 +371,7 @@ const PurchaseItemSection = ({
                       InputProps={{
                         disableUnderline: true,
                         readOnly,
-                        sx: { fontSize: "0.95rem", fontWeight: "bold" },
+                        sx: { fontWeight: "bold" },
                       }}
                     />
                   </TableCell>
@@ -309,47 +394,7 @@ const PurchaseItemSection = ({
                           )
                         }
                         inputProps={{ style: { textAlign: "center" } }}
-                        InputProps={{
-                          disableUnderline: true,
-                          readOnly,
-                          sx: { fontSize: "0.95rem" },
-                        }}
-                      />
-                      <Typography
-                        variant="caption"
-                        display="block"
-                        textAlign="center"
-                        color="text.secondary"
-                        fontWeight={600}
-                      >
-                        {gstAmount > 0 ? `₹${gstAmount.toFixed(1)}` : ""}
-                      </Typography>
-                    </TableCell>
-                  )}
-
-                  {shop?.show_discount_column && (
-                    <TableCell
-                      sx={{ p: 1, borderBottom: "1px dashed #eee" }}
-                      align="center"
-                    >
-                      <TextField
-                        type="number"
-                        variant="standard"
-                        fullWidth
-                        value={item.discount}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            idx,
-                            "discount",
-                            Number(e.target.value)
-                          )
-                        }
-                        inputProps={{ style: { textAlign: "center" } }}
-                        InputProps={{
-                          disableUnderline: true,
-                          readOnly,
-                          sx: { fontSize: "0.95rem" },
-                        }}
+                        InputProps={{ disableUnderline: true, readOnly }}
                       />
                     </TableCell>
                   )}
@@ -378,11 +423,7 @@ const PurchaseItemSection = ({
                       <IconButton
                         size="small"
                         onClick={() => handleRemoveItem(idx)}
-                        sx={{
-                          color: theme.palette.error.main,
-                          opacity: 0.7,
-                          "&:hover": { opacity: 1 },
-                        }}
+                        sx={{ color: theme.palette.error.main }}
                       >
                         <Trash2 size={16} />
                       </IconButton>
@@ -402,17 +443,209 @@ const PurchaseItemSection = ({
             size="small"
             variant="text"
             startIcon={<Plus size={16} />}
-            sx={{
-              color: "text.secondary",
-              textTransform: "none",
-              fontWeight: 600,
-              "&:hover": { color: "primary.main", bgcolor: "transparent" },
-            }}
           >
             Add Another Line
           </Button>
         </Box>
       )}
+
+      {/* --- BATCH / SERIAL ENTRY MODAL --- */}
+      <Dialog
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          Product Details
+          {tempBatchData.tracking_type !== "none" && (
+            <Typography
+              variant="caption"
+              sx={{
+                ml: 1,
+                color: "text.secondary",
+                border: "1px solid #ccc",
+                px: 1,
+                borderRadius: 1,
+              }}
+            >
+              {tempBatchData.tracking_type?.toUpperCase()} MODE
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3}>
+            {/* 1. Batch Details (Show for Batch & Serial) */}
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField
+                  label="Batch Number / Lot No"
+                  fullWidth
+                  size="small"
+                  value={tempBatchData.batch_number || ""}
+                  onChange={(e) =>
+                    setTempBatchData({
+                      ...tempBatchData,
+                      batch_number: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. B-2025-001"
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="Storage Location"
+                  fullWidth
+                  size="small"
+                  value={tempBatchData.location || ""}
+                  onChange={(e) =>
+                    setTempBatchData({
+                      ...tempBatchData,
+                      location: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. Shelf A, Rack 2"
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="Expiry Date"
+                  type="date"
+                  fullWidth
+                  size="small"
+                  InputLabelProps={{ shrink: true }}
+                  value={tempBatchData.expiry_date || ""}
+                  onChange={(e) =>
+                    setTempBatchData({
+                      ...tempBatchData,
+                      expiry_date: e.target.value,
+                    })
+                  }
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="Mfg Date"
+                  type="date"
+                  fullWidth
+                  size="small"
+                  InputLabelProps={{ shrink: true }}
+                  value={tempBatchData.mfg_date || ""}
+                  onChange={(e) =>
+                    setTempBatchData({
+                      ...tempBatchData,
+                      mfg_date: e.target.value,
+                    })
+                  }
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="MRP (Per Unit)"
+                  type="number"
+                  fullWidth
+                  size="small"
+                  value={tempBatchData.mrp || ""}
+                  onChange={(e) =>
+                    setTempBatchData({
+                      ...tempBatchData,
+                      mrp: Number(e.target.value),
+                    })
+                  }
+                />
+              </Grid>
+              {/* Added MOP and MFW Price fields */}
+              <Grid item xs={6}>
+                <TextField
+                  label="MOP"
+                  type="number"
+                  fullWidth
+                  size="small"
+                  value={tempBatchData.mop || ""}
+                  onChange={(e) =>
+                    setTempBatchData({
+                      ...tempBatchData,
+                      mop: Number(e.target.value),
+                    })
+                  }
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="MFW Price"
+                  type="number"
+                  fullWidth
+                  size="small"
+                  value={tempBatchData.mfw_price || ""}
+                  onChange={(e) =>
+                    setTempBatchData({
+                      ...tempBatchData,
+                      mfw_price: String(e.target.value),
+                    })
+                  }
+                />
+              </Grid>
+            </Grid>
+
+            {/* 2. Serial Number Input (Only for Serial Type) */}
+            {tempBatchData.tracking_type === "serial" && (
+              <Box
+                sx={{
+                  border: "1px solid #eee",
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: "#fafafa",
+                }}
+              >
+                <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                  Serial Numbers ({tempBatchData.serial_numbers?.length || 0})
+                </Typography>
+                <TextField
+                  fullWidth
+                  placeholder="Scan or type serial & press Enter"
+                  value={serialInput}
+                  onChange={(e) => setSerialInput(e.target.value)}
+                  onKeyDown={handleAddSerial}
+                  size="small"
+                  sx={{ mb: 2, bgcolor: "white" }}
+                />
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 1,
+                    maxHeight: 150,
+                    overflowY: "auto",
+                  }}
+                >
+                  {tempBatchData.serial_numbers?.map((sn, i) => (
+                    <Chip
+                      key={i}
+                      label={sn}
+                      onDelete={() => removeSerial(sn)}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                    />
+                  ))}
+                  {(!tempBatchData.serial_numbers ||
+                    tempBatchData.serial_numbers.length === 0) && (
+                    <Typography variant="caption" color="text.disabled">
+                      No serials added yet.
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setModalOpen(false)}>Cancel</Button>
+          <Button onClick={handleSaveBatchData} variant="contained">
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

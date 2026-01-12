@@ -27,11 +27,25 @@ const calculateGST = (items, inclusive, gstEnabled) => {
     }
 
     totalTax += taxAmt;
-    // Simple split for local supply assumption (can be expanded for interstate)
     breakdown.cgst += taxAmt / 2;
     breakdown.sgst += taxAmt / 2;
   });
   return { totalTax, breakdown };
+};
+
+// --- HELPER: Tracking Details Formatter ---
+const getTrackingHtml = (item) => {
+  const parts = [];
+  if (item.batch_number) parts.push(`Batch: ${item.batch_number}`);
+  if (item.expiry_date) parts.push(`Exp: ${formatDate(item.expiry_date)}`);
+  if (item.serial_number) parts.push(`S/N: ${item.serial_number}`);
+
+  if (parts.length === 0) return "";
+
+  // Returns semi-text grayish (color: #666 or #6b7280)
+  return `<div style="font-size: 85%; color: #6b7280; font-weight: normal; margin-top: 1px; font-style: italic;">
+    ${parts.join(" | ")}
+  </div>`;
 };
 
 // --- FOOTER BRANDING ---
@@ -53,9 +67,10 @@ const thermal80mm = (data) => {
       const total = item.price;
       return `
       <div style="border-bottom: 1px dashed #ccc; padding: 4px 0;">
-        <div style="font-weight:600; font-size:12px; margin-bottom:2px;">${
-          item.product_name
-        }</div>
+        <div style="font-weight:600; font-size:12px; margin-bottom:2px;">
+          ${item.product_name}
+          ${getTrackingHtml(item)} <!-- Tracking Info -->
+        </div>
         <div style="display:flex; justify-content:space-between; font-size:11px; color:#444;">
           <span>${item.quantity} x ${formatAmount(item.rate)} ${
         showDiscount && item.discount ? `(-${item.discount}%)` : ""
@@ -149,9 +164,10 @@ const thermal58mm = (data) => {
     .map(
       (item) => `
     <div style="margin-bottom:6px; border-bottom:1px dotted #ccc; padding-bottom:4px;">
-      <div style="font-weight:700; font-size:11px; line-height:1.2;">${
-        item.product_name
-      }</div>
+      <div style="font-weight:700; font-size:11px; line-height:1.2;">
+        ${item.product_name}
+        ${getTrackingHtml(item)}
+      </div>
       <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:2px;">
         <span>${item.quantity} x ${item.rate}</span>
         <span style="font-weight:600;">${formatAmount(item.price)}</span>
@@ -319,9 +335,10 @@ const a4Modern = (data) => {
               <tr>
                 <td>
                   <div style="font-weight:600;">${item.product_name}</div>
+                  ${getTrackingHtml(item)}
                   ${
                     item.hsn
-                      ? `<div style="font-size:10px; color:#9ca3af;">HSN: ${item.hsn}</div>`
+                      ? `<div style="font-size:10px; color:#9ca3af; margin-top:1px;">HSN: ${item.hsn}</div>`
                       : ""
                   }
                 </td>
@@ -490,7 +507,10 @@ const a5Landscape = (data) => {
                 (item, i) => `
               <tr>
                 <td class="text-center">${i + 1}</td>
-                <td>${item.product_name}</td>
+                <td>
+                  ${item.product_name}
+                  ${getTrackingHtml(item)}
+                </td>
                 ${
                   showHSN
                     ? `<td class="text-center">${item.hsn || "-"}</td>`

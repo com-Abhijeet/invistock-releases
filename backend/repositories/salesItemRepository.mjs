@@ -12,6 +12,8 @@ export function createSaleItem({
   price,
   gst_rate,
   discount,
+  batch_id, // New
+  serial_id, // New
 }) {
   try {
     const stmt = db.prepare(`
@@ -23,8 +25,10 @@ export function createSaleItem({
       quantity,
       gst_rate,
       discount,
-      price
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      price,
+      batch_id,
+      serial_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
     stmt.run([
@@ -36,9 +40,11 @@ export function createSaleItem({
       gst_rate,
       discount,
       price,
+      batch_id || null, // Allow null for non-tracked items
+      serial_id || null, // Allow null
     ]);
   } catch (error) {
-    console.errror("error in sales item repo", error);
+    console.error("error in sales item repo", error);
     throw new Error("Sale Item creation failed: " + error.message);
   }
 }
@@ -64,3 +70,5 @@ export async function deleteItemsBySaleId(saleId) {
   const stmt = db.prepare(`DELETE FROM sales_items WHERE sale_id = ?`);
   return stmt.run(saleId);
 }
+
+

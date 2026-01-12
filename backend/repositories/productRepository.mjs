@@ -21,12 +21,14 @@ export const createProduct = (product) => {
       throw new Error("Category or subcategory not found.");
     }
 
+    // ✅ UPDATED: Added tracking_type to INSERT statement
     const stmt = db.prepare(
       `INSERT INTO products (
         name, product_code, hsn, gst_rate, mrp, mop, category, subcategory,
         storage_location, quantity, description, brand, barcode,
-        image_url, is_active, average_purchase_price, mfw_price, low_Stock_threshold, size, weight
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        image_url, is_active, average_purchase_price, mfw_price, low_Stock_threshold, size, weight,
+        tracking_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     const info = stmt.run(
@@ -49,7 +51,8 @@ export const createProduct = (product) => {
       product.mfw_price,
       product.low_stock_threshold,
       product.size,
-      product.weight
+      product.weight,
+      product.tracking_type || "none" // Default to none
     );
     return { id: info.lastInsertRowid, ...product };
   });
@@ -302,12 +305,14 @@ export function getProductHistory(productId) {
 export const updateProduct = (id, product) => {
   console.log("updating for product : ", id, "DATA ", product);
 
+  // ✅ UPDATED: Added tracking_type to UPDATE statement
   db.prepare(
     `UPDATE products SET
       name = ?, product_code = ?, hsn = ?, gst_rate = ?, mrp = ?, mop = ?,
       category = ?, subcategory = ?, storage_location = ?, quantity = ?,
       description = ?, brand = ?, barcode = ?, image_url = ?,
-      is_active = ?, updated_at = datetime('now'), average_purchase_price = ?, mfw_price=?, low_stock_threshold = ?, size = ?, weight=?
+      is_active = ?, updated_at = datetime('now'), average_purchase_price = ?, mfw_price=?, low_stock_threshold = ?, size = ?, weight=?,
+      tracking_type = ?
      WHERE id = ?`
   ).run(
     product.name,
@@ -330,6 +335,7 @@ export const updateProduct = (id, product) => {
     product.low_stock_threshold,
     product.size,
     product.weight,
+    product.tracking_type || "none", // Default to none
     id
   );
 
@@ -368,13 +374,16 @@ export async function updateProductAveragePurchasePrice(
  * @returns {object} The result of the transaction.
  */
 export function bulkInsertProducts(products) {
+  // ✅ UPDATED: Added tracking_type to Bulk Insert
   const insertStmt = db.prepare(
     `INSERT INTO products (
       name, product_code, mrp, mop, gst_rate, quantity, hsn, brand,
-      category, subcategory, average_purchase_price, storage_location, description, barcode, mfw_price, low_Stock_threshold, size, weight
+      category, subcategory, average_purchase_price, storage_location, description, barcode, mfw_price, low_Stock_threshold, size, weight,
+      tracking_type
     ) VALUES (
       @name, @product_code, @mrp, @mop, @gst_rate, @quantity, @hsn, @brand,
-      @category, @subcategory, @average_purchase_price, @storage_location, @description, @barcode, @mfw_price, @low_stock_threshold, @size, @weight 
+      @category, @subcategory, @average_purchase_price, @storage_location, @description, @barcode, @mfw_price, @low_stock_threshold, @size, @weight,
+      @tracking_type
     )`
   );
 
@@ -422,6 +431,7 @@ export function bulkInsertProducts(products) {
         brand: null,
         storage_location: null,
         description: null,
+        tracking_type: "none", // Default for bulk import
         ...item,
       };
 

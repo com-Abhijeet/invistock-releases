@@ -25,34 +25,47 @@ const generateBarcodeBase64 = async (barcodeText) => {
 };
 
 const createPrintWindow = async (payload) => {
-  const { product, shop, copies } = payload;
+  const { product, shop, copies, customBarcode } = payload;
+
   if (!product || !shop) {
     console.error("❌ Missing data for label printing.");
     return;
   }
 
-  // 1. Generate Barcode
-  const code = product.barcode || product.product_code || "0000";
-  const barcodeBase64 = await generateBarcodeBase64(code);
+  // 1. Determine the Barcode to Print
+  // PRIORITY: specific 'customBarcode' (Batch/Serial) > 'product.barcode' > 'product_code'
+  const code =
+    customBarcode || product.barcode || product.product_code || "0000";
 
-  // 2. Get Settings
+  console.log(`🖨️ Generating label for code: ${code}`);
+
+  // 2. Generate Barcode Image
+  let barcodeBase64 = "";
+  try {
+    barcodeBase64 = await generateBarcodeBase64(code);
+  } catch (error) {
+    console.error("Error generating barcode image:", error);
+  }
+
+  // 3. Get Settings
   const printerWidth = shop.label_printer_width_mm || 50;
   const templateId = shop.label_template_id || "lbl_standard";
 
-  // 3. Generate HTML
+  // 4. Generate HTML
   const { style, content } = createLabelHTML(
     product,
     shop,
     barcodeBase64,
     printerWidth,
-    templateId
+    templateId,
+    code // Pass specific code (e.g., Batch UID) for display
   );
 
   const fullHtml = `<html><head><title>Label Print</title>${style}</head><body>${content}</body></html>`;
 
-  // 4. Create Window
+  // 5. Create Window (Initially Hidden)
   const win = new BrowserWindow({
-    show: false, // hidden
+    show: true,
     width: 400,
     height: 400,
     webPreferences: {
@@ -72,6 +85,7 @@ const createPrintWindow = async (payload) => {
         ? shop.label_printer_name
         : undefined;
 
+    // Force non-silent for PDF printers (they require file save dialogs)
     if (printerName && printerName.toLowerCase().includes("pdf")) {
       isSilent = false;
     }
@@ -86,11 +100,18 @@ const createPrintWindow = async (payload) => {
       printerOptions.deviceName = printerName;
     }
 
+    // FIX: If printing is interactive (e.g. PDF or manual selection),
+    // the window MUST be visible for the dialog to appear.
+    if (!isSilent) {
+      win.show();
+    }
+
     // Attempt print
     win.webContents.print(printerOptions, (success, errorType) => {
       if (!success) {
         console.error("❌ Label print failed:", errorType);
       }
+      // Close window after print dialog is done or print is sent
       setTimeout(() => {
         win.close();
       }, 1000);

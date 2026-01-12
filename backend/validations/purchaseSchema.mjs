@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Purchase Item Schema
+// Purchase Item Schema (Updated with Batch/Serial Fields)
 const purchaseItemSchema = z.object({
   product_id: z.number(),
   quantity: z.number().min(1),
@@ -8,6 +8,18 @@ const purchaseItemSchema = z.object({
   gst_rate: z.number().min(0),
   discount: z.number().min(0).optional().default(0),
   price: z.number().min(0).default(0),
+
+  // New Tracking Fields
+  tracking_type: z.enum(["none", "batch", "serial"]).optional(),
+  batch_number: z.string().optional().nullable(),
+  expiry_date: z.string().optional().nullable(),
+  mfg_date: z.string().optional().nullable(),
+  mrp: z.number().optional(),
+  mop: z.number().optional(),
+  mfw_price: z.string().optional(),
+
+  // Serial numbers can be an array of strings (from frontend) or null
+  serial_numbers: z.array(z.string()).optional().nullable(),
 });
 
 // Enum definitions for reuse
@@ -18,6 +30,7 @@ const purchaseStatusEnum = z.enum([
   "paid",
   "received",
   "cancelled",
+  "ordered", // Added 'ordered' based on your UI dropdown
 ]);
 
 const paymentModeEnum = z.enum([

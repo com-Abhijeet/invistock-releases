@@ -244,6 +244,7 @@ export function initializeDatabase(dbPath) {
       gst_rate REAL NOT NULL DEFAULT 0,
       mrp REAL,
       mop REAL,
+      mfw_price TEXT,
       average_purchase_price REAL DEFAULT 0,
       category INTEGER,
       subcategory INTEGER,
@@ -257,7 +258,7 @@ export function initializeDatabase(dbPath) {
       updated_at TEXT DEFAULT (datetime('now')),
       is_active INTEGER DEFAULT 1,
       low_stock_threshold INTEGER DEFAULT 0,
-      mfw_price TEXT,
+
       size TEXT,
       weight TEXT,
       tracking_type TEXT CHECK(tracking_type IN ('none', 'batch', 'serial')) DEFAULT 'none',
@@ -284,8 +285,8 @@ export function initializeDatabase(dbPath) {
       
       -- Economics (Batch Specific)
       mrp REAL DEFAULT 0,
-      cost_price REAL DEFAULT 0,
-      selling_price REAL DEFAULT 0,
+      mop REAL DEFAULT 0,
+      mfw_price TEXT,
       
       -- Stock
       quantity REAL DEFAULT 0,  -- Remaining stock for this batch
@@ -400,6 +401,11 @@ export function initializeDatabase(dbPath) {
       serial_numbers TEXT,      -- Raw serials (CSV/JSON) for reference
       expiry_date TEXT,
       mfg_date TEXT,
+
+      --Selling Information at Purchase Time
+      mrp REAL DEFAULT 0,
+      mop REAL DEFAULT 0,
+      mfw_price TEXT,
       
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,

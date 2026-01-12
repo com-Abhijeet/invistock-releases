@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Settings,
   Clock,
+  Search,
 } from "lucide-react";
 
 export const menuSections = [
@@ -97,6 +98,11 @@ export const menuSections = [
         icon: <Boxes size={20} />,
         path: "/products",
         shortcut: "F7",
+      },
+      {
+        label: "Track SN/Batch",
+        icon: <Search size={20} />,
+        path: "/tracker",
       },
       {
         label: "Stock Adjustments",
