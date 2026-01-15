@@ -17,7 +17,6 @@ import {
 } from "@mui/material";
 import { MessageCircle, Send, Users } from "lucide-react";
 import toast from "react-hot-toast";
-import { CustomerInsight } from "../../lib/api/analyticsService";
 
 const { electron } = window;
 
@@ -30,7 +29,7 @@ const TEMPLATES = [
   {
     id: "new_stock",
     label: "New Arrivals",
-    text: "Hi {name}! 🌟\n\nJust wanted to let you know we have some exciting new stock in store that matches your taste.\n\nDrop by to check it out!",
+    text: "Hi {name}! 🛍️\n\nJust wanted to let you know we have some exciting new stock in store that matches your taste.\n\nDrop by to check it out!",
   },
   {
     id: "feedback",
@@ -40,14 +39,27 @@ const TEMPLATES = [
   {
     id: "sale_alert",
     label: "Sale Alert",
-    text: "Big News {name}! 🎉\n\nOur End of Season Sale starts tomorrow. Up to 50% OFF on select items.\n\nDon't miss out!",
+    text: "Big News {name}! 📣\n\nOur End of Season Sale starts tomorrow. Up to 50% OFF on select items.\n\nDon't miss out!",
+  },
+  {
+    id: "account_status",
+    label: "Account Status Update",
+    text: "Hello {name}, this is a gentle reminder regarding your account. Please check your latest statement for details. Let us know if you have any questions.",
   },
 ];
+
+// Minimal interface required for sending messages
+// This allows both CustomerInsight and CustomerFinancialRow to be passed in
+export interface WhatsAppRecipient {
+  name: string;
+  phone: string;
+  [key: string]: any; // Allow other properties to exist
+}
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  recipients: CustomerInsight[];
+  recipients: WhatsAppRecipient[];
 }
 
 export default function WhatsAppTemplateModal({

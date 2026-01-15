@@ -9,7 +9,7 @@ import {
 // Default fallback URL.
 // NOTE: Since your snippet showed 5000, I've updated the default here,
 // but the 'serverUrl' from localStorage usually takes precedence in Electron.
-const BASE_URL = "https://localhost:5000/api/users";
+const BASE_URL = "http://localhost:5000/api/users";
 
 class UserApiService {
   /**

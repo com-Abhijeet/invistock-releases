@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
   Box,
   Card,
@@ -22,14 +22,15 @@ import {
   IconButton,
 } from "@mui/material";
 import {
-  ArrowLeft,
   Printer,
   ChevronDown,
   ChevronUp,
   CreditCard,
+  MessageCircle, // Imported Icon
 } from "lucide-react";
 import DashboardHeader from "../components/DashboardHeader";
 import { getCustomerLedger } from "../lib/api/customerService";
+import { getShopData } from "../lib/api/shopService"; // Import shop service
 import toast from "react-hot-toast";
 import type { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
 
@@ -67,7 +68,7 @@ interface LedgerEntry {
 
 export default function CustomerLedgerPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
+
   const customerId = Number(id);
 
   const [activeFilters, setActiveFilters] =
@@ -76,9 +77,12 @@ export default function CustomerLedgerPage() {
   const [customer, setCustomer] = useState<any>(null);
   const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
   const [totals, setTotals] = useState({ billed: 0, paid: 0, pending: 0 });
+  const [shop, setShop] = useState<any>(null); // Store shop data
 
   useEffect(() => {
     fetchLedger();
+    // Fetch Shop Data
+    getShopData().then((res) => setShop(res));
   }, [customerId, activeFilters.from, activeFilters.to]);
 
   const fetchLedger = async () => {
@@ -156,8 +160,6 @@ export default function CustomerLedgerPage() {
     });
 
     // Sort by Date Descending (Newest first) or Ascending depending on preference.
-    // Keeping original logic (Ascending) for now, but usually ledgers are newest first.
-    // Let's stick to Ascending to match the previous version.
     processedEntries.sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
@@ -180,30 +182,83 @@ export default function CustomerLedgerPage() {
     });
   };
 
+  const handleWhatsApp = async () => {
+    if (!customer?.phone) {
+      toast.error("Customer phone number is missing");
+      return;
+    }
+
+    const toastId = toast.loading("Generating and sending ledger PDF...");
+
+    try {
+      const res = await window.electron.sendWhatsAppCustomerLedger({
+        customerId, // Just ID needed now
+        phone: customer.phone,
+        filters: {
+          startDate: activeFilters.from,
+          endDate: activeFilters.to,
+        },
+      });
+
+      if (res.success) {
+        toast.success("Ledger sent successfully!", { id: toastId });
+      } else {
+        toast.error("Failed to send WhatsApp: " + res.error, { id: toastId });
+      }
+    } catch (e: any) {
+      toast.error("Error sending ledger: " + e.message, { id: toastId });
+    }
+  };
+
   return (
     <Box p={3} sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
-      <Button
-        startIcon={<ArrowLeft size={18} />}
-        onClick={() => navigate(-1)}
-        sx={{ mb: 2, color: "text.secondary" }}
-      >
-        Back
-      </Button>
-
       <DashboardHeader
         title="Customer Ledger"
         showSearch={false}
         showDateFilters={true}
         onFilterChange={setActiveFilters}
         actions={
-          <Button
-            variant="contained"
-            startIcon={<Printer size={18} />}
-            onClick={handlePrint}
-            disabled={loading || !customer}
-          >
-            Print Statement
-          </Button>
+          <Stack direction="row" spacing={2}>
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<MessageCircle size={18} />}
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                fontWeight: 600,
+                px: 3,
+                boxShadow: "none",
+                bgcolor: "#2e7d32",
+                "&:hover": {
+                  bgcolor: "#1b5e20",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                },
+              }}
+              onClick={handleWhatsApp}
+              disabled={loading || !customer || !shop}
+            >
+              Share Ledger PDF
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<Printer size={18} />}
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                fontWeight: 600,
+                px: 3,
+                boxShadow: "none",
+                "&:hover": {
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                },
+              }}
+              onClick={handlePrint}
+              disabled={loading || !customer}
+            >
+              Print Statement
+            </Button>
+          </Stack>
         }
       />
 

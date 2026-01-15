@@ -34,14 +34,16 @@ import {
   AlertCircle,
   Hash,
   IndianRupee,
+  PackageOpen,
+  Plus,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { fetchProductHistory } from "../lib/api/productService";
 import { getProductBatches } from "../lib/api/batchService";
 import DashboardHeader from "../components/DashboardHeader";
-// Adjust this import path based on where you placed the file
 import LabelPrintDialog from "../components/LabelPrintModal";
+import AssignBatchModal from "../components/batch/AssignBatchModal"; // Imported new component
 import { Product } from "../lib/types/product";
 
 // Types for our local state
@@ -67,10 +69,12 @@ export default function ProductBatchesPage() {
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<Product | null>(null);
   const [batchGroups, setBatchGroups] = useState<BatchGroup[]>([]);
+  const [totalTracked, setTotalTracked] = useState(0);
 
   // UI State
   const [expandedBatch, setExpandedBatch] = useState<number | null>(null);
   const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -91,7 +95,6 @@ export default function ProductBatchesPage() {
       }
 
       // 2. Fetch Stock Data
-      // Fix: Explicitly cast tracking_type to satisfy the API signature
       const rawData = await getProductBatches(
         Number(id),
         prod.tracking_type as "batch" | "serial"
@@ -99,9 +102,9 @@ export default function ProductBatchesPage() {
 
       // 3. Process Data into Groups
       const groups: Record<string, BatchGroup> = {};
+      let calculatedTracked = 0;
 
       if (prod.tracking_type === "serial") {
-        // Raw data is a list of serials with batch info
         rawData.forEach((item: any) => {
           const bId = item.batch_id || 0;
           if (!groups[bId]) {
@@ -115,22 +118,19 @@ export default function ProductBatchesPage() {
             };
           }
 
-          // Normalize status: treat missing status as 'available' for both display and counting
           const currentStatus = item.status || "available";
-
           groups[bId].serials.push({
             id: item.id,
             serial_number: item.serial_number,
             status: currentStatus,
           });
 
-          // Count only 'available' serials towards the batch quantity
           if (currentStatus === "available") {
             groups[bId].quantity += 1;
+            calculatedTracked += 1;
           }
         });
       } else {
-        // Batch Tracking: Raw data is a list of batches
         rawData.forEach((item: any) => {
           groups[item.id] = {
             batch_id: item.id,
@@ -141,9 +141,11 @@ export default function ProductBatchesPage() {
             quantity: item.quantity,
             serials: [],
           };
+          calculatedTracked += item.quantity || 0;
         });
       }
 
+      setTotalTracked(calculatedTracked);
       setBatchGroups(Object.values(groups));
     } catch (error) {
       console.error(error);
@@ -156,6 +158,8 @@ export default function ProductBatchesPage() {
   const toggleExpand = (batchId: number) => {
     setExpandedBatch(expandedBatch === batchId ? null : batchId);
   };
+
+  const untrackedQuantity = (product?.quantity || 0) - totalTracked;
 
   if (loading) {
     return (
@@ -221,24 +225,109 @@ export default function ProductBatchesPage() {
       {product.tracking_type === "none" ? (
         <Paper sx={{ p: 4, textAlign: "center", borderRadius: 2 }}>
           <AlertCircle size={48} className="text-gray-400 mx-auto mb-2" />
-          <Typography variant="h6" color="text.secondary">
+          <Typography variant="h6" color="text.secondary" gutterBottom>
             This product is not tracked by Batch or Serial.
+          </Typography>
+          <Typography
+            variant="h4"
+            fontWeight={700}
+            color="primary"
+            sx={{ my: 2 }}
+          >
+            {product.quantity} Units in Stock
           </Typography>
           <Button
             variant="outlined"
             sx={{ mt: 2 }}
             onClick={() => navigate(`/products/${id}`)}
           >
-            Go Back
+            View Details
           </Button>
         </Paper>
       ) : (
         <Grid container spacing={3}>
-          {batchGroups.length === 0 ? (
+          {/* General / Unassigned Stock Card */}
+          {untrackedQuantity !== 0 && (
+            <Grid item xs={12} md={6} lg={4}>
+              <Card
+                variant="outlined"
+                sx={{
+                  borderRadius: 3,
+                  borderColor: "warning.light",
+                  bgcolor: "warning.50",
+                  height: "100%",
+                }}
+              >
+                <CardContent>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="flex-start"
+                    mb={2}
+                  >
+                    <Box>
+                      <Typography
+                        variant="caption"
+                        color="warning.dark"
+                        fontWeight={700}
+                        sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                      >
+                        <PackageOpen size={14} /> UNTRACKED STOCK
+                      </Typography>
+                      <Typography
+                        variant="h6"
+                        fontWeight={700}
+                        color="text.primary"
+                      >
+                        General Inventory
+                      </Typography>
+                    </Box>
+                    <Chip
+                      label={`${untrackedQuantity} Units`}
+                      color={untrackedQuantity > 0 ? "warning" : "error"}
+                      size="small"
+                      sx={{ fontWeight: 700 }}
+                    />
+                  </Stack>
+                  <Divider sx={{ my: 1.5, borderColor: "warning.200" }} />
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    This quantity is recorded in the master inventory but is not
+                    assigned to any specific Batch or Serial number.
+                  </Typography>
+
+                  {untrackedQuantity > 0 ? (
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      fullWidth
+                      startIcon={<Plus size={16} />}
+                      onClick={() => setAssignModalOpen(true)}
+                      sx={{ mt: 1, boxShadow: 0 }}
+                    >
+                      Assign to Batch
+                    </Button>
+                  ) : (
+                    <Typography
+                      variant="caption"
+                      color="error"
+                      fontWeight={600}
+                      display="block"
+                      mt={1}
+                    >
+                      Warning: Tracked stock exceeds master inventory count.
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+
+          {/* Batch Cards */}
+          {batchGroups.length === 0 && untrackedQuantity === 0 ? (
             <Grid item xs={12}>
               <Paper sx={{ p: 4, textAlign: "center" }}>
                 <Typography color="text.secondary">
-                  No active batches found.
+                  No active batches found and stock is 0.
                 </Typography>
               </Paper>
             </Grid>
@@ -255,7 +344,6 @@ export default function ProductBatchesPage() {
                   }}
                 >
                   <CardContent sx={{ pb: 1 }}>
-                    {/* Header */}
                     <Stack
                       direction="row"
                       justifyContent="space-between"
@@ -293,7 +381,6 @@ export default function ProductBatchesPage() {
 
                     <Divider sx={{ my: 1.5 }} />
 
-                    {/* Details Grid */}
                     <Grid container spacing={2}>
                       <Grid item xs={6}>
                         <Stack spacing={0.5}>
@@ -334,7 +421,6 @@ export default function ProductBatchesPage() {
                     </Grid>
                   </CardContent>
 
-                  {/* Actions Area */}
                   <CardActions
                     sx={{
                       px: 2,
@@ -374,7 +460,6 @@ export default function ProductBatchesPage() {
                     </IconButton>
                   </CardActions>
 
-                  {/* Collapsible Serial List */}
                   <Collapse
                     in={expandedBatch === batch.batch_id}
                     timeout="auto"
@@ -446,13 +531,22 @@ export default function ProductBatchesPage() {
         </Grid>
       )}
 
-      {/* Print Modal */}
+      {/* --- Modals --- */}
       {product && (
-        <LabelPrintDialog
-          open={printModalOpen}
-          onClose={() => setPrintModalOpen(false)}
-          product={product}
-        />
+        <>
+          <AssignBatchModal
+            open={assignModalOpen}
+            onClose={() => setAssignModalOpen(false)}
+            product={product}
+            maxQuantity={untrackedQuantity}
+            onSuccess={loadData}
+          />
+          <LabelPrintDialog
+            open={printModalOpen}
+            onClose={() => setPrintModalOpen(false)}
+            product={product}
+          />
+        </>
       )}
     </Box>
   );

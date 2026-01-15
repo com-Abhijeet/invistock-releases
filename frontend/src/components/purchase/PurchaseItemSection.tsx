@@ -21,6 +21,7 @@ import {
   useTheme,
   Chip,
   Stack,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { Trash2, Plus, ScanBarcode, Settings } from "lucide-react";
@@ -29,6 +30,7 @@ import { getShopData } from "../../lib/api/shopService";
 import type { Product } from "../../lib/types/product";
 import type { PurchaseItem } from "../../lib/types/purchaseTypes";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
+import toast from "react-hot-toast";
 
 // Extended interface for local state to include batch details
 interface ExtendedPurchaseItem extends PurchaseItem {
@@ -74,6 +76,7 @@ const PurchaseItemSection = ({
   const [shop, setShop] = useState<ShopSetupForm | null>(null);
   const autocompleteRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [_hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
+  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0); // Track for keyboard ops
 
   // Batch Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -96,6 +99,37 @@ const PurchaseItemSection = ({
 
     getShopData().then((res) => setShop(res));
   }, []);
+
+  // Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (readOnly) return;
+
+      // Ctrl + A: Add Item
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "KeyA" || e.key.toLowerCase() === "a")
+      ) {
+        e.preventDefault();
+        handleAddItem();
+      }
+
+      // Ctrl + Delete: Remove Active Row
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "Delete" || e.code === "Backspace")
+      ) {
+        if (activeRowIndex !== null && items[activeRowIndex]) {
+          e.preventDefault();
+          handleRemoveItem(activeRowIndex);
+          toast.success("Row removed");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [items, activeRowIndex, readOnly]); // Depend on state to ensure latest closure
 
   const calculatePrice = (item: ExtendedPurchaseItem) => {
     if (!shop) return 0;
@@ -124,7 +158,11 @@ const PurchaseItemSection = ({
     if (readOnly) return;
     const newItem = defaultItem();
     newItem.sr_no = items.length + 1;
-    onItemsChange([...items, newItem]);
+    const newItems = [...items, newItem];
+    onItemsChange(newItems);
+
+    // Set focus to new row
+    setActiveRowIndex(newItems.length - 1);
   };
 
   const handleProductSelect = (index: number, product: Product | null) => {
@@ -164,6 +202,13 @@ const PurchaseItemSection = ({
       item.sr_no = index + 1;
     });
     onItemsChange(updated);
+
+    // Adjust active index
+    if (updated.length > 0) {
+      setActiveRowIndex(Math.min(idx, updated.length - 1));
+    } else {
+      setActiveRowIndex(null);
+    }
   };
 
   // --- BATCH MODAL LOGIC ---
@@ -270,8 +315,15 @@ const PurchaseItemSection = ({
                 <TableRow
                   key={idx}
                   hover
+                  selected={activeRowIndex === idx}
+                  onClick={() => setActiveRowIndex(idx)}
                   onMouseEnter={() => setHoveredRowIndex(idx)}
                   onMouseLeave={() => setHoveredRowIndex(null)}
+                  sx={{
+                    "&.Mui-selected": {
+                      backgroundColor: "rgba(25, 118, 210, 0.04)",
+                    },
+                  }}
                 >
                   <TableCell
                     align="center"
@@ -296,6 +348,7 @@ const PurchaseItemSection = ({
                           inputRef={(el) =>
                             (autocompleteRefs.current[idx] = el)
                           }
+                          onFocus={() => setActiveRowIndex(idx)}
                           placeholder="Select Product"
                           variant="standard"
                           InputProps={{
@@ -332,6 +385,7 @@ const PurchaseItemSection = ({
                       variant={hasTracking ? "outlined" : "text"}
                       color={hasTracking ? "primary" : "inherit"}
                       onClick={() => openBatchModal(idx)}
+                      onFocus={() => setActiveRowIndex(idx)}
                       startIcon={<Settings size={14} />}
                       disabled={!item.product_id}
                       sx={{ fontSize: "0.7rem", py: 0.5 }}
@@ -346,10 +400,13 @@ const PurchaseItemSection = ({
                       variant="standard"
                       fullWidth
                       value={item.rate}
+                      onFocus={() => setActiveRowIndex(idx)}
                       onChange={(e) =>
                         handleFieldChange(idx, "rate", Number(e.target.value))
                       }
                       InputProps={{ disableUnderline: true, readOnly }}
+                      // Validation: Type number & Positive
+                      inputProps={{ min: 0 }}
                     />
                   </TableCell>
 
@@ -359,6 +416,7 @@ const PurchaseItemSection = ({
                       variant="standard"
                       fullWidth
                       value={item.quantity}
+                      onFocus={() => setActiveRowIndex(idx)}
                       // Disable manual quantity if tracking via serials (auto-calculated)
                       disabled={item.tracking_type === "serial"}
                       onChange={(e) =>
@@ -373,6 +431,8 @@ const PurchaseItemSection = ({
                         readOnly,
                         sx: { fontWeight: "bold" },
                       }}
+                      // Validation: Type number & Positive
+                      inputProps={{ min: 1 }}
                     />
                   </TableCell>
 
@@ -386,6 +446,7 @@ const PurchaseItemSection = ({
                         variant="standard"
                         fullWidth
                         value={item.gst_rate}
+                        onFocus={() => setActiveRowIndex(idx)}
                         onChange={(e) =>
                           handleFieldChange(
                             idx,
@@ -393,7 +454,11 @@ const PurchaseItemSection = ({
                             Number(e.target.value)
                           )
                         }
-                        inputProps={{ style: { textAlign: "center" } }}
+                        inputProps={{
+                          style: { textAlign: "center" },
+                          min: 0,
+                          max: 100,
+                        }}
                         InputProps={{ disableUnderline: true, readOnly }}
                       />
                     </TableCell>
@@ -420,13 +485,15 @@ const PurchaseItemSection = ({
                     sx={{ borderBottom: "1px dashed #eee" }}
                   >
                     {!readOnly && (
-                      <IconButton
-                        size="small"
-                        onClick={() => handleRemoveItem(idx)}
-                        sx={{ color: theme.palette.error.main }}
-                      >
-                        <Trash2 size={16} />
-                      </IconButton>
+                      <Tooltip title="Remove Row (Ctrl + Del)">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleRemoveItem(idx)}
+                          sx={{ color: theme.palette.error.main }}
+                        >
+                          <Trash2 size={16} />
+                        </IconButton>
+                      </Tooltip>
                     )}
                   </TableCell>
                 </TableRow>
@@ -444,7 +511,8 @@ const PurchaseItemSection = ({
             variant="text"
             startIcon={<Plus size={16} />}
           >
-            Add Another Line
+            <span style={{ textDecoration: "underline" }}>A</span>dd Another
+            Line
           </Button>
         </Box>
       )}
@@ -490,6 +558,8 @@ const PurchaseItemSection = ({
                     })
                   }
                   placeholder="e.g. B-2025-001"
+                  // Validation: Char limit
+                  inputProps={{ maxLength: 50 }}
                 />
               </Grid>
               <Grid item xs={6}>
@@ -505,6 +575,8 @@ const PurchaseItemSection = ({
                     })
                   }
                   placeholder="e.g. Shelf A, Rack 2"
+                  // Validation: Char limit
+                  inputProps={{ maxLength: 50 }}
                 />
               </Grid>
               <Grid item xs={6}>
@@ -552,6 +624,8 @@ const PurchaseItemSection = ({
                       mrp: Number(e.target.value),
                     })
                   }
+                  // Validation: Positive number
+                  inputProps={{ min: 0 }}
                 />
               </Grid>
               {/* Added MOP and MFW Price fields */}
@@ -568,6 +642,8 @@ const PurchaseItemSection = ({
                       mop: Number(e.target.value),
                     })
                   }
+                  // Validation: Positive number
+                  inputProps={{ min: 0 }}
                 />
               </Grid>
               <Grid item xs={6}>
@@ -583,6 +659,8 @@ const PurchaseItemSection = ({
                       mfw_price: String(e.target.value),
                     })
                   }
+                  // Validation: Positive number
+                  inputProps={{ min: 0 }}
                 />
               </Grid>
             </Grid>
@@ -608,6 +686,8 @@ const PurchaseItemSection = ({
                   onKeyDown={handleAddSerial}
                   size="small"
                   sx={{ mb: 2, bgcolor: "white" }}
+                  // Validation: Char limit
+                  inputProps={{ maxLength: 50 }}
                 />
                 <Box
                   sx={{

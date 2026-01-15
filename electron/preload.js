@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("electron", {
         "whatsapp-get-status",
         "whatsapp-send-message",
         "whatsapp-send-invoice-pdf",
+        "whatsapp-customer-ledger", // ✅ Added this missing channel
         "open-external-url",
         "whatsapp-restart",
 
@@ -141,6 +142,9 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("whatsapp-status", (event, data) => callback(data)),
   sendWhatsAppInvoicePdf: (payload) =>
     ipcRenderer.invoke("whatsapp-send-invoice-pdf", payload),
+  // ✅ Added Helper for Customer Ledger
+  sendWhatsAppCustomerLedger: (payload) =>
+    ipcRenderer.invoke("whatsapp-customer-ledger", payload),
 
   // --- AUTH & UTILS ---
   loginAdmin: (password) => ipcRenderer.invoke("login-admin", password),

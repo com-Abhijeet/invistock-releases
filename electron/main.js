@@ -219,9 +219,9 @@ app.whenReady().then(async () => {
       // ✅ 2. Fallback to Bonjour Discovery
       mainLogger.info("🔵 Starting Bonjour Discovery...");
       const bonjour = new Bonjour();
-      const browser = bonjour.find({ type: "https" }, (service) => {
+      const browser = bonjour.find({ type: "http" }, (service) => {
         if (service.name === "KOSH-Main-Server") {
-          const serverUrl = `https://${service.host}:${service.port}`;
+          const serverUrl = `http://${service.host}:${service.port}`;
           lastKnownServerUrl = serverUrl;
           mainLogger.info("🔵 Bonjour discovered server:", serverUrl);
 

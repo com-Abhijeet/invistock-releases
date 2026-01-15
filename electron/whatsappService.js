@@ -51,6 +51,33 @@ function getBrowserExecutablePath() {
   return null;
 }
 
+/**
+ * ✅ Helper to DELETE the session data folder.
+ * This is necessary when session data becomes corrupted or incompatible
+ * with the pinned web version.
+ */
+async function deleteSessionData() {
+  const authPath = path.join(
+    require("electron").app.getPath("userData"),
+    ".wwebjs_auth"
+  );
+  console.log(`[WHATSAPP] ⚠️ DELETING Corrupted Session Data at: ${authPath}`);
+
+  try {
+    if (fs.existsSync(authPath)) {
+      // Use fs.rm if available (Node 14.14+), otherwise rmdir
+      if (fs.rm) {
+        await fs.promises.rm(authPath, { recursive: true, force: true });
+      } else {
+        await fs.promises.rmdir(authPath, { recursive: true });
+      }
+      console.log("[WHATSAPP] ✅ Session data deleted successfully.");
+    }
+  } catch (e) {
+    console.error("[WHATSAPP] ❌ Error deleting session data:", e.message);
+  }
+}
+
 // ✅ Clean up function to prevent zombies
 async function cleanupService() {
   console.log("[WHATSAPP] Cleaning up service...");
@@ -133,18 +160,17 @@ async function initializeWhatsApp(win) {
         });
       }
     }
-  }, 30000); // Increased to 30s
+  }, 45000); // Increased to 45s to allow for remote version download
 
   try {
     const execPath = getBrowserExecutablePath();
 
     if (!execPath) {
       console.error("[WHATSAPP] CRITICAL: No browser found. CANNOT START.");
-      // Force status update so UI shows error instead of spinning forever
       status = "error";
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("whatsapp-status", {
-          status: "error", // Update UI to handle 'error' state if possible
+          status: "error",
           qr: null,
         });
       }
@@ -162,9 +188,14 @@ async function initializeWhatsApp(win) {
           ".wwebjs_auth"
         ),
       }),
+      // ✅ FIX: Using the specific alpha version provided
+      webVersionCache: {
+        type: "remote",
+        remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html`,
+      },
       puppeteer: {
         executablePath: execPath,
-        headless: true,
+        headless: true, // Keeping it headless for production feel, change to false if debugging needed
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -254,16 +285,35 @@ async function sendWhatsAppMessage(number, message) {
   try {
     if (client.pupPage && client.pupPage.isClosed())
       throw new Error("Browser closed");
-    const response = await client.sendMessage(chatId, message);
+    // ✅ FIX: Passing sendSeen: false to avoid markedUnread error
+    const response = await client.sendMessage(chatId, message, {
+      sendSeen: false,
+    });
     return { success: true, response };
   } catch (error) {
     console.error("[WHATSAPP] Send Error:", error);
-    // Add logic to restart if session died
+
+    // ✅ CHECK FOR SESSION INCOMPATIBILITY (markedUnread)
+    // We still keep this as a failsafe
+    if (error.message && error.message.includes("markedUnread")) {
+      console.error(
+        "[WHATSAPP] 🚨 DETECTED SESSION INCOMPATIBILITY! Wiping session and restarting..."
+      );
+      await cleanupService();
+      await deleteSessionData();
+      initializeWhatsApp(mainWindow);
+      throw new Error(
+        "WhatsApp session was incompatible. The system is resetting. Please scan QR code again."
+      );
+    }
+
     if (
       error.message &&
       (error.message.includes("Session closed") ||
-        error.message.includes("Protocol error"))
+        error.message.includes("Protocol error") ||
+        error.message.includes("Evaluation failed"))
     ) {
+      console.log("[WHATSAPP] Critical error detected. Restarting service...");
       await cleanupService();
       initializeWhatsApp(mainWindow);
     }
@@ -279,8 +329,40 @@ async function sendWhatsAppPdf(number, pdfBase64, fileName, caption) {
   const chatId = `${cleanPhone}@c.us`;
   const { MessageMedia } = require("whatsapp-web.js");
   const media = new MessageMedia("application/pdf", pdfBase64, fileName);
-  await client.sendMessage(chatId, media, { caption });
-  return { success: true };
+  try {
+    // ✅ FIX: Passing sendSeen: false to avoid markedUnread error
+    await client.sendMessage(chatId, media, { caption, sendSeen: false });
+    return { success: true };
+  } catch (error) {
+    console.error("[WHATSAPP] PDF Send Error:", error);
+
+    // ✅ CHECK FOR SESSION INCOMPATIBILITY (markedUnread)
+    if (error.message && error.message.includes("markedUnread")) {
+      console.error(
+        "[WHATSAPP] 🚨 DETECTED SESSION INCOMPATIBILITY! Wiping session and restarting..."
+      );
+      await cleanupService();
+      await deleteSessionData();
+      initializeWhatsApp(mainWindow);
+      throw new Error(
+        "WhatsApp session was incompatible. The system is resetting. Please scan QR code again."
+      );
+    }
+
+    if (
+      error.message &&
+      (error.message.includes("Session closed") ||
+        error.message.includes("Protocol error") ||
+        error.message.includes("Evaluation failed"))
+    ) {
+      console.log(
+        "[WHATSAPP] Critical error detected during PDF send. Restarting..."
+      );
+      await cleanupService();
+      initializeWhatsApp(mainWindow);
+    }
+    throw error;
+  }
 }
 
 function getWhatsAppStatus() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Box,
   MenuItem,
@@ -11,6 +11,7 @@ import {
   Divider,
   CircularProgress,
   InputAdornment,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { Calendar, Building, Hash } from "lucide-react";
@@ -33,11 +34,44 @@ const PurchaseHeaderSection = ({
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Refs for shortcuts
+  const billNoRef = useRef<HTMLInputElement>(null);
+  const supplierRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     getAllSuppliers()
       .then((data) => setSuppliers(data || []))
       .finally(() => setLoading(false));
   }, []);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (readOnly) return;
+
+      // Ctrl + B: Focus Bill No
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "KeyR" || e.key.toLowerCase() === "r")
+      ) {
+        e.preventDefault();
+        billNoRef.current?.focus();
+      }
+
+      // Ctrl + F: Focus Supplier (Matches Sales "Find Customer")
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "KeyB" || e.key.toLowerCase() === "B")
+      ) {
+        e.preventDefault();
+        // Since it's a select, focusing opens/activates it depending on browser behavior
+        supplierRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [readOnly]);
 
   const handleChange = (field: keyof PurchasePayload, value: any) => {
     if (!readOnly) {
@@ -72,13 +106,20 @@ const PurchaseHeaderSection = ({
         >
           {/* Left: Ref No */}
           <Box>
-            <Typography {...labelStyle}>REF NO / BILL NO</Typography>
+            <Tooltip title="Shortcut: Ctrl + B" placement="top-start">
+              <Typography {...labelStyle}>
+                <span style={{ textDecoration: "underline" }}>R</span>EF NO /
+                BILL NO <span style={{ color: "red" }}>*</span>
+              </Typography>
+            </Tooltip>
             <TextField
+              inputRef={billNoRef}
               variant="standard"
               value={purchase.reference_no}
               onChange={(e) => handleChange("reference_no", e.target.value)}
-              placeholder="Enter Bill No."
+              placeholder="Enter Bill No. (Ctrl+R)"
               disabled={readOnly}
+              required
               InputProps={{
                 disableUnderline: true,
                 startAdornment: (
@@ -92,12 +133,16 @@ const PurchaseHeaderSection = ({
                   fontSize: "1rem",
                 },
               }}
+              // Validation: Char limit
+              inputProps={{ maxLength: 30 }}
             />
           </Box>
 
           {/* Right: Date */}
           <Box>
-            <Typography {...labelStyle}>DATE</Typography>
+            <Typography {...labelStyle}>
+              DATE <span style={{ color: "red" }}>*</span>
+            </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
               <TextField
                 type="date"
@@ -105,6 +150,7 @@ const PurchaseHeaderSection = ({
                 value={purchase.date}
                 onChange={(e) => handleChange("date", e.target.value)}
                 disabled={readOnly}
+                required
                 InputProps={{
                   disableUnderline: true,
                   startAdornment: (
@@ -126,14 +172,21 @@ const PurchaseHeaderSection = ({
       <Box sx={{ p: 3 }}>
         <Grid container spacing={4}>
           <Grid item xs={12} md={6}>
-            <Typography {...labelStyle}>BILL FROM (SUPPLIER)</Typography>
+            <Tooltip title="Shortcut: Ctrl + B">
+              <Typography {...labelStyle}>
+                <span style={{ textDecoration: "underline" }}>B</span>ILL FROM
+                (SUPPLIER) <span style={{ color: "red" }}>*</span>
+              </Typography>
+            </Tooltip>
             <TextField
+              inputRef={supplierRef}
               fullWidth
               select
               variant="outlined"
               value={purchase.supplier_id}
               onChange={(e) => handleChange("supplier_id", e.target.value)}
               disabled={readOnly}
+              required
               placeholder="Select Supplier"
               InputProps={{
                 disableUnderline: true,

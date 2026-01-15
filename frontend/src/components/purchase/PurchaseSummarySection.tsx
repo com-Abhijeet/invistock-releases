@@ -17,8 +17,9 @@ import {
   CircularProgress,
   useTheme,
   Divider,
+  Tooltip,
 } from "@mui/material";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { PurchasePayload } from "../../lib/types/purchaseTypes";
 import { createPurchase } from "../../lib/api/purchaseService";
 import { createSupplier } from "../../lib/api/supplierService";
@@ -47,12 +48,54 @@ const PurchaseSummarySection = ({
   const [warningOpen, setWarningOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only active in edit/new modes and when not submitting
+      if (mode === "view" || isSubmitting) return;
+
+      // Ctrl + S: Save Purchase
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "KeyS" || e.key.toLowerCase() === "s")
+      ) {
+        e.preventDefault();
+        handleSubmit();
+      }
+
+      // Ctrl + U: Full Payment
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "KeyU" || e.key.toLowerCase() === "u")
+      ) {
+        e.preventDefault();
+        handlePaidInFull();
+      }
+
+      // Escape: Cancel
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (
+          purchase.items.length > 0 &&
+          confirm("Are you sure you want to cancel?")
+        ) {
+          handleCancel();
+        } else if (purchase.items.length === 0) {
+          handleCancel();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mode, isSubmitting, purchase]); // Depend on state for latest closure
+
   // 💡 Helper to access the reconciled payment data safely
   // This matches the structure returned by the updated purchaseRepository
   const paymentSummary = (purchase as any).payment_summary || {
     total_paid: purchase.paid_amount || 0,
     balance: purchase.total_amount - (purchase.paid_amount || 0),
-    status: purchase.status || 'pending'
+    status: purchase.status || "pending",
   };
 
   const handleFieldChange = (field: keyof PurchasePayload, value: any) => {
@@ -60,7 +103,11 @@ const PurchaseSummarySection = ({
   };
 
   const handlePaidInFull = () => {
-    onPurchaseChange({ ...purchase, paid_amount: purchase.total_amount, status: "paid" });
+    onPurchaseChange({
+      ...purchase,
+      paid_amount: purchase.total_amount,
+      status: "paid",
+    });
   };
 
   const handleCancel = () => {
@@ -69,7 +116,31 @@ const PurchaseSummarySection = ({
   };
 
   const handleSubmit = async () => {
-    if (purchase.status === "paid" && purchase.paid_amount < purchase.total_amount) {
+    // --- Frontend Validations (Null Check) ---
+    if (!purchase.reference_no || purchase.reference_no.trim() === "") {
+      toast.error("Ref No / Bill No is required");
+      return;
+    }
+    if (!purchase.date) {
+      toast.error("Date is required");
+      return;
+    }
+    if (!purchase.supplier_id && !supplier) {
+      toast.error("Supplier is required");
+      return;
+    }
+    // Filter invalid items first to check real count
+    const validItems = purchase.items.filter((item) => item.product_id > 0);
+    if (validItems.length === 0) {
+      toast.error("Please add at least one valid product");
+      return;
+    }
+    // ----------------------------------------
+
+    if (
+      purchase.status === "paid" &&
+      purchase.paid_amount < purchase.total_amount
+    ) {
       setWarningOpen(true);
       return;
     }
@@ -81,35 +152,35 @@ const PurchaseSummarySection = ({
       // Create Supplier if it doesn't exist (Quick-add logic)
       if (!purchase.supplier_id || purchase.supplier_id === 0) {
         if (supplier?.name) {
-             const supplierData = {
-                name: supplier.name,
-                phone: supplier.phone,
-                // Add minimal required fields
-                address: supplier.address || "",
-                city: supplier.city || "",
-                state: supplier.state || "",
-                pincode: supplier.pincode || "",
-                gst_number: supplier.gst_number || "",
-             };
-             const supRes = await createSupplier(supplierData as any);
-             if (supRes?.id) {
-               purchaseDataWithSupplier.supplier_id = supRes.id;
-             } else {
-               toast.error("Failed to create supplier.");
-               setIsSubmitting(false);
-               return;
-             }
-        } else {
-            toast.error("Please select a valid supplier.");
+          const supplierData = {
+            name: supplier.name,
+            phone: supplier.phone,
+            // Add minimal required fields
+            address: supplier.address || "",
+            city: supplier.city || "",
+            state: supplier.state || "",
+            pincode: supplier.pincode || "",
+            gst_number: supplier.gst_number || "",
+          };
+          const supRes = await createSupplier(supplierData as any);
+          if (supRes?.id) {
+            purchaseDataWithSupplier.supplier_id = supRes.id;
+          } else {
+            toast.error("Failed to create supplier.");
             setIsSubmitting(false);
             return;
+          }
+        } else {
+          toast.error("Please select a valid supplier.");
+          setIsSubmitting(false);
+          return;
         }
       }
 
       // Filter invalid items
       const payload = {
         ...purchaseDataWithSupplier,
-        items: purchaseDataWithSupplier.items.filter((item) => item.product_id > 0),
+        items: validItems, // Use the already filtered valid items
       };
 
       const response = await createPurchase(payload);
@@ -148,6 +219,8 @@ const PurchaseSummarySection = ({
             disableUnderline: true,
             sx: { fontSize: "0.9rem", color: "text.secondary" },
           }}
+          // Validation: Char limit
+          inputProps={{ maxLength: 500 }}
         />
         <Divider sx={{ mt: 1 }} />
       </Box>
@@ -218,16 +291,20 @@ const PurchaseSummarySection = ({
                     ),
                     disableUnderline: false,
                   }}
+                  // Validation: Positive number
+                  inputProps={{ min: 0 }}
                   sx={{ width: 100 }}
                 />
-                <Button
-                  size="small"
-                  sx={{ textTransform: "none", minWidth: "auto" }}
-                  onClick={handlePaidInFull}
-                  disabled={purchase.paid_amount >= purchase.total_amount}
-                >
-                  Full
-                </Button>
+                <Tooltip title="Shortcut: Ctrl + U">
+                  <Button
+                    size="small"
+                    sx={{ textTransform: "none", minWidth: "auto" }}
+                    onClick={handlePaidInFull}
+                    disabled={purchase.paid_amount >= purchase.total_amount}
+                  >
+                    F<span style={{ textDecoration: "underline" }}>u</span>ll
+                  </Button>
+                </Tooltip>
                 <TextField
                   select
                   label="Mode"
@@ -276,7 +353,11 @@ const PurchaseSummarySection = ({
                 }}
               >
                 <Box>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
                     Status
                   </Typography>
                   <Typography
@@ -297,7 +378,11 @@ const PurchaseSummarySection = ({
                 </Box>
                 <Divider orientation="vertical" flexItem />
                 <Box>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
                     Paid
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
@@ -308,10 +393,18 @@ const PurchaseSummarySection = ({
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
                     Balance
                   </Typography>
-                  <Typography variant="body2" fontWeight={600} color="text.secondary">
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    color="text.secondary"
+                  >
                     {paymentSummary.balance?.toLocaleString("en-IN", {
                       style: "currency",
                       currency: "INR",
@@ -345,35 +438,47 @@ const PurchaseSummarySection = ({
 
               {/* Buttons Row */}
               <Stack direction="row" spacing={2}>
-                <Button
-                  variant="text"
-                  color="error"
-                  onClick={handleCancel}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  onClick={() => handleSubmit()}
-                  disabled={isSubmitting}
-                  startIcon={
-                    isSubmitting && (
-                      <CircularProgress size={20} color="inherit" />
-                    )
-                  }
-                  sx={{
-                    px: 5,
-                    borderRadius: 2,
-                    fontWeight: 700,
-                    fontSize: "1rem",
-                    boxShadow: theme.shadows[4],
-                  }}
-                >
-                  {isSubmitting ? "Saving..." : "SAVE PURCHASE"}
-                </Button>
+                <Tooltip title="Shortcut: Esc">
+                  <Button
+                    variant="text"
+                    color="error"
+                    onClick={handleCancel}
+                    disabled={isSubmitting}
+                  >
+                    <span style={{ textDecoration: "underline" }}>C</span>ancel
+                  </Button>
+                </Tooltip>
+
+                <Tooltip title="Shortcut: Ctrl + S">
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    onClick={() => handleSubmit()}
+                    disabled={isSubmitting}
+                    startIcon={
+                      isSubmitting && (
+                        <CircularProgress size={20} color="inherit" />
+                      )
+                    }
+                    sx={{
+                      px: 5,
+                      borderRadius: 2,
+                      fontWeight: 700,
+                      fontSize: "1rem",
+                      boxShadow: theme.shadows[4],
+                    }}
+                  >
+                    {isSubmitting ? (
+                      "Saving..."
+                    ) : (
+                      <>
+                        SAVE PURCHA
+                        <span style={{ textDecoration: "underline" }}>S</span>E
+                      </>
+                    )}
+                  </Button>
+                </Tooltip>
               </Stack>
             </Stack>
           )}

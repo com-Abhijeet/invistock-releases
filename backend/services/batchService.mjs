@@ -120,6 +120,112 @@ export function createNewBatch({
   return createTransaction();
 }
 
+/**
+ * Assigns existing "untracked" stock to a new batch.
+ * Does NOT link to a purchase and does NOT update master product quantity.
+ */
+export function assignUntrackedStock({
+  productId,
+  batchNumber,
+  expiryDate,
+  mfgDate,
+  mrp,
+  mop,
+  mfwPrice,
+  location,
+  quantity,
+  serials,
+}) {
+  const assignTransaction = db.transaction(() => {
+    // 1. Generate Sequence for Batch UID
+    const countStmt = db.prepare(
+      "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?"
+    );
+    const result = countStmt.get(productId);
+    const nextSequence = (result ? result.count : 0) + 1;
+    const batchUid = generateBatchUid(productId, nextSequence);
+
+    // 2. Insert Batch (purchase_id is NULL)
+    const insertBatch = db.prepare(`
+      INSERT INTO product_batches (
+        product_id,
+        purchase_id,
+        batch_uid,
+        batch_number,
+        expiry_date,
+        mfg_date,
+        mrp,
+        mop,
+        mfw_price,
+        quantity,
+        location,
+        is_active,
+        created_at
+      ) VALUES (
+        @productId,
+        NULL, 
+        @batchUid,
+        @batchNumber,
+        @expiryDate,
+        @mfgDate,
+        @mrp,
+        @mop,
+        @mfwPrice,
+        @quantity,
+        @location,
+        1,
+        datetime('now')
+      )
+    `);
+
+    const info = insertBatch.run({
+      productId,
+      batchUid,
+      batchNumber: batchNumber || "ASSIGNED",
+      expiryDate: expiryDate || null,
+      mfgDate: mfgDate || null,
+      mrp: mrp || 0,
+      mop: mop || 0,
+      mfwPrice: mfwPrice || 0,
+      location: location || null,
+      quantity: quantity,
+    });
+
+    const newBatchId = info.lastInsertRowid;
+
+    // 3. Insert Serials if provided
+    if (serials && serials.length > 0) {
+      const insertSerial = db.prepare(`
+        INSERT INTO product_serials (
+          product_id, 
+          batch_id, 
+          serial_number, 
+          status, 
+          created_at
+        ) VALUES (
+          @productId, 
+          @batchId, 
+          @serialNumber, 
+          'available', 
+          datetime('now')
+        )
+      `);
+
+      for (const sn of serials) {
+        insertSerial.run({
+          productId,
+          batchId: newBatchId,
+          serialNumber: sn,
+        });
+      }
+    }
+
+    return { batchId: newBatchId, message: "Stock assigned successfully" };
+  });
+
+  return assignTransaction();
+}
+
 export function processSaleItemStockDeduction({ batchId, serialId, quantity }) {
   if (serialId) {
     BatchRepo.updateSerialStatus(serialId, "sold");

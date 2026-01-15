@@ -91,7 +91,8 @@ const SidebarNav = ({
       {/* Sidebar Header / Toggle */}
       <Box
         sx={{
-          p: 2,
+          py: 1,
+          px: 2,
           display: "flex",
           alignItems: "center",
           justifyContent: isCollapsed ? "center" : "space-between",

@@ -1,5 +1,5 @@
 import db from "../db/db.mjs";
-import { getDateFilter } from "../utils/dateFilter.mjs"; // ✅ Ensure this path matches your actual file location
+import { getDateFilter } from "../utils/dateFilter.mjs";
 
 /**
  * Creates a log entry for a stock adjustment.
@@ -7,9 +7,9 @@ import { getDateFilter } from "../utils/dateFilter.mjs"; // ✅ Ensure this path
 export function createAdjustmentLog(data) {
   const stmt = db.prepare(`
     INSERT INTO stock_adjustments (
-      product_id, category, old_quantity, new_quantity, adjustment, reason, adjusted_by
+      product_id, category, old_quantity, new_quantity, adjustment, reason, adjusted_by, batch_id, serial_id
     ) VALUES (
-      @product_id, @category, @old_quantity, @new_quantity, @adjustment, @reason, @adjusted_by
+      @product_id, @category, @old_quantity, @new_quantity, @adjustment, @reason, @adjusted_by, @batch_id, @serial_id
     )
   `);
   return stmt.run(data);
@@ -19,16 +19,20 @@ export function createAdjustmentLog(data) {
  * Fetches adjustments with filters (date, category).
  */
 export function getAdjustments(filters) {
-  // ✅ FIX: Pass 'alias: "sa"' to specify we want the adjustment date, not the product date
+  // Pass 'alias: "sa"' to specify we want the adjustment date, not the product date
   const { where, params } = getDateFilter({ ...filters, alias: "sa" });
 
   const query = `
     SELECT 
       sa.*, 
       p.name as product_name, 
-      p.product_code
+      p.product_code,
+      pb.batch_number,
+      ps.serial_number
     FROM stock_adjustments sa
     JOIN products p ON sa.product_id = p.id
+    LEFT JOIN product_batches pb ON sa.batch_id = pb.id
+    LEFT JOIN product_serials ps ON sa.serial_id = ps.id
     WHERE ${where}
     ORDER BY sa.created_at DESC
   `;
@@ -40,7 +44,6 @@ export function getAdjustments(filters) {
  * Aggregates adjustment stats by category.
  */
 export function getAdjustmentStats(filters) {
-  // ✅ FIX: Use alias 'sa' here as well for consistency
   const { where, params } = getDateFilter({ ...filters, alias: "sa" });
 
   // 1. Total Net Adjustment Quantity

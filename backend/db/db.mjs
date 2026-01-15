@@ -268,6 +268,7 @@ export function initializeDatabase(dbPath) {
 
     /* UPDATED: PRODUCT BATCHES & SERIALS */
     /* This table holds the Batch Group info */
+    
     CREATE TABLE IF NOT EXISTS product_batches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL,
@@ -294,6 +295,7 @@ export function initializeDatabase(dbPath) {
       
       is_active INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
       FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE SET NULL
@@ -311,7 +313,7 @@ export function initializeDatabase(dbPath) {
       batch_id INTEGER NOT NULL, -- Link to the batch group
       
       serial_number TEXT NOT NULL,
-      status TEXT CHECK(status IN ('available', 'sold', 'returned', 'defective', 'in_repair')) DEFAULT 'available',
+      status TEXT CHECK(status IN ('available', 'sold', 'returned', 'defective', 'in_repair', 'adjusted_out')) DEFAULT 'available',
       
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -341,6 +343,8 @@ export function initializeDatabase(dbPath) {
       is_ecommerce_sale INTEGER DEFAULT 0,
       is_quote INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
       FOREIGN KEY (customer_id) REFERENCES customers(id)
     );
 
@@ -461,8 +465,15 @@ export function initializeDatabase(dbPath) {
       adjustment REAL NOT NULL, 
       reason TEXT, 
       adjusted_by TEXT DEFAULT 'Admin',
+      
+      -- Tracking where the adjustment happened
+      batch_id INTEGER,
+      serial_id INTEGER,
+      
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (product_id) REFERENCES products(id)
+      FOREIGN KEY (product_id) REFERENCES products(id),
+      FOREIGN KEY (batch_id) REFERENCES product_batches(id),
+      FOREIGN KEY (serial_id) REFERENCES product_serials(id)
     );
   `);
 

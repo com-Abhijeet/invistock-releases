@@ -13,9 +13,10 @@ import {
   Button,
   Collapse,
   Divider,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { CustomerType } from "../../lib/types/customerTypes";
 import type { SalePayload } from "../../lib/types/salesTypes";
 import {
@@ -84,6 +85,35 @@ export default function SalesPosHeaderSection({
 }: Props) {
   const theme = useTheme();
   const [showMore, setShowMore] = useState(false);
+
+  // Refs for focusing
+  const customerInputRef = useRef<HTMLInputElement>(null);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl + F: Focus Customer Search
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "KeyB" || e.key.toLowerCase() === "b")
+      ) {
+        e.preventDefault();
+        customerInputRef.current?.focus();
+      }
+
+      // Ctrl + D: Toggle Address Details
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "KeyD" || e.key.toLowerCase() === "d")
+      ) {
+        e.preventDefault();
+        setShowMore((prev) => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Reusable label style from Summary Section
   const labelStyle = {
@@ -177,7 +207,9 @@ export default function SalesPosHeaderSection({
         <Grid container spacing={4}>
           {/* Customer Name */}
           <Grid item xs={12} md={5}>
-            <Typography {...labelStyle}>BILL TO (CUSTOMER)</Typography>
+            <Tooltip title="Shortcut: Ctrl + B" placement="top-start">
+              <Typography {...labelStyle}>BILL TO (CUSTOMER)</Typography>
+            </Tooltip>
             <Autocomplete
               freeSolo
               options={options}
@@ -218,8 +250,9 @@ export default function SalesPosHeaderSection({
               renderInput={(params) => (
                 <TextField
                   {...params}
+                  inputRef={customerInputRef}
                   variant="standard"
-                  placeholder="Search or enter name"
+                  placeholder="Search or enter name (Ctrl+B)"
                   InputProps={{
                     ...params.InputProps,
                     disableUnderline: true, // Clean look
@@ -280,19 +313,28 @@ export default function SalesPosHeaderSection({
             alignItems="center"
             justifyContent="flex-end"
           >
-            <Button
-              onClick={() => setShowMore(!showMore)}
-              endIcon={
-                showMore ? <ChevronUp size={16} /> : <ChevronDown size={16} />
-              }
-              sx={{
-                textTransform: "none",
-                fontWeight: 600,
-                color: "text.secondary",
-              }}
-            >
-              {showMore ? "Hide Billing Details" : "Add Address & GSTIN"}
-            </Button>
+            <Tooltip title="Shortcut: Ctrl + D">
+              <Button
+                onClick={() => setShowMore(!showMore)}
+                endIcon={
+                  showMore ? <ChevronUp size={16} /> : <ChevronDown size={16} />
+                }
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 600,
+                  color: "text.secondary",
+                }}
+              >
+                {showMore ? (
+                  "Hide Billing Details"
+                ) : (
+                  <>
+                    A<span style={{ textDecoration: "underline" }}>d</span>d
+                    Address & GSTIN
+                  </>
+                )}
+              </Button>
+            </Tooltip>
           </Grid>
         </Grid>
 

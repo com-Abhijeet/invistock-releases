@@ -1,10 +1,8 @@
 import express from "express";
 import cors from "cors";
-import { Bonjour } from "bonjour-service"; // ✅ Import Bonjour
-import https from "https"; // ✅ Import HTTPS
-import selfsigned from "selfsigned"; // ✅ Import selfsigned for auto SSL
-import fs from "fs"; // ✅ Import fs
-import path from "path"; // ✅ Import path
+import { Bonjour } from "bonjour-service";
+import fs from "fs";
+import path from "path";
 
 // --- Your Route Imports ---
 import productRoutes from "./routes/productRoutes.mjs";
@@ -33,37 +31,37 @@ import userRoutes from "./routes/userRoutes.mjs";
 import searchRoutes from "./routes/searchRoutes.mjs";
 import batchRoutes from "./routes/batchRoutes.mjs";
 
+// ✅ NEW: Import the Sync Routes for Mobile
+import syncRoutes from "./routes/syncRoutes.mjs";
+
 import { initializeDatabase, closeDatabase } from "./db/db.mjs";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const config = require("../electron/config.js");
 
-// ✅ Import separate logger for backend
 const { backendLogger } = require("../electron/logger.js");
 
-// ✅ We'll store the bonjour instance here to manage it
 let bonjourInstance;
-let serverInstance; // To properly close the server
+let serverInstance;
 
 export function startServer(dbPath) {
   const app = express();
-  const PORT = 5000;
+  const PORT = 5000; // Keeping 5000 as per your file (Mobile QR should use this port)
 
   initializeDatabase(dbPath);
 
-  // ✅ Allow cross-origin requests
   app.use(
     cors({
-      origin: "*", // You can restrict to a specific domain like "http://localhost:3000"
+      origin: "*",
       methods: ["GET", "POST", "PUT", "DELETE"],
       allowedHeaders: ["Content-Type", "Authorization"],
     })
   );
 
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" })); // Increased limit for large syncs
   app.use(auditLog);
 
-  // ... (All your app.use("/api/...", routes) are unchanged)
+  // --- Routes ---
   app.use("/api/shop", shopRoutes);
   app.use("/api/categories", categoryRoutes);
   app.use("/api/storage", storageRoutes);
@@ -87,12 +85,16 @@ export function startServer(dbPath) {
   app.use("/api/users", userRoutes);
   app.use("/api/search", searchRoutes);
   app.use("/api/batches", batchRoutes);
-  // ✅ 1. Serve the Mobile HTML Page
+
+  // ✅ Register Sync Routes
+  app.use("/api/sync", syncRoutes);
+
+  // Mobile HTML (Optional now, but kept if you still need the web view)
   app.use("/mobile", mobileHtmlRoutes);
 
-  // ✅ 2. Serve Images Statically for Mobile Devices
+  // Static Images
   app.get(/^\/images\/(.*)/, (req, res) => {
-    const relativePath = req.params[0]; // Captures the part inside (.*)
+    const relativePath = req.params[0];
     const imagesDir = config.paths?.images;
 
     if (!imagesDir || !relativePath) {
@@ -100,65 +102,88 @@ export function startServer(dbPath) {
       return res.status(400).send("Invalid Request");
     }
 
-    // Decode URI component to handle spaces/special chars in filenames
     const decodedPath = decodeURIComponent(relativePath);
     const imagePath = path.join(imagesDir, decodedPath);
-
-    // console.log(`[IMAGE REQUEST] Looking for: ${imagePath}`);
 
     if (fs.existsSync(imagePath)) {
       res.sendFile(imagePath);
     } else {
-      backendLogger.error(`[IMAGE ERROR] File not found: ${imagePath}`);
       res.status(404).send("Image not found");
     }
   });
 
-  // ✅ GENERATE SELF-SIGNED CERTIFICATE
-  const attrs = [{ name: "commonName", value: "KOSH" }];
-  const pems = selfsigned.generate(attrs, { days: 365 });
-
-  // ✅ START HTTPS SERVER
-  serverInstance = https
-    .createServer({ key: pems.private, cert: pems.cert }, app)
-    .listen(PORT, "0.0.0.0", () => {
-      backendLogger.info(
-        `[BACKEND] Secure Server running at https://localhost:${PORT}`
-      );
-
-      // ✅ Announce the server on the local network
-      try {
-        bonjourInstance = new Bonjour();
-        bonjourInstance.publish({
-          name: "KOSH-Main-Server", // Unique name for your service
-          type: "https", // ✅ Change type to https
-          port: PORT,
-          txt: { version: "1.0.0" }, // You can add extra info here
-        });
-        backendLogger.info(
-          "[BONJOUR] KOSH Server is now discoverable on the local network."
-        );
-      } catch (error) {
-        backendLogger.error("[BONJOUR] Failed to announce service:", error);
-      }
+  // 1. Connection Check (Health Ping for Mobile)
+  app.get("/api/health", (req, res) => {
+    res.json({
+      status: "ok",
+      server_name: "Kosh Mothership",
+      version: "1.0.0",
     });
+  });
+
+  // 2. Login Endpoint (Verify against your 'users' table)
+  // Note: Ensure your database is imported as 'db' in context or use dbProxy
+  // Assuming 'import db from "./db/db.mjs"' works or using the initialized instance logic
+  // For safety with your architecture, we'll route this inside userRoutes or handle here if simple
+  // Adding a simple one here for the mobile handshake:
+  const db = require("./db/db.mjs").default;
+  const bcrypt = require("bcrypt");
+
+  app.post("/api/login", (req, res) => {
+    try {
+      const { username, password } = req.body;
+      const user = db
+        .prepare("SELECT * FROM users WHERE username = ?")
+        .get(username);
+
+      if (!user || !bcrypt.compareSync(password, user.password)) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      res.json({
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        token: "mobile-session-token",
+      });
+    } catch (e) {
+      console.error("Login Error", e);
+      res.status(500).json({ error: "Server error during login" });
+    }
+  });
+
+  // ✅ START HTTP SERVER (Simplified)
+  serverInstance = app.listen(PORT, "0.0.0.0", () => {
+    backendLogger.info(`[BACKEND] Server running at http://0.0.0.0:${PORT}`);
+
+    // Announce on LAN (HTTP)
+    try {
+      bonjourInstance = new Bonjour();
+      bonjourInstance.publish({
+        name: "KOSH-Main-Server",
+        type: "http", // ✅ HTTP now
+        port: PORT,
+        txt: { version: "1.0.0" },
+      });
+      backendLogger.info(
+        "[BONJOUR] KOSH Server is now discoverable on the local network."
+      );
+    } catch (error) {
+      backendLogger.error("[BONJOUR] Failed to announce service:", error);
+    }
+  });
 }
 
-/**
- * Gracefully shuts down the backend services.
- */
 export function shutdownBackend() {
   backendLogger.info("[BACKEND] Shutting down services...");
   closeDatabase();
 
-  // ✅ Stop the server
   if (serverInstance) {
     serverInstance.close(() => {
       backendLogger.info("[BACKEND] Server has been shut down.");
     });
   }
 
-  // ✅ Stop the network announcement
   if (bonjourInstance) {
     bonjourInstance.destroy();
     backendLogger.info("[BONJOUR] Service announcement stopped.");

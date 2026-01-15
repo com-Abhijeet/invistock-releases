@@ -191,3 +191,24 @@ export function getOverdueSummary() {
 export const getCustomerLedgerService = async (customerId, filters) => {
   return customerRepository.getCustomerLedger(customerId, filters);
 };
+export async function getCustomerFinancialsList(params) {
+  const { page, limit, query, sortBy, sortOrder } = params;
+
+  // Default sorting
+  const validSortColumns = [
+    "name",
+    "total_purchased",
+    "total_overdue",
+    "payment_percentage",
+  ];
+  const safeSortBy = validSortColumns.includes(sortBy) ? sortBy : "name";
+  const safeSortOrder = sortOrder === "desc" ? "DESC" : "ASC";
+
+  return await customerRepository.getCustomersWithFinancials({
+    page: Number(page) || 1,
+    limit: Number(limit) || 20,
+    query: query || "",
+    sortBy: safeSortBy,
+    sortOrder: safeSortOrder,
+  });
+}

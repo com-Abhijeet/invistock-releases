@@ -1,5 +1,31 @@
 import { useState, useEffect } from "react";
-import { Box } from "@mui/material";
+import {
+  Box,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
+  Typography,
+  Chip,
+  Fab,
+  Tooltip,
+} from "@mui/material";
+import {
+  Save as SaveIcon,
+  FolderOpen as FolderIcon,
+  Delete as DeleteIcon,
+  Restore as RestoreIcon,
+  History as HistoryIcon,
+  Close as CloseIcon, // Import Close Icon for modal
+} from "@mui/icons-material";
+import Grid from "@mui/material/GridLegacy"; // For the shortcut grid layout
+
 import { getCustomers } from "../lib/api/customerService";
 import type { CustomerType } from "../lib/types/customerTypes";
 import SaleItemSection from "../components/sales/SaleItemSection";
@@ -26,6 +52,52 @@ const defaultSalePayload: SalePayload = {
   is_quote: false,
   is_reverse_charge: false,
 };
+
+// --- DRAFT TYPES ---
+interface CustomerDetails {
+  id: number;
+  name: string;
+  phone: string;
+  gst: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+}
+
+interface SavedDraft {
+  id: string;
+  timestamp: number;
+  customerDetails: CustomerDetails;
+  salePayload: SalePayload;
+}
+
+// --- SHORTCUTS DATA (Sales Specific) ---
+const SALES_SHORTCUTS = [
+  {
+    category: "Header Actions",
+    shortcuts: [
+      { keys: ["Ctrl", "B"], description: "Find Customer" },
+      { keys: ["Ctrl", "D"], description: "Toggle Address Details" },
+    ],
+  },
+  {
+    category: "Item Actions",
+    shortcuts: [
+      { keys: ["Ctrl", "A"], description: "Add New Item Row" },
+      { keys: ["Ctrl", "Del"], description: "Remove Active Row" },
+      { keys: ["Alt", "P"], description: "Product Overview / Details" },
+    ],
+  },
+  {
+    category: "Summary / Saving",
+    shortcuts: [
+      { keys: ["Ctrl", "S"], description: "Complete & Save Sale" },
+      { keys: ["Ctrl", "U"], description: "Full Payment (Paid in Full)" },
+      { keys: ["Esc"], description: "Cancel Sale" },
+    ],
+  },
+];
 
 export default function SalesPos() {
   const { action, id } = useParams<{ action?: string; id?: string }>();
@@ -58,6 +130,13 @@ export default function SalesPos() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
+
+  // --- DRAFT STATE ---
+  const [draftsModalOpen, setDraftsModalOpen] = useState(false);
+  const [drafts, setDrafts] = useState<SavedDraft[]>([]);
+
+  // --- SHORTCUT HELP MODAL STATE ---
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
 
   /**
    * RESETS ALL FORM DATA
@@ -109,6 +188,9 @@ export default function SalesPos() {
       }
     };
     init();
+
+    // Load drafts from local storage on mount
+    loadDraftsFromStorage();
   }, [id, action]);
 
   const handleItemsChange = (updatedItems: SaleItemPayload[]) => {
@@ -177,6 +259,79 @@ export default function SalesPos() {
     setOverviewModalOpen(true);
   };
 
+  // --- DRAFT LOGIC ---
+
+  const loadDraftsFromStorage = () => {
+    try {
+      const stored = localStorage.getItem("sales_pos_drafts");
+      if (stored) {
+        setDrafts(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error("Failed to load drafts", e);
+    }
+  };
+
+  const saveDraft = () => {
+    // Basic validation: Don't save empty drafts if unnecessary,
+    // but user might want to save just a customer name selection.
+    if (!sale.items.length && !customerName) {
+      toast.error(
+        "Cannot save an empty draft. Add items or select a customer."
+      );
+      return;
+    }
+
+    const newDraft: SavedDraft = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      customerDetails: {
+        id: customerId,
+        name: customerName,
+        phone: customerPhone,
+        gst: customerGstNo,
+        address,
+        city,
+        state,
+        pincode,
+      },
+      salePayload: sale,
+    };
+
+    const updatedDrafts = [newDraft, ...drafts];
+    setDrafts(updatedDrafts);
+    localStorage.setItem("sales_pos_drafts", JSON.stringify(updatedDrafts));
+    toast.success("Draft saved to local memory");
+  };
+
+  const deleteDraft = (draftId: string) => {
+    const updatedDrafts = drafts.filter((d) => d.id !== draftId);
+    setDrafts(updatedDrafts);
+    localStorage.setItem("sales_pos_drafts", JSON.stringify(updatedDrafts));
+    toast.success("Draft deleted");
+  };
+
+  const loadDraft = (draft: SavedDraft) => {
+    // Restore Customer Details
+    setCustomerId(draft.customerDetails.id);
+    setCustomerName(draft.customerDetails.name);
+    setCustomerPhone(draft.customerDetails.phone);
+    setCustomerGstNo(draft.customerDetails.gst);
+    setAddress(draft.customerDetails.address);
+    setCity(draft.customerDetails.city);
+    setState(draft.customerDetails.state);
+    setPincode(draft.customerDetails.pincode);
+
+    // Restore Sale Payload
+    setSale(draft.salePayload);
+
+    // UI Feedback
+    setDraftsModalOpen(false);
+    toast.success(
+      `Draft for ${draft.customerDetails.name || "Unknown Customer"} loaded`
+    );
+  };
+
   return (
     <Box
       sx={{
@@ -185,6 +340,7 @@ export default function SalesPos() {
         height: "calc(100vh - 64px)", // Adjust based on your Topbar height
         backgroundColor: theme.palette.background.default,
         overflow: "hidden",
+        position: "relative", // For absolute positioning of FABs if needed
       }}
     >
       {/* --- HEADER (Fixed) --- */}
@@ -272,6 +428,238 @@ export default function SalesPos() {
         onClose={() => setOverviewModalOpen(false)}
         productId={selectedProductId || ""}
       />
+
+      {/* --- DRAFTING UI CONTROLS & SHORTCUT HELP --- */}
+      {/* Floating Action Buttons for quick access to drafts */}
+      <Box
+        sx={{
+          position: "absolute",
+          bottom: 100,
+          right: 24,
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          zIndex: 20,
+        }}
+      >
+        {/* Help Button - Always Visible */}
+        <Tooltip title="Keyboard Shortcuts" placement="left">
+          <Fab
+            size="small"
+            onClick={() => setShortcutHelpOpen(true)}
+            sx={{ bgcolor: "#fff" }}
+          >
+            <Typography variant="h6" fontWeight="bold">
+              ?
+            </Typography>
+          </Fab>
+        </Tooltip>
+
+        {mode === "new" && (
+          <>
+            <Tooltip title="View Saved Drafts" placement="left">
+              <Fab
+                color="primary"
+                size="medium"
+                onClick={() => setDraftsModalOpen(true)}
+              >
+                <FolderIcon />
+              </Fab>
+            </Tooltip>
+
+            <Tooltip title="Save Current Draft" placement="left">
+              <Fab color="secondary" size="medium" onClick={saveDraft}>
+                <SaveIcon />
+              </Fab>
+            </Tooltip>
+          </>
+        )}
+      </Box>
+
+      {/* --- KEYBOARD SHORTCUTS MODAL --- */}
+      <Dialog
+        open={shortcutHelpOpen}
+        onClose={() => setShortcutHelpOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, p: 1 } }}
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            pb: 1,
+          }}
+        >
+          <Typography variant="h6" fontWeight="bold">
+            Sales Shortcuts
+          </Typography>
+          <IconButton onClick={() => setShortcutHelpOpen(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={3}>
+            {SALES_SHORTCUTS.map((group) => (
+              <Grid item xs={12} key={group.category}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  fontWeight="bold"
+                  gutterBottom
+                  sx={{
+                    textTransform: "uppercase",
+                    fontSize: "0.75rem",
+                    letterSpacing: 1,
+                  }}
+                >
+                  {group.category}
+                </Typography>
+                <Box component="ul" sx={{ listStyle: "none", p: 0, m: 0 }}>
+                  {group.shortcuts.map((shortcut) => (
+                    <Box
+                      component="li"
+                      key={shortcut.description}
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        mb: 1.5,
+                      }}
+                    >
+                      <Typography variant="body2">
+                        {shortcut.description}
+                      </Typography>
+                      <Box display="flex" gap={0.5}>
+                        {shortcut.keys.map((key) => (
+                          <Chip
+                            key={key}
+                            label={key}
+                            size="small"
+                            sx={{
+                              borderRadius: 1,
+                              fontWeight: "bold",
+                              fontFamily: "monospace",
+                              height: 24,
+                              minWidth: 24,
+                              bgcolor: "action.selected",
+                              border: "1px solid",
+                              borderColor: "divider",
+                            }}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- DRAFTS MODAL --- */}
+      <Dialog
+        open={draftsModalOpen}
+        onClose={() => setDraftsModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          Saved Drafts
+          <Chip
+            label={`${drafts.length} drafts`}
+            size="small"
+            color="primary"
+            variant="outlined"
+          />
+        </DialogTitle>
+        <DialogContent dividers>
+          {drafts.length === 0 ? (
+            <Box sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
+              <HistoryIcon sx={{ fontSize: 48, mb: 1, opacity: 0.5 }} />
+              <Typography>No drafts saved in local memory.</Typography>
+            </Box>
+          ) : (
+            <List>
+              {drafts.map((draft) => (
+                <ListItem
+                  key={draft.id}
+                  sx={{
+                    border: "1px solid #eee",
+                    borderRadius: 2,
+                    mb: 1,
+                    "&:hover": { bgcolor: "action.hover" },
+                  }}
+                >
+                  <ListItemText
+                    primary={
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      >
+                        <Typography variant="subtitle1" fontWeight="bold">
+                          {draft.customerDetails.name || "Unknown Customer"}
+                        </Typography>
+                        {draft.customerDetails.phone && (
+                          <Typography variant="caption" color="text.secondary">
+                            ({draft.customerDetails.phone})
+                          </Typography>
+                        )}
+                      </Box>
+                    }
+                    secondary={
+                      <>
+                        <Typography
+                          variant="body2"
+                          component="span"
+                          display="block"
+                        >
+                          {draft.salePayload.items.length} Items • Total: ₹
+                          {draft.salePayload.total_amount}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Saved: {new Date(draft.timestamp).toLocaleString()}
+                        </Typography>
+                      </>
+                    }
+                  />
+                  <ListItemSecondaryAction>
+                    <Tooltip title="Restore this draft">
+                      <IconButton
+                        edge="end"
+                        color="primary"
+                        onClick={() => loadDraft(draft)}
+                        sx={{ mr: 1 }}
+                      >
+                        <RestoreIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete draft">
+                      <IconButton
+                        edge="end"
+                        color="error"
+                        onClick={() => deleteDraft(draft.id)}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDraftsModalOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

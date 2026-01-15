@@ -35,8 +35,8 @@ export default function MobileAccessTab() {
     }
   }, []);
 
-  // ✅ Using HTTPS as discussed for the "Zero-Setup" workflow
-  const mobileUrl = `https://${ipAddress}:5000/mobile`;
+  // ✅ Using http as discussed for the "Zero-Setup" workflow
+  const mobileUrl = `http://${ipAddress}:5000/mobile`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(mobileUrl);
@@ -165,7 +165,7 @@ export default function MobileAccessTab() {
                   <br />
                   Open <code>chrome://flags</code> on your phone. Enable
                   "Insecure origins treated as secure" and add{" "}
-                  <code>{`https://${ipAddress}:5000`}</code>.
+                  <code>{`http://${ipAddress}:5000`}</code>.
                 </Typography>
               </Stack>
             </CardContent>

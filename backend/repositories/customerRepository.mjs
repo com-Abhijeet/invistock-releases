@@ -316,3 +316,102 @@ export function getOverdueCustomerSummary() {
 
   return customers;
 }
+
+/**
+ * Retrieves a paginated list of customers with their financial summaries.
+ * Metrics:
+ * - Total Bills (Count)
+ * - Total Purchased (Sum of Sales)
+ * - Total Bills Paid (Count of sales with status='paid')
+ * - Total Amount Paid (Sum of 'payment_in' + 'credit_note' transactions)
+ * - Total Overdue (Purchased - Paid)
+ * - Payment Percentage
+ */
+export async function getCustomersWithFinancials({
+  page = 1,
+  limit = 20,
+  query = "",
+  sortBy = "name",
+  sortOrder = "asc",
+}) {
+  const offset = (page - 1) * limit;
+
+  // Search Filter
+  let whereClause = "1=1";
+  const params = [];
+
+  if (query) {
+    whereClause += " AND (c.name LIKE ? OR c.phone LIKE ?)";
+    params.push(`%${query}%`, `%${query}%`);
+  }
+
+  // Common CTEs or Subqueries for Aggregation
+  // 1. Sales Aggregates
+  const salesSubquery = `
+    SELECT 
+      customer_id,
+      COUNT(id) as total_bills,
+      COALESCE(SUM(total_amount), 0) as total_purchased,
+      SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as total_bills_paid
+    FROM sales
+    WHERE status != 'cancelled' AND is_quote = 0
+    GROUP BY customer_id
+  `;
+
+  // 2. Transactions Aggregates (Payments + Credits)
+  const transSubquery = `
+    SELECT 
+      entity_id,
+      COALESCE(SUM(amount), 0) as total_amount_paid
+    FROM transactions
+    WHERE entity_type = 'customer' 
+      AND status != 'deleted' 
+      AND (type = 'payment_in' OR type = 'credit_note')
+    GROUP BY entity_id
+  `;
+
+  // Main Query
+  const sql = `
+    SELECT 
+      c.id, 
+      c.name, 
+      c.phone, 
+      c.city,
+      COALESCE(s_stats.total_bills, 0) as total_bills,
+      COALESCE(s_stats.total_purchased, 0) as total_purchased,
+      COALESCE(s_stats.total_bills_paid, 0) as total_bills_paid,
+      COALESCE(t_stats.total_amount_paid, 0) as total_amount_paid,
+      
+      -- Calculated Fields
+      (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_amount_paid, 0)) as total_overdue,
+      
+      CASE 
+        WHEN COALESCE(s_stats.total_purchased, 0) = 0 THEN 0
+        ELSE ROUND((COALESCE(t_stats.total_amount_paid, 0) * 100.0) / COALESCE(s_stats.total_purchased, 0), 2)
+      END as payment_percentage
+
+    FROM customers c
+    LEFT JOIN (${salesSubquery}) s_stats ON c.id = s_stats.customer_id
+    LEFT JOIN (${transSubquery}) t_stats ON c.id = t_stats.entity_id
+    WHERE ${whereClause}
+    ORDER BY ${sortBy} ${sortOrder}
+    LIMIT ? OFFSET ?
+  `;
+
+  // Count Query for Pagination
+  const countSql = `SELECT COUNT(*) as count FROM customers c WHERE ${whereClause}`;
+
+  // Execute
+  const records = await db.prepare(sql).all(...params, limit, offset);
+  const total = await db.prepare(countSql).get(...params).count;
+
+  return {
+    data: records,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+}

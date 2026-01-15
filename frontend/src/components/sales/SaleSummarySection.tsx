@@ -17,6 +17,7 @@ import {
   CircularProgress,
   useTheme,
   Divider,
+  Tooltip,
 } from "@mui/material";
 import { useState, useEffect } from "react";
 import type { SalePayload } from "../../lib/types/salesTypes";
@@ -54,6 +55,48 @@ const SaleSummarySection = ({
   // Actions Checkbox State
   const [doPrint, setDoPrint] = useState(true);
   const [doWhatsApp, setDoWhatsApp] = useState(false);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only active in "new" mode and when not submitting
+      if (mode !== "new" || isSubmitting) return;
+
+      // Ctrl + S: Save/Complete Sale
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "KeyS" || e.key.toLowerCase() === "s")
+      ) {
+        e.preventDefault();
+        handleSubmit();
+      }
+
+      // Ctrl + U: Full Payment
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.code === "KeyU" || e.key.toLowerCase() === "u")
+      ) {
+        e.preventDefault();
+        handlePaidInFull();
+      }
+
+      // Escape: Cancel (Confirmation usually better, but for speed just trigger logic)
+      if (e.key === "Escape") {
+        e.preventDefault();
+        // Optional: Confirm before clearing if items exist?
+        // For now, mapping to Cancel button logic
+        if (
+          sale.items.length > 0 &&
+          confirm("Are you sure you want to cancel and clear?")
+        ) {
+          handleCancel();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mode, isSubmitting, sale]); // Re-bind on state changes to access latest closure
 
   // Helper to access the reconciled data safely from the repo update
   // We use 'any' cast here temporarily as the Type definition might not have payment_summary yet
@@ -269,14 +312,16 @@ const SaleSummarySection = ({
                   }}
                   sx={{ width: 100 }}
                 />
-                <Button
-                  size="small"
-                  sx={{ textTransform: "none", minWidth: "auto" }}
-                  onClick={handlePaidInFull}
-                  disabled={sale.paid_amount >= sale.total_amount}
-                >
-                  Full
-                </Button>
+                <Tooltip title="Shortcut: Ctrl + U">
+                  <Button
+                    size="small"
+                    sx={{ textTransform: "none", minWidth: "auto" }}
+                    onClick={handlePaidInFull}
+                    disabled={sale.paid_amount >= sale.total_amount}
+                  >
+                    F<span style={{ textDecoration: "underline" }}>u</span>ll
+                  </Button>
+                </Tooltip>
                 <TextField
                   select
                   label="Mode"
@@ -455,35 +500,47 @@ const SaleSummarySection = ({
 
               {/* Buttons Row */}
               <Stack direction="row" spacing={2}>
-                <Button
-                  variant="text"
-                  color="error"
-                  onClick={handleCancel}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  onClick={() => handleSubmit()}
-                  disabled={isSubmitting}
-                  startIcon={
-                    isSubmitting && (
-                      <CircularProgress size={20} color="inherit" />
-                    )
-                  }
-                  sx={{
-                    px: 5,
-                    borderRadius: 2,
-                    fontWeight: 700,
-                    fontSize: "1rem",
-                    boxShadow: theme.shadows[4],
-                  }}
-                >
-                  {isSubmitting ? "Saving..." : "COMPLETE SALE"}
-                </Button>
+                <Tooltip title="Shortcut: Esc">
+                  <Button
+                    variant="text"
+                    color="error"
+                    onClick={handleCancel}
+                    disabled={isSubmitting}
+                  >
+                    <span style={{ textDecoration: "underline" }}>C</span>ancel
+                  </Button>
+                </Tooltip>
+
+                <Tooltip title="Shortcut: Ctrl + S">
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    onClick={() => handleSubmit()}
+                    disabled={isSubmitting}
+                    startIcon={
+                      isSubmitting && (
+                        <CircularProgress size={20} color="inherit" />
+                      )
+                    }
+                    sx={{
+                      px: 5,
+                      borderRadius: 2,
+                      fontWeight: 700,
+                      fontSize: "1rem",
+                      boxShadow: theme.shadows[4],
+                    }}
+                  >
+                    {isSubmitting ? (
+                      "Saving..."
+                    ) : (
+                      <>
+                        <span style={{ textDecoration: "underline" }}> S</span>
+                        AVE SALE
+                      </>
+                    )}
+                  </Button>
+                </Tooltip>
               </Stack>
             </Stack>
           )}

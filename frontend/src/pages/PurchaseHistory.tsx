@@ -66,10 +66,10 @@ const PurchaseTablePage = () => {
       <DashboardHeader
         title="Purchase Orders"
         showSearch={true}
-        showDateFilters={true}
+        showDateFilters={false}
         onFilterChange={handleFilterChange} // ✅ Use the wrapper
         onSearch={setSearchQuery}
-        initialFilter="year"
+        initialFilter="today"
         actions={
           <TextField
             select

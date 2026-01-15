@@ -21,14 +21,15 @@ import {
   Settings,
   Clock,
   Search,
+  BookAlert,
 } from "lucide-react";
 
 export const menuSections = [
   {
-    title: "Analytics & Reports",
+    title: "Gateway",
     items: [
       {
-        label: "Business Dashboard",
+        label: "Dashboard",
         icon: <LayoutDashboard size={20} />,
         path: "/dashboard",
         shortcut: "F1",
@@ -36,144 +37,152 @@ export const menuSections = [
     ],
   },
   {
-    title: "Sales & Billing",
+    title: "Sales Vouchers",
     items: [
       {
-        label: "Point of Sale",
+        label: "Sales Voucher (POS)",
         icon: <ScanBarcode size={20} />,
         path: "/billing",
         shortcut: "F2",
       },
       {
-        label: "Sales Analytics",
+        label: "Sales Register", // Professional term for Sales History
+        icon: <Clock size={20} />,
+        path: "/sales-history",
+      },
+      {
+        label: "Sales Analysis",
         icon: <BarChart3 size={20} />,
         path: "/sales",
         shortcut: "F3",
       },
-      {
-        label: "Sales History",
-        icon: <Clock size={20} />,
-        path: "/sales-history",
-      },
     ],
   },
   {
-    title: "Purchasing & Vendors",
+    title: "Purchase Vouchers",
     items: [
       {
-        label: "Purchase Orders",
+        label: "Purchase Voucher",
         icon: <FileText size={20} />,
         path: "/purchase",
         shortcut: "F4",
       },
       {
-        label: "Purchase Analytics",
-        icon: <ChartCandlestick size={20} />,
-        path: "/purchase-dashboard",
-      },
-      {
-        label: "Purchase History",
+        label: "Purchase Register", // Professional term for Purchase History
         icon: <FileClock size={20} />,
         path: "/purchase-history",
       },
       {
-        label: "Suppliers",
-        icon: <Truck size={20} />,
-        path: "/suppliers",
-        shortcut: "F5",
+        label: "Purchase Analysis",
+        icon: <ChartCandlestick size={20} />,
+        path: "/purchase-dashboard",
       },
     ],
   },
   {
-    title: "Inventory & Products",
+    title: "Inventory Books",
     items: [
       {
-        label: "Inventory Overview",
+        label: "Stock Summary", // Tally term for Inventory Overview
         icon: <ClipboardList size={20} />,
         path: "/inventory",
         shortcut: "F6",
       },
       {
-        label: "Product Catalog",
+        label: "Stock Items", // Tally term for Products
         icon: <Boxes size={20} />,
         path: "/products",
         shortcut: "F7",
       },
       {
-        label: "Track SN/Batch",
-        icon: <Search size={20} />,
-        path: "/tracker",
-      },
-      {
-        label: "Stock Adjustments",
+        label: "Stock Adjustments", // Kept as requested
         icon: <Boxes size={20} />,
         path: "/adjustments",
       },
       {
-        label: "Categories",
+        label: "Stock Groups", // Tally term for Categories
         icon: <SquareStack size={20} />,
         path: "/categories",
       },
       {
-        label: "Restock Suggestions",
+        label: "Batch/Serial Tracker",
+        icon: <Search size={20} />,
+        path: "/tracker",
+      },
+      {
+        label: "Stock Reorder",
         icon: <ArchiveRestore size={20} />,
         path: "/stock-restock",
       },
       {
-        label: "Dead Stock ",
+        label: "Dead Stock Analysis",
         icon: <ArchiveX size={20} />,
         path: "/dead-stock",
       },
       {
-        label: "Product ABC Analysis ",
+        label: "Stock ABC Analysis",
         icon: <ChartCandlestick size={20} />,
         path: "/product-abc-page",
       },
     ],
   },
   {
-    title: "Payments & Transactions",
+    title: "Accounting Vouchers",
     items: [
       {
-        label: "Payments",
+        label: "Payment / Receipt",
         icon: <IndianRupee size={20} />,
         path: "/transactions",
         shortcut: "F8",
       },
-
-      { label: "Expenses", icon: <FileText size={20} />, path: "/expenses" },
       {
-        label: "DayBook",
+        label: "Day Book", // Tally term
         icon: <BookA size={20} />,
         path: "/daybook",
         shortcut: "F9",
       },
+      {
+        label: "Journal / Expenses",
+        icon: <FileText size={20} />,
+        path: "/expenses",
+      },
     ],
   },
   {
-    title: "CRM & Customers",
+    title: "Party Ledgers",
     items: [
       {
-        label: "Customer Directory",
+        label: "Debtors (Customers)", // Professional ERP term
         icon: <User size={20} />,
         path: "/customers",
         shortcut: "F10",
       },
       {
-        label: "Customer Analytics",
+        label: "Creditors (Suppliers)", // Professional ERP term
+        icon: <Truck size={20} />,
+        path: "/suppliers",
+        shortcut: "F5",
+      },
+      {
+        label: "Outstandings", // Professional term
+        icon: <BookAlert size={20} />,
+        path: "/customers/accounts",
+      },
+      {
+        label: "Customer Intelligence",
         icon: <UserSearch size={20} />,
         path: "/customer-analytics",
       },
     ],
   },
   {
-    title: "Reports",
+    title: "Statutory Reports",
     items: [
       { label: "GST Reports", icon: <Notebook size={20} />, path: "/gst" },
     ],
   },
   {
-    title: "Administration",
+    title: "Company Info",
     items: [
       {
         label: "User Management",
@@ -181,17 +190,17 @@ export const menuSections = [
         path: "/users",
       },
       {
-        label: "Access Logs",
+        label: "Access Logs", // Kept as requested
         icon: <ShieldCheck size={20} />,
         path: "/access-logs",
       },
     ],
   },
   {
-    title: "System",
+    title: "Configuration",
     items: [
       {
-        label: "Preferences",
+        label: "Features (F11/F12)", // Tally reference
         icon: <Settings size={20} />,
         path: "/settings",
         shortcut: "F12",

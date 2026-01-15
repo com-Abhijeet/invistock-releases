@@ -32,6 +32,20 @@ export interface SerialItem {
   created_at?: string;
 }
 
+// Payload structure for assigning untracked stock to a batch
+export interface AssignStockPayload {
+  productId: number;
+  quantity: number;
+  batchNumber: string;
+  location?: string;
+  expiryDate?: string;
+  mfgDate?: string;
+  mrp?: number;
+  mop?: number;
+  mfwPrice?: number;
+  serials?: string[];
+}
+
 export interface PrintLabelPayload {
   barcode: string;
   label: string;
@@ -81,6 +95,22 @@ export async function getProductBatches(
   } catch (error) {
     console.error("Failed to fetch batches:", error);
     return [];
+  }
+}
+
+/**
+ * Assigns existing untracked stock to a new batch.
+ */
+export async function assignStockToBatch(payload: AssignStockPayload) {
+  try {
+    const response = await api.post("/api/batches/assign-stock", payload);
+    if (response.data.status === "success") {
+      return response.data.data;
+    }
+    throw new Error(response.data.error || "Failed to assign stock");
+  } catch (error: any) {
+    console.error("Failed to assign stock:", error);
+    throw error.response?.data?.error || error.message;
   }
 }
 
@@ -138,7 +168,7 @@ export const getBatchAnalytics = async (
 ): Promise<BatchAnalytics | null> => {
   try {
     const response = await api.get(`/api/batches/analytics/${productId}`);
-    console.log(response.data);
+    // console.log(response.data);
     if (response.data.status === "success") {
       return response.data.data;
     }

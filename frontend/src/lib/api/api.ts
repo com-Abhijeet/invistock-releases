@@ -3,7 +3,7 @@ import axios from "axios";
 // 1. Create the base axios instance.
 //    It defaults to localhost, which is correct for the SERVER app.
 const api = axios.create({
-  baseURL: "https://localhost:5000",
+  baseURL: "http://localhost:5000",
 });
 
 /**

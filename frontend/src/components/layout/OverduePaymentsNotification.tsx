@@ -16,13 +16,14 @@ import {
   Chip,
   Tooltip,
   ListItemButton,
+  Button, // ✅ Added Button import
 } from "@mui/material";
-import { BanknoteArrowUp } from "lucide-react";
+import { BookAlert } from "lucide-react";
 import {
   fetchCustomerOverdueSummary,
   OverdueSummary,
-} from "../../lib/api/customerService";
-import { useNavigate } from "react-router-dom";
+} from "../../lib/api/customerService"; //
+import { useNavigate } from "react-router-dom"; //
 
 export default function OverduePaymentsNotification() {
   const [summary, setSummary] = useState<OverdueSummary | null>(null);
@@ -60,6 +61,12 @@ export default function OverduePaymentsNotification() {
     handleClose();
   };
 
+  // ✅ New Handler for the View All button
+  const handleViewAll = () => {
+    navigate("/customers/accounts");
+    handleClose();
+  };
+
   const open = Boolean(anchorEl);
   const badgeCount = summary?.totalOverdueCustomers || 0;
 
@@ -68,7 +75,7 @@ export default function OverduePaymentsNotification() {
       <Tooltip title="Overdue Payments">
         <IconButton color="inherit" onClick={handleOpen}>
           <Badge badgeContent={badgeCount} color="error">
-            <BanknoteArrowUp />
+            <BookAlert />
           </Badge>
         </IconButton>
       </Tooltip>
@@ -110,8 +117,6 @@ export default function OverduePaymentsNotification() {
                           {bucket.range}
                         </ListSubheader>
                         {bucket.customers.map((customer) => (
-                          // ✅ FIX: ListItem no longer has the 'button' prop.
-                          // 'disablePadding' is added for a cleaner look.
                           <ListItem
                             key={customer.id}
                             disablePadding
@@ -126,7 +131,6 @@ export default function OverduePaymentsNotification() {
                               />
                             }
                           >
-                            {/* ✅ Wrap the clickable content in a ListItemButton */}
                             <ListItemButton
                               onClick={() => handleItemClick(customer.id)}
                             >
@@ -144,6 +148,14 @@ export default function OverduePaymentsNotification() {
             )}
           </List>
         )}
+
+        {/* ✅ New Footer Section */}
+        <Divider />
+        <Box sx={{ p: 1 }}>
+          <Button fullWidth onClick={handleViewAll} color="primary">
+            View All Accounts
+          </Button>
+        </Box>
       </Popover>
     </>
   );

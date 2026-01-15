@@ -44,6 +44,7 @@ import {
   ScanBarcode,
   Settings2,
   Check,
+  ListFilter,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -110,8 +111,15 @@ export default function SaleItemSection({
   const [shop, setShop] = useState<ShopSetupForm>();
   const [_hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(0);
+  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0); // New: Track active row for shortcuts
   const [productCache, setProductCache] = useState<{ [id: number]: Product }>(
     {}
+  );
+
+  // --- Global Rate Settings State ---
+  const [globalPriceType, setGlobalPriceType] = useState<PriceType>("mrp");
+  const [headerMenuAnchor, setHeaderMenuAnchor] = useState<null | HTMLElement>(
+    null
   );
 
   // --- Row Settings Menu State ---
@@ -152,17 +160,39 @@ export default function SaleItemSection({
     if (items.length > 0 && mode !== "view") {
       const lastIndex = items.length - 1;
       setEditingRowIndex(lastIndex);
+      setActiveRowIndex(lastIndex); // Auto-activate new row
       setTimeout(() => autocompleteRefs.current[lastIndex]?.focus(), 100);
     }
   }, [items.length, mode]);
+
+  // --- FIX: Hydrate Cache from Items (for Draft Restoration) ---
+  useEffect(() => {
+    setProductCache((prev) => {
+      const next = { ...prev };
+      let modified = false;
+      items.forEach((item) => {
+        // If we have a product_id and name, but it's not in cache
+        if (item.product_id && !next[item.product_id] && item.product_name) {
+          next[item.product_id] = {
+            id: item.product_id,
+            name: item.product_name,
+            hsn: item.hsn,
+          } as Product;
+          modified = true;
+        }
+      });
+      return modified ? next : prev;
+    });
+  }, [items]);
 
   useEffect(() => {
     getShopData().then((res) => setShop(res!));
   }, []);
 
-  // Global Alt+P listener...
+  // Global Shortcuts Listener
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // 1. Alt + P: Open Product Overview
       if (e.altKey && (e.code === "KeyP" || e.key.toLowerCase() === "p")) {
         e.preventDefault();
         e.stopPropagation();
@@ -183,10 +213,52 @@ export default function SaleItemSection({
           }
         }
       }
+
+      // 2. Ctrl + A: Add New Item
+      if ((e.ctrlKey || e.metaKey) && (e.code === "KeyA" || e.key.toLowerCase() === "a")) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Inline Add Logic to access latest state
+        if (
+          items.length === 0 ||
+          items[items.length - 1].product_id !== 0
+        ) {
+          const newItem = { ...defaultItem(), price_type: globalPriceType };
+          onItemsChange([...items, newItem]);
+          // Focus is handled by the items.length useEffect
+        } else {
+          toast.error("Complete the empty row first");
+        }
+      }
+
+      // 3. Ctrl + Delete: Remove Active Row
+      if ((e.ctrlKey || e.metaKey) && (e.code === "Delete" || e.code === "Backspace")) {
+        if (activeRowIndex !== null && items[activeRowIndex] && mode !== 'view') {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const newItems = [...items];
+          newItems.splice(activeRowIndex, 1);
+          newItems.forEach((item, index) => {
+            item.sr_no = (index + 1).toString();
+          });
+          onItemsChange(newItems);
+          
+          // Adjust active index
+          if (newItems.length > 0) {
+            setActiveRowIndex(Math.min(activeRowIndex, newItems.length - 1));
+          } else {
+            setActiveRowIndex(null);
+          }
+          toast.success("Row removed");
+        }
+      }
     };
+    
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [items, editingRowIndex, isOverviewOpen, onCloseOverview, onOpenOverview]);
+  }, [items, editingRowIndex, activeRowIndex, isOverviewOpen, onCloseOverview, onOpenOverview, globalPriceType, onItemsChange, mode]);
 
   const calculateItemPrice = (item: SaleItemRow) => {
     if (!shop) return 0;
@@ -222,6 +294,21 @@ export default function SaleItemSection({
     return Number(p.mrp) || 0;
   };
 
+  const handleGlobalTypeSelect = (type: PriceType) => {
+    setGlobalPriceType(type);
+    setHeaderMenuAnchor(null);
+
+    // Update all EMPTY rows to reflect this new default preference.
+    const updatedItems = items.map((item) => {
+      if (!item.product_id || item.product_id === 0) {
+        return { ...item, price_type: type };
+      }
+      return item;
+    });
+    onItemsChange(updatedItems);
+    toast.success(`Default Rate set to: ${type.toUpperCase()}`);
+  };
+
   const handleRowSettingChange = (
     index: number,
     setting: "type" | "strategy",
@@ -238,7 +325,6 @@ export default function SaleItemSection({
     if (product) {
       let newRate = 0;
       const strategy = item.pricing_strategy || "batch_pricing";
-      // Cast to PriceType for logic
       const pType = (item.price_type as PriceType) || "mrp";
 
       // 1. Try Batch Price
@@ -246,7 +332,6 @@ export default function SaleItemSection({
         strategy === "batch_pricing" &&
         (item.tracking_type === "batch" || item.tracking_type === "serial")
       ) {
-        // Use explicit string checks or cast to ensure no overlap error
         if (pType === "mrp" && item.batch_mrp) newRate = item.batch_mrp;
         else if (pType === "mop" && item.batch_mop) newRate = item.batch_mop;
         else if (pType === "mfw" && item.batch_mfw) newRate = item.batch_mfw;
@@ -270,7 +355,10 @@ export default function SaleItemSection({
       currentItems.length === 0 ||
       currentItems[currentItems.length - 1].product_id !== 0
     ) {
-      return [...currentItems, defaultItem()];
+      return [
+        ...currentItems,
+        { ...defaultItem(), price_type: globalPriceType },
+      ];
     }
     return currentItems;
   };
@@ -302,7 +390,7 @@ export default function SaleItemSection({
       } finally {
         setLoadingBatches(false);
       }
-      return; // Stop here, wait for modal selection
+      return; 
     }
 
     // Standard Non-Tracked Product Logic
@@ -315,26 +403,23 @@ export default function SaleItemSection({
     batchInfo: any = null
   ) => {
     const currentItem = items[index];
-    // Use price_type if already set on row, else default to MRP
-    const pType: PriceType = (currentItem.price_type as PriceType) || "mrp";
+    const pType: PriceType =
+      (currentItem.price_type as PriceType) || globalPriceType;
+
     const strategy = currentItem.pricing_strategy || "batch_pricing";
 
-    // Extract Batch Prices safely
     const bMrp = batchInfo?.mrp ? Number(batchInfo.mrp) : undefined;
     const bMop = batchInfo?.mop ? Number(batchInfo.mop) : undefined;
     const bMfw = batchInfo?.mfw_price ? Number(batchInfo.mfw_price) : undefined;
 
-    // 1. Determine Rate based on Strategy & Defaults
     let finalRate = 0;
 
-    // Try Batch Price first
     if (strategy === "batch_pricing") {
       if (pType === "mrp" && bMrp) finalRate = bMrp;
       else if (pType === "mop" && bMop) finalRate = bMop;
       else if (pType === "mfw" && bMfw) finalRate = bMfw;
     }
 
-    // Fallback to Product Price
     if (!finalRate) {
       finalRate = getProductPrice(product, pType);
     }
@@ -345,32 +430,25 @@ export default function SaleItemSection({
       product_name: product.name,
       rate: finalRate,
       gst_rate: product.gst_rate ?? 0,
-      quantity: 1, // Default quantity
+      quantity: 1, 
 
-      // Tracking Info
       tracking_type: product.tracking_type,
-      batch_id: batchInfo?.id, // For Batch: this is BatchID. For Serial: this is SerialID (handled below)
+      batch_id: batchInfo?.id, 
       serial_id: undefined,
       batch_number: batchInfo?.batch_number,
       serial_number: batchInfo?.serial_number,
 
-      // Store Batch Pricing Snapshots
       batch_mrp: bMrp,
       batch_mop: bMop,
       batch_mfw: bMfw,
 
-      // Config
       price_type: pType,
       pricing_strategy: strategy,
     };
 
-    // Correct IDs for Serial Tracking
     if (product.tracking_type === "serial" && batchInfo) {
-      // For serial items, the batchInfo passed might be the Serial Object or a constructed one
-      // If it's the result of a scan, 'id' is likely the serial ID.
-      // If it's from the modal list, 'id' is likely the serial ID.
       newItem.serial_id = batchInfo.id;
-      newItem.batch_id = batchInfo.batch_id; // Parent batch ID
+      newItem.batch_id = batchInfo.batch_id; 
     }
 
     const price = calculateItemPrice(newItem);
@@ -434,7 +512,31 @@ export default function SaleItemSection({
               )}
               <TableCell sx={{ ...headerSx, width: "30%" }}>PRODUCT</TableCell>
               <TableCell sx={{ ...headerSx, width: "15%", p: 0.5 }}>
-                {shop?.inclusive_tax_pricing ? "RATE (Inc.)" : "RATE"}
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  <Typography
+                    variant="inherit"
+                    sx={{ fontSize: "inherit", fontWeight: "inherit" }}
+                  >
+                    {shop?.inclusive_tax_pricing ? "RATE (Inc.)" : "RATE"}
+                  </Typography>
+                  {mode !== "view" && (
+                    <Tooltip title={`Default: ${globalPriceType.toUpperCase()}`}>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => setHeaderMenuAnchor(e.currentTarget)}
+                        sx={{
+                          p: 0.5,
+                          color:
+                            globalPriceType === "mrp"
+                              ? "text.disabled"
+                              : "primary.main",
+                        }}
+                      >
+                        <ListFilter size={14} />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </Stack>
               </TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
               {shop?.gst_enabled && (
@@ -462,8 +564,14 @@ export default function SaleItemSection({
                 <TableRow
                   key={idx}
                   hover
+                  selected={activeRowIndex === idx}
                   onMouseEnter={() => setHoveredRowIndex(idx)}
                   onMouseLeave={() => setHoveredRowIndex(null)}
+                  onClick={() => setActiveRowIndex(idx)}
+                  sx={{
+                    '&.Mui-selected': { backgroundColor: 'rgba(25, 118, 210, 0.04)' },
+                    '&.Mui-selected:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' },
+                  }}
                 >
                   <TableCell
                     align="center"
@@ -511,6 +619,7 @@ export default function SaleItemSection({
                             }
                             placeholder="Scan or Search..."
                             variant="standard"
+                            onFocus={() => setActiveRowIndex(idx)}
                             InputProps={{
                               ...params.InputProps,
                               disableUnderline: true,
@@ -529,7 +638,10 @@ export default function SaleItemSection({
                       />
                     ) : (
                       <Box
-                        onClick={() => setEditingRowIndex(idx)}
+                        onClick={() => {
+                          setEditingRowIndex(idx);
+                          setActiveRowIndex(idx);
+                        }}
                         sx={{ cursor: "pointer" }}
                       >
                         <Typography variant="body2" fontWeight={500}>
@@ -566,6 +678,7 @@ export default function SaleItemSection({
                       fullWidth
                       disabled={mode === "view"}
                       value={item.rate ?? ""}
+                      onFocus={() => setActiveRowIndex(idx)}
                       onChange={(e) =>
                         handleFieldChange(idx, "rate", Number(e.target.value))
                       }
@@ -613,6 +726,7 @@ export default function SaleItemSection({
                       fullWidth
                       disabled={mode === "view" || isSerial}
                       value={item.quantity ?? ""}
+                      onFocus={() => setActiveRowIndex(idx)}
                       onChange={(e) =>
                         handleFieldChange(
                           idx,
@@ -649,6 +763,7 @@ export default function SaleItemSection({
                         fullWidth
                         disabled={mode === "view"}
                         value={item.discount ?? ""}
+                        onFocus={() => setActiveRowIndex(idx)}
                         onChange={(e) =>
                           handleFieldChange(
                             idx,
@@ -687,7 +802,7 @@ export default function SaleItemSection({
                   >
                     <Stack direction="row" spacing={0} justifyContent="center">
                       {product && (
-                        <Tooltip title="Details">
+                        <Tooltip title="Details (Alt + P)">
                           <IconButton
                             size="small"
                             onClick={() =>
@@ -700,13 +815,15 @@ export default function SaleItemSection({
                         </Tooltip>
                       )}
                       {mode !== "view" && (
-                        <IconButton
-                          size="small"
-                          onClick={() => handleRemoveRow(idx)}
-                          sx={{ color: theme.palette.error.main }}
-                        >
-                          <Trash2 size={16} />
-                        </IconButton>
+                        <Tooltip title="Remove Row (Ctrl + Del)">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleRemoveRow(idx)}
+                            sx={{ color: theme.palette.error.main }}
+                          >
+                            <Trash2 size={16} />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </Stack>
                   </TableCell>
@@ -726,7 +843,7 @@ export default function SaleItemSection({
             startIcon={<Plus size={16} />}
             sx={{ color: "text.secondary", fontWeight: 600 }}
           >
-            Add Another Item
+            <span style={{ textDecoration: 'underline' }}>A</span>dd Another Item
           </Button>
         </Box>
       )}
@@ -802,6 +919,56 @@ export default function SaleItemSection({
           <Button onClick={() => setError(null)}>OK</Button>
         </DialogActions>
       </Dialog>
+
+      {/* --- GLOBAL HEADER MENU --- */}
+      <Menu
+        anchorEl={headerMenuAnchor}
+        open={Boolean(headerMenuAnchor)}
+        onClose={() => setHeaderMenuAnchor(null)}
+        PaperProps={{ sx: { minWidth: 200 } }}
+      >
+        <Box sx={{ px: 2, py: 1, borderBottom: "1px solid #eee" }}>
+          <Typography variant="caption" fontWeight={700} color="text.secondary">
+            SET DEFAULT RATE
+          </Typography>
+        </Box>
+        <MenuItem
+          dense
+          selected={globalPriceType === "mrp"}
+          onClick={() => handleGlobalTypeSelect("mrp")}
+        >
+          <Stack direction="row" width="100%" justifyContent="space-between">
+            <Typography variant="body2">Retail (MRP)</Typography>
+            {globalPriceType === "mrp" && (
+              <Check size={14} color={theme.palette.primary.main} />
+            )}
+          </Stack>
+        </MenuItem>
+        <MenuItem
+          dense
+          selected={globalPriceType === "mop"}
+          onClick={() => handleGlobalTypeSelect("mop")}
+        >
+          <Stack direction="row" width="100%" justifyContent="space-between">
+            <Typography variant="body2">Offer (MOP)</Typography>
+            {globalPriceType === "mop" && (
+              <Check size={14} color={theme.palette.primary.main} />
+            )}
+          </Stack>
+        </MenuItem>
+        <MenuItem
+          dense
+          selected={globalPriceType === "mfw"}
+          onClick={() => handleGlobalTypeSelect("mfw")}
+        >
+          <Stack direction="row" width="100%" justifyContent="space-between">
+            <Typography variant="body2">Wholesale</Typography>
+            {globalPriceType === "mfw" && (
+              <Check size={14} color={theme.palette.primary.main} />
+            )}
+          </Stack>
+        </MenuItem>
+      </Menu>
 
       {/* --- Row Settings Menu --- */}
       <Menu

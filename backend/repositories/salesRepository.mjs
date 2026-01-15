@@ -1,9 +1,9 @@
 import db from "../db/db.mjs";
 import { getDateFilter } from "../utils/dateFilter.mjs";
 import { normalizeBooleans } from "../utils/normalizeBooleans.mjs";
-import { createTransaction } from "./transactionRepository.mjs";
-import { updateProductQuantity } from "./productRepository.mjs";
-import { createAdjustmentLog } from "./stockAdjustmentRepository.mjs"; // You created this earlier
+import * as ProductRepo from "../repositories/productRepository.mjs";
+import * as AdjustmentRepo from "../repositories/stockAdjustmentRepository.mjs";
+import * as BatchRepo from "../repositories/batchRepository.mjs";
 /* -------------------------------------------------------------------------- */
 /* SALE REPOSITORY FUNCTIONS                                                  */
 /* -------------------------------------------------------------------------- */
@@ -105,72 +105,124 @@ export function processSalesReturn(payload) {
 
     // 2. Process each returned item
     for (const item of returnItems) {
-      // item = { product_id, quantity, price, returnToStock: boolean }
+      // item expectation: { product_id, quantity, price, returnToStock, sales_item_id }
+      // sales_item_id is crucial to identify exactly WHICH serial/batch was returned
 
-      // A. Calculate Refund Amount for this item
-      // (Assuming 'price' passed from frontend is the unit price * qty returned)
+      // A. Calculate Refund Amount
       totalRefundAmount += item.price;
 
-      // B. Inventory Logic
-      const currentProduct = db
-        .prepare("SELECT quantity FROM products WHERE id = ?")
-        .get(item.product_id);
+      // B. Get Master Product Details
+      const currentProduct = ProductRepo.getProductById(item.product_id);
+      if (!currentProduct) continue; // Skip if product deleted/invalid
 
+      // C. Retrieve Batch/Serial Context from original Sales Item
+      let batchId = null;
+      let serialId = null;
+
+      if (item.sales_item_id) {
+        const saleItem = db
+          .prepare("SELECT batch_id, serial_id FROM sales_items WHERE id = ?")
+          .get(item.sales_item_id);
+        if (saleItem) {
+          batchId = saleItem.batch_id;
+          serialId = saleItem.serial_id;
+        }
+      } else {
+        // Fallback: Try to find a matching sales item (less precise for batches)
+        const saleItem = db
+          .prepare(
+            "SELECT batch_id, serial_id FROM sales_items WHERE sale_id = ? AND product_id = ? LIMIT 1"
+          )
+          .get(saleId, item.product_id);
+        if (saleItem) {
+          batchId = saleItem.batch_id;
+          serialId = saleItem.serial_id;
+        }
+      }
+
+      // D. Inventory & Status Updates
       if (item.returnToStock) {
-        // Option 1: Good condition -> Back to shelf
-        const newQty = currentProduct.quantity + item.quantity;
-        updateProductQuantity(item.product_id, newQty);
+        // --- Option 1: Good condition -> Back to shelf ---
 
-        // 2. Log it in Stock Adjustments (Critical for Audit Trail)
-        createAdjustmentLog({
+        // 1. Update Master Product Quantity
+        const newQty = currentProduct.quantity + item.quantity;
+        ProductRepo.updateProductQuantity(item.product_id, newQty);
+
+        // 2. Update Batch Quantity
+        if (batchId) {
+          BatchRepo.updateBatchQuantity(batchId, item.quantity);
+        }
+
+        // 3. Update Serial Status
+        if (serialId) {
+          // Mark as available so it can be sold again
+          BatchRepo.updateSerialStatus(serialId, "available");
+        }
+
+        // 4. Log Adjustment
+        AdjustmentRepo.createAdjustmentLog({
           product_id: item.product_id,
-          category: "Sales Return", // Matches 'Adjustment (In)' in history
+          category: "Sales Return",
           old_quantity: currentProduct.quantity,
           new_quantity: newQty,
-          adjustment: item.quantity, // Positive Value (+)
+          adjustment: item.quantity,
           reason: `Restocked from Bill #${sale.reference_no}`,
           adjusted_by: "System",
+          batch_id: batchId,
+          serial_id: serialId,
         });
       } else {
-        // Option 2: Damaged/Scrap -> Record in Adjustment Log (Don't increase Sellable Stock)
-        // NOTE: If you want to track 'Damaged' stock separately, you'd need a separate logic.
-        // For now, we effectively 'scrap' it by NOT adding it back to the main quantity,
-        // but we verify the logic:
-        // Actually, if it was SOLD, it left inventory. If it comes back as SCRAP,
-        // we technically receive it then trash it.
-        // Simpler logic: We just don't add it back to 'quantity'.
-        // But we LOG it so we know why we gave money back.
-        createAdjustmentLog({
+        // --- Option 2: Damaged/Scrap ---
+
+        // 1. Master Quantity: No Change (Item is not sellable)
+
+        // 2. Batch Quantity: No Change (Item is not in sellable batch stock)
+
+        // 3. Serial Status: Mark as 'returned' or 'defective'
+        // This ensures it doesn't show up in "Available Serials" lists
+        if (serialId) {
+          BatchRepo.updateSerialStatus(serialId, "returned");
+        }
+
+        // 4. Log Adjustment
+        // We log it so there is a record, even though net stock didn't change
+        AdjustmentRepo.createAdjustmentLog({
           product_id: item.product_id,
           category: "Sales Return (Damaged)",
           old_quantity: currentProduct.quantity,
-          new_quantity: currentProduct.quantity, // No change to sellable stock
+          new_quantity: currentProduct.quantity,
           adjustment: 0,
-          reason: `Return from Bill #${sale.reference_no}`,
+          reason: `Return (Damaged) from Bill #${sale.reference_no}`,
           adjusted_by: "System",
+          batch_id: batchId,
+          serial_id: serialId,
         });
       }
     }
 
     // 3. Create Credit Note Transaction (Financial)
-    createTransaction({
-      type: "credit_note",
-      bill_id: saleId,
-      bill_type: "sale",
-      entity_id: sale.customer_id,
-      entity_type: "customer",
-      transaction_date: new Date().toISOString().split("T")[0],
-      amount: totalRefundAmount,
-      payment_mode: "Cash", // Or 'Refund'
-      status: "completed",
-      note: note || `Refund for Sale #${sale.reference_no}`,
-      gst_amount: 0, // You might want to calculate proportional GST reversal here
-    });
+    db.prepare(
+      `
+      INSERT INTO transactions (
+        reference_no, type, bill_id, bill_type, entity_id, entity_type,
+        transaction_date, amount, payment_mode, status, note, gst_amount, discount
+      ) VALUES (
+        ?, 'credit_note', ?, 'sale', ?, 'customer',
+        ?, ?, ?, 'completed', ?, 0, 0
+      )
+    `
+    ).run(
+      `CN-${Date.now()}`,
+      saleId,
+      sale.customer_id,
+      new Date().toISOString().split("T")[0],
+      totalRefundAmount,
+      "Cash", // Default refund mode
+      note || `Refund for Sale #${sale.reference_no}`
+    );
 
     // 4. Update Sale Status
-    // If fully returned? 'returned'. If partial? 'partial_returned'.
-    // For simplicity, let's just mark 'returned' or keep 'paid' but with a note.
-    // Ideally, update the `status` column.
+    // Ideally check if fully returned, but for now mark as returned
     db.prepare("UPDATE sales SET status = 'returned' WHERE id = ?").run(saleId);
 
     return { success: true, refundAmount: totalRefundAmount };

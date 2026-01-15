@@ -199,3 +199,20 @@ export const getCustomerLedger = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export async function getCustomersFinancials(req, res) {
+  try {
+    const result = await customerService.getCustomerFinancialsList(req.query);
+
+    // Explicitly construct the response to match frontend expectations
+    return res.status(200).json({
+      status: "success",
+      message: "Customer Financials Fetched Successfully",
+      data: result.data, // The array of customers
+      pagination: result.pagination, // The pagination metadata
+    });
+  } catch (error) {
+    console.error("Error fetching customer financials:", error);
+    res.status(500).json({ status: "error", error: error.message });
+  }
+}

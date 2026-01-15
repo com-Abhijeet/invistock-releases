@@ -58,6 +58,27 @@ export function traceBatchNumber(req, res) {
 // --- NEW ENDPOINTS ---
 
 /**
+ * POST /api/batches/assign-stock
+ * Assigns existing stock to a batch.
+ */
+export function assignStock(req, res) {
+  try {
+    const data = req.body;
+    if (!data.productId || !data.batchNumber || !data.quantity) {
+      return res
+        .status(400)
+        .json({ status: "error", error: "Missing required fields" });
+    }
+
+    const result = BatchService.assignUntrackedStock(data);
+    res.json({ status: "success", data: result });
+  } catch (error) {
+    console.error("[BATCH CONTROLLER] Assign Stock Error:", error);
+    res.status(500).json({ status: "error", error: error.message });
+  }
+}
+
+/**
  * POST /api/batches/print-data
  * Returns formatted print payloads (barcodes, labels) for the requested scope.
  */

@@ -70,6 +70,7 @@ import TitleBar from "./components/TitleBar";
 import TrackerPage from "./pages/TrackerPage";
 import ProductBatchesPage from "./pages/ProductBatchesPage";
 import BatchAnalysisPage from "./pages/BatchAnalysisPage";
+import CustomerAccountsPage from "./pages/CustomerAccountsPage";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -346,6 +347,14 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="customers">
                         <CustomerPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/customers/accounts"
+                    element={
+                      <PermissionGuard requiredPermission="customers">
+                        <CustomerAccountsPage />
                       </PermissionGuard>
                     }
                   />
