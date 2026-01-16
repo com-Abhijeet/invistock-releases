@@ -373,6 +373,39 @@ export function initializeDatabase(dbPath) {
     );
     CREATE INDEX IF NOT EXISTS idx_sales_items_sale_id ON sales_items (sale_id);
 
+    CREATE TABLE IF NOT EXISTS sales_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER,
+      reference_no TEXT UNIQUE,
+      created_by TEXT, 
+      status TEXT CHECK(status IN ('pending', 'completed', 'cancelled')) DEFAULT 'pending',
+      total_amount REAL DEFAULT 0,
+      note TEXT,
+      fulfilled_invoice_id INTEGER, -- Link to Sales Table
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+      FOREIGN KEY (fulfilled_invoice_id) REFERENCES sales(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sales_order_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      quantity REAL NOT NULL,
+      rate REAL NOT NULL,
+      price REAL NOT NULL,
+      gst_rate REAL DEFAULT 0,
+      discount REAL DEFAULT 0,
+      
+      -- Tracking Intent (Optional in Order)
+      batch_id INTEGER,
+      serial_id INTEGER,
+
+      FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id)
+    );
+
     CREATE TABLE IF NOT EXISTS purchases (
       id INTEGER PRIMARY KEY,
       supplier_id INTEGER NOT NULL,

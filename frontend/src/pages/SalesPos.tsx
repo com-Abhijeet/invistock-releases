@@ -22,9 +22,9 @@ import {
   Delete as DeleteIcon,
   Restore as RestoreIcon,
   History as HistoryIcon,
-  Close as CloseIcon, // Import Close Icon for modal
+  Close as CloseIcon,
 } from "@mui/icons-material";
-import Grid from "@mui/material/GridLegacy"; // For the shortcut grid layout
+import Grid from "@mui/material/GridLegacy";
 
 import { getCustomers } from "../lib/api/customerService";
 import type { CustomerType } from "../lib/types/customerTypes";
@@ -33,6 +33,7 @@ import type { SaleItemPayload, SalePayload } from "../lib/types/salesTypes";
 import SaleSummarySection from "../components/sales/SaleSummarySection";
 import { useParams, useNavigate } from "react-router-dom";
 import { getSaleById } from "../lib/api/salesService";
+import { getSalesOrderById } from "../lib/api/salesOrderService"; // Added import
 import SalesPosHeaderSection from "../components/sales/SalesPosHeaderSection";
 import ProductOverviewModal from "../components/products/ProductOverviewModal";
 import theme from "../../theme";
@@ -107,13 +108,14 @@ export default function SalesPos() {
   const [sale, setSale] = useState<SalePayload>(defaultSalePayload);
 
   // State for UI mode and data loading
-  const [mode, setMode] = useState<"new" | "view">(
-    action === "view" ? "view" : "new"
-  );
+  const [mode, setMode] = useState<"new" | "view">("new");
   const [_loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  //state for product overview modal
+  // Track if this sale is fulfilling a sales order
+  const [salesOrderId, setSalesOrderId] = useState<number | null>(null);
+
+  // state for product overview modal
   const [overviewModalOpen, setOverviewModalOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null
@@ -154,11 +156,13 @@ export default function SalesPos() {
     setState("");
     setPincode("");
     setMode("new");
+    setSalesOrderId(null); // Reset order linking
     if (id) navigate("/billing");
   };
 
   useEffect(() => {
     const init = async () => {
+      // HANDLE VIEW MODE
       if (id && action === "view") {
         setMode("view");
         setLoading(true);
@@ -180,7 +184,62 @@ export default function SalesPos() {
         } finally {
           setLoading(false);
         }
-      } else {
+      }
+      // HANDLE CONVERT MODE (From Sales Order)
+      else if (id && action === "convert") {
+        setMode("new");
+        setLoading(true);
+        try {
+          const res = await getSalesOrderById(Number(id));
+          if (res && res.data) {
+            const order = res.data;
+
+            // Map Customer
+            setCustomerId(order.customer_id || 0);
+            setCustomerName(order.customer_name || "");
+            setCustomerPhone(order.customer_phone || "");
+            setCustomerGstNo(order.customer_gstin || "");
+            // Address might not be fully available in shallow order object, handle gracefully
+            setAddress(order.customer_address || "");
+
+            // Track Origin Order ID
+            setSalesOrderId(Number(id));
+
+            // Map Items (Ensure types match SaleItemPayload)
+            const mappedItems = (order.items || []).map(
+              (item: any, idx: number) => ({
+                ...item,
+                sr_no: (idx + 1).toString(),
+                // Ensure we don't carry over order-specific IDs that might conflict
+                id: undefined,
+              })
+            );
+
+            setSale({
+              ...defaultSalePayload,
+              customer_id: order.customer_id || 0,
+              items: mappedItems,
+              total_amount: order.total_amount || 0,
+              note:
+                order.note ||
+                `Converted from Sales Order #${order.reference_no}`,
+              // Keep other defaults
+            });
+
+            toast.success(`Loaded details from Order #${order.reference_no}`);
+          } else {
+            toast.error("Sales Order not found");
+            navigate("/billing");
+          }
+        } catch (error) {
+          console.error("Failed to load sales order", error);
+          toast.error("Failed to load sales order");
+        } finally {
+          setLoading(false);
+        }
+      }
+      // HANDLE NEW MODE
+      else {
         setMode("new");
         if (sale.id) {
           resetForm();
@@ -273,8 +332,6 @@ export default function SalesPos() {
   };
 
   const saveDraft = () => {
-    // Basic validation: Don't save empty drafts if unnecessary,
-    // but user might want to save just a customer name selection.
     if (!sale.items.length && !customerName) {
       toast.error(
         "Cannot save an empty draft. Add items or select a customer."
@@ -337,10 +394,10 @@ export default function SalesPos() {
       sx={{
         display: "flex",
         flexDirection: "column",
-        height: "calc(100vh - 64px)", // Adjust based on your Topbar height
+        height: "calc(100vh - 64px)",
         backgroundColor: theme.palette.background.default,
         overflow: "hidden",
-        position: "relative", // For absolute positioning of FABs if needed
+        position: "relative",
       }}
     >
       {/* --- HEADER (Fixed) --- */}
@@ -379,7 +436,6 @@ export default function SalesPos() {
           overflowY: "auto",
           px: 2,
           pb: 2,
-          // Custom scrollbar for cleaner look
           "&::-webkit-scrollbar": { width: "6px" },
           "&::-webkit-scrollbar-track": { background: "transparent" },
           "&::-webkit-scrollbar-thumb": {
@@ -420,6 +476,7 @@ export default function SalesPos() {
           }}
           resetForm={resetForm}
           mode={mode}
+          salesOrderId={salesOrderId} // Pass down the order ID
         />
       </Box>
 
@@ -430,7 +487,6 @@ export default function SalesPos() {
       />
 
       {/* --- DRAFTING UI CONTROLS & SHORTCUT HELP --- */}
-      {/* Floating Action Buttons for quick access to drafts */}
       <Box
         sx={{
           position: "absolute",
@@ -442,7 +498,6 @@ export default function SalesPos() {
           zIndex: 20,
         }}
       >
-        {/* Help Button - Always Visible */}
         <Tooltip title="Keyboard Shortcuts" placement="left">
           <Fab
             size="small"
