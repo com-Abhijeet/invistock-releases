@@ -22,6 +22,7 @@ import {
 import { useState, useEffect } from "react";
 import type { SalePayload } from "../../lib/types/salesTypes";
 import { createSale } from "../../lib/api/salesService";
+import { updateSalesOrder } from "../../lib/api/salesOrderService"; // Import update service
 import { handlePrint } from "../../lib/handleInvoicePrint";
 import { createCustomer } from "../../lib/api/customerService";
 import type { CustomerType } from "../../lib/types/customerTypes";
@@ -37,6 +38,7 @@ interface Props {
   customer?: CustomerType;
   mode: "new" | "view";
   resetForm: () => void;
+  salesOrderId?: number | null; // Optional prop to link order
 }
 
 const SaleSummarySection = ({
@@ -46,6 +48,7 @@ const SaleSummarySection = ({
   customer,
   mode,
   resetForm,
+  salesOrderId,
 }: Props) => {
   const theme = useTheme();
   const [shop, setShop] = useState<any>(null);
@@ -80,11 +83,9 @@ const SaleSummarySection = ({
         handlePaidInFull();
       }
 
-      // Escape: Cancel (Confirmation usually better, but for speed just trigger logic)
+      // Escape: Cancel
       if (e.key === "Escape") {
         e.preventDefault();
-        // Optional: Confirm before clearing if items exist?
-        // For now, mapping to Cancel button logic
         if (
           sale.items.length > 0 &&
           confirm("Are you sure you want to cancel and clear?")
@@ -96,10 +97,9 @@ const SaleSummarySection = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mode, isSubmitting, sale]); // Re-bind on state changes to access latest closure
+  }, [mode, isSubmitting, sale]);
 
   // Helper to access the reconciled data safely from the repo update
-  // We use 'any' cast here temporarily as the Type definition might not have payment_summary yet
   const paymentSummary = (sale as any).payment_summary || {
     total_paid: sale.paid_amount || 0,
     balance: sale.total_amount - (sale.paid_amount || 0),
@@ -164,6 +164,24 @@ const SaleSummarySection = ({
       const savedSale = response.data;
 
       if (response?.status === "success") {
+        // --- If this sale fulfills an Order, update the Order now ---
+        if (salesOrderId) {
+          try {
+            await updateSalesOrder(salesOrderId, {
+              status: "completed",
+              fulfilled_invoice_id: savedSale.id,
+              total_amount: sale.total_amount,
+              items: [], // We typically don't change items here, but TypeScript might require the shape. Assuming partial update works or we pass empty.
+              customer_id: sale.customer_id || null,
+            });
+            toast.success("Sales Order marked as Completed");
+          } catch (orderErr) {
+            console.error("Failed to update sales order status", orderErr);
+            toast.error("Sale saved, but failed to update Order status.");
+          }
+        }
+        // ------------------------------------------------------------
+
         setSuccess(true);
         toast.success("Sale Saved!");
 

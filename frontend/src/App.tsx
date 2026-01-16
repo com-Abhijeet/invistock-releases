@@ -71,6 +71,9 @@ import TrackerPage from "./pages/TrackerPage";
 import ProductBatchesPage from "./pages/ProductBatchesPage";
 import BatchAnalysisPage from "./pages/BatchAnalysisPage";
 import CustomerAccountsPage from "./pages/CustomerAccountsPage";
+import SalesOrderPage from "./pages/SalesOrderPage";
+import SalesOrdersList from "./pages/SalesOrdersList";
+import ViewSalesOrderPage from "./pages/ViewSalesOrderPage";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -162,6 +165,35 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="sales">
                         <SalesDashboard />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/sales-order"
+                    element={
+                      <PermissionGuard requiredPermission="sales">
+                        <SalesOrderPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/sales-order/view/:id"
+                    element={
+                      <PermissionGuard requiredPermission="sales">
+                        <SalesOrderPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/view-sales-order/:id"
+                    element={<ViewSalesOrderPage />}
+                  />
+
+                  <Route
+                    path="/sales-order-list"
+                    element={
+                      <PermissionGuard requiredPermission="sales">
+                        <SalesOrdersList />
                       </PermissionGuard>
                     }
                   />

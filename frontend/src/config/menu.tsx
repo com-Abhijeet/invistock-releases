@@ -22,6 +22,8 @@ import {
   Clock,
   Search,
   BookAlert,
+  Clipboard,
+  ClipboardCheck,
 } from "lucide-react";
 
 export const menuSections = [
@@ -40,6 +42,12 @@ export const menuSections = [
     title: "Sales Vouchers",
     items: [
       {
+        label: "Sales Analysis",
+        icon: <BarChart3 size={20} />,
+        path: "/sales",
+        shortcut: "F3",
+      },
+      {
         label: "Sales Voucher (POS)",
         icon: <ScanBarcode size={20} />,
         path: "/billing",
@@ -51,10 +59,14 @@ export const menuSections = [
         path: "/sales-history",
       },
       {
-        label: "Sales Analysis",
-        icon: <BarChart3 size={20} />,
-        path: "/sales",
-        shortcut: "F3",
+        label: "Generate Sales Order",
+        icon: <Clipboard size={20} />,
+        path: "/sales-order",
+      },
+      {
+        label: "Sales Orders",
+        icon: <ClipboardCheck size={20} />,
+        path: "/sales-order-list",
       },
     ],
   },
