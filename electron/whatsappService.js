@@ -25,13 +25,13 @@ function getBrowserExecutablePath() {
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
     path.join(
       os.homedir(),
-      "AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe"
+      "AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe",
     ),
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
     path.join(
       os.homedir(),
-      "AppData\\Local\\Google\\Chrome\\Application\\chrome.exe"
+      "AppData\\Local\\Google\\Chrome\\Application\\chrome.exe",
     ),
     "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
   ];
@@ -59,7 +59,7 @@ function getBrowserExecutablePath() {
 async function deleteSessionData() {
   const authPath = path.join(
     require("electron").app.getPath("userData"),
-    ".wwebjs_auth"
+    ".wwebjs_auth",
   );
   console.log(`[WHATSAPP] ⚠️ DELETING Corrupted Session Data at: ${authPath}`);
 
@@ -139,7 +139,7 @@ async function initializeWhatsApp(win) {
   if (initTimer) clearTimeout(initTimer);
   initTimer = setTimeout(async () => {
     console.error(
-      "[WHATSAPP] ⚠️ Initialization timed out (Stuck). Restarting..."
+      "[WHATSAPP] ⚠️ Initialization timed out (Stuck). Restarting...",
     );
     await cleanupService();
     if (initRetryCount < MAX_RETRIES) {
@@ -185,7 +185,7 @@ async function initializeWhatsApp(win) {
         clientId: "KOSH-client",
         dataPath: path.join(
           require("electron").app.getPath("userData"),
-          ".wwebjs_auth"
+          ".wwebjs_auth",
         ),
       }),
       // ✅ FIX: Using the specific alpha version provided
@@ -211,7 +211,7 @@ async function initializeWhatsApp(win) {
     });
 
     client.on("qr", (qr) => {
-      console.log("[WHATSAPP] STEP 4: QR Code Received!");
+      // console.log("[WHATSAPP] STEP 4: QR Code Received!");
       if (initTimer) clearTimeout(initTimer);
       initRetryCount = 0;
 
@@ -223,7 +223,7 @@ async function initializeWhatsApp(win) {
         qrCodeDataUrl = url;
         status = "scanning";
         if (mainWindow && !mainWindow.isDestroyed()) {
-          console.log("[WHATSAPP] Sending QR to UI...");
+          // console.log("[WHATSAPP] Sending QR to UI...");
           mainWindow.webContents.send("whatsapp-status", {
             status,
             qr: qrCodeDataUrl,
@@ -297,13 +297,13 @@ async function sendWhatsAppMessage(number, message) {
     // We still keep this as a failsafe
     if (error.message && error.message.includes("markedUnread")) {
       console.error(
-        "[WHATSAPP] 🚨 DETECTED SESSION INCOMPATIBILITY! Wiping session and restarting..."
+        "[WHATSAPP] 🚨 DETECTED SESSION INCOMPATIBILITY! Wiping session and restarting...",
       );
       await cleanupService();
       await deleteSessionData();
       initializeWhatsApp(mainWindow);
       throw new Error(
-        "WhatsApp session was incompatible. The system is resetting. Please scan QR code again."
+        "WhatsApp session was incompatible. The system is resetting. Please scan QR code again.",
       );
     }
 
@@ -339,13 +339,13 @@ async function sendWhatsAppPdf(number, pdfBase64, fileName, caption) {
     // ✅ CHECK FOR SESSION INCOMPATIBILITY (markedUnread)
     if (error.message && error.message.includes("markedUnread")) {
       console.error(
-        "[WHATSAPP] 🚨 DETECTED SESSION INCOMPATIBILITY! Wiping session and restarting..."
+        "[WHATSAPP] 🚨 DETECTED SESSION INCOMPATIBILITY! Wiping session and restarting...",
       );
       await cleanupService();
       await deleteSessionData();
       initializeWhatsApp(mainWindow);
       throw new Error(
-        "WhatsApp session was incompatible. The system is resetting. Please scan QR code again."
+        "WhatsApp session was incompatible. The system is resetting. Please scan QR code again.",
       );
     }
 
@@ -356,7 +356,7 @@ async function sendWhatsAppPdf(number, pdfBase64, fileName, caption) {
         error.message.includes("Evaluation failed"))
     ) {
       console.log(
-        "[WHATSAPP] Critical error detected during PDF send. Restarting..."
+        "[WHATSAPP] Critical error detected during PDF send. Restarting...",
       );
       await cleanupService();
       initializeWhatsApp(mainWindow);

@@ -106,7 +106,7 @@ export default function AddEditProductModal({
   });
   const [loading, setLoading] = useState(false);
   const [availableCategories, setAvailableCategories] = useState<Category[]>(
-    []
+    [],
   );
   const [filteredSubcategories, setFilteredSubcategories] = useState<
     Subcategory[]
@@ -120,7 +120,7 @@ export default function AddEditProductModal({
       setError(null);
       // Set the form data from initialData in edit mode, or default in add mode
       setForm(
-        mode === "edit" ? { ...defaultForm, ...initialData } : defaultForm
+        mode === "edit" ? { ...defaultForm, ...initialData } : defaultForm,
       );
 
       // If in "add" mode, immediately fetch the next available barcode
@@ -141,7 +141,7 @@ export default function AddEditProductModal({
         setAvailableCategories(categories);
         if (form.category) {
           const selected = categories.find(
-            (cat: { id: number }) => cat.id === Number(form.category)
+            (cat: { id: number }) => cat.id === Number(form.category),
           );
           setFilteredSubcategories(selected?.subcategories || []);
         }
@@ -169,10 +169,10 @@ export default function AddEditProductModal({
     // Only run this logic in "add" mode
     if (mode === "add" && form.category && form.subcategory) {
       const selectedCategory = availableCategories.find(
-        (c) => c.id === form.category
+        (c) => c.id === form.category,
       );
       const selectedSubcategory = selectedCategory?.subcategories.find(
-        (s) => s.id === form.subcategory
+        (s) => s.id === form.subcategory,
       );
 
       if (selectedCategory && selectedSubcategory) {
@@ -194,7 +194,7 @@ export default function AddEditProductModal({
           newForm.category || null,
           newForm.subcategory || null,
           availableCategories,
-          products
+          products,
         );
         newForm.product_code = newCode;
       }
@@ -252,9 +252,6 @@ export default function AddEditProductModal({
         return;
       }
 
-      toast.success(
-        `Product ${mode === "add" ? "added" : "updated"} successfully`
-      );
       onSuccess(result);
       setForm(defaultForm);
       localStorage.removeItem("cached_products");
@@ -273,16 +270,15 @@ export default function AddEditProductModal({
     }
 
     try {
-      const originalPath = await window.electron.ipcRenderer.invoke(
-        "dialog:open-image"
-      );
+      const originalPath =
+        await window.electron.ipcRenderer.invoke("dialog:open-image");
 
       if (!originalPath) return;
 
       toast.loading("Saving image...");
       const result = await window.electron.ipcRenderer.invoke(
         "copy-product-image",
-        originalPath
+        originalPath,
       );
 
       if (result.success) {
@@ -354,10 +350,10 @@ export default function AddEditProductModal({
                       const catId = Number(e.target.value);
                       handleChange("category", catId);
                       const selectedCat = availableCategories.find(
-                        (cat) => cat.id === catId
+                        (cat) => cat.id === catId,
                       );
                       setFilteredSubcategories(
-                        selectedCat?.subcategories || []
+                        selectedCat?.subcategories || [],
                       );
                       handleChange("subcategory", null);
                     }}
@@ -634,7 +630,7 @@ export default function AddEditProductModal({
                     onChange={(e) =>
                       handleChange(
                         "low_stock_threshold",
-                        Number(e.target.value)
+                        Number(e.target.value),
                       )
                     }
                     InputProps={{
@@ -719,7 +715,7 @@ export default function AddEditProductModal({
                     onChange={(e) =>
                       handleChange(
                         "average_purchase_price",
-                        Number(e.target.value)
+                        Math.round(Number(e.target.value) * 100) / 100,
                       )
                     }
                     InputProps={{
@@ -814,8 +810,8 @@ export default function AddEditProductModal({
             {loading
               ? "Saving..."
               : mode === "add"
-              ? "Finish & Add"
-              : "Finish & Update"}
+                ? "Finish & Add"
+                : "Finish & Update"}
           </Button>
         ) : (
           <Button onClick={handleNext} variant="contained">

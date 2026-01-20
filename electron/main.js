@@ -6,14 +6,7 @@
 
 // 1. MODULE IMPORTS
 // ===============================================================
-const {
-  app,
-  BrowserWindow,
-  ipcMain,
-  dialog,
-  protocol,
-  shell,
-} = require("electron");
+const { app, BrowserWindow, ipcMain, net, protocol } = require("electron");
 
 const os = require("os");
 const path = require("path");
@@ -62,6 +55,18 @@ const {
   loadManualConfigSync,
 } = require("./ipc/connectionHandlers.js");
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "app-image",
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 const config = require("./config.js");
 app.disableHardwareAcceleration();
 
@@ -153,9 +158,9 @@ function createWindow() {
       mainLogger.error(
         "❌ FAILED TO LOAD:",
         errorDescription,
-        "(Code: " + errorCode + ")"
+        "(Code: " + errorCode + ")",
       );
-    }
+    },
   );
 
   mainWindow.webContents.on("did-finish-load", () => {
@@ -175,7 +180,7 @@ function createWindow() {
       setTimeout(() => {
         if (!mainWindow.isDestroyed())
           mainWindow.webContents.send("set-app-mode", appMode);
-      }, delay)
+      }, delay),
     );
   });
 
@@ -195,6 +200,20 @@ function createWindow() {
 app.whenReady().then(async () => {
   mainLogger.info("🟢 App is ready. User data path:", app.getPath("userData"));
 
+  protocol.handle("app-image", (request) => {
+    const url = request.url.replace("app-image://", "");
+    // Decode the URL (in case of spaces or special chars)
+    const decodedUrl = decodeURIComponent(url);
+
+    // Construct the full path to the file in userData
+    // Your frontend sends: app-image://images/products/filename.jpg
+    // This becomes: C:\Users\...\AppData\Roaming\YourApp\images\products\filename.jpg
+    const filePath = path.join(app.getPath("userData"), decodedUrl);
+
+    // Return the file response
+    return net.fetch("file:///" + filePath);
+  });
+
   // Register license handlers early
   initializeLicenseHandlers();
 
@@ -213,7 +232,7 @@ app.whenReady().then(async () => {
         setTimeout(() => {
           if (mainWindow && !mainWindow.isDestroyed())
             mainWindow.webContents.send("set-server-url", manualServer);
-        }, delay)
+        }, delay),
       );
     } else {
       // ✅ 2. Fallback to Bonjour Discovery
@@ -229,7 +248,7 @@ app.whenReady().then(async () => {
             setTimeout(() => {
               if (mainWindow && !mainWindow.isDestroyed())
                 mainWindow.webContents.send("set-server-url", serverUrl);
-            }, delay)
+            }, delay),
           );
           browser.stop();
         }
@@ -239,12 +258,12 @@ app.whenReady().then(async () => {
     // Server Mode Startup
     let serverStarted = false;
     try {
-      startServer(dbPath);
+      startServer(dbPath, app.getPath("userData"));
       serverStarted = true;
     } catch (err) {
       mainLogger.error(
         "[CRITICAL] Backend failed to start (ignoring for fresh install):",
-        err
+        err,
       );
     }
 
@@ -254,7 +273,7 @@ app.whenReady().then(async () => {
     } catch (e) {
       mainLogger.warn(
         "License check failed (expected on fresh install):",
-        e.message
+        e.message,
       );
     }
 

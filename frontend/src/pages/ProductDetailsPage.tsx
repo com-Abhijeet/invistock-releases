@@ -240,7 +240,7 @@ export default function ProductDetailPage() {
             {product.image_url ? (
               <Box
                 component="img"
-                src={`app-image://products/${product.image_url}`}
+                src={`app-image://images/products/${product.image_url}`}
                 alt={product.name}
                 sx={{
                   width: "100%",
@@ -293,7 +293,7 @@ export default function ProductDetailPage() {
                 <Typography variant="caption">
                   Created:{" "}
                   {new Date(
-                    product.created_at ?? new Date()
+                    product.created_at ?? new Date(),
                   ).toLocaleDateString("en-IN")}
                 </Typography>
               </Stack>

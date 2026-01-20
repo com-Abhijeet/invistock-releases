@@ -6,19 +6,23 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  Table,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
   TextField,
   FormControl,
-  Select,
-  MenuItem,
   Typography,
   Chip,
+  Box,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Paper,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  Checkbox,
+  ListItemText,
+  Divider,
 } from "@mui/material";
-import { Printer, Info } from "lucide-react";
+import { Printer, Package, ScanBarcode, Tag } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   fetchPurchaseItemsForLabels,
@@ -37,11 +41,13 @@ interface Props {
   purchaseId: number | null;
 }
 
-// Extend LabelItem to support our UI state
+// Extend LabelItem to support our complex UI state per item
 interface ExtendedLabelItem extends LabelItem {
-  printQuantity: number;
-  printMode: "product" | "batch" | "serial"; // Expanded to support Serial
-  serial_numbers?: string; // Comma separated list from backend
+  printMode: "product" | "batch" | "serial";
+  parsedSerials: string[]; // List of available serials from backend string
+  selectedSerials: string[]; // List of serials selected for printing
+  customQuantity: number; // Quantity for Product/Batch mode
+  copies: number; // Copies per label
 }
 
 export default function BulkLabelPrintModal({
@@ -51,7 +57,7 @@ export default function BulkLabelPrintModal({
 }: Props) {
   const [items, setItems] = useState<ExtendedLabelItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [printing, setPrinting] = useState(false); // Added missing state
+  const [printing, setPrinting] = useState(false);
 
   // Fetch data when modal opens
   useEffect(() => {
@@ -59,22 +65,26 @@ export default function BulkLabelPrintModal({
       setLoading(true);
       fetchPurchaseItemsForLabels(purchaseId)
         .then((data) => {
-          // Initialize state with smart defaults
+          // Initialize state
           const initialized: ExtendedLabelItem[] = data.map((i: any) => {
             let defaultMode: "product" | "batch" | "serial" = "product";
 
-            // Default to the most specific available tracking type
             if (i.tracking_type === "serial") defaultMode = "serial";
             else if (i.tracking_type === "batch") defaultMode = "batch";
 
+            // Parse serials string into array
+            const serialList = (i.serial_numbers || "")
+              .split(/[\n,]+/)
+              .map((s: string) => s.trim())
+              .filter((s: string) => s !== "");
+
             return {
               ...i,
-              printQuantity: i.purchase_quantity,
               printMode: defaultMode,
-              // Ensure we capture these fields from the raw API response
-              serial_numbers: i.serial_numbers,
-              batch_uid: i.batch_uid,
-              batch_number: i.batch_number, // Ensure batch_number is captured
+              parsedSerials: serialList,
+              selectedSerials: serialList, // Default select all
+              customQuantity: i.purchase_quantity, // Default to full qty
+              copies: 1,
               tracking_type: i.tracking_type || "none",
             };
           });
@@ -88,20 +98,36 @@ export default function BulkLabelPrintModal({
     }
   }, [open, purchaseId]);
 
-  const handleQtyChange = (index: number, val: string) => {
-    const newQty = Math.max(0, parseInt(val) || 0);
-    const updated = [...items];
-    updated[index].printQuantity = newQty;
-    setItems(updated);
+  // --- UPDATE HANDLERS ---
+  const updateItem = (index: number, updates: Partial<ExtendedLabelItem>) => {
+    setItems((prev) => {
+      const newItems = [...prev];
+      newItems[index] = { ...newItems[index], ...updates };
+      return newItems;
+    });
   };
 
-  const handleModeChange = (
-    index: number,
-    val: "product" | "batch" | "serial"
-  ) => {
-    const updated = [...items];
-    updated[index].printMode = val;
-    setItems(updated);
+  const handleToggleSerial = (index: number, serial: string) => {
+    const item = items[index];
+    const currentSelected = item.selectedSerials;
+    const isSelected = currentSelected.includes(serial);
+
+    let newSelected;
+    if (isSelected) {
+      newSelected = currentSelected.filter((s) => s !== serial);
+    } else {
+      newSelected = [...currentSelected, serial];
+    }
+    updateItem(index, { selectedSerials: newSelected });
+  };
+
+  const handleSelectAllSerials = (index: number) => {
+    const item = items[index];
+    if (item.selectedSerials.length === item.parsedSerials.length) {
+      updateItem(index, { selectedSerials: [] });
+    } else {
+      updateItem(index, { selectedSerials: [...item.parsedSerials] });
+    }
   };
 
   const handlePrint = async () => {
@@ -109,58 +135,21 @@ export default function BulkLabelPrintModal({
 
     setPrinting(true);
 
-    // Flatten logic: Convert UI rows into print jobs
     const itemsToPrint: any[] = [];
 
     items.forEach((item) => {
-      if (item.printQuantity <= 0) return;
-
-      // Helper to ensure a valid batch UID is always present for the barcode generator
-      // Logic matches LabelPrintModal: batch_uid > batch_number > BAT-{fallback}
+      // Logic from LabelPrintModal adapted for Bulk
       const safeBatchUid =
         item.batch_uid || item.batch_number || `BAT-PUR${purchaseId}`;
 
       // CASE 1: SERIAL MODE
-      // If user wants serial labels, we must generate unique barcodes for each unit.
       if (item.printMode === "serial") {
-        // Split serials string (e.g. "SN1, SN2, SN3")
-        const serialList = (item.serial_numbers || "")
-          .split(/[\n,]+/)
-          .map((s) => s.trim())
-          .filter((s) => s !== "");
+        if (item.selectedSerials.length === 0) return; // Skip if none selected
 
-        // If no serials found (e.g. legacy data), we can't print unique serials.
-        if (serialList.length === 0) {
-          toast.error(
-            `No serial numbers found for ${item.name}. Printing generic batch labels.`
-          );
-          // Fallback to Batch logic
+        item.selectedSerials.forEach((sn) => {
           const productShim = {
             id: item.id,
-            tracking_type: "batch",
-            barcode: item.barcode,
-            product_code: item.product_code,
-          } as any;
-          const batchShim = { batch_uid: safeBatchUid };
-          itemsToPrint.push({
-            ...item,
-            printQuantity: item.printQuantity,
-            customBarcode: generateTrackingBarcode(productShim, batchShim),
-          });
-          return;
-        }
-
-        // Determine how many serials to print based on user's quantity input
-        // Standard behavior: Print first N serials. If quantity > serials, we cycle.
-        const countToPrint = item.printQuantity;
-
-        for (let i = 0; i < countToPrint; i++) {
-          const sn = serialList[i % serialList.length];
-
-          // Construct Product & Batch Shims for the generator
-          const productShim = {
-            id: item.id,
-            tracking_type: "serial", // Force generator to use serial logic
+            tracking_type: "serial",
             barcode: item.barcode,
             product_code: item.product_code,
           } as any;
@@ -170,22 +159,22 @@ export default function BulkLabelPrintModal({
 
           itemsToPrint.push({
             ...item,
-            printQuantity: 1, // 1 label per specific serial iteration
+            printQuantity: 1, // 1 label per serial
+            copies: item.copies, // Apply copies per label
             customBarcode: generateTrackingBarcode(
               productShim,
               batchShim,
-              serialShim
+              serialShim,
             ),
           });
-        }
+        });
       }
       // CASE 2: BATCH or PRODUCT MODE
       else {
-        // Prepare Product Shim
+        if (item.customQuantity <= 0) return;
+
         const productShim = {
           id: item.id,
-          // If printing 'product' mode, tell generator 'none' to force standard barcode
-          // If printing 'batch' mode, tell generator 'batch' to get Batch UID
           tracking_type: item.printMode === "batch" ? "batch" : "none",
           barcode: item.barcode,
           product_code: item.product_code,
@@ -195,7 +184,8 @@ export default function BulkLabelPrintModal({
 
         itemsToPrint.push({
           ...item,
-          printQuantity: item.printQuantity, // Bulk print identical labels
+          printQuantity: item.customQuantity,
+          copies: item.copies,
           customBarcode: generateTrackingBarcode(productShim, batchShim),
         });
       }
@@ -203,12 +193,19 @@ export default function BulkLabelPrintModal({
 
     if (itemsToPrint.length === 0) {
       setPrinting(false);
-      return toast.error("No valid labels to print");
+      return toast.error("No valid labels selected");
     }
 
-    toast.loading(`Generating ${itemsToPrint.length} unique print jobs...`);
+    toast.loading(`Generating ${itemsToPrint.length} print jobs...`);
 
     try {
+      // We reuse the existing bulk print IPC handler
+      // It expects an array of objects with { ...item, printQuantity, customBarcode }
+      // We added 'copies' property, ensure your main.js handler respects it or loops it.
+      // If main.js 'print-bulk-labels' doesn't handle 'copies', we might need to loop here.
+      // Assuming standard implementation prints 'printQuantity' labels.
+      // For Serial: printQuantity is 1, so we get 1 label per serial.
+
       const res = await ipcRenderer.invoke("print-bulk-labels", itemsToPrint);
       toast.dismiss();
       setPrinting(false);
@@ -228,133 +225,22 @@ export default function BulkLabelPrintModal({
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Print Labels from Purchase</DialogTitle>
-      <DialogContent dividers>
+      <DialogContent dividers sx={{ bgcolor: "#F9FAFB", p: 2 }}>
         {loading ? (
           <KoshSpinningLoader />
         ) : (
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Product</TableCell>
-                <TableCell>Code</TableCell>
-                <TableCell>Tracking</TableCell>
-                <TableCell width={220}>Barcode Type</TableCell>
-                <TableCell align="center" sx={{ width: 100 }}>
-                  Qty
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {items.map((item, idx) => {
-                // Modified Logic: Show options based on Configured Tracking Type
-                const isBatchTracked = item.tracking_type === "batch";
-                const isSerialTracked = item.tracking_type === "serial";
-                const isTracked = isBatchTracked || isSerialTracked;
-
-                return (
-                  <TableRow key={idx}>
-                    <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
-                        {item.name}
-                      </Typography>
-                      {item.batch_number && (
-                        <Typography variant="caption" color="text.secondary">
-                          Batch: {item.batch_number}
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell>{item.product_code}</TableCell>
-                    <TableCell>
-                      {isTracked ? (
-                        <Chip
-                          label={item.tracking_type?.toUpperCase()}
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                          sx={{ fontSize: "10px" }}
-                        />
-                      ) : (
-                        <span style={{ color: "#999" }}>-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {isTracked ? (
-                        <>
-                          <FormControl size="small" fullWidth>
-                            <Select
-                              value={item.printMode}
-                              onChange={(e) =>
-                                handleModeChange(
-                                  idx,
-                                  e.target.value as
-                                    | "product"
-                                    | "batch"
-                                    | "serial"
-                                )
-                              }
-                              sx={{ fontSize: "0.85rem", height: 32 }}
-                            >
-                              <MenuItem value="product">
-                                Product (Standard)
-                              </MenuItem>
-
-                              {(isBatchTracked || isSerialTracked) && (
-                                <MenuItem value="batch">
-                                  Batch Code{" "}
-                                  {item.batch_uid
-                                    ? `(${item.batch_uid})`
-                                    : "(Auto)"}
-                                </MenuItem>
-                              )}
-
-                              {isSerialTracked && (
-                                <MenuItem value="serial">
-                                  Serial Numbers (Unique)
-                                </MenuItem>
-                              )}
-                            </Select>
-                          </FormControl>
-                          {item.printMode === "serial" && (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              display="block"
-                              mt={0.5}
-                              fontSize="0.7rem"
-                            >
-                              <Info
-                                size={10}
-                                style={{ display: "inline", marginRight: 2 }}
-                              />
-                              Prints unique barcode for each serial
-                            </Typography>
-                          )}
-                        </>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          Standard Only
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell align="center">
-                      <TextField
-                        type="number"
-                        size="small"
-                        value={item.printQuantity}
-                        onChange={(e) => handleQtyChange(idx, e.target.value)}
-                        inputProps={{ min: 0, style: { textAlign: "center" } }}
-                        helperText={
-                          item.printMode === "serial"
-                            ? `Max: ${item.purchase_quantity}`
-                            : ""
-                        }
-                      />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <Stack spacing={2}>
+            {items.map((item, idx) => (
+              <BulkPrintItemCard
+                key={idx}
+                item={item}
+                index={idx}
+                onUpdate={updateItem}
+                onToggleSerial={handleToggleSerial}
+                onSelectAllSerials={handleSelectAllSerials}
+              />
+            ))}
+          </Stack>
         )}
       </DialogContent>
       <DialogActions>
@@ -371,5 +257,231 @@ export default function BulkLabelPrintModal({
         </Button>
       </DialogActions>
     </Dialog>
+  );
+}
+
+// --- SUB-COMPONENT: The Card (Repeated N times) ---
+function BulkPrintItemCard({
+  item,
+  index,
+  onUpdate,
+  onToggleSerial,
+  onSelectAllSerials,
+}: {
+  item: ExtendedLabelItem;
+  index: number;
+  onUpdate: (index: number, updates: Partial<ExtendedLabelItem>) => void;
+  onToggleSerial: (index: number, serial: string) => void;
+  onSelectAllSerials: (index: number) => void;
+}) {
+  const isTracked =
+    item.tracking_type === "batch" || item.tracking_type === "serial";
+  const isSerial = item.tracking_type === "serial";
+  const showRightPanel = item.printMode === "serial";
+
+  return (
+    <Paper variant="outlined" sx={{ overflow: "hidden" }}>
+      <Box sx={{ display: "flex", flexDirection: "row" }}>
+        {/* LEFT COLUMN: Controls */}
+        <Box sx={{ flex: 1, p: 2 }}>
+          <Stack spacing={2}>
+            {/* Header Info */}
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700}>
+                {item.name}
+              </Typography>
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                mt={0.5}
+                flexWrap="wrap"
+              >
+                <Chip
+                  label={item.product_code}
+                  size="small"
+                  variant="outlined"
+                />
+                {item.batch_number && (
+                  <Chip
+                    label={`Batch: ${item.batch_number}`}
+                    size="small"
+                    color="info"
+                    variant="filled"
+                  />
+                )}
+                {isTracked && (
+                  <Chip
+                    label={item.tracking_type?.toUpperCase()}
+                    size="small"
+                    color="primary"
+                    sx={{ fontSize: "10px", height: 20 }}
+                  />
+                )}
+              </Stack>
+            </Box>
+
+            <Divider />
+
+            {/* Scope Toggle */}
+            <FormControl fullWidth size="small">
+              <ToggleButtonGroup
+                value={item.printMode}
+                exclusive
+                onChange={(_, val) =>
+                  val && onUpdate(index, { printMode: val })
+                }
+                color="primary"
+                fullWidth
+                size="small"
+              >
+                <ToggleButton value="product" sx={{ py: 0.5 }}>
+                  <Stack direction="row" gap={1} alignItems="center">
+                    <Tag size={14} /> Product
+                  </Stack>
+                </ToggleButton>
+                {isTracked && (
+                  <ToggleButton value="batch" sx={{ py: 0.5 }}>
+                    <Stack direction="row" gap={1} alignItems="center">
+                      <Package size={14} /> Batch
+                    </Stack>
+                  </ToggleButton>
+                )}
+                {isSerial && (
+                  <ToggleButton value="serial" sx={{ py: 0.5 }}>
+                    <Stack direction="row" gap={1} alignItems="center">
+                      <ScanBarcode size={14} /> Serial
+                    </Stack>
+                  </ToggleButton>
+                )}
+              </ToggleButtonGroup>
+            </FormControl>
+
+            {/* Inputs */}
+            <Stack direction="row" spacing={2}>
+              {/* Quantity Input (Hidden for Serial Mode, uses selection count) */}
+              {item.printMode !== "serial" && (
+                <TextField
+                  type="number"
+                  label="Quantity"
+                  size="small"
+                  fullWidth
+                  value={item.customQuantity}
+                  onChange={(e) =>
+                    onUpdate(index, {
+                      customQuantity: parseInt(e.target.value) || 0,
+                    })
+                  }
+                  inputProps={{ min: 0 }}
+                />
+              )}
+
+              {/* Copies Input */}
+              <TextField
+                type="number"
+                label="Copies"
+                size="small"
+                fullWidth
+                value={item.copies}
+                onChange={(e) =>
+                  onUpdate(index, { copies: parseInt(e.target.value) || 1 })
+                }
+                inputProps={{ min: 1 }}
+                helperText="Per Label"
+              />
+            </Stack>
+          </Stack>
+        </Box>
+
+        {/* RIGHT COLUMN: Selection List (Serial Mode Only) */}
+        {showRightPanel && (
+          <Box
+            sx={{
+              flex: 1,
+              borderLeft: "1px solid",
+              borderColor: "divider",
+              bgcolor: "#FAFAFA",
+              display: "flex",
+              flexDirection: "column",
+              maxHeight: 280, // Limit height of the card
+            }}
+          >
+            <Box
+              p={1}
+              px={2}
+              borderBottom="1px solid"
+              borderColor="divider"
+              bgcolor="white"
+            >
+              <Typography variant="caption" fontWeight={600} color="primary">
+                Select Serials ({item.selectedSerials.length} /{" "}
+                {item.parsedSerials.length})
+              </Typography>
+            </Box>
+
+            {item.parsedSerials.length === 0 ? (
+              <Box
+                flex={1}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                p={2}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  No serials found.
+                </Typography>
+              </Box>
+            ) : (
+              <List dense disablePadding sx={{ overflow: "auto", flex: 1 }}>
+                <ListItemButton
+                  onClick={() => onSelectAllSerials(index)}
+                  divider
+                  dense
+                >
+                  <ListItemIcon sx={{ minWidth: 32 }}>
+                    <Checkbox
+                      edge="start"
+                      checked={
+                        item.selectedSerials.length ===
+                          item.parsedSerials.length &&
+                        item.parsedSerials.length > 0
+                      }
+                      indeterminate={
+                        item.selectedSerials.length > 0 &&
+                        item.selectedSerials.length < item.parsedSerials.length
+                      }
+                      tabIndex={-1}
+                      disableRipple
+                      size="small"
+                    />
+                  </ListItemIcon>
+                  <ListItemText primary="Select All" />
+                </ListItemButton>
+
+                {item.parsedSerials.map((sn) => (
+                  <ListItemButton
+                    key={sn}
+                    onClick={() => onToggleSerial(index, sn)}
+                    divider
+                    dense
+                  >
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      <Checkbox
+                        edge="start"
+                        checked={item.selectedSerials.includes(sn)}
+                        tabIndex={-1}
+                        disableRipple
+                        size="small"
+                      />
+                    </ListItemIcon>
+                    <ListItemText primary={sn} />
+                  </ListItemButton>
+                ))}
+              </List>
+            )}
+          </Box>
+        )}
+      </Box>
+    </Paper>
   );
 }

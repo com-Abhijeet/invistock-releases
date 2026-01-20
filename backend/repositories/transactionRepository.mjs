@@ -51,7 +51,7 @@ export function createTransaction(transactionData) {
       status,
       transactionData.note,
       gstAmount,
-      discount
+      discount,
     );
 
     return result;
@@ -92,7 +92,7 @@ export function getAllTransactions({
 
     if (query) {
       whereClauses.push(
-        `(LOWER(t.reference_no) LIKE ? OR LOWER(t.note) LIKE ? OR LOWER(COALESCE(c.name, sup.name)) LIKE ?)`
+        `(LOWER(t.reference_no) LIKE ? OR LOWER(t.note) LIKE ? OR LOWER(COALESCE(c.name, sup.name)) LIKE ?)`,
       );
       const q = `%${query.toLowerCase()}%`;
       params.push(q, q, q);
@@ -217,7 +217,7 @@ export function updateTransaction(id, updatedData) {
     params.push(id);
 
     const stmt = db.prepare(
-      `UPDATE transactions SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      `UPDATE transactions SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     );
     return stmt.run(...params);
   } catch (error) {
@@ -232,7 +232,7 @@ export function deleteTransaction(id) {
   try {
     return db
       .prepare(
-        "UPDATE transactions SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        "UPDATE transactions SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       )
       .run(id);
   } catch (error) {
@@ -244,31 +244,43 @@ export function deleteTransaction(id) {
 
 export function getCustomerAccountSummary(customerId, filters = {}) {
   try {
+    // Determine if we should bypass date filters
+    const isAllTime = filters.all === true;
+
     // 1. Total Sales
     const { where: sWhere, params: sParams } = getDateFilter({
       ...filters,
       alias: "s",
     });
+
+    // If 'all' is true, we force the WHERE clause to true (1=1) and clear params
+    const finalSWhere = isAllTime ? "1=1" : sWhere;
+    const finalSParams = isAllTime ? [] : sParams;
+
     const salesStmt = db.prepare(`
       SELECT COALESCE(SUM(total_amount), 0) as total, COUNT(id) as count
       FROM sales s
-      WHERE customer_id = ? AND status != 'cancelled' AND is_quote = 0 AND ${sWhere}
+      WHERE customer_id = ? AND status != 'cancelled' AND is_quote = 0 AND ${finalSWhere}
     `);
-    const sales = salesStmt.get(customerId, ...sParams);
+    const sales = salesStmt.get(customerId, ...finalSParams);
 
     // 2. Transactions (Payments In + Credit Notes)
     const { where: tWhere, params: tParams } = getDateFilter({
       ...filters,
       alias: "t",
     });
+
+    const finalTWhere = isAllTime ? "1=1" : tWhere;
+    const finalTParams = isAllTime ? [] : tParams;
+
     const transStmt = db.prepare(`
       SELECT 
         COALESCE(SUM(CASE WHEN type = 'payment_in' THEN amount ELSE 0 END), 0) as paid,
         COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as credit
       FROM transactions t
-      WHERE entity_id = ? AND entity_type = 'customer' AND status != 'deleted' AND ${tWhere}
+      WHERE entity_id = ? AND entity_type = 'customer' AND status != 'deleted' AND ${finalTWhere}
     `);
-    const trans = transStmt.get(customerId, ...tParams);
+    const trans = transStmt.get(customerId, ...finalTParams);
 
     const outstanding = sales.total - (trans.paid + trans.credit);
 
@@ -277,7 +289,7 @@ export function getCustomerAccountSummary(customerId, filters = {}) {
       total_invoices: sales.count,
       total_paid: trans.paid,
       total_credit_notes: trans.credit,
-      outstanding_balance: outstanding > 0 ? outstanding : 0, // Ensure no negative balance shown (unless deliberate overpayment)
+      outstanding_balance: outstanding > 0 ? outstanding : 0,
     };
   } catch (error) {
     throw new Error("Repo Error: getCustomerAccountSummary " + error.message);

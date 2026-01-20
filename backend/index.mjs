@@ -45,7 +45,8 @@ const { backendLogger } = require("../electron/logger.js");
 let bonjourInstance;
 let serverInstance;
 
-export function startServer(dbPath) {
+// ✅ UPDATED: Accepts userDataPath for image serving
+export function startServer(dbPath, userDataPath) {
   const app = express();
   const PORT = 5000; // Keeping 5000 as per your file (Mobile QR should use this port)
 
@@ -56,7 +57,7 @@ export function startServer(dbPath) {
       origin: "*",
       methods: ["GET", "POST", "PUT", "DELETE"],
       allowedHeaders: ["Content-Type", "Authorization"],
-    })
+    }),
   );
 
   app.use(express.json({ limit: "50mb" })); // Increased limit for large syncs
@@ -94,25 +95,17 @@ export function startServer(dbPath) {
   // Mobile HTML (Optional now, but kept if you still need the web view)
   app.use("/mobile", mobileHtmlRoutes);
 
-  // Static Images
-  app.get(/^\/images\/(.*)/, (req, res) => {
-    const relativePath = req.params[0];
-    const imagesDir = config.paths?.images;
-
-    if (!imagesDir || !relativePath) {
-      backendLogger.error("[IMAGE ERROR] Invalid path or filename.");
-      return res.status(400).send("Invalid Request");
-    }
-
-    const decodedPath = decodeURIComponent(relativePath);
-    const imagePath = path.join(imagesDir, decodedPath);
-
-    if (fs.existsSync(imagePath)) {
-      res.sendFile(imagePath);
-    } else {
-      res.status(404).send("Image not found");
-    }
-  });
+  // ✅ SERVE IMAGES STATICALLY (For Mobile)
+  if (userDataPath) {
+    const imagesPath = path.join(userDataPath, "images");
+    // This exposes: http://IP:5000/images/products/filename.jpg
+    app.use("/images", express.static(imagesPath));
+    backendLogger.info(`[BACKEND] Serving images from: ${imagesPath}`);
+  } else {
+    backendLogger.warn(
+      "[BACKEND] No userDataPath provided. Images will not be served.",
+    );
+  }
 
   // 1. Connection Check (Health Ping for Mobile)
   app.get("/api/health", (req, res) => {
@@ -168,7 +161,7 @@ export function startServer(dbPath) {
         txt: { version: "1.0.0" },
       });
       backendLogger.info(
-        "[BONJOUR] KOSH Server is now discoverable on the local network."
+        "[BONJOUR] KOSH Server is now discoverable on the local network.",
       );
     } catch (error) {
       backendLogger.error("[BONJOUR] Failed to announce service:", error);

@@ -45,7 +45,7 @@ export async function getAllProducts(
         isActive: number | undefined;
         all: boolean;
       }
-    | undefined
+    | undefined,
 ) {
   try {
     const apiParams = { ...params };
@@ -99,14 +99,14 @@ export async function createProduct(product: Product): Promise<Product | null> {
  * @returns {Promise<ProductHistoryPayload>} The product's history data.
  */
 export async function fetchProductHistory(
-  id: number
+  id: number,
 ): Promise<ProductHistoryPayload> {
   try {
     const response = await api.get(`${API_BASE}/${id}/history`);
     return response.data.data;
   } catch (err: any) {
     toast.error(
-      err?.response?.data?.message || "Failed to get product history."
+      err?.response?.data?.message || "Failed to get product history.",
     );
     return err;
   }
@@ -114,7 +114,7 @@ export async function fetchProductHistory(
 
 export async function updateProduct(
   id: number,
-  product: Partial<Product>
+  product: Partial<Product>,
 ): Promise<Product> {
   try {
     const response = await api.put(`${API_BASE}/update/${id}`, product);
@@ -161,10 +161,10 @@ export async function fetchNextBarcode(): Promise<string> {
 // This function is now updated to accept codes
 export async function fetchNextProductCode(
   categoryCode: string,
-  subcategoryCode: string
+  subcategoryCode: string,
 ): Promise<string> {
   const response = await api.get(
-    `${API_BASE}/next-code?categoryCode=${categoryCode}&subcategoryCode=${subcategoryCode}`
+    `${API_BASE}/next-code?categoryCode=${categoryCode}&subcategoryCode=${subcategoryCode}`,
   );
   return response.data.code;
 }
@@ -208,7 +208,7 @@ interface PaginatedProducts {
  * with category and subcategory filtering.
  */
 export async function getProductsForMobile(
-  options: GetMobileProductsParams
+  options: GetMobileProductsParams,
 ): Promise<PaginatedProducts> {
   // Axios will handle converting the 'params' object to a query string
   const response = await api.get("api/products/mobile-view", {
