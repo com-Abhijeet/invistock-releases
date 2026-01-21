@@ -8,6 +8,7 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Tooltip,
 } from "@mui/material";
 import { Plus, FileDown } from "lucide-react"; // FileDown for the export icon
 import { useEffect, useState } from "react";
@@ -22,7 +23,7 @@ import {
   deleteCategory,
 } from "../lib/api/categoryService";
 import type { Category } from "../lib/types/categoryTypes";
-import SearchFilterBar from "../components/products/SearchFilterBar";
+import DashboardHeader from "../components/DashboardHeader";
 
 // ✅ Assuming you have access to ipcRenderer via your preload script
 const { ipcRenderer } = window.electron;
@@ -35,7 +36,7 @@ export default function CategoriesPage() {
 
   // ✅ 2. STATE for the export menu anchor
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(
-    null
+    null,
   );
 
   const fetchCategories = async () => {
@@ -113,79 +114,70 @@ export default function CategoriesPage() {
   };
 
   const filtered = categories.filter((cat) =>
-    cat.name.toLowerCase().includes(search.toLowerCase())
+    cat.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  // Actions for DashboardHeader
+  const actions = (
+    <>
+      <Tooltip title="Export Data">
+        <IconButton
+          onClick={handleExportMenuOpen}
+          sx={{
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: "12px",
+            width: 40,
+            height: 40,
+          }}
+        >
+          <FileDown size={18} />
+        </IconButton>
+      </Tooltip>
+      <Menu
+        anchorEl={exportMenuAnchor}
+        open={Boolean(exportMenuAnchor)}
+        onClose={handleExportMenuClose}
+      >
+        <MenuItem onClick={() => handleExport("main")}>
+          Export Main Categories
+        </MenuItem>
+        <MenuItem onClick={() => handleExport("sub")}>
+          Export Subcategories
+        </MenuItem>
+      </Menu>
+
+      <Button
+        variant="contained"
+        color="primary"
+        startIcon={<Plus size={18} />}
+        onClick={handleOpenAdd}
+        sx={{ borderRadius: "10px", textTransform: "none", fontWeight: 600 }}
+      >
+        Add Category
+      </Button>
+    </>
   );
 
   return (
     <Box
-      p={2}
-      pt={3}
+      p={3}
       sx={{
-        backgroundColor: "#fff",
+        backgroundColor: "#f8f9fa",
+        minHeight: "100vh",
       }}
-      minHeight={"100vh"}
     >
-      <Typography
-        variant="subtitle1"
-        fontWeight={600}
-        mb={1}
-        color="primary.main"
-      >
-        Categories
-      </Typography>
+      <DashboardHeader
+        title="Categories"
+        showSearch={true}
+        showDateFilters={false}
+        onSearch={setSearch}
+        onRefresh={fetchCategories}
+        actions={actions}
+      />
 
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        flexWrap="wrap"
-        gap={2}
-        mb={2}
-      >
-        <Box flex={1} minWidth="250px">
-          <SearchFilterBar
-            search={search}
-            onSearchChange={setSearch}
-            onRefresh={fetchCategories}
-          />
-        </Box>
-
-        {/* ✅ 5. UI for the Export and Add buttons */}
-        <Box display="flex" gap={1}>
-          <IconButton
-            onClick={handleExportMenuOpen}
-            color="primary"
-            title="Export Data"
-          >
-            <FileDown size={20} /> <Typography>Export Data</Typography>
-          </IconButton>
-          <Menu
-            anchorEl={exportMenuAnchor}
-            open={Boolean(exportMenuAnchor)}
-            onClose={handleExportMenuClose}
-          >
-            <MenuItem onClick={() => handleExport("main")}>
-              Export Main Categories
-            </MenuItem>
-            <MenuItem onClick={() => handleExport("sub")}>
-              Export Subcategories
-            </MenuItem>
-          </Menu>
-
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<Plus size={18} />}
-            onClick={handleOpenAdd}
-          >
-            Add Category
-          </Button>
-        </Box>
-      </Box>
-
-      {/* ... (rest of the component JSX is unchanged) ... */}
       {filtered.length === 0 ? (
-        <Typography color="text.secondary" mt={3}>
+        <Typography color="text.secondary" mt={3} align="center">
           No categories found.
         </Typography>
       ) : (

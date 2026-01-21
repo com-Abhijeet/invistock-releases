@@ -6,8 +6,11 @@ export interface Product {
   gst_rate: number; // ✅ New GST rate field
   mrp: number;
   mop: number; // Optional MOP
-  category?: number | null;
-  subcategory?: number | null;
+
+  // Updated to allow string for new categories created on the fly
+  category?: number | string | null;
+  subcategory?: number | string | null;
+
   storage_location: string;
   quantity: number;
   description: string;

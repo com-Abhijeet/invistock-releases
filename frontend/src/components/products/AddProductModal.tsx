@@ -21,6 +21,7 @@ import {
   Switch,
   FormControlLabel,
   Alert,
+  Autocomplete,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect } from "react";
@@ -65,7 +66,8 @@ type Props = {
   mode?: Mode;
 };
 
-const defaultForm: Product = {
+// Update defaultForm to accept partial types or loose types for new categories
+const defaultForm: Partial<Product> = {
   name: "",
   product_code: "",
   hsn: "0",
@@ -74,7 +76,7 @@ const defaultForm: Product = {
   mop: 0,
   category: null,
   subcategory: null,
-  storage_location: "Store", // Smart Default
+  storage_location: "Store",
   quantity: 0,
   description: "",
   brand: "",
@@ -82,11 +84,11 @@ const defaultForm: Product = {
   image_url: "",
   mfw_price: "",
   average_purchase_price: 0,
-  low_stock_threshold: 5, // Smart Default
+  low_stock_threshold: 5,
   size: "",
   weight: "",
   is_active: 1,
-  tracking_type: "none", // Default tracking
+  tracking_type: "none",
 };
 
 const steps = ["Essential Details", "Inventory & Tracking", "Additional Info"];
@@ -99,7 +101,6 @@ export default function AddEditProductModal({
   mode = "add",
 }: Props) {
   const [activeStep, setActiveStep] = useState(0);
-  // Merge default form with initial data to ensure tracking_type exists
   const [form, setForm] = useState<Partial<Product>>({
     ...defaultForm,
     ...initialData,
@@ -113,17 +114,18 @@ export default function AddEditProductModal({
   >([]);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ EFFECT 1: Initialize form state when modal opens or initialData changes
+  // Track if user is typing a new category (string input)
+  const isNewCategory = typeof form.category === "string";
+  const isNewSubcategory = typeof form.subcategory === "string";
+
   useEffect(() => {
     if (open) {
       setActiveStep(0);
       setError(null);
-      // Set the form data from initialData in edit mode, or default in add mode
       setForm(
         mode === "edit" ? { ...defaultForm, ...initialData } : defaultForm,
       );
 
-      // If in "add" mode, immediately fetch the next available barcode
       if (mode === "add") {
         setForm((prev) => ({ ...prev, barcode: "Loading..." }));
         fetchNextBarcode()
@@ -133,24 +135,26 @@ export default function AddEditProductModal({
     }
   }, [open, mode]);
 
-  // ✅ EFFECT 2: Load categories and set subcategories
   useEffect(() => {
     const loadCategories = async () => {
       try {
         const categories = await getCategories();
         setAvailableCategories(categories);
-        if (form.category) {
+        // If editing and has ID, filter subcats
+        if (form.category && typeof form.category === "number") {
           const selected = categories.find(
             (cat: { id: number }) => cat.id === Number(form.category),
           );
           setFilteredSubcategories(selected?.subcategories || []);
+        } else {
+          setFilteredSubcategories([]);
         }
       } catch {
         toast.error("Failed to load categories");
       }
     };
     loadCategories();
-  }, [form.category]);
+  }, [form.category]); // Re-run if category changes (specifically if it becomes a number)
 
   const cached = localStorage.getItem("cached_products");
   const products: Product[] = cached
@@ -164,41 +168,64 @@ export default function AddEditProductModal({
       })()
     : [];
 
-  // ✅ EFFECT 3: Fetch the product code when category and subcategory are selected
+  // Update Product Code Logic
   useEffect(() => {
-    // Only run this logic in "add" mode
-    if (mode === "add" && form.category && form.subcategory) {
-      const selectedCategory = availableCategories.find(
-        (c) => c.id === form.category,
-      );
-      const selectedSubcategory = selectedCategory?.subcategories.find(
-        (s) => s.id === form.subcategory,
-      );
-
-      if (selectedCategory && selectedSubcategory) {
+    if (mode === "add") {
+      // 1. If user is creating a NEW category or subcategory
+      if (isNewCategory || isNewSubcategory) {
         setForm((prev) => ({ ...prev, product_code: "Generating..." }));
-        fetchNextProductCode(selectedCategory.code, selectedSubcategory.code)
-          .then((code) => handleChange("product_code", code))
-          .catch(() => handleChange("product_code", "Error"));
+        // We can't fetch from backend because codes don't exist yet.
+        // Backend will finalize this.
+        return;
+      }
+
+      // 2. Standard flow (Existing IDs)
+      if (
+        typeof form.category === "number" &&
+        typeof form.subcategory === "number"
+      ) {
+        const selectedCategory = availableCategories.find(
+          (c) => c.id === form.category,
+        );
+        const selectedSubcategory = selectedCategory?.subcategories.find(
+          (s) => s.id === form.subcategory,
+        );
+
+        if (selectedCategory && selectedSubcategory) {
+          setForm((prev) => ({ ...prev, product_code: "Generating..." }));
+          fetchNextProductCode(selectedCategory.code, selectedSubcategory.code)
+            .then((code) => handleChange("product_code", code))
+            .catch(() => handleChange("product_code", "Error"));
+        }
       }
     }
-  }, [form.category, form.subcategory, mode, availableCategories]);
+  }, [
+    form.category,
+    form.subcategory,
+    mode,
+    availableCategories,
+    isNewCategory,
+    isNewSubcategory,
+  ]);
 
   const handleChange = (key: keyof Product, value: any) => {
     setForm((prev) => {
       const newForm = { ...prev, [key]: value };
 
-      if ((key === "category" && value) || (key === "subcategory" && value)) {
-        // Use the imported utility function
+      // Client-side code generation logic (Fallback)
+      if (
+        !isNewCategory &&
+        !isNewSubcategory &&
+        ((key === "category" && value) || (key === "subcategory" && value))
+      ) {
         const newCode = generateProductCode(
-          newForm.category || null,
-          newForm.subcategory || null,
+          typeof newForm.category === "number" ? newForm.category : null,
+          typeof newForm.subcategory === "number" ? newForm.subcategory : null,
           availableCategories,
           products,
         );
         newForm.product_code = newCode;
       }
-
       return newForm;
     });
     if (error) setError(null);
@@ -207,10 +234,20 @@ export default function AddEditProductModal({
   const validateStep = (step: number) => {
     if (step === 0) {
       if (!form.name?.trim()) return "Product Name is required.";
-      if (!form.category) return "Category is required.";
+      // Robust check for category: must be non-null ID or non-empty String
+      if (
+        form.category === null ||
+        form.category === undefined ||
+        form.category === ""
+      )
+        return "Category is required.";
       if (form.gst_rate === undefined || form.gst_rate === null)
         return "GST Rate is required.";
-      if (!form.product_code) return "Product Code is required.";
+
+      // Relax product_code validation if we are in "New Category" mode,
+      // as backend will generate it.
+      if (!isNewCategory && !isNewSubcategory && !form.product_code)
+        return "Product Code is required.";
     }
     return null;
   };
@@ -231,9 +268,8 @@ export default function AddEditProductModal({
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      // Ensure defaults for optional fields if they are empty/undefined
-      const finalPayload: Product = {
-        ...(form as Product),
+      const finalPayload: any = {
+        ...form,
         storage_location: form.storage_location || "Store",
         low_stock_threshold: form.low_stock_threshold || 5,
         hsn: form.hsn || "",
@@ -256,8 +292,9 @@ export default function AddEditProductModal({
       setForm(defaultForm);
       localStorage.removeItem("cached_products");
       onClose();
-    } catch {
-      toast.error("Something went wrong");
+      toast.success(mode === "add" ? "Product Created" : "Product Updated");
+    } catch (e: any) {
+      toast.error("Something went wrong: " + (e.message || ""));
     } finally {
       setLoading(false);
     }
@@ -268,7 +305,6 @@ export default function AddEditProductModal({
       toast.error("Desktop features are not available.");
       return;
     }
-
     try {
       const originalPath =
         await window.electron.ipcRenderer.invoke("dialog:open-image");
@@ -293,6 +329,12 @@ export default function AddEditProductModal({
       toast.error(error.message || "Failed to save image.");
     }
   };
+
+  // Helper to check if category is set (ID or String) for enabling subcategory
+  const isCategorySet =
+    form.category !== null &&
+    form.category !== undefined &&
+    form.category !== "";
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -338,55 +380,124 @@ export default function AddEditProductModal({
                   />
                 </FormField>
               </Grid>
+
+              {/* Category: Autocomplete with FreeSolo and onChange + onInputChange */}
               <Grid item xs={12} sm={4}>
                 <FormField label="Category *">
-                  <TextField
-                    select
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    value={form.category ?? ""}
-                    onChange={(e) => {
-                      const catId = Number(e.target.value);
-                      handleChange("category", catId);
-                      const selectedCat = availableCategories.find(
-                        (cat) => cat.id === catId,
-                      );
-                      setFilteredSubcategories(
-                        selectedCat?.subcategories || [],
-                      );
-                      handleChange("subcategory", null);
+                  <Autocomplete
+                    freeSolo
+                    options={availableCategories}
+                    getOptionLabel={(option) =>
+                      typeof option === "string" ? option : option.name
+                    }
+                    value={
+                      typeof form.category === "number"
+                        ? availableCategories.find(
+                            (c) => c.id === form.category,
+                          )
+                        : (form.category as string) || null
+                    }
+                    // Selection Handler
+                    onChange={(_e, newValue) => {
+                      if (newValue && typeof newValue === "object") {
+                        handleChange("category", newValue.id);
+                        handleChange("subcategory", null); // Clear subcat on explicit change
+                      } else if (newValue === null) {
+                        handleChange("category", null);
+                        handleChange("subcategory", null);
+                      } else if (typeof newValue === "string") {
+                        handleChange("category", newValue);
+                        handleChange("subcategory", null);
+                      }
                     }}
-                  >
-                    <MenuItem value="">Select Category</MenuItem>
-                    {availableCategories.map((cat) => (
-                      <MenuItem key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                    // Typing Handler (Critical for 'New' values not yet committed)
+                    onInputChange={(_e, newInputValue, reason) => {
+                      if (reason === "input" || reason === "clear") {
+                        const match = availableCategories.find(
+                          (c) =>
+                            c.name.toLowerCase() ===
+                            newInputValue.toLowerCase(),
+                        );
+                        if (match) {
+                          handleChange("category", match.id);
+                        } else {
+                          handleChange(
+                            "category",
+                            newInputValue === "" ? null : newInputValue,
+                          );
+                        }
+                        // If typing changes, subcategory context might be invalid
+                        if (form.subcategory) handleChange("subcategory", null);
+                      }
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        fullWidth
+                        size="small"
+                        placeholder="Select or Type New"
+                      />
+                    )}
+                  />
                 </FormField>
               </Grid>
+
+              {/* Subcategory: Autocomplete with FreeSolo */}
               <Grid item xs={12} sm={4}>
                 <FormField label="Subcategory">
-                  <TextField
-                    select
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    value={form.subcategory ?? ""}
-                    onChange={(e) =>
-                      handleChange("subcategory", Number(e.target.value))
+                  <Autocomplete
+                    freeSolo
+                    options={filteredSubcategories}
+                    disabled={!isCategorySet} // Enable if category has ANY value (ID or String)
+                    getOptionLabel={(option) =>
+                      typeof option === "string" ? option : option.name
                     }
-                    disabled={!form.category}
-                  >
-                    <MenuItem value="">Select Subcategory</MenuItem>
-                    {filteredSubcategories.map((sub) => (
-                      <MenuItem key={sub.id} value={sub.id}>
-                        {sub.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                    value={
+                      typeof form.subcategory === "number"
+                        ? filteredSubcategories.find(
+                            (s) => s.id === form.subcategory,
+                          )
+                        : (form.subcategory as string) || null
+                    }
+                    onChange={(_e, newValue) => {
+                      if (newValue && typeof newValue === "object") {
+                        handleChange("subcategory", newValue.id);
+                      } else if (newValue === null) {
+                        handleChange("subcategory", null);
+                      } else if (typeof newValue === "string") {
+                        handleChange("subcategory", newValue);
+                      }
+                    }}
+                    onInputChange={(_e, newInputValue, reason) => {
+                      if (reason === "input" || reason === "clear") {
+                        const match = filteredSubcategories.find(
+                          (s) =>
+                            s.name.toLowerCase() ===
+                            newInputValue.toLowerCase(),
+                        );
+                        if (match) {
+                          handleChange("subcategory", match.id);
+                        } else {
+                          handleChange(
+                            "subcategory",
+                            newInputValue === "" ? null : newInputValue,
+                          );
+                        }
+                      }
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        fullWidth
+                        size="small"
+                        placeholder={
+                          !isCategorySet
+                            ? "Select Category First"
+                            : "Select or Type New"
+                        }
+                      />
+                    )}
+                  />
                 </FormField>
               </Grid>
 
@@ -400,8 +511,14 @@ export default function AddEditProductModal({
                       handleChange("product_code", e.target.value)
                     }
                     placeholder={mode === "add" ? "Select category first" : ""}
+                    helperText={
+                      isNewCategory || isNewSubcategory
+                        ? "Will be auto-generated by system"
+                        : ""
+                    }
                     InputProps={{
-                      readOnly: mode === "add",
+                      readOnly:
+                        mode === "add" && !isNewCategory && !isNewSubcategory,
                       startAdornment: (
                         <InputAdornment position="start">
                           <Hash size={18} />
@@ -538,7 +655,6 @@ export default function AddEditProductModal({
                 </Alert>
               </Grid>
 
-              {/* ✅ ADDED: Tracking Type */}
               <Grid item xs={12} md={6}>
                 <FormField label="Tracking Type">
                   <TextField
