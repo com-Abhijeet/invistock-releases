@@ -27,7 +27,8 @@ import {
   Building2,
   Landmark,
   User,
-} from "lucide-react"; // ✅ Import new icon
+  BookOpen, // Added for Ledger
+} from "lucide-react";
 import theme from "../../theme";
 
 import { getPurchasesBySupplierId } from "../lib/api/purchaseService";
@@ -59,7 +60,7 @@ export default function SupplierPage() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
   const [activeTab, setActiveTab] = useState<"purchases" | "transactions">(
-    "purchases"
+    "purchases",
   );
 
   // Modal State
@@ -67,7 +68,7 @@ export default function SupplierPage() {
     useState(false);
   const [isSupplierEditModalOpen, setIsSupplierEditModalOpen] = useState(false);
   const [_selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(
-    null
+    null,
   );
 
   const [activeFilters, setActiveFilters] =
@@ -134,7 +135,7 @@ export default function SupplierPage() {
             startDate: activeFilters.from,
             endDate: activeFilters.to,
             filter: activeFilters.filter || "month",
-          }
+          },
         );
         setTableData(transactionsData.records);
         setTotalRecords(transactionsData.totalRecords);
@@ -250,6 +251,21 @@ export default function SupplierPage() {
         onRefresh={handleRefresh}
         onFilterChange={setActiveFilters}
         showSearch={false}
+        // ✅ ADDED: Ledger Button
+        actions={
+          <Button
+            variant="outlined"
+            startIcon={<BookOpen size={18} />}
+            onClick={() => navigate(`/suppliers/ledger/${supplierId}`)}
+            sx={{
+              borderRadius: "10px",
+              textTransform: "none",
+              fontWeight: 600,
+            }}
+          >
+            View Ledger
+          </Button>
+        }
       />
       <Card
         sx={{

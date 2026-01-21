@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { SupplierType } from "../../lib/types/supplierTypes";
 import DataTable from "../DataTable";
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Eye, Pencil, Trash2, BookOpen } from "lucide-react";
 import { deleteSupplier } from "../../lib/api/supplierService";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
@@ -21,7 +21,7 @@ export default function SuppliersTable({ suppliers, onEdit, refresh }: Props) {
 
   const paginatedSuppliers = suppliers.slice(
     page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
+    page * rowsPerPage + rowsPerPage,
   );
 
   const handleDelete = async (supplier: SupplierType) => {
@@ -48,6 +48,14 @@ export default function SuppliersTable({ suppliers, onEdit, refresh }: Props) {
           icon: <Eye size={16} />,
           onClick: (row) => {
             navigate(`/viewSupplier/${row.id}`);
+          },
+        },
+        // ✅ ADDED: View Ledger Action
+        {
+          label: "Ledger",
+          icon: <BookOpen size={16} color="#0d9488" />, // Teal color for ledger
+          onClick: (row) => {
+            navigate(`/suppliers/ledger/${row.id}`);
           },
         },
         {

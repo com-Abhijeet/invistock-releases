@@ -4,6 +4,7 @@ import {
   getSupplierById,
   updateSupplier,
   deleteSupplier,
+  getSupplierLedger,
 } from "../repositories/supplierRepository.mjs";
 
 /**
@@ -26,14 +27,14 @@ export async function createSupplierService(supplierData) {
   }
   if (gst_number && !/^[0-9A-Z]{15}$/.test(gst_number.trim())) {
     const err = new Error(
-      "Invalid GSTIN format. It must be 15 alphanumeric characters."
+      "Invalid GSTIN format. It must be 15 alphanumeric characters.",
     );
     err.statusCode = 400; // Bad Request
     throw err;
   }
   if (phone && !/^\d{10,15}$/.test(phone.trim())) {
     const err = new Error(
-      "Invalid phone number format. It must be 10-15 digits."
+      "Invalid phone number format. It must be 10-15 digits.",
     );
     err.statusCode = 400; // Bad Request
     throw err;
@@ -102,3 +103,7 @@ export function removeSupplier(id) {
 
   return { message: "Supplier deleted successfully" };
 }
+
+export const getSupplierLedgerService = async (supplierId, filters) => {
+  return getSupplierLedger(supplierId, filters);
+};

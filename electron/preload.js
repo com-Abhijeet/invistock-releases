@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("electron", {
         "print-shipping-label",
         "print-non-gst-receipt",
         "print-customer-ledger",
+        "print-supplier-ledger",
         "export-non-gst-sales-to-pdfs",
         "export-non-gst-items-to-excel",
         "print-bulk-labels",
@@ -177,7 +178,7 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.on("update-error", (_event, error) => callback(error)),
     onDownloadProgress: (callback) =>
       ipcRenderer.on("update-progress", (_event, progressObj) =>
-        callback(progressObj)
+        callback(progressObj),
       ),
     onUpdateDownloaded: (callback) =>
       ipcRenderer.on("update-downloaded", (_event, info) => callback(info)),

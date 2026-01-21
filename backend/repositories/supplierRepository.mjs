@@ -1,4 +1,5 @@
 import db from "../db/db.mjs";
+import { getDateFilter } from "../utils/dateFilter.mjs";
 
 /**
  * @description Inserts a new supplier record into the database.
@@ -61,7 +62,7 @@ export function createSupplier(supplierData) {
       bank_account,
       ifsc_code,
       upi_id,
-      notes
+      notes,
     );
 
     // ✅ Return the complete new supplier object with the generated ID
@@ -70,7 +71,7 @@ export function createSupplier(supplierData) {
     console.error("Error in createSupplier repository:", error.message);
     // ✅ Throw the error so the service layer can handle it
     throw new Error(
-      `Database error: Could not create supplier. ${error.message}`
+      `Database error: Could not create supplier. ${error.message}`,
     );
   }
 }
@@ -106,7 +107,7 @@ export function updateSupplier(id, data) {
     data.total_supplied_amount,
     data.total_paid_amount,
     data.notes,
-    id
+    id,
   );
 
   return result.changes;
@@ -114,4 +115,65 @@ export function updateSupplier(id, data) {
 
 export function deleteSupplier(id) {
   return db.prepare("DELETE FROM suppliers WHERE id = ?").run(id).changes;
+}
+
+/**
+ * Fetches a complete financial ledger for a supplier, grouped by purchase bill.
+ * @param {number} supplierId The supplier's ID.
+ * @param {object} filters Date filters (startDate, endDate).
+ * @returns {object} An object containing the supplier details and their purchase/transaction history.
+ */
+export function getSupplierLedger(supplierId, filters) {
+  // 1. Get the supplier's details
+  const supplier = db
+    .prepare("SELECT * FROM suppliers WHERE id = ?")
+    .get(supplierId);
+  if (!supplier) throw new Error("Supplier not found");
+
+  // 2. Build date filter for purchases table
+  // Assuming 'purchases' table exists and has 'bill_date' or 'created_at'
+  const { where: dateWhere, params: dateParams } = getDateFilter({
+    from: filters.startDate,
+    to: filters.endDate,
+    alias: "p",
+  });
+
+  // 3. Fetch all purchases
+  // Note: Adjust 'bill_date' / 'reference_no' column names if your schema differs
+  const allPurchases = db
+    .prepare(
+      `
+    SELECT
+      id,
+      created_at AS bill_date,
+      reference_no,
+      total_amount,
+      paid_amount,
+      (total_amount - paid_amount) AS amount_pending,
+      'purchase' AS bill_type
+    FROM purchases p
+    WHERE supplier_id = ? AND status != 'cancelled' AND ${dateWhere}
+    ORDER BY created_at DESC
+  `,
+    )
+    .all(supplierId, ...dateParams);
+
+  // 4. Update the payments query (payment_out for suppliers)
+  const getPaymentsStmt = db.prepare(`
+    SELECT transaction_date, amount, payment_mode
+    FROM transactions
+    WHERE bill_id = ? AND bill_type = ? AND type = 'payment_out'
+    ORDER BY transaction_date ASC
+  `);
+
+  // 5. Map over the list to attach transactions
+  const ledger = allPurchases.map((purchase) => {
+    const transactions = getPaymentsStmt.all(purchase.id, purchase.bill_type);
+    return {
+      ...purchase,
+      transactions,
+    };
+  });
+
+  return { supplier, ledger };
 }

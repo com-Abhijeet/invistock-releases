@@ -11,6 +11,11 @@ const {
   getCustomerLedger,
 } = require("../../backend/repositories/customerRepository.mjs");
 const { createCustomerLedgerHTML } = require("../customerLedgerTemplate.js");
+// ✅ Import Supplier Repository and Template
+const {
+  getSupplierLedger,
+} = require("../../backend/repositories/supplierRepository.mjs");
+const { createSupplierLedgerHTML } = require("../supplierLedgerTemplate.js");
 
 function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
   ipcMain.handle("print-bulk-labels", async (event, items) => {
@@ -47,12 +52,12 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
       const shop = await getShop();
       if (!shop)
         throw new Error(
-          "Shop settings not found. Cannot print 'From' address."
+          "Shop settings not found. Cannot print 'From' address.",
         );
       const html = await createShippingLabelHTML(
         shop,
         saleData,
-        shop.invoice_printer_width_mm
+        shop.invoice_printer_width_mm,
       );
       const printOptions = {
         silent: shop.silent_printing === 1,
@@ -97,7 +102,7 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
         const htmlContent = createCustomerLedgerHTML(shop, customer, ledger);
         const win = new BrowserWindow({ show: true });
         await win.loadURL(
-          `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`
+          `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
         );
         win.webContents.on("did-finish-load", () => {
           win.webContents.print({ silent: false }, (success, error) => {
@@ -113,7 +118,36 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
           error: error.message || "An unknown error occurred.",
         };
       }
-    }
+    },
+  );
+
+  // ✅ New Handler for Supplier Ledger
+  ipcMain.handle(
+    "print-supplier-ledger",
+    async (event, { supplierId, filters }) => {
+      try {
+        const shop = await getShop();
+        const { supplier, ledger } = getSupplierLedger(supplierId, filters);
+        const htmlContent = createSupplierLedgerHTML(shop, supplier, ledger);
+        const win = new BrowserWindow({ show: true });
+        await win.loadURL(
+          `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
+        );
+        win.webContents.on("did-finish-load", () => {
+          win.webContents.print({ silent: false }, (success, error) => {
+            if (!success) console.error("Supplier ledger print failed:", error);
+            win.close();
+          });
+        });
+        return { success: true };
+      } catch (error) {
+        console.error("Failed to print supplier ledger:", error);
+        return {
+          success: false,
+          error: error.message || "An unknown error occurred.",
+        };
+      }
+    },
   );
 }
 

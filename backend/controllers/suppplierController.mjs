@@ -62,3 +62,20 @@ export async function deleteSupplierController(req, res) {
     res.status(404).json({ message: "error", message: err.message });
   }
 }
+
+export const getSupplierLedger = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const data = await supplierService.getSupplierLedgerService(id, {
+      startDate,
+      endDate,
+    });
+
+    res.json({ success: true, ...data });
+  } catch (error) {
+    console.error("Error getting supplier ledger:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

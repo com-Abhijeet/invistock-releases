@@ -30,7 +30,7 @@ export default function SalesOrdersList() {
         actions={
           <Button
             variant="contained"
-            onClick={() => navigate("/sales-orders/new")}
+            onClick={() => navigate("/sales-order")}
             startIcon={<Plus size={18} />}
             sx={{
               borderRadius: "8px",

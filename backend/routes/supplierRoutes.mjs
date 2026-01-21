@@ -11,14 +11,18 @@ import {
   getSupplierByIdController,
   updateSupplierController,
   deleteSupplierController,
+  getSupplierLedger,
 } from "../controllers/suppplierController.mjs";
 
 const supplierRoutes = express.Router();
 
+// Specific routes first to avoid ID collision
+supplierRoutes.get("/:id/ledger", getSupplierLedger);
+
 supplierRoutes.post(
   "/",
   validateRequest(createSupplierSchema),
-  createSupplierController
+  createSupplierController,
 );
 supplierRoutes.get("/", getSuppliersController);
 supplierRoutes.get("/:id", getSupplierByIdController);
@@ -26,7 +30,7 @@ supplierRoutes.get("/:id", getSupplierByIdController);
 supplierRoutes.put(
   "/:id",
   validateRequest(updateSupplierSchema),
-  updateSupplierController
+  updateSupplierController,
 );
 supplierRoutes.delete("/:id", deleteSupplierController);
 

@@ -14,7 +14,7 @@ export async function getSuppliers(): Promise<SupplierType[]> {
     return res.data.data;
   } catch (error: any) {
     throw new Error(
-      error.response?.data?.message || "Failed to fetch suppliers"
+      error.response?.data?.message || "Failed to fetch suppliers",
     );
   }
 }
@@ -23,28 +23,28 @@ export async function getSuppliers(): Promise<SupplierType[]> {
 export const fetchSuppliersFromAPI = getSuppliers;
 
 export async function createSupplier(
-  data: SupplierType
+  data: SupplierType,
 ): Promise<SupplierType> {
   try {
     const res = await api.post(BASE_URL, data);
     return res.data.data;
   } catch (error: any) {
     throw new Error(
-      error.response?.data?.message || "Failed to create supplier"
+      error.response?.data?.message || "Failed to create supplier",
     );
   }
 }
 
 export async function updateSupplier(
   id: number,
-  data: SupplierType
+  data: SupplierType,
 ): Promise<SupplierType> {
   try {
     const res = await api.put(`${BASE_URL}/${id}`, data);
     return res.data.data;
   } catch (error: any) {
     throw new Error(
-      error.response?.data?.message || "Failed to update supplier"
+      error.response?.data?.message || "Failed to update supplier",
     );
   }
 }
@@ -55,7 +55,7 @@ export async function getSupplierById(id: number): Promise<SupplierType> {
     return res.data.data;
   } catch (error: any) {
     throw new Error(
-      error.response?.data?.message || "Error in fetching supplier"
+      error.response?.data?.message || "Error in fetching supplier",
     );
   }
 }
@@ -66,7 +66,17 @@ export async function deleteSupplier(id: number): Promise<{ message: string }> {
     return res.data;
   } catch (error: any) {
     throw new Error(
-      error.response?.data?.message || "Failed to delete supplier"
+      error.response?.data?.message || "Failed to delete supplier",
     );
   }
 }
+
+export const getSupplierLedger = async (
+  supplierId: number,
+  filters: { startDate: string; endDate: string },
+) => {
+  const response = await api.get(`${BASE_URL}/${supplierId}/ledger`, {
+    params: filters,
+  });
+  return response.data;
+};
