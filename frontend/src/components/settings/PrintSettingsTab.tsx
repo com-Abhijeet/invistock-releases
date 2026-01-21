@@ -41,6 +41,7 @@ const INVOICE_TEMPLATES = [
   { id: "thermal_80mm", label: "Thermal 80mm (Receipt)" },
   { id: "thermal_58mm", label: "Thermal 58mm (Compact)" },
   { id: "a5_landscape", label: "A5 Landscape" },
+  { id: "a5_portait", label: "A5 Portait" },
 ];
 
 // Grouped Label Templates
@@ -101,7 +102,7 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewType, setPreviewType] = useState<"invoice" | "label">(
-    "invoice"
+    "invoice",
   );
 
   useEffect(() => {
@@ -208,7 +209,7 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
                         onChange={(e) =>
                           onChange(
                             "invoice_printer_width_mm",
-                            Number(e.target.value)
+                            Number(e.target.value),
                           )
                         }
                         placeholder="210 for A4"
@@ -294,7 +295,7 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
                         onChange={(e) =>
                           onChange(
                             "label_printer_width_mm",
-                            Number(e.target.value)
+                            Number(e.target.value),
                           )
                         }
                         placeholder="e.g. 50"
