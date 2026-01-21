@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Button, Stack } from "@mui/material";
+import { Box, Button } from "@mui/material";
 import DashboardHeader from "../components/DashboardHeader";
 import SalesOrdersTable from "../components/sales-orders/SalesOrdersTable";
 import theme from "../../theme";
@@ -12,7 +12,6 @@ export default function SalesOrdersList() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   // Filter state could be expanded for status filters later
-  const [filter, setFilter] = useState("all");
 
   return (
     <Box

@@ -31,7 +31,7 @@ export function getAdjustments(filters) {
       ps.serial_number
     FROM stock_adjustments sa
     JOIN products p ON sa.product_id = p.id
-    LEFT JOIN product_batches pb ON sa.batch_id = pb.id
+    LEFT JOIN product_batches pb ON sa.batdch_id = pb.id
     LEFT JOIN product_serials ps ON sa.serial_id = ps.id
     WHERE ${where}
     ORDER BY sa.created_at DESC

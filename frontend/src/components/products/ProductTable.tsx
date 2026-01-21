@@ -1,11 +1,12 @@
 "use client";
 
 import { Chip } from "@mui/material";
-import { Pencil, Trash2, Printer, Eye } from "lucide-react";
+import { Pencil, Trash2, Printer, Eye, Tag } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import type { Product } from "../../lib/types/product";
 import DataTable from "../DataTable";
 import LabelPrintDialog from "../LabelPrintModal";
+import CustomLabelPrintModal from "../CustomLabelPrintModal"; // Import the new modal
 import { getAllProducts } from "../../lib/api/productService";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
@@ -13,7 +14,6 @@ import { useNavigate } from "react-router-dom";
 type Props = {
   onEdit: (product: Product) => void;
   onDelete: (product: Product) => void;
-  // ✅ Accept filter props from the parent component
   searchQuery: string;
   isActive: number;
 };
@@ -27,18 +27,17 @@ export default function ProductTable({
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
 
-  // ✅ Component now manages its own data and loading state
+  // New State for Custom Label Modal
+  const [customLabelModalOpen, setCustomLabelModalOpen] = useState(false);
+
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // ✅ Pagination state is now managed here
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalRecords, setTotalRecords] = useState(0);
 
   const navigate = useNavigate();
 
-  // ✅ Data fetching logic is now centralized and dynamic
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
@@ -56,13 +55,12 @@ export default function ProductTable({
     } finally {
       setLoading(false);
     }
-  }, [page, rowsPerPage, searchQuery, isActive]); // Depend on all filter/pagination states
+  }, [page, rowsPerPage, searchQuery, isActive]);
 
-  // ✅ useEffect now triggers a refetch whenever filters or pagination change
   useEffect(() => {
     const handler = setTimeout(() => {
       fetchProducts();
-    }, 300); // Debounce to prevent rapid firing
+    }, 300);
     return () => clearTimeout(handler);
   }, [fetchProducts]);
 
@@ -114,12 +112,22 @@ export default function ProductTable({
       icon: <Trash2 size={16} />,
       onClick: (row: Product) => onDelete(row),
     },
+    // Standard Print
     {
-      label: "Print Label",
+      label: "Print Standard Label",
       icon: <Printer size={16} />,
       onClick: (row: Product) => {
         setSelectedProduct(row);
         setPrintDialogOpen(true);
+      },
+    },
+    // New Custom Print
+    {
+      label: "Custom Label",
+      icon: <Tag size={16} />,
+      onClick: (row: Product) => {
+        setSelectedProduct(row);
+        setCustomLabelModalOpen(true);
       },
     },
   ];
@@ -127,7 +135,7 @@ export default function ProductTable({
   return (
     <>
       <DataTable
-        rows={products} // Use products state
+        rows={products}
         columns={columns}
         actions={actions}
         loading={loading}
@@ -137,14 +145,24 @@ export default function ProductTable({
         onPageChange={setPage}
         onRowsPerPageChange={(newLimit) => {
           setRowsPerPage(newLimit);
-          setPage(0); // Reset to first page on limit change
+          setPage(0);
         }}
       />
 
+      {/* Standard Label Modal */}
       {selectedProduct && (
         <LabelPrintDialog
           open={printDialogOpen}
           onClose={() => setPrintDialogOpen(false)}
+          product={selectedProduct}
+        />
+      )}
+
+      {/* New Custom Label Modal */}
+      {selectedProduct && (
+        <CustomLabelPrintModal
+          open={customLabelModalOpen}
+          onClose={() => setCustomLabelModalOpen(false)}
           product={selectedProduct}
         />
       )}

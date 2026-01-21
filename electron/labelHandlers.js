@@ -1,6 +1,8 @@
 const { ipcMain } = require("electron");
 const { getLabelTemplate } = require("./labelTemplate.js");
 const bwipjs = require("bwip-js");
+const { createPrintWindow } = require("./printLabel.js");
+const { createCustomPrintWindow } = require("./customPrintLabel.js");
 
 // Dummy Data for Preview
 const DUMMY_LABEL_ITEM = {
@@ -34,12 +36,13 @@ const generateDummyBarcode = async () => {
       (err, png) => {
         if (err) resolve("");
         else resolve(`data:image/png;base64,${png.toString("base64")}`);
-      }
+      },
     );
   });
 };
 
 function registerLabelHandlers(ipcMain) {
+  // 1. Standard Preview Handler
   ipcMain.handle("generate-label-preview", async (event, templateId) => {
     try {
       const barcode = await generateDummyBarcode();
@@ -71,6 +74,16 @@ function registerLabelHandlers(ipcMain) {
       console.error("Label Preview Error:", error);
       return { success: false, error: error.message };
     }
+  });
+
+  // 2. Standard Print Label Handler
+  ipcMain.on("print-label", async (event, payload) => {
+    await createPrintWindow(payload);
+  });
+
+  // 3. New Custom Print Label Handler
+  ipcMain.on("print-custom-label", async (event, payload) => {
+    await createCustomPrintWindow(payload);
   });
 }
 
