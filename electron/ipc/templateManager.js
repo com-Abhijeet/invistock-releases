@@ -11,7 +11,7 @@ const templates = {
   a4_standard: a4Standard,
   a4_modern: a4Modern,
   a5_landscape: a5Landscape,
-  a5_portrait: a5Portrait, // New template registered
+  a5_portrait: a5Portrait,
 };
 
 const getTemplate = (templateId, data) => {

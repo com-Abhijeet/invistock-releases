@@ -4,6 +4,7 @@ const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
 const thermal80mm = (data) => {
   const { sale, shop } = data;
   const showDiscount = Boolean(shop.show_discount_column);
+  const isInclusive = shop.is_inclusive || false;
 
   const itemsHtml = sale.items
     .map((item) => {
@@ -73,6 +74,12 @@ const thermal80mm = (data) => {
               : ""
           }
           
+          ${
+            isInclusive
+              ? `<div style="text-align:right; font-size:10px; color:#666; margin-bottom:2px;">(Inclusive of GST)</div>`
+              : ""
+          }
+
           <div class="info-row grand-total">
             <span>TOTAL</span>
             <span>${formatAmount(sale.total_amount)}</span>

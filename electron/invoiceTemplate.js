@@ -152,30 +152,53 @@ function createInvoiceHTML({ sale, shop }) {
     }
   });
 
-  // --- COLUMN HEADERS LOGIC ---
-  const itemsHTML = sale.items
-    .map((item, index) => {
-      // Per Item Calculation
-      const baseVal = item.rate * item.quantity;
-      const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
-      let gstAmount = 0;
+  // --- MULTI-PAGE LOGIC ---
+  const ROWS_PER_PAGE = 22; // Standard A4 fits about 22 rows comfortably with header/footer
+  const items = sale.items;
+  const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
 
-      if (gstEnabled) {
-        if (inclusiveTax) {
-          const divisor = 1 + item.gst_rate / 100;
-          const taxableValue = valAfterDisc / divisor;
-          gstAmount = valAfterDisc - taxableValue;
-        } else {
-          gstAmount = valAfterDisc * (item.gst_rate / 100);
+  const pages = [];
+  for (let i = 0; i < totalPages; i++) {
+    const start = i * ROWS_PER_PAGE;
+    const end = start + ROWS_PER_PAGE;
+    const pageItems = items.slice(start, end);
+    pages.push({
+      items: pageItems,
+      isLastPage: i === totalPages - 1,
+      pageIndex: i + 1,
+      totalPages: totalPages,
+    });
+  }
+
+  const renderPage = ({
+    items: pageItems,
+    isLastPage,
+    pageIndex,
+    totalPages,
+  }) => {
+    const itemsHTML = pageItems
+      .map((item, index) => {
+        // Per Item Calculation (visual only for this row)
+        const baseVal = item.rate * item.quantity;
+        const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
+        let gstAmount = 0;
+
+        if (gstEnabled) {
+          if (inclusiveTax) {
+            const divisor = 1 + item.gst_rate / 100;
+            const taxableValue = valAfterDisc / divisor;
+            gstAmount = valAfterDisc - taxableValue;
+          } else {
+            gstAmount = valAfterDisc * (item.gst_rate / 100);
+          }
         }
-      }
 
-      return `
+        return `
     <tr>
-      <td class="text-center">${index + 1}</td>
+      <td class="text-center">${(pageIndex - 1) * ROWS_PER_PAGE + index + 1}</td>
       <td style="text-align:left;">
         <div style="font-size:10px; font-weight:500;">${item.product_name}</div>
-        ${getTrackingHtml(item)} <!-- Added Tracking Info Here -->
+        ${getTrackingHtml(item)}
       </td>
       ${showHSN ? `<td class="text-center">${item.hsn || "-"}</td>` : ""}
       <td class="text-center">${item.quantity}</td>
@@ -190,68 +213,31 @@ function createInvoiceHTML({ sale, shop }) {
       
       <td class="text-right bold">${formatAmount(item.price)}</td>
     </tr>`;
-    })
-    .join("");
+      })
+      .join("");
 
-  return `
-    <html>
-      <head>
-        <meta charset="UTF-8" />
-        <style>
-            /* STRICT A4 SIZE */
-            @page { size: A4; margin: 10mm; }
-            
-            body { 
-                font-family: 'Arial', sans-serif; 
-                font-size: 11px; 
-                margin: 0; 
-                padding: 10px; 
-                width: 100%; 
-                box-sizing: border-box;
-                background-color: #fff;
-                color: #000;
-            }
-            
-            /* Utility Classes */
-            .text-right { text-align: right; } 
-            .text-center { text-align: center; } 
-            .bold { font-weight: bold; }
-            .flex { display: flex; } 
-            
-            /* Header */
-            .header-box { display: flex; border: 1px solid #000; border-bottom: 0; }
-            .shop-info { flex: 1; padding: 8px; border-right: 1px solid #000; }
-            .invoice-meta { width: 40%; padding: 8px; }
-            h1 { margin: 0 0 5px 0; font-size: 18px; text-transform: uppercase; }
-            
-            /* Customer Row */
-            .customer-row { display: flex; border: 1px solid #000; border-bottom: 0; }
-            .bill-to { flex: 1; padding: 5px 8px; border-right: 1px solid #000; }
-            .extra-meta { width: 40%; padding: 5px 8px; }
-            
-            /* Table */
-            table { width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 0; }
-            th { background: #eee; border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 6px; font-size: 10px; text-transform: uppercase; }
-            /* Reduced padding and font-size for compact item rows */
-            td { border-right: 1px solid #000; border-bottom: 1px solid #eee; padding: 4px 6px; vertical-align: middle; font-size: 9px; }
-            tr:last-child td { border-bottom: 1px solid #000; }
-            
-            /* Footer Section */
-            .footer-section { display: flex; border: 1px solid #000; border-top: 0; }
-            .amount-words { flex: 1; padding: 8px; border-right: 1px solid #000; font-size: 10px; }
-            .bank-details { flex: 1; padding: 8px; border-right: 1px solid #000; font-size: 10px; }
-            .totals-area { width: 30%; padding: 8px; }
-            
-            .signature-area { display: flex; justify-content: space-between; border: 1px solid #000; border-top: 0; padding: 8px; height: 60px; align-items: flex-end; }
+    // Calculate empty rows needed
+    const emptyRowsCount = ROWS_PER_PAGE - pageItems.length;
+    const emptyRows = Array.from({ length: Math.max(0, emptyRowsCount) });
+    const emptyRowsHTML = emptyRows
+      .map(
+        () => `
+        <tr class="spacer-row">
+            <td style="border-right:1px solid #000; ">&nbsp;</td>
+            <td style="border-right:1px solid #000; ">&nbsp;</td>
+            ${showHSN ? `<td style="border-right:1px solid #000; ">&nbsp;</td>` : ""}
+            <td style="border-right:1px solid #000; ">&nbsp;</td>
+            <td style="border-right:1px solid #000; ">&nbsp;</td>
+            ${gstEnabled ? `<td style="border-right:1px solid #000; ">&nbsp;</td>` : ""}
+            ${gstEnabled && showGstBreakup ? `<td style="border-right:1px solid #000; ">&nbsp;</td>` : ""}
+            <td style="">&nbsp;</td>
+        </tr>
+    `,
+      )
+      .join("");
 
-            .qr-wrap { text-align: center; margin-top: 5px; }
-            
-            @media print { 
-                body { padding: 0; margin: 0; width: 100%; }
-            }
-        </style>
-      </head>
-      <body>
+    return `
+    <div class="page-container">
         <!-- Header -->
         <div class="header-box">
           <div class="shop-info">
@@ -268,7 +254,7 @@ function createInvoiceHTML({ sale, shop }) {
                     shop.address_line1,
                     shop.city,
                     shop.state,
-                    shop.pincode
+                    shop.pincode,
                   )
             }</div>
             ${
@@ -287,7 +273,7 @@ function createInvoiceHTML({ sale, shop }) {
             </div>
             <div class="flex" style="justify-content:space-between; margin-bottom:4px;">
                 <span>Date:</span> <span class="bold">${formatDate(
-                  sale.created_at
+                  sale.created_at,
                 )}</span>
             </div>
             <div class="flex" style="justify-content:space-between;">
@@ -295,6 +281,7 @@ function createInvoiceHTML({ sale, shop }) {
                   sale.customer_state || shop.state
                 }</span>
             </div>
+            ${totalPages > 1 ? `<div class="flex" style="justify-content:flex-end; font-size:10px; margin-top:5px;">Page ${pageIndex} of ${totalPages}</div>` : ""}
           </div>
         </div>
 
@@ -309,7 +296,7 @@ function createInvoiceHTML({ sale, shop }) {
               sale.customer_address,
               sale.customer_city,
               sale.customer_state,
-              sale.customer_pincode
+              sale.customer_pincode,
             )}
             ${sale.customer_phone ? `<br>Ph: ${sale.customer_phone}` : ""}
           </div>
@@ -327,32 +314,37 @@ function createInvoiceHTML({ sale, shop }) {
           </div>
         </div>
 
-        <!-- Items Table -->
-        <table>
-          <thead>
-            <tr>
-              <th width="5%" class="text-center">#</th>
-              <th width="35%" style="text-align:left;">Item Name</th>
-              ${showHSN ? `<th width="10%" class="text-center">HSN</th>` : ""}
-              <th width="8%" class="text-center">Qty</th>
-              <th width="12%" class="text-right">Rate</th>
-              
-              ${
-                gstEnabled ? `<th width="8%" class="text-center">GST%</th>` : ""
-              }
-              ${
-                gstEnabled && showGstBreakup
-                  ? `<th width="12%" class="text-right">GST Amt</th>`
-                  : ""
-              }
-              
-              <th width="15%" class="text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemsHTML}
-          </tbody>
-        </table>
+        <!-- Items Table Container -->
+        <div class="items-table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th width="5%" class="text-center">#</th>
+                  <th width="35%" style="text-align:left;">Item Name</th>
+                  ${showHSN ? `<th width="10%" class="text-center">HSN</th>` : ""}
+                  <th width="8%" class="text-center">Qty</th>
+                  <th width="12%" class="text-right">Rate</th>
+                  
+                  ${
+                    gstEnabled
+                      ? `<th width="8%" class="text-center">GST%</th>`
+                      : ""
+                  }
+                  ${
+                    gstEnabled && showGstBreakup
+                      ? `<th width="12%" class="text-right">GST Amt</th>`
+                      : ""
+                  }
+                  
+                  <th width="15%" class="text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHTML}
+                ${emptyRowsHTML}
+              </tbody>
+            </table>
+        </div>
 
         <!-- Footer Section -->
         <div class="footer-section">
@@ -361,7 +353,7 @@ function createInvoiceHTML({ sale, shop }) {
           <div class="amount-words">
             <div style="font-weight:bold; margin-bottom:4px;">Amount in Words:</div>
             <div style="font-style:italic; margin-bottom:8px;">${numberToWords(
-              sale.total_amount
+              sale.total_amount,
             )}</div>
             
             ${
@@ -373,11 +365,11 @@ function createInvoiceHTML({ sale, shop }) {
                  isInterstate
                    ? `<div>IGST: ${formatAmount(totalIgst)}</div>`
                    : `<div>CGST: ${formatAmount(
-                       totalCgst
+                       totalCgst,
                      )} | SGST: ${formatAmount(totalSgst)}</div>`
                }
                <div class="bold">Total Tax: ${formatAmount(
-                 totalTaxAmount
+                 totalTaxAmount,
                )}</div>
             </div>`
                 : ""
@@ -399,10 +391,13 @@ function createInvoiceHTML({ sale, shop }) {
 
           <!-- Totals -->
           <div class="totals-area">
+             ${
+               isLastPage
+                 ? `
              <div class="flex" style="justify-content:space-between; margin-bottom:4px;">
                 <span>Subtotal:</span> 
                 <span>${formatAmount(
-                  sale.total_amount + (sale.discount || 0)
+                  sale.total_amount + (sale.discount || 0),
                 )}</span>
              </div>
              ${
@@ -423,6 +418,13 @@ function createInvoiceHTML({ sale, shop }) {
                 <span>Paid:</span> 
                 <span>${formatAmount(sale.paid_amount)}</span>
              </div>
+             `
+                 : `
+                <div style="height:80px; display:flex; align-items:center; justify-content:center; color:#888; font-style:italic;">
+                    Continued...
+                </div>
+             `
+             }
           </div>
         </div>
 
@@ -439,6 +441,84 @@ function createInvoiceHTML({ sale, shop }) {
               <div style="font-size:9px;">Authorized Signature</div>
            </div>
         </div>
+    </div>
+    `;
+  };
+
+  return `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+            /* STRICT A4 SIZE */
+            @page { size: A4; margin: 0; }
+            
+            body { 
+                font-family: 'Arial', sans-serif; 
+                font-size: 11px; 
+                margin: 0; 
+                padding: 0; 
+                width: 100%; 
+                background-color: #fff;
+                color: #000;
+            }
+
+            .page-container {
+                width: 210mm;
+                height: 297mm;
+                padding: 10mm;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: column;
+                page-break-after: always;
+            }
+            .page-container:last-child {
+                page-break-after: auto;
+            }
+            
+            /* Utility Classes */
+            .text-right { text-align: right; } 
+            .text-center { text-align: center; } 
+            .bold { font-weight: bold; }
+            .flex { display: flex; } 
+            
+            /* Header */
+            .header-box { display: flex; border: 1px solid #000; border-bottom: 0; flex-shrink: 0; }
+            .shop-info { flex: 1; padding: 8px; border-right: 1px solid #000; }
+            .invoice-meta { width: 40%; padding: 8px; }
+            h1 { margin: 0 0 5px 0; font-size: 18px; text-transform: uppercase; }
+            
+            /* Customer Row */
+            .customer-row { display: flex; border: 1px solid #000; border-bottom: 0; flex-shrink: 0; }
+            .bill-to { flex: 1; padding: 5px 8px; border-right: 1px solid #000; }
+            .extra-meta { width: 40%; padding: 5px 8px; }
+            
+            /* Table */
+            .items-table-container { flex-grow: 1; display:flex; flex-direction:column; border: 1px solid #000; border-bottom:0; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 0; table-layout: fixed; }
+            th { background: #eee; border-right: 1px solid #000; border-bottom: 1px solid #000; padding: 6px; font-size: 10px; text-transform: uppercase; }
+            td { border-right: 1px solid #000; padding: 4px 6px; vertical-align: middle; font-size: 9px; }
+            
+            /* Spacer Row to fill height */
+            tr.spacer-row td { height: 20px; color: transparent; }
+
+            /* Footer Section */
+            .footer-section { display: flex; border: 1px solid #000; border-top: 1px solid #000; flex-shrink: 0; }
+            .amount-words { flex: 1; padding: 8px; border-right: 1px solid #000; font-size: 10px; }
+            .bank-details { flex: 1; padding: 8px; border-right: 1px solid #000; font-size: 10px; }
+            .totals-area { width: 30%; padding: 8px; }
+            
+            .signature-area { display: flex; justify-content: space-between; border: 1px solid #000; border-top: 0; padding: 8px; height: 60px; align-items: flex-end; flex-shrink: 0; }
+
+            .qr-wrap { text-align: center; margin-top: 5px; }
+            
+            @media print { 
+                body { padding: 0; margin: 0; width: 100%; }
+            }
+        </style>
+      </head>
+      <body>
+        ${pages.map(renderPage).join("")}
       </body>
     </html>`;
 }

@@ -41,7 +41,7 @@ const INVOICE_TEMPLATES = [
   { id: "thermal_80mm", label: "Thermal 80mm (Receipt)" },
   { id: "thermal_58mm", label: "Thermal 58mm (Compact)" },
   { id: "a5_landscape", label: "A5 Landscape" },
-  { id: "a5_portait", label: "A5 Portait" },
+  { id: "a5_portrait", label: "A5 Portait" },
 ];
 
 // Grouped Label Templates

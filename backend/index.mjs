@@ -42,6 +42,38 @@ const config = require("../electron/config.js");
 
 const { backendLogger } = require("../electron/logger.js");
 
+// ---------------------------------------------------------------------------
+// ✅ GLOBAL LOGGER OVERRIDE
+// This ensures console.log/error in ALL controllers/services go to backend.log
+// ---------------------------------------------------------------------------
+const originalConsole = {
+  log: console.log,
+  error: console.error,
+  warn: console.warn,
+  info: console.info,
+};
+
+console.log = (...args) => {
+  backendLogger.info(...args); // Write to file
+  originalConsole.log(...args); // Keep writing to terminal
+};
+
+console.error = (...args) => {
+  backendLogger.error(...args);
+  originalConsole.error(...args);
+};
+
+console.warn = (...args) => {
+  backendLogger.warn(...args);
+  originalConsole.warn(...args);
+};
+
+console.info = (...args) => {
+  backendLogger.info(...args);
+  originalConsole.info(...args);
+};
+// ---------------------------------------------------------------------------
+
 let bonjourInstance;
 let serverInstance;
 
@@ -100,6 +132,8 @@ export function startServer(dbPath, userDataPath) {
     const imagesPath = path.join(userDataPath, "images");
     // This exposes: http://IP:5000/images/products/filename.jpg
     app.use("/images", express.static(imagesPath));
+    // Now this log will appear in backend.log due to the override,
+    // but we can still use backendLogger explicitly if we want.
     backendLogger.info(`[BACKEND] Serving images from: ${imagesPath}`);
   } else {
     backendLogger.warn(
@@ -117,10 +151,6 @@ export function startServer(dbPath, userDataPath) {
   });
 
   // 2. Login Endpoint (Verify against your 'users' table)
-  // Note: Ensure your database is imported as 'db' in context or use dbProxy
-  // Assuming 'import db from "./db/db.mjs"' works or using the initialized instance logic
-  // For safety with your architecture, we'll route this inside userRoutes or handle here if simple
-  // Adding a simple one here for the mobile handshake:
   const db = require("./db/db.mjs").default;
   const bcrypt = require("bcrypt");
 

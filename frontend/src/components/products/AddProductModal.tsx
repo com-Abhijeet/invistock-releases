@@ -70,7 +70,7 @@ type Props = {
 const defaultForm: Partial<Product> = {
   name: "",
   product_code: "",
-  hsn: "0",
+  hsn: "",
   gst_rate: 0,
   mrp: 0,
   mop: 0,
