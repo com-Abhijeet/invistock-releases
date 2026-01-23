@@ -20,7 +20,7 @@ function safeMigrate(database, tableName, columnName, columnDef) {
     // Error usually means column exists, which is fine.
     if (!error.message.includes("duplicate column name")) {
       console.warn(
-        `[DB] Migration warning for ${tableName}.${columnName}: ${error.message}`
+        `[DB] Migration warning for ${tableName}.${columnName}: ${error.message}`,
       );
     }
   }
@@ -498,8 +498,6 @@ export function initializeDatabase(dbPath) {
       adjustment REAL NOT NULL, 
       reason TEXT, 
       adjusted_by TEXT DEFAULT 'Admin',
-      
-      -- Tracking where the adjustment happened
       batch_id INTEGER,
       serial_id INTEGER,
       
@@ -518,7 +516,7 @@ export function initializeDatabase(dbPath) {
     db,
     "products",
     "tracking_type",
-    "TEXT CHECK(tracking_type IN ('none', 'batch', 'serial')) DEFAULT 'none'"
+    "TEXT CHECK(tracking_type IN ('none', 'batch', 'serial')) DEFAULT 'none'",
   );
 
   // Safe migrate product_batches (columns added if table existed without them)
@@ -527,7 +525,7 @@ export function initializeDatabase(dbPath) {
     db,
     "product_batches",
     "purchase_id",
-    "INTEGER REFERENCES purchases(id) ON DELETE SET NULL"
+    "INTEGER REFERENCES purchases(id) ON DELETE SET NULL",
   );
 
   // Safe migrate purchase_items
@@ -542,14 +540,16 @@ export function initializeDatabase(dbPath) {
     db,
     "sales_items",
     "batch_id",
-    "INTEGER REFERENCES product_batches(id)"
+    "INTEGER REFERENCES product_batches(id)",
   );
   safeMigrate(
     db,
     "sales_items",
     "serial_id",
-    "INTEGER REFERENCES product_serials(id)"
+    "INTEGER REFERENCES product_serials(id)",
   );
+  safeMigrate(db, "stock_adjustments", "batch_id", "INTEGER");
+  safeMigrate(db, "stock_adjustments", "serial_id", "INTEGER");
 
   // ---------------------------------------------------------
   // 5. EXECUTE NON-GST SCHEMA (Separated)
@@ -602,7 +602,7 @@ export function initializeDatabase(dbPath) {
       `
       INSERT INTO users (name, username, password, role, permissions) 
       VALUES ('Super Admin', 'admin', ?, 'admin', '["*"]')
-    `
+    `,
     ).run(hash);
   }
 }
@@ -613,7 +613,7 @@ export function initializeDatabase(dbPath) {
 function getDb() {
   if (!db) {
     throw new Error(
-      "Main Database not initialized. Call initializeDatabase() first."
+      "Main Database not initialized. Call initializeDatabase() first.",
     );
   }
   return db;
@@ -625,7 +625,7 @@ function getDb() {
 function getNonGstDbInternal() {
   if (!nonGstDb) {
     throw new Error(
-      "Non-GST Database not initialized. Call initializeDatabase() first."
+      "Non-GST Database not initialized. Call initializeDatabase() first.",
     );
   }
   return nonGstDb;
@@ -659,7 +659,7 @@ const dbProxy = new Proxy(
       }
       return value;
     },
-  }
+  },
 );
 
 export default dbProxy;
@@ -676,7 +676,7 @@ nonGstDb = new Proxy(
       }
       return value;
     },
-  }
+  },
 );
 
 export { nonGstDb };

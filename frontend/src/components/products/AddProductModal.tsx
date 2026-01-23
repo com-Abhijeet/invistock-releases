@@ -24,7 +24,7 @@ import {
   Autocomplete,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 import { getCategories } from "../../lib/api/categoryService";
 import type { Product } from "../../lib/types/product";
@@ -66,7 +66,6 @@ type Props = {
   mode?: Mode;
 };
 
-// Update defaultForm to accept partial types or loose types for new categories
 const defaultForm: Partial<Product> = {
   name: "",
   product_code: "",
@@ -114,9 +113,43 @@ export default function AddEditProductModal({
   >([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Track if user is typing a new category (string input)
+  // Ref map for keyboard navigation
+  const fieldRefs = useRef<{
+    [key: string]: HTMLInputElement | HTMLElement | null;
+  }>({});
+
   const isNewCategory = typeof form.category === "string";
   const isNewSubcategory = typeof form.subcategory === "string";
+
+  const focusField = (id: string) => {
+    const el = fieldRefs.current[id];
+    if (el) {
+      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+        (el as HTMLInputElement).focus();
+        (el as HTMLInputElement).select?.();
+      } else {
+        el.focus();
+      }
+    }
+  };
+
+  const handleKeyDown = (
+    e: React.KeyboardEvent,
+    _currentId: string,
+    nextId: string | null,
+  ) => {
+    if (e.key === "Enter") {
+      // Don't move if it's a multiline textarea unless we want specifically that
+      if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+
+      e.preventDefault();
+      if (nextId) {
+        focusField(nextId);
+      } else if (activeStep < steps.length - 1) {
+        handleNext();
+      }
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -132,6 +165,9 @@ export default function AddEditProductModal({
           .then((barcode) => handleChange("barcode", barcode))
           .catch(() => handleChange("barcode", "Error"));
       }
+
+      // Auto focus first field
+      setTimeout(() => focusField("name"), 100);
     }
   }, [open, mode]);
 
@@ -140,7 +176,6 @@ export default function AddEditProductModal({
       try {
         const categories = await getCategories();
         setAvailableCategories(categories);
-        // If editing and has ID, filter subcats
         if (form.category && typeof form.category === "number") {
           const selected = categories.find(
             (cat: { id: number }) => cat.id === Number(form.category),
@@ -154,7 +189,7 @@ export default function AddEditProductModal({
       }
     };
     loadCategories();
-  }, [form.category]); // Re-run if category changes (specifically if it becomes a number)
+  }, [form.category]);
 
   const cached = localStorage.getItem("cached_products");
   const products: Product[] = cached
@@ -168,18 +203,12 @@ export default function AddEditProductModal({
       })()
     : [];
 
-  // Update Product Code Logic
   useEffect(() => {
     if (mode === "add") {
-      // 1. If user is creating a NEW category or subcategory
       if (isNewCategory || isNewSubcategory) {
         setForm((prev) => ({ ...prev, product_code: "Generating..." }));
-        // We can't fetch from backend because codes don't exist yet.
-        // Backend will finalize this.
         return;
       }
-
-      // 2. Standard flow (Existing IDs)
       if (
         typeof form.category === "number" &&
         typeof form.subcategory === "number"
@@ -190,7 +219,6 @@ export default function AddEditProductModal({
         const selectedSubcategory = selectedCategory?.subcategories.find(
           (s) => s.id === form.subcategory,
         );
-
         if (selectedCategory && selectedSubcategory) {
           setForm((prev) => ({ ...prev, product_code: "Generating..." }));
           fetchNextProductCode(selectedCategory.code, selectedSubcategory.code)
@@ -211,8 +239,6 @@ export default function AddEditProductModal({
   const handleChange = (key: keyof Product, value: any) => {
     setForm((prev) => {
       const newForm = { ...prev, [key]: value };
-
-      // Client-side code generation logic (Fallback)
       if (
         !isNewCategory &&
         !isNewSubcategory &&
@@ -234,7 +260,6 @@ export default function AddEditProductModal({
   const validateStep = (step: number) => {
     if (step === 0) {
       if (!form.name?.trim()) return "Product Name is required.";
-      // Robust check for category: must be non-null ID or non-empty String
       if (
         form.category === null ||
         form.category === undefined ||
@@ -243,9 +268,6 @@ export default function AddEditProductModal({
         return "Category is required.";
       if (form.gst_rate === undefined || form.gst_rate === null)
         return "GST Rate is required.";
-
-      // Relax product_code validation if we are in "New Category" mode,
-      // as backend will generate it.
       if (!isNewCategory && !isNewSubcategory && !form.product_code)
         return "Product Code is required.";
     }
@@ -259,6 +281,11 @@ export default function AddEditProductModal({
       return;
     }
     setActiveStep((prev) => prev + 1);
+    // Focus first field of next step
+    setTimeout(() => {
+      if (activeStep === 0) focusField("tracking_type");
+      if (activeStep === 1) focusField("brand");
+    }, 50);
   };
 
   const handleBack = () => {
@@ -275,19 +302,16 @@ export default function AddEditProductModal({
         hsn: form.hsn || "",
         tracking_type: form.tracking_type || "none",
       };
-
       let result;
       if (mode === "add") {
         result = await createProduct(finalPayload);
       } else {
         result = await updateProduct(form.id!, finalPayload);
       }
-
       if (!result) {
         toast.error("Failed to save product.");
         return;
       }
-
       onSuccess(result);
       setForm(defaultForm);
       localStorage.removeItem("cached_products");
@@ -308,15 +332,12 @@ export default function AddEditProductModal({
     try {
       const originalPath =
         await window.electron.ipcRenderer.invoke("dialog:open-image");
-
       if (!originalPath) return;
-
       toast.loading("Saving image...");
       const result = await window.electron.ipcRenderer.invoke(
         "copy-product-image",
         originalPath,
       );
-
       if (result.success) {
         handleChange("image_url", result.fileName);
         toast.dismiss();
@@ -330,7 +351,6 @@ export default function AddEditProductModal({
     }
   };
 
-  // Helper to check if category is set (ID or String) for enabling subcategory
   const isCategorySet =
     form.category !== null &&
     form.category !== undefined &&
@@ -365,7 +385,6 @@ export default function AddEditProductModal({
         )}
 
         <Grid container spacing={2.5} mt={0.5}>
-          {/* ---------------- STEP 1: ESSENTIAL DETAILS ---------------- */}
           {activeStep === 0 && (
             <>
               <Grid item xs={12} sm={4}>
@@ -375,13 +394,14 @@ export default function AddEditProductModal({
                     size="small"
                     variant="outlined"
                     value={form.name || ""}
+                    inputRef={(el) => (fieldRefs.current["name"] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, "name", "category")}
                     onChange={(e) => handleChange("name", e.target.value)}
                     placeholder="Enter product name"
                   />
                 </FormField>
               </Grid>
 
-              {/* Category: Autocomplete with FreeSolo and onChange + onInputChange */}
               <Grid item xs={12} sm={4}>
                 <FormField label="Category *">
                   <Autocomplete
@@ -397,11 +417,10 @@ export default function AddEditProductModal({
                           )
                         : (form.category as string) || null
                     }
-                    // Selection Handler
                     onChange={(_e, newValue) => {
                       if (newValue && typeof newValue === "object") {
                         handleChange("category", newValue.id);
-                        handleChange("subcategory", null); // Clear subcat on explicit change
+                        handleChange("subcategory", null);
                       } else if (newValue === null) {
                         handleChange("category", null);
                         handleChange("subcategory", null);
@@ -410,7 +429,6 @@ export default function AddEditProductModal({
                         handleChange("subcategory", null);
                       }
                     }}
-                    // Typing Handler (Critical for 'New' values not yet committed)
                     onInputChange={(_e, newInputValue, reason) => {
                       if (reason === "input" || reason === "clear") {
                         const match = availableCategories.find(
@@ -426,7 +444,6 @@ export default function AddEditProductModal({
                             newInputValue === "" ? null : newInputValue,
                           );
                         }
-                        // If typing changes, subcategory context might be invalid
                         if (form.subcategory) handleChange("subcategory", null);
                       }
                     }}
@@ -436,19 +453,22 @@ export default function AddEditProductModal({
                         fullWidth
                         size="small"
                         placeholder="Select or Type New"
+                        inputRef={(el) => (fieldRefs.current["category"] = el)}
+                        onKeyDown={(e) =>
+                          handleKeyDown(e, "category", "subcategory")
+                        }
                       />
                     )}
                   />
                 </FormField>
               </Grid>
 
-              {/* Subcategory: Autocomplete with FreeSolo */}
               <Grid item xs={12} sm={4}>
                 <FormField label="Subcategory">
                   <Autocomplete
                     freeSolo
                     options={filteredSubcategories}
-                    disabled={!isCategorySet} // Enable if category has ANY value (ID or String)
+                    disabled={!isCategorySet}
                     getOptionLabel={(option) =>
                       typeof option === "string" ? option : option.name
                     }
@@ -495,6 +515,12 @@ export default function AddEditProductModal({
                             ? "Select Category First"
                             : "Select or Type New"
                         }
+                        inputRef={(el) =>
+                          (fieldRefs.current["subcategory"] = el)
+                        }
+                        onKeyDown={(e) =>
+                          handleKeyDown(e, "subcategory", "hsn")
+                        }
                       />
                     )}
                   />
@@ -507,9 +533,6 @@ export default function AddEditProductModal({
                     fullWidth
                     size="small"
                     value={form.product_code || ""}
-                    onChange={(e) =>
-                      handleChange("product_code", e.target.value)
-                    }
                     placeholder={mode === "add" ? "Select category first" : ""}
                     helperText={
                       isNewCategory || isNewSubcategory
@@ -535,6 +558,8 @@ export default function AddEditProductModal({
                     size="small"
                     variant="outlined"
                     value={form.hsn || ""}
+                    inputRef={(el) => (fieldRefs.current["hsn"] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, "hsn", "mrp")}
                     onChange={(e) => handleChange("hsn", e.target.value)}
                     placeholder="Enter HSN/SAC code"
                     InputProps={{
@@ -553,10 +578,9 @@ export default function AddEditProductModal({
                     fullWidth
                     size="small"
                     value={form.barcode || ""}
-                    onChange={(e) => handleChange("barcode", e.target.value)}
                     placeholder="Auto-generated"
                     InputProps={{
-                      readOnly: mode === "add",
+                      readOnly: true,
                       startAdornment: (
                         <InputAdornment position="start">
                           <Barcode size={18} />
@@ -575,6 +599,8 @@ export default function AddEditProductModal({
                     variant="outlined"
                     type="number"
                     value={form.mrp ?? ""}
+                    inputRef={(el) => (fieldRefs.current["mrp"] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, "mrp", "mop")}
                     onChange={(e) =>
                       handleChange("mrp", Number(e.target.value))
                     }
@@ -594,6 +620,8 @@ export default function AddEditProductModal({
                     variant="outlined"
                     type="number"
                     value={form.mop ?? ""}
+                    inputRef={(el) => (fieldRefs.current["mop"] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, "mop", "mfw_price")}
                     onChange={(e) =>
                       handleChange("mop", Number(e.target.value))
                     }
@@ -612,6 +640,8 @@ export default function AddEditProductModal({
                     size="small"
                     type="text"
                     value={form.mfw_price ?? ""}
+                    inputRef={(el) => (fieldRefs.current["mfw_price"] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, "mfw_price", "gst_rate")}
                     onChange={(e) => handleChange("mfw_price", e.target.value)}
                     InputProps={{
                       startAdornment: (
@@ -629,6 +659,8 @@ export default function AddEditProductModal({
                     variant="outlined"
                     type="number"
                     value={form.gst_rate ?? ""}
+                    inputRef={(el) => (fieldRefs.current["gst_rate"] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, "gst_rate", null)}
                     onChange={(e) =>
                       handleChange("gst_rate", parseFloat(e.target.value))
                     }
@@ -645,16 +677,8 @@ export default function AddEditProductModal({
             </>
           )}
 
-          {/* ---------------- STEP 2: INVENTORY & TRACKING ---------------- */}
           {activeStep === 1 && (
             <>
-              <Grid item xs={12}>
-                <Alert severity="info" sx={{ mb: 1 }}>
-                  These fields have smart defaults. Review and change only if
-                  required.
-                </Alert>
-              </Grid>
-
               <Grid item xs={12} md={6}>
                 <FormField label="Tracking Type">
                   <TextField
@@ -662,6 +686,10 @@ export default function AddEditProductModal({
                     fullWidth
                     size="small"
                     value={form.tracking_type || "none"}
+                    inputRef={(el) => (fieldRefs.current["tracking_type"] = el)}
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "tracking_type", "storage_location")
+                    }
                     onChange={(e) =>
                       handleChange("tracking_type", e.target.value)
                     }
@@ -671,21 +699,21 @@ export default function AddEditProductModal({
                       <Box
                         sx={{ display: "flex", alignItems: "center", gap: 1 }}
                       >
-                        <Layers size={16} /> Standard (Quantity Only)
+                        <Layers size={16} /> Standard
                       </Box>
                     </MenuItem>
                     <MenuItem value="batch">
                       <Box
                         sx={{ display: "flex", alignItems: "center", gap: 1 }}
                       >
-                        <Package size={16} /> Batch Tracking (Expiry/Mfg)
+                        <Package size={16} /> Batch Tracking
                       </Box>
                     </MenuItem>
                     <MenuItem value="serial">
                       <Box
                         sx={{ display: "flex", alignItems: "center", gap: 1 }}
                       >
-                        <ScanBarcode size={16} /> Serialized (IMEI/Unique ID)
+                        <ScanBarcode size={16} /> Serialized
                       </Box>
                     </MenuItem>
                   </TextField>
@@ -699,6 +727,12 @@ export default function AddEditProductModal({
                     size="small"
                     variant="outlined"
                     value={form.storage_location || ""}
+                    inputRef={(el) =>
+                      (fieldRefs.current["storage_location"] = el)
+                    }
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "storage_location", "quantity")
+                    }
                     onChange={(e) =>
                       handleChange("storage_location", e.target.value)
                     }
@@ -722,6 +756,10 @@ export default function AddEditProductModal({
                     variant="outlined"
                     type="number"
                     value={form.quantity ?? ""}
+                    inputRef={(el) => (fieldRefs.current["quantity"] = el)}
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "quantity", "low_stock_threshold")
+                    }
                     onChange={(e) =>
                       handleChange("quantity", Number(e.target.value))
                     }
@@ -743,6 +781,12 @@ export default function AddEditProductModal({
                     size="small"
                     type="number"
                     value={form.low_stock_threshold ?? ""}
+                    inputRef={(el) =>
+                      (fieldRefs.current["low_stock_threshold"] = el)
+                    }
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "low_stock_threshold", null)
+                    }
                     onChange={(e) =>
                       handleChange(
                         "low_stock_threshold",
@@ -762,7 +806,6 @@ export default function AddEditProductModal({
             </>
           )}
 
-          {/* ---------------- STEP 3: ADDITIONAL INFO ---------------- */}
           {activeStep === 2 && (
             <>
               <Grid item xs={12} sm={4}>
@@ -772,8 +815,10 @@ export default function AddEditProductModal({
                     size="small"
                     variant="outlined"
                     value={form.brand || ""}
+                    inputRef={(el) => (fieldRefs.current["brand"] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, "brand", "size")}
                     onChange={(e) => handleChange("brand", e.target.value)}
-                    placeholder="e.g., Samsung, Apple"
+                    placeholder="e.g., Samsung"
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -790,8 +835,10 @@ export default function AddEditProductModal({
                     fullWidth
                     size="small"
                     value={form.size || ""}
+                    inputRef={(el) => (fieldRefs.current["size"] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, "size", "weight")}
                     onChange={(e) => handleChange("size", e.target.value)}
-                    placeholder="e.g., L, 10x20cm"
+                    placeholder="e.g., L"
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -808,6 +855,10 @@ export default function AddEditProductModal({
                     fullWidth
                     size="small"
                     value={form.weight || ""}
+                    inputRef={(el) => (fieldRefs.current["weight"] = el)}
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "weight", "average_purchase_price")
+                    }
                     onChange={(e) => handleChange("weight", e.target.value)}
                     placeholder="e.g., 2.5kg"
                     InputProps={{
@@ -828,6 +879,12 @@ export default function AddEditProductModal({
                     variant="outlined"
                     type="number"
                     value={form.average_purchase_price ?? 0}
+                    inputRef={(el) =>
+                      (fieldRefs.current["average_purchase_price"] = el)
+                    }
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "average_purchase_price", "image_url")
+                    }
                     onChange={(e) =>
                       handleChange(
                         "average_purchase_price",
@@ -850,8 +907,12 @@ export default function AddEditProductModal({
                     size="small"
                     variant="outlined"
                     value={form.image_url || ""}
+                    inputRef={(el) => (fieldRefs.current["image_url"] = el)}
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "image_url", "description")
+                    }
                     onChange={(e) => handleChange("image_url", e.target.value)}
-                    placeholder="Paste image URL or upload a file..."
+                    placeholder="Paste image URL..."
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -880,6 +941,7 @@ export default function AddEditProductModal({
                     multiline
                     rows={2}
                     value={form.description || ""}
+                    inputRef={(el) => (fieldRefs.current["description"] = el)}
                     onChange={(e) =>
                       handleChange("description", e.target.value)
                     }
@@ -910,11 +972,9 @@ export default function AddEditProductModal({
           Cancel
         </Button>
         <Box sx={{ flex: "1 1 auto" }} />
-
         <Button disabled={activeStep === 0} onClick={handleBack} sx={{ mr: 1 }}>
           Back
         </Button>
-
         {activeStep === steps.length - 1 ? (
           <Button
             onClick={handleSubmit}

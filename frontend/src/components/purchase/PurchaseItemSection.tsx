@@ -39,10 +39,10 @@ interface ExtendedPurchaseItem extends PurchaseItem {
   expiry_date?: string;
   mfg_date?: string;
   mrp?: number;
-  mop?: number; // Added MOP
-  mfw_price?: string; // Added MFW Price
-  location?: string; // Added Storage Location
-  serial_numbers?: string[]; // Array of serial strings
+  mop?: number;
+  mfw_price?: string;
+  location?: string;
+  serial_numbers?: string[];
 }
 
 interface Props {
@@ -74,9 +74,9 @@ const PurchaseItemSection = ({
   const theme = useTheme();
   const [products, setProducts] = useState<Product[]>([]);
   const [shop, setShop] = useState<ShopSetupForm | null>(null);
-  const autocompleteRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const [_hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
-  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0); // Track for keyboard ops
+  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0);
 
   // Batch Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -87,6 +87,15 @@ const PurchaseItemSection = ({
     Partial<ExtendedPurchaseItem>
   >({});
   const [serialInput, setSerialInput] = useState("");
+
+  const focusInput = (rowIdx: number, field: string) => {
+    const key = `${rowIdx}-${field}`;
+    const el = gridRefs.current[key];
+    if (el) {
+      el.focus();
+      if (el.tagName === "INPUT") (el as HTMLInputElement).select();
+    }
+  };
 
   useEffect(() => {
     getAllProducts({
@@ -105,7 +114,6 @@ const PurchaseItemSection = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (readOnly) return;
 
-      // Ctrl + A: Add Item
       if (
         (e.ctrlKey || e.metaKey) &&
         (e.code === "KeyA" || e.key.toLowerCase() === "a")
@@ -114,7 +122,6 @@ const PurchaseItemSection = ({
         handleAddItem();
       }
 
-      // Ctrl + Delete: Remove Active Row
       if (
         (e.ctrlKey || e.metaKey) &&
         (e.code === "Delete" || e.code === "Backspace")
@@ -129,7 +136,7 @@ const PurchaseItemSection = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [items, activeRowIndex, readOnly]); // Depend on state to ensure latest closure
+  }, [items, activeRowIndex, readOnly]);
 
   const calculatePrice = (item: ExtendedPurchaseItem) => {
     if (!shop) return 0;
@@ -160,9 +167,8 @@ const PurchaseItemSection = ({
     newItem.sr_no = items.length + 1;
     const newItems = [...items, newItem];
     onItemsChange(newItems);
-
-    // Set focus to new row
     setActiveRowIndex(newItems.length - 1);
+    setTimeout(() => focusInput(newItems.length - 1, "product"), 50);
   };
 
   const handleProductSelect = (index: number, product: Product | null) => {
@@ -174,19 +180,22 @@ const PurchaseItemSection = ({
         product_id: product.id!,
         rate: product.mop,
         gst_rate: product.gst_rate || 0,
-        tracking_type: (product as any).tracking_type || "none", // Assuming product has this field
+        tracking_type: (product as any).tracking_type || "none",
       };
       updated[index].price = calculatePrice(updated[index]);
+      onItemsChange(updated);
+      // Auto-move to QTY
+      setTimeout(() => focusInput(index, "quantity"), 50);
     } else {
       updated[index] = defaultItem();
+      onItemsChange(updated);
     }
-    onItemsChange(updated);
   };
 
   const handleFieldChange = (
     index: number,
     field: keyof ExtendedPurchaseItem,
-    value: any
+    value: any,
   ) => {
     if (readOnly) return;
     const updated = [...items];
@@ -202,8 +211,6 @@ const PurchaseItemSection = ({
       item.sr_no = index + 1;
     });
     onItemsChange(updated);
-
-    // Adjust active index
     if (updated.length > 0) {
       setActiveRowIndex(Math.min(idx, updated.length - 1));
     } else {
@@ -211,7 +218,56 @@ const PurchaseItemSection = ({
     }
   };
 
-  // --- BATCH MODAL LOGIC ---
+  const handleGridKeyDown = (
+    e: React.KeyboardEvent,
+    idx: number,
+    field: string,
+  ) => {
+    if (readOnly) return;
+    const fields = ["product", "quantity", "rate", "gst_rate"];
+    const activeFields = shop?.gst_enabled
+      ? fields
+      : fields.filter((f) => f !== "gst_rate");
+    const currentIdx = activeFields.indexOf(field);
+    const isLastField = currentIdx === activeFields.length - 1;
+
+    if (e.key === "Enter") {
+      if (isLastField) {
+        e.preventDefault();
+        if (idx === items.length - 1) {
+          if (items[idx].product_id !== 0) handleAddItem();
+        } else {
+          focusInput(idx + 1, "product");
+        }
+      } else {
+        if (field !== "product") {
+          e.preventDefault();
+          focusInput(idx, activeFields[currentIdx + 1]);
+        }
+      }
+    } else if (e.key === "ArrowRight") {
+      if (!isLastField) {
+        e.preventDefault();
+        focusInput(idx, activeFields[currentIdx + 1]);
+      }
+    } else if (e.key === "ArrowLeft") {
+      if (currentIdx > 0) {
+        e.preventDefault();
+        focusInput(idx, activeFields[currentIdx - 1]);
+      }
+    } else if (e.key === "ArrowDown") {
+      if (idx < items.length - 1) {
+        e.preventDefault();
+        focusInput(idx + 1, field);
+      }
+    } else if (e.key === "ArrowUp") {
+      if (idx > 0) {
+        e.preventDefault();
+        focusInput(idx - 1, field);
+      }
+    }
+  };
+
   const openBatchModal = (index: number) => {
     if (readOnly) return;
     setCurrentModalItemIndex(index);
@@ -222,8 +278,6 @@ const PurchaseItemSection = ({
   const handleSaveBatchData = () => {
     if (currentModalItemIndex !== null) {
       const updated = [...items];
-
-      // If tracking serials, quantity is determined by serial count
       let finalQty = tempBatchData.quantity || 0;
       if (
         tempBatchData.tracking_type === "serial" &&
@@ -231,14 +285,13 @@ const PurchaseItemSection = ({
       ) {
         finalQty = tempBatchData.serial_numbers.length;
       }
-
       updated[currentModalItemIndex] = {
         ...updated[currentModalItemIndex],
         ...tempBatchData,
         quantity: finalQty,
       };
       updated[currentModalItemIndex].price = calculatePrice(
-        updated[currentModalItemIndex]
+        updated[currentModalItemIndex],
       );
       onItemsChange(updated);
     }
@@ -249,7 +302,6 @@ const PurchaseItemSection = ({
     if (e.key === "Enter" && serialInput.trim()) {
       e.preventDefault();
       const currentSerials = tempBatchData.serial_numbers || [];
-      // Prevent duplicates
       if (!currentSerials.includes(serialInput.trim())) {
         setTempBatchData({
           ...tempBatchData,
@@ -291,8 +343,8 @@ const PurchaseItemSection = ({
               <TableCell sx={{ ...headerSx, width: "10%" }} align="center">
                 DETAILS
               </TableCell>
-              <TableCell sx={{ ...headerSx, width: "12%" }}>RATE</TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
+              <TableCell sx={{ ...headerSx, width: "12%" }}>RATE</TableCell>
               {shop?.gst_enabled && (
                 <TableCell sx={{ ...headerSx, width: "8%" }} align="center">
                   GST%
@@ -342,11 +394,12 @@ const PurchaseItemSection = ({
                       getOptionLabel={(opt) => opt.name}
                       value={product || null}
                       onChange={(_, v) => handleProductSelect(idx, v)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "product")}
                       renderInput={(params) => (
                         <TextField
                           {...params}
                           inputRef={(el) =>
-                            (autocompleteRefs.current[idx] = el)
+                            (gridRefs.current[`${idx}-product`] = el)
                           }
                           onFocus={() => setActiveRowIndex(idx)}
                           placeholder="Select Product"
@@ -358,7 +411,6 @@ const PurchaseItemSection = ({
                         />
                       )}
                     />
-                    {/* Show small badge for tracking type */}
                     {hasTracking && (
                       <Typography
                         variant="caption"
@@ -399,14 +451,29 @@ const PurchaseItemSection = ({
                       type="number"
                       variant="standard"
                       fullWidth
-                      value={item.rate}
-                      onFocus={() => setActiveRowIndex(idx)}
-                      onChange={(e) =>
-                        handleFieldChange(idx, "rate", Number(e.target.value))
+                      value={item.quantity}
+                      inputRef={(el) =>
+                        (gridRefs.current[`${idx}-quantity`] = el)
                       }
-                      InputProps={{ disableUnderline: true, readOnly }}
-                      // Validation: Type number & Positive
-                      inputProps={{ min: 0 }}
+                      onFocus={() => {
+                        setActiveRowIndex(idx);
+                        focusInput(idx, "quantity");
+                      }}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "quantity")}
+                      disabled={item.tracking_type === "serial"}
+                      onChange={(e) =>
+                        handleFieldChange(
+                          idx,
+                          "quantity",
+                          Number(e.target.value),
+                        )
+                      }
+                      InputProps={{
+                        disableUnderline: true,
+                        readOnly,
+                        sx: { fontWeight: "bold" },
+                      }}
+                      inputProps={{ min: 1 }}
                     />
                   </TableCell>
 
@@ -415,24 +482,18 @@ const PurchaseItemSection = ({
                       type="number"
                       variant="standard"
                       fullWidth
-                      value={item.quantity}
-                      onFocus={() => setActiveRowIndex(idx)}
-                      // Disable manual quantity if tracking via serials (auto-calculated)
-                      disabled={item.tracking_type === "serial"}
-                      onChange={(e) =>
-                        handleFieldChange(
-                          idx,
-                          "quantity",
-                          Number(e.target.value)
-                        )
-                      }
-                      InputProps={{
-                        disableUnderline: true,
-                        readOnly,
-                        sx: { fontWeight: "bold" },
+                      value={item.rate}
+                      inputRef={(el) => (gridRefs.current[`${idx}-rate`] = el)}
+                      onFocus={() => {
+                        setActiveRowIndex(idx);
+                        focusInput(idx, "rate");
                       }}
-                      // Validation: Type number & Positive
-                      inputProps={{ min: 1 }}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "rate")}
+                      onChange={(e) =>
+                        handleFieldChange(idx, "rate", Number(e.target.value))
+                      }
+                      InputProps={{ disableUnderline: true, readOnly }}
+                      inputProps={{ min: 0 }}
                     />
                   </TableCell>
 
@@ -446,12 +507,19 @@ const PurchaseItemSection = ({
                         variant="standard"
                         fullWidth
                         value={item.gst_rate}
-                        onFocus={() => setActiveRowIndex(idx)}
+                        inputRef={(el) =>
+                          (gridRefs.current[`${idx}-gst_rate`] = el)
+                        }
+                        onFocus={() => {
+                          setActiveRowIndex(idx);
+                          focusInput(idx, "gst_rate");
+                        }}
+                        onKeyDown={(e) => handleGridKeyDown(e, idx, "gst_rate")}
                         onChange={(e) =>
                           handleFieldChange(
                             idx,
                             "gst_rate",
-                            Number(e.target.value)
+                            Number(e.target.value),
                           )
                         }
                         inputProps={{
@@ -517,7 +585,7 @@ const PurchaseItemSection = ({
         </Box>
       )}
 
-      {/* --- BATCH / SERIAL ENTRY MODAL --- */}
+      {/* --- BATCH / SERIAL ENTRY MODAL (Unchanged) --- */}
       <Dialog
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -543,7 +611,6 @@ const PurchaseItemSection = ({
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={3}>
-            {/* 1. Batch Details (Show for Batch & Serial) */}
             <Grid container spacing={2}>
               <Grid item xs={6}>
                 <TextField
@@ -558,7 +625,6 @@ const PurchaseItemSection = ({
                     })
                   }
                   placeholder="e.g. B-2025-001"
-                  // Validation: Char limit
                   inputProps={{ maxLength: 50 }}
                 />
               </Grid>
@@ -575,7 +641,6 @@ const PurchaseItemSection = ({
                     })
                   }
                   placeholder="e.g. Shelf A, Rack 2"
-                  // Validation: Char limit
                   inputProps={{ maxLength: 50 }}
                 />
               </Grid>
@@ -624,11 +689,9 @@ const PurchaseItemSection = ({
                       mrp: Number(e.target.value),
                     })
                   }
-                  // Validation: Positive number
                   inputProps={{ min: 0 }}
                 />
               </Grid>
-              {/* Added MOP and MFW Price fields */}
               <Grid item xs={6}>
                 <TextField
                   label="MOP"
@@ -642,7 +705,6 @@ const PurchaseItemSection = ({
                       mop: Number(e.target.value),
                     })
                   }
-                  // Validation: Positive number
                   inputProps={{ min: 0 }}
                 />
               </Grid>
@@ -659,13 +721,10 @@ const PurchaseItemSection = ({
                       mfw_price: String(e.target.value),
                     })
                   }
-                  // Validation: Positive number
                   inputProps={{ min: 0 }}
                 />
               </Grid>
             </Grid>
-
-            {/* 2. Serial Number Input (Only for Serial Type) */}
             {tempBatchData.tracking_type === "serial" && (
               <Box
                 sx={{
@@ -686,7 +745,6 @@ const PurchaseItemSection = ({
                   onKeyDown={handleAddSerial}
                   size="small"
                   sx={{ mb: 2, bgcolor: "white" }}
-                  // Validation: Char limit
                   inputProps={{ maxLength: 50 }}
                 />
                 <Box

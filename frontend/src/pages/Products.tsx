@@ -8,7 +8,6 @@ import type { Product } from "../lib/types/product";
 import AddProductModal from "../components/products/AddProductModal";
 import DashboardHeader from "../components/DashboardHeader";
 import { Download, Filter, Plus, Upload } from "lucide-react";
-import BottomBar from "../components/layout/BottomBar";
 import { exportToExcel } from "../lib/exportToExcel";
 import { deleteProduct, getAllProducts } from "../lib/api/productService";
 import ProductImportModal from "../components/products/ProductImportModal";
@@ -296,7 +295,6 @@ export default function ProductsPage() {
         header="Deactivate Product"
         disclaimer={`Are you sure you want to deactivate "${productToDelete?.name}"? This will hide it from the POS and new sales, but it will still appear in old reports.`}
       />
-      <BottomBar />
     </Box>
   );
 }

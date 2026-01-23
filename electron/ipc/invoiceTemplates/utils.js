@@ -44,7 +44,7 @@ const getTrackingHtml = (item) => {
 
 // --- FOOTER BRANDING ---
 const BRANDING_FOOTER = `
-  <div style="text-align:center; margin-top:15px; font-size:9px; color:#888; border-top:1px dotted #ddd; padding-top:4px;">
+  <div style="text-align:center; margin-top:5px; font-size:9px; color:#888; border-top:1px dotted #ddd; padding-top:2x;">
     Powered by KOSH Software &bull; +91 8180904072
   </div>
 `;

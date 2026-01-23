@@ -31,7 +31,7 @@ export function getAdjustments(filters) {
       ps.serial_number
     FROM stock_adjustments sa
     JOIN products p ON sa.product_id = p.id
-    LEFT JOIN product_batches pb ON sa.batdch_id = pb.id
+    LEFT JOIN product_batches pb ON sa.batch_id = pb.id
     LEFT JOIN product_serials ps ON sa.serial_id = ps.id
     WHERE ${where}
     ORDER BY sa.created_at DESC
@@ -54,7 +54,7 @@ export function getAdjustmentStats(filters) {
     SELECT SUM(adjustment) as total 
     FROM stock_adjustments sa
     WHERE ${where}
-  `
+  `,
       )
       .get(...params).total || 0;
 
@@ -70,7 +70,7 @@ export function getAdjustmentStats(filters) {
     WHERE ${where}
     GROUP BY category
     ORDER BY quantity_change ASC
-  `
+  `,
     )
     .all(...params);
 
@@ -87,7 +87,7 @@ export function getAdjustmentsByProductId(productId) {
     SELECT * FROM stock_adjustments 
     WHERE product_id = ? 
     ORDER BY created_at DESC
-  `
+  `,
     )
     .all(productId);
 }

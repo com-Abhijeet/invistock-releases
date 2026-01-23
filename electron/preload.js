@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("electron", {
     },
     invoke: (channel, data) => {
       const validInvokeChannels = [
+        "print-custom-label",
         "license-updated-restart-app",
         "get-machine-id",
         "generate-excel-report",

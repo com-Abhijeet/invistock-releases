@@ -1,133 +1,220 @@
 const { BrowserWindow } = require("electron");
 const bwipjs = require("bwip-js");
-const { createLabelHTML } = require("./labelTemplate.js");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 
-/**
- * Generates the barcode image as a Base64 data URL.
- */
+const { customTemplates } = require("./customLabelTemplate.js");
+const { getShop } = require("../backend/repositories/shopRepository.mjs");
+
+// =======================================================
+// BARCODE
+// =======================================================
+
 const generateBarcodeBase64 = async (barcodeText) => {
   return new Promise((resolve, reject) => {
     bwipjs.toBuffer(
       {
         bcid: "code128",
         text: barcodeText,
-        scale: 3,
-        height: 10,
-        includetext: true,
-        textxalign: "center",
+        scale: 4,
+        height: 12,
+        includetext: false,
       },
       (err, png) => {
-        if (err) reject(err);
-        else resolve(`data:image/png;base64,${png.toString("base64")}`);
+        if (err) return reject(err);
+        resolve(`data:image/png;base64,${png.toString("base64")}`);
       },
     );
   });
 };
 
-/**
- * Handles the Custom Label Print flow.
- * Allows overriding barcode, template, and injecting a custom price code.
- */
+// =======================================================
+// MAIN PRINT FUNCTION (FIXED VERSION 1)
+// =======================================================
+
 const createCustomPrintWindow = async (payload) => {
-  const { product, shop, copies, customBarcode, customPriceCode, templateId } =
-    payload;
-
-  if (!product || !shop) {
-    console.error("❌ Missing data for custom label printing.");
-    return;
-  }
-
-  // 1. Determine Barcode (User Input > Product Barcode > Product Code)
-  const code =
-    customBarcode || product.barcode || product.product_code || "0000";
-
-  console.log(`🖨️ Generating Custom Label for code: ${code}`);
-
-  // 2. Generate Barcode Image
-  let barcodeBase64 = "";
   try {
-    barcodeBase64 = await generateBarcodeBase64(code);
-  } catch (error) {
-    console.error("Error generating barcode image:", error);
-  }
+    const {
+      product,
+      copies,
+      barcode,
+      customPriceCode,
+      templateId,
+      showSecretCode,
+      showSize,
+      showBarcode,
+      showShopName,
+      silent: silentOverride,
+      width: labelWidth,
+    } = payload;
 
-  // 3. Prepare Settings
-  const printerWidth = shop.label_printer_width_mm || 50;
-  // Use selected template or fallback to shop default
-  const selectedTemplate =
-    templateId || shop.label_template_id || "lbl_standard";
-
-  // 4. Inject Custom Data into Product Object
-  // This ensures templates that check for 'custom_price_code' or 'custom_field' can render it
-  const productWithCustomData = {
-    ...product,
-    custom_price_code: customPriceCode,
-    // Overwrite barcode in the object for template rendering if needed
-    barcode: code,
-  };
-
-  // 5. Generate HTML
-  const { style, content } = createLabelHTML(
-    productWithCustomData,
-    shop,
-    barcodeBase64,
-    printerWidth,
-    selectedTemplate,
-  );
-
-  const fullHtml = `<html><head><title>Custom Label Print</title>${style}</head><body>${content}</body></html>`;
-
-  // 6. Create Hidden Window & Print
-  const win = new BrowserWindow({
-    show: false, // Keep hidden unless debugging
-    width: 400,
-    height: 400,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-
-  await win.loadURL(
-    "data:text/html;charset=utf-8," + encodeURIComponent(fullHtml),
-  );
-
-  win.webContents.on("did-finish-load", () => {
-    let isSilent = Boolean(shop.silent_printing);
-    const printerName =
-      shop.label_printer_name && shop.label_printer_name.trim() !== ""
-        ? shop.label_printer_name
-        : undefined;
-
-    // Force non-silent for PDF printers
-    if (printerName && printerName.toLowerCase().includes("pdf")) {
-      isSilent = false;
+    if (!product) {
+      console.error("❌ Invalid product data for custom print.");
+      return;
     }
 
-    const printerOptions = {
-      silent: isSilent,
-      printBackground: true,
-      copies: copies > 0 ? copies : 1,
+    // ===================================================
+    // SHOP SETTINGS
+    // ===================================================
+
+    let shopData = {};
+    try {
+      shopData = await getShop();
+    } catch {}
+
+    // ===================================================
+    // BARCODE
+    // ===================================================
+
+    const codeToEncode =
+      barcode || product.barcode || product.product_code || "0000";
+
+    let barcodeImg = "";
+
+    if (showBarcode) {
+      barcodeImg = await generateBarcodeBase64(codeToEncode);
+    }
+
+    // ===================================================
+    // TEMPLATE
+    // ===================================================
+
+    const config = {
+      showMRP: true,
+      showSecretCode,
+      showSize,
+      showBarcode,
+      showShopName,
+      templateId,
+      width: labelWidth || shopData.label_printer_width_mm || 50,
     };
 
-    if (printerName) {
-      printerOptions.deviceName = printerName;
+    const itemData = {
+      name: product.name,
+      mrp: product.mrp,
+      size: product.size,
+      custom_price_code: customPriceCode,
+      barcode: codeToEncode,
+    };
+
+    const renderTemplate =
+      customTemplates[templateId] || customTemplates.custom_garment_standard;
+
+    const contentHTML = renderTemplate(
+      itemData,
+      config,
+      barcodeImg,
+      config.width,
+      shopData,
+    );
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <style>
+            body {
+              margin: 0;
+              padding: 0;
+              background: white;
+              -webkit-print-color-adjust: exact;
+            }
+            @page { margin: 0; size: auto; }
+          </style>
+        </head>
+        <body>${contentHTML}</body>
+      </html>
+    `;
+
+    // ===================================================
+    // PRINT SETTINGS
+    // ===================================================
+
+    let isSilent =
+      silentOverride !== undefined
+        ? silentOverride
+        : Boolean(shopData.silent_printing);
+
+    let printerName = shopData.label_printer_name?.trim();
+
+    // PDF printers MUST show dialog
+    if (printerName?.toLowerCase().includes("pdf")) {
+      isSilent = false;
+      printerName = undefined;
     }
 
-    if (!isSilent) {
-      win.show();
-    }
+    const printCopies = Math.max(1, Number(copies) || 1);
 
-    win.webContents.print(printerOptions, (success, errorType) => {
-      if (!success) {
-        console.error("❌ Custom Label print failed:", errorType);
-      }
-      // Cleanup
-      setTimeout(() => {
-        win.close();
-      }, 1000);
+    // ===================================================
+    // TEMP FILE (keeps layout perfect)
+    // ===================================================
+
+    const tempFile = path.join(os.tmpdir(), `label-${Date.now()}.html`);
+    fs.writeFileSync(tempFile, html);
+
+    // ===================================================
+    // WINDOW
+    // ===================================================
+
+    const win = new BrowserWindow({
+      show: true, // ALWAYS visible for dialog
+      width: 450,
+      height: 600,
+      autoHideMenuBar: true,
+      title: "Label Print",
     });
-  });
+
+    // ===================================================
+    // LOAD (IMPORTANT: await instead of did-finish-load)
+    // ===================================================
+
+    await win.loadFile(tempFile);
+
+    // ===================================================
+    // WAIT FOR IMAGES (barcode render)
+    // ===================================================
+
+    await win.webContents.executeJavaScript(`
+      new Promise(resolve => {
+        const imgs = [...document.images];
+        if (!imgs.length) resolve();
+        let done = 0;
+        imgs.forEach(img => {
+          if (img.complete) done++;
+          else img.onload = img.onerror = () => {
+            done++;
+            if (done === imgs.length) resolve();
+          };
+        });
+        if (done === imgs.length) resolve();
+      });
+    `);
+
+    // ===================================================
+    // PRINT (DIRECT CALL — NOT did-finish-load)
+    // ===================================================
+
+    const options = {
+      silent: isSilent,
+      printBackground: true,
+      copies: printCopies,
+      deviceName: isSilent ? printerName : undefined,
+    };
+
+    win.webContents.print(options, () => {
+      setTimeout(
+        () => {
+          if (!win.isDestroyed()) win.close();
+          fs.unlink(tempFile, () => {});
+        },
+        isSilent ? 400 : 1500,
+      );
+    });
+  } catch (err) {
+    console.error("❌ Print handler crashed:", err);
+  }
 };
 
 module.exports = { createCustomPrintWindow };

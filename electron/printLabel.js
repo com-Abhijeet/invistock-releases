@@ -1,5 +1,9 @@
 const { BrowserWindow } = require("electron");
 const bwipjs = require("bwip-js");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
 const { createLabelHTML } = require("./labelTemplate.js");
 
 /**
@@ -19,10 +23,14 @@ const generateBarcodeBase64 = async (barcodeText) => {
       (err, png) => {
         if (err) reject(err);
         else resolve(`data:image/png;base64,${png.toString("base64")}`);
-      }
+      },
     );
   });
 };
+
+// =======================================================
+// MAIN PRINT
+// =======================================================
 
 const createPrintWindow = async (payload) => {
   const { product, shop, copies, customBarcode } = payload;
@@ -32,90 +40,144 @@ const createPrintWindow = async (payload) => {
     return;
   }
 
-  // 1. Determine the Barcode to Print
-  // PRIORITY: specific 'customBarcode' (Batch/Serial) > 'product.barcode' > 'product_code'
+  // ===================================================
+  // BARCODE
+  // ===================================================
+
   const code =
     customBarcode || product.barcode || product.product_code || "0000";
 
   console.log(`🖨️ Generating label for code: ${code}`);
 
-  // 2. Generate Barcode Image
   let barcodeBase64 = "";
   try {
     barcodeBase64 = await generateBarcodeBase64(code);
   } catch (error) {
-    console.error("Error generating barcode image:", error);
+    console.error("Barcode generation failed:", error);
   }
 
-  // 3. Get Settings
+  // ===================================================
+  // TEMPLATE
+  // ===================================================
+
   const printerWidth = shop.label_printer_width_mm || 50;
   const templateId = shop.label_template_id || "lbl_standard";
 
-  // 4. Generate HTML
   const { style, content } = createLabelHTML(
     product,
     shop,
     barcodeBase64,
     printerWidth,
     templateId,
-    code // Pass specific code (e.g., Batch UID) for display
+    code,
   );
 
-  const fullHtml = `<html><head><title>Label Print</title>${style}</head><body>${content}</body></html>`;
+  const fullHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        ${style}
+        <style>
+          body {
+            margin: 0;
+            padding: 0;
+            background: white;
+            -webkit-print-color-adjust: exact;
+          }
+          @page { margin: 0; size: auto; }
+        </style>
+      </head>
+      <body>${content}</body>
+    </html>
+  `;
 
-  // 5. Create Window (Initially Hidden)
+  // ===================================================
+  // PRINT SETTINGS
+  // ===================================================
+
+  let isSilent = Boolean(shop.silent_printing);
+  let printerName = shop.label_printer_name?.trim();
+
+  // PDF printers MUST show dialog
+  if (printerName?.toLowerCase().includes("pdf")) {
+    isSilent = false;
+    printerName = undefined;
+  }
+
+  const printCopies = Math.max(1, Number(copies) || 1);
+
+  // ===================================================
+  // TEMP FILE (fixes scaling + dialog issues)
+  // ===================================================
+
+  const tempFile = path.join(os.tmpdir(), `label-${Date.now()}.html`);
+  fs.writeFileSync(tempFile, fullHtml);
+
+  // ===================================================
+  // WINDOW (VISIBLE)
+  // ===================================================
+
   const win = new BrowserWindow({
     show: true,
-    width: 400,
-    height: 400,
+    width: 450,
+    height: 500,
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
 
-  await win.loadURL(
-    "data:text/html;charset=utf-8," + encodeURIComponent(fullHtml)
-  );
+  // ===================================================
+  // LOAD (await instead of did-finish-load)
+  // ===================================================
 
-  win.webContents.on("did-finish-load", () => {
-    let isSilent = Boolean(shop.silent_printing);
-    const printerName =
-      shop.label_printer_name && shop.label_printer_name.trim() !== ""
-        ? shop.label_printer_name
-        : undefined;
+  await win.loadFile(tempFile);
 
-    // Force non-silent for PDF printers (they require file save dialogs)
-    if (printerName && printerName.toLowerCase().includes("pdf")) {
-      isSilent = false;
-    }
+  // ===================================================
+  // WAIT FOR IMAGES
+  // ===================================================
 
-    const printerOptions = {
-      silent: isSilent,
-      printBackground: true,
-      copies: copies > 0 ? copies : 1,
-    };
-
-    if (printerName) {
-      printerOptions.deviceName = printerName;
-    }
-
-    // FIX: If printing is interactive (e.g. PDF or manual selection),
-    // the window MUST be visible for the dialog to appear.
-    if (!isSilent) {
-      win.show();
-    }
-
-    // Attempt print
-    win.webContents.print(printerOptions, (success, errorType) => {
-      if (!success) {
-        console.error("❌ Label print failed:", errorType);
-      }
-      // Close window after print dialog is done or print is sent
-      setTimeout(() => {
-        win.close();
-      }, 1000);
+  await win.webContents.executeJavaScript(`
+    new Promise(resolve => {
+      const imgs = [...document.images];
+      if (!imgs.length) resolve();
+      let done = 0;
+      imgs.forEach(img => {
+        if (img.complete) done++;
+        else img.onload = img.onerror = () => {
+          done++;
+          if (done === imgs.length) resolve();
+        };
+      });
+      if (done === imgs.length) resolve();
     });
+  `);
+
+  // ===================================================
+  // PRINT
+  // ===================================================
+
+  const options = {
+    silent: isSilent,
+    printBackground: true,
+    copies: printCopies,
+    deviceName: isSilent ? printerName : undefined,
+  };
+
+  win.webContents.print(options, (success, errorType) => {
+    if (!success) {
+      console.error("❌ Label print failed:", errorType);
+    }
+
+    setTimeout(
+      () => {
+        if (!win.isDestroyed()) win.close();
+        fs.unlink(tempFile, () => {});
+      },
+      isSilent ? 400 : 1500,
+    );
   });
 };
 

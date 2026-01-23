@@ -1,10 +1,12 @@
-const { ipcMain } = require("electron");
 const { getLabelTemplate } = require("./labelTemplate.js");
 const bwipjs = require("bwip-js");
 const { createPrintWindow } = require("./printLabel.js");
 const { createCustomPrintWindow } = require("./customPrintLabel.js");
 
+// =======================================================
 // Dummy Data for Preview
+// =======================================================
+
 const DUMMY_LABEL_ITEM = {
   name: "Sample Product - Cotton Shirt (L)",
   product_code: "PRD-001",
@@ -13,16 +15,15 @@ const DUMMY_LABEL_ITEM = {
   mrp: 1599,
   size: "L",
   color: "Blue",
-  mfw_price: 850, // For discreet code
+  mfw_price: 850,
 };
 
 const DUMMY_SHOP = {
   shop_name: "My Awesome Store",
   shop_alias: "MAS",
-  label_printer_width_mm: 50, // Default preview width
+  label_printer_width_mm: 50,
 };
 
-// Generate a simple dummy barcode
 const generateDummyBarcode = async () => {
   return new Promise((resolve) => {
     bwipjs.toBuffer(
@@ -41,49 +42,57 @@ const generateDummyBarcode = async () => {
   });
 };
 
+// =======================================================
+// REGISTER HANDLERS
+// =======================================================
+
 function registerLabelHandlers(ipcMain) {
-  // 1. Standard Preview Handler
-  ipcMain.handle("generate-label-preview", async (event, templateId) => {
+  console.log("🟢 Label IPC handlers registered");
+
+  // --------------------------------
+  // Preview
+  // --------------------------------
+  ipcMain.handle("generate-label-preview", async (_, templateId) => {
     try {
+      console.log("🟡 Preview requested:", templateId);
+
       const barcode = await generateDummyBarcode();
 
-      const data = {
-        item: DUMMY_LABEL_ITEM,
-        shop: { ...DUMMY_SHOP },
+      const content = getLabelTemplate(
+        templateId,
+        { item: DUMMY_LABEL_ITEM, shop: { ...DUMMY_SHOP } },
+        barcode,
+      );
+
+      return {
+        success: true,
+        html: `
+          <!DOCTYPE html>
+          <html>
+            <body>${content}</body>
+          </html>
+        `,
       };
-
-      // Generate HTML (Includes <style> blocks)
-      const content = getLabelTemplate(templateId, data, barcode);
-
-      // Wrap in standard HTML structure for the iframe
-      const html = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Label Preview</title>
-          </head>
-          <body>
-            ${content}
-          </body>
-        </html>
-      `;
-
-      return { success: true, html };
-    } catch (error) {
-      console.error("Label Preview Error:", error);
-      return { success: false, error: error.message };
+    } catch (err) {
+      console.error("❌ Preview error:", err);
+      return { success: false };
     }
   });
 
-  // 2. Standard Print Label Handler
-  ipcMain.on("print-label", async (event, payload) => {
-    await createPrintWindow(payload);
+  // --------------------------------
+  // Standard print
+  // --------------------------------
+  ipcMain.handle("print-label", async (_, payload) => {
+    console.log("🖨️ print-label called");
+    return createPrintWindow(payload);
   });
 
-  // 3. New Custom Print Label Handler
-  ipcMain.on("print-custom-label", async (event, payload) => {
-    await createCustomPrintWindow(payload);
+  // --------------------------------
+  // Custom print
+  // --------------------------------
+  ipcMain.handle("print-custom-label", async (_, payload) => {
+    console.log("🖨️ print-custom-label called");
+    return createCustomPrintWindow(payload);
   });
 }
 

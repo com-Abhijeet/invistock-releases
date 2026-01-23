@@ -10,7 +10,7 @@ const { getMarathiName } = require("./transliterationService.js");
  * @param {number} printerWidthMM - The width of the printer in millimeters.
  *@returns {Promise<string>} A promise that resolves with the complete HTML string.
  */
-async function createShippingLabelHTML(shop, sale, printerWidthMM = 80) {
+async function createShippingLabelHTML(shop, sale, printerWidthMM) {
   // --- 1. SET LAYOUT FLAG ---
   // We'll consider anything over 90mm (like a 4-inch label) as "large"
   const isLargeLayout = printerWidthMM > 90;
@@ -29,7 +29,7 @@ async function createShippingLabelHTML(shop, sale, printerWidthMM = 80) {
       (err, png) => {
         if (err) reject(err);
         else resolve(`data:image/png;base64,${png.toString("base64")}`);
-      }
+      },
     );
   });
 
@@ -162,7 +162,7 @@ async function createShippingLabelHTML(shop, sale, printerWidthMM = 80) {
           </tr>
         `;
         }
-      })
+      }),
     )
   ).join("");
 
@@ -174,8 +174,8 @@ async function createShippingLabelHTML(shop, sale, printerWidthMM = 80) {
         <div class="name">${sale.customer_name}</div>
         <div>${sale.customer_address || ""}</div>
         <div>${sale.customer_city || ""}, ${sale.customer_state || ""} - ${
-        sale.customer_pincode || ""
-      }</div>
+          sale.customer_pincode || ""
+        }</div>
         <div>Ph: ${sale.customer_phone}</div>
       </div>
       <div class="col-mr">
@@ -199,8 +199,8 @@ async function createShippingLabelHTML(shop, sale, printerWidthMM = 80) {
       </div>
       <div>
         ${sale.customer_city || ""}, ${sale.customer_state || ""} - ${
-        sale.customer_pincode || ""
-      }
+          sale.customer_pincode || ""
+        }
         <br>
         <span class="local-name">${customerCityMR}, ${customerStateMR}</span>
       </div>

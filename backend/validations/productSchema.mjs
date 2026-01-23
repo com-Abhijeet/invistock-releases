@@ -15,8 +15,8 @@ export const productSchema = z.object({
 
   storage_location: z.string().optional(),
   quantity: z.number().int().min(0, "Quantity must be non-negative"),
-  description: z.string().optional(),
-  brand: z.string().optional(),
+  description: z.string().optional().nullable(),
+  brand: z.string().optional().nullable(),
   barcode: z.string().optional().nullable(),
   image_url: z.string().optional().nullable(),
   is_active: z.number().int().optional(),

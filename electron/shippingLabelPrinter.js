@@ -1,34 +1,133 @@
 const { BrowserWindow } = require("electron");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 
 /**
- * Creates a hidden browser window and prints its HTML content.
- * @param {string} htmlContent - The HTML to print.
- * @param {object} printOptions - Options for the webContents.print() method.
+ * Prints shipping label with preview + reliable dialog.
+ * Uses temp file + await load (stable on Windows).
  */
 async function printShippingLabel(htmlContent, printOptions = {}) {
-  const labelWindow = new BrowserWindow({
-    show: false,
-    width: 400,
-    height: 600,
-  });
+  try {
+    console.log("📦 Shipping label print started");
 
-  await labelWindow.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`
-  );
+    // ===================================================
+    // TEMP FILE (fix scaling + dialog reliability)
+    // ===================================================
 
-  return new Promise((resolve, reject) => {
-    labelWindow.webContents.on("did-finish-load", () => {
-      labelWindow.webContents.print(printOptions, (success, error) => {
-        if (!success) {
-          console.error("Shipping label print failed:", error);
-          reject(new Error("Print failed"));
-        } else {
-          resolve();
-        }
-        labelWindow.close();
-      });
+    const tempFile = path.join(
+      os.tmpdir(),
+      `shipping-label-${Date.now()}.html`,
+    );
+
+    const fullHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <style>
+            body {
+              margin: 0;
+              padding: 0;
+              background: white;
+              -webkit-print-color-adjust: exact;
+            }
+            @page { margin: 0; size: auto; }
+          </style>
+        </head>
+        <body>${htmlContent}</body>
+      </html>
+    `;
+
+    fs.writeFileSync(tempFile, fullHtml);
+
+    // ===================================================
+    // PRINT SETTINGS
+    // ===================================================
+
+    let isSilent = Boolean(printOptions.silent);
+    let printerName = printOptions.deviceName?.trim();
+
+    // Force dialog for PDF printers
+    if (printerName?.toLowerCase().includes("pdf")) {
+      isSilent = false;
+      printerName = undefined;
+    }
+
+    // ===================================================
+    // WINDOW (VISIBLE FOR PREVIEW + DIALOG)
+    // ===================================================
+
+    const labelWindow = new BrowserWindow({
+      show: true, // ALWAYS visible
+      width: 500,
+      height: 650,
+      autoHideMenuBar: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
     });
-  });
+
+    // ===================================================
+    // LOAD FILE (await, NOT did-finish-load)
+    // ===================================================
+
+    await labelWindow.loadFile(tempFile);
+
+    // ===================================================
+    // WAIT FOR IMAGES (if logos etc)
+    // ===================================================
+
+    await labelWindow.webContents.executeJavaScript(`
+      new Promise(resolve => {
+        const imgs = [...document.images];
+        if (!imgs.length) resolve();
+        let done = 0;
+        imgs.forEach(img => {
+          if (img.complete) done++;
+          else img.onload = img.onerror = () => {
+            done++;
+            if (done === imgs.length) resolve();
+          };
+        });
+        if (done === imgs.length) resolve();
+      });
+    `);
+
+    // ===================================================
+    // PRINT
+    // ===================================================
+
+    return new Promise((resolve, reject) => {
+      labelWindow.webContents.print(
+        {
+          silent: isSilent,
+          deviceName: isSilent ? printerName : undefined,
+          printBackground: true,
+        },
+        (success, error) => {
+          if (!success) {
+            console.error("❌ Shipping label print failed:", error);
+            reject(new Error("Print failed"));
+          } else {
+            resolve();
+          }
+
+          setTimeout(
+            () => {
+              if (!labelWindow.isDestroyed()) labelWindow.close();
+              fs.unlink(tempFile, () => {});
+            },
+            isSilent ? 400 : 1500,
+          );
+        },
+      );
+    });
+  } catch (err) {
+    console.error("❌ Shipping label crash:", err);
+    throw err;
+  }
 }
 
 module.exports = { printShippingLabel };
