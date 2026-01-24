@@ -4,6 +4,10 @@ const {
   sendWhatsAppPdf,
   restartWhatsApp, // ✅ Import restart function
 } = require("../whatsappService");
+const { BrowserWindow } = require("electron");
+const QRCode = require("qrcode");
+const { getShop } = require("../../backend/repositories/shopRepository.mjs");
+const { createInvoiceHTML } = require("../invoiceTemplate.js");
 
 function registerWhatsAppHandlers(ipcMain) {
   console.log("[KOSH] Registering WhatsApp Handlers...");
@@ -36,41 +40,84 @@ function registerWhatsAppHandlers(ipcMain) {
   ipcMain.handle(
     "whatsapp-send-invoice-pdf",
     async (event, { sale, shop, customerPhone }) => {
+      let win;
+
       try {
-        if (!shop)
-          shop =
-            require("../../backend/repositories/shopRepository.mjs").getShop();
-        const htmlContent = require("../invoiceTemplate.js").createInvoiceHTML({
-          sale,
-          shop,
-        });
-        const win = new (require("electron").BrowserWindow)({
+        // ===================================================
+        // SHOP (FIX: must await)
+        // ===================================================
+
+        if (!shop) {
+          shop = await getShop();
+        }
+
+        // ===================================================
+        // ✅ GENERATE UPI QR (same as invoice printer)
+        // ===================================================
+
+        if (shop?.upi_id && shop?.upi_banking_name) {
+          const upiUrl = `upi://pay?pa=${encodeURIComponent(
+            shop.upi_id,
+          )}&pn=${encodeURIComponent(
+            shop.upi_banking_name,
+          )}&am=${sale.total_amount.toFixed(2)}&cu=INR`;
+
+          shop.generated_upi_qr = await QRCode.toDataURL(upiUrl);
+        } else {
+          shop.generated_upi_qr = null;
+        }
+
+        // ===================================================
+        // HTML
+        // ===================================================
+
+        const htmlContent = createInvoiceHTML({ sale, shop });
+
+        // ===================================================
+        // WINDOW (hidden is fine for PDF generation)
+        // ===================================================
+
+        win = new BrowserWindow({
           show: false,
           width: 800,
           height: 1200,
         });
+
         await win.loadURL(
-          "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent)
+          "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent),
         );
+
+        // ===================================================
+        // PDF
+        // ===================================================
+
         const pdfData = await win.webContents.printToPDF({
           printBackground: true,
           pageSize: "A4",
         });
+
         const pdfBase64 = pdfData.toString("base64");
         const fileName = `Invoice-${sale.reference_no}.pdf`;
+
+        // ===================================================
+        // SEND WHATSAPP
+        // ===================================================
+
         await sendWhatsAppPdf(
           customerPhone,
           pdfBase64,
           fileName,
-          "Here is your PDF Invoice"
+          "Here is your PDF Invoice",
         );
-        win.close();
+
         return { success: true };
       } catch (error) {
         console.error("Failed to send WhatsApp PDF:", error);
         return { success: false, error: error.message };
+      } finally {
+        if (win && !win.isDestroyed()) win.close();
       }
-    }
+    },
   );
 
   // ✅ UPDATED HANDLER: Fetch Data Internally (Like Print Function)
@@ -113,7 +160,7 @@ function registerWhatsAppHandlers(ipcMain) {
         });
 
         await win.loadURL(
-          "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent)
+          "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent),
         );
 
         const pdfData = await win.webContents.printToPDF({
@@ -136,7 +183,7 @@ function registerWhatsAppHandlers(ipcMain) {
         console.error("Failed to send WhatsApp Ledger PDF:", error);
         return { success: false, error: error.message };
       }
-    }
+    },
   );
 }
 

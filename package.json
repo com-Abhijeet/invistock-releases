@@ -1,6 +1,6 @@
 {
     "name": "kosh",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "KOSH is a inventory and operational software built to cater specific needs of businesses.",
     "main": "electron/main.js",
     "type": "commonjs",
@@ -53,6 +53,7 @@
     "build": {
         "appId": "com.abhijeetShinde.invistock",
         "productName": "KOSH - inventory management",
+        "artifactName": "KoshInventory-Setup-${version}.${ext}",
         "directories": {
             "buildResources": "assets",
             "output": "dist_electron"
