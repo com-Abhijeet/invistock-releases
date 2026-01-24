@@ -78,7 +78,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
       window.electron.ipcRenderer
         .invoke("print-shipping-label", res.data)
         .catch((err: { message: any }) =>
-          toast.error(`Label print failed: ${err.message}`)
+          toast.error(`Label print failed: ${err.message}`),
         );
     }, 1000);
   };
@@ -139,11 +139,11 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         .map(
           (
             item: { product_name: any; quantity: number; rate: number },
-            i: number
+            i: number,
           ) =>
             `${i + 1}. ${item.product_name} x ${item.quantity} = ₹${(
               item.rate * item.quantity
-            ).toLocaleString("en-IN")}`
+            ).toLocaleString("en-IN")}`,
         )
         .join(nl);
 
@@ -160,7 +160,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
       // 4. Send Text
       const textRes = await window.electron.sendWhatsAppMessage(
         phoneToSend,
-        message
+        message,
       );
 
       if (textRes.success) {
@@ -281,7 +281,6 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
       icon: <Eye size={18} />,
       onClick: (row: SalesTableType) => navigate(`/billing/view/${row.id}`),
     },
-    // ✅ "Mark Payment" action (Only if onMarkPayment prop is passed)
     ...(onMarkPayment
       ? [
           {

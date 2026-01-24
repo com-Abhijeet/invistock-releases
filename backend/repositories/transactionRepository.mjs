@@ -111,6 +111,7 @@ export function getAllTransactions({
     const whereString = whereClauses.join(" AND ");
 
     // Main Query
+    // REMOVED: References to sales_non_gst (sng)
     let recordsQuery = `
       SELECT 
         t.*,
@@ -118,7 +119,6 @@ export function getAllTransactions({
         COALESCE(c.phone, sup.phone) as entity_phone,
         CASE 
           WHEN t.bill_type = 'sale' THEN s.reference_no
-          WHEN t.bill_type = 'sale_non_gst' THEN sng.reference_no
           WHEN t.bill_type = 'purchase' THEN p.reference_no
           ELSE NULL
         END as bill_ref_no
@@ -126,7 +126,6 @@ export function getAllTransactions({
       LEFT JOIN customers c ON t.entity_type = 'customer' AND t.entity_id = c.id
       LEFT JOIN suppliers sup ON t.entity_type = 'supplier' AND t.entity_id = sup.id
       LEFT JOIN sales s ON t.bill_type = 'sale' AND t.bill_id = s.id
-      LEFT JOIN sales_non_gst sng ON t.bill_type = 'sale_non_gst' AND t.bill_id = sng.id
       LEFT JOIN purchases p ON t.bill_type = 'purchase' AND t.bill_id = p.id
       WHERE ${whereString}
       ORDER BY t.created_at DESC

@@ -57,7 +57,7 @@ export function createSale(saleData, items) {
         discount,
         normalised_is_reverse_charge,
         normalised_is_ecommerce_sale,
-        normalised_is_quote
+        normalised_is_quote,
       );
       const saleId = saleResult.lastInsertRowid;
 
@@ -78,7 +78,7 @@ export function createSale(saleData, items) {
             item.quantity,
             item.gst_rate,
             item.discount,
-            item.price
+            item.price,
           );
         });
       }
@@ -131,7 +131,7 @@ export function processSalesReturn(payload) {
         // Fallback: Try to find a matching sales item (less precise for batches)
         const saleItem = db
           .prepare(
-            "SELECT batch_id, serial_id FROM sales_items WHERE sale_id = ? AND product_id = ? LIMIT 1"
+            "SELECT batch_id, serial_id FROM sales_items WHERE sale_id = ? AND product_id = ? LIMIT 1",
           )
           .get(saleId, item.product_id);
         if (saleItem) {
@@ -210,7 +210,7 @@ export function processSalesReturn(payload) {
         ?, 'credit_note', ?, 'sale', ?, 'customer',
         ?, ?, ?, 'completed', ?, 0, 0
       )
-    `
+    `,
     ).run(
       `CN-${Date.now()}`,
       saleId,
@@ -218,7 +218,7 @@ export function processSalesReturn(payload) {
       new Date().toISOString().split("T")[0],
       totalRefundAmount,
       "Cash", // Default refund mode
-      note || `Refund for Sale #${sale.reference_no}`
+      note || `Refund for Sale #${sale.reference_no}`,
     );
 
     // 4. Update Sale Status
@@ -366,7 +366,7 @@ export function getSalesForPDFExport(filters) {
     LEFT JOIN customers c ON s.customer_id = c.id
     WHERE date(s.created_at) BETWEEN @startDate AND @endDate
       AND s.is_quote = 0
-  `
+  `,
     )
     .all(filters);
 
@@ -386,7 +386,7 @@ export function getSalesForPDFExport(filters) {
     FROM sales_items si
     JOIN products p ON si.product_id = p.id
     WHERE si.sale_id IN (${saleIds.map(() => "?").join(",")})
-  `
+  `,
     )
     .all(...saleIds);
 
@@ -397,9 +397,45 @@ export function getSalesForPDFExport(filters) {
   }));
 }
 
+/**
+ * @description Updates specific fields of a sale record.
+ * @param {number} id - The ID of the sale to update.
+ * @param {object} updates - Key-value pairs of fields to update (e.g., { status: 'paid', paid_amount: 500 }).
+ * @returns {object} Result of the update operation (changes count).
+ */
+export function updateSale(id, updates) {
+  try {
+    const keys = Object.keys(updates);
+
+    // If no fields to update, return early
+    if (keys.length === 0) {
+      return { changes: 0 };
+    }
+
+    // specific field validation/sanitization can go here if needed
+    // e.g. prevent updating 'id' or 'created_at' if passed in updates
+
+    const setClause = keys.map((key) => `${key} = ?`).join(", ");
+    const values = Object.values(updates);
+
+    // Add id to the end of values array for the WHERE clause
+    values.push(id);
+
+    const stmt = db.prepare(
+      `UPDATE sales SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    );
+
+    const result = stmt.run(...values);
+    return result;
+  } catch (error) {
+    console.error("Repo Error: updateSale", error.message);
+    throw new Error("Failed to update sale: " + error.message);
+  }
+}
+
 /* -------------------------- Update Sale BY ID
-  Currently Not implemented . Updates for sale are bound for scrutiny
--------------------------- */
+    Currently Not implemented . Updates for sale are bound for scrutiny
+  -------------------------- */
 export async function updateSaleById(id, saleData) {
   const {
     reference_no,
@@ -414,10 +450,10 @@ export async function updateSaleById(id, saleData) {
   // Update main sale record
   await db.run(
     `
-    UPDATE sales
-    SET reference_no = ?, payment_mode = ?, note = ?, paid_amount = ?, total_amount = ?, status = ?, customer_id = ?
-    WHERE id = ?
-    `,
+      UPDATE sales
+      SET reference_no = ?, payment_mode = ?, note = ?, paid_amount = ?, total_amount = ?, status = ?, customer_id = ?
+      WHERE id = ?
+      `,
     [
       reference_no,
       payment_mode,
@@ -427,7 +463,7 @@ export async function updateSaleById(id, saleData) {
       status,
       customer_id,
       id,
-    ]
+    ],
   );
 
   // Remove old sale items and re-insert new ones
@@ -437,9 +473,9 @@ export async function updateSaleById(id, saleData) {
     for (const item of saleData.items) {
       await db.run(
         `
-        INSERT INTO sale_items (sale_id, product_id, rate, quantity, gst_rate, discount, price)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
+          INSERT INTO sale_items (sale_id, product_id, rate, quantity, gst_rate, discount, price)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          `,
         [
           id,
           item.product_id,
@@ -448,7 +484,7 @@ export async function updateSaleById(id, saleData) {
           item.gst_rate,
           item.discount,
           item.price,
-        ]
+        ],
       );
     }
   }
@@ -626,7 +662,7 @@ export function getSalesForCustomer(customerId, filters = {}) {
 export function getSaleById(saleId) {
   try {
     const stmt = db.prepare(
-      `SELECT * FROM sales WHERE id = ? AND status != 'deleted'`
+      `SELECT * FROM sales WHERE id = ? AND status != 'deleted'`,
     );
     return stmt.get(saleId);
   } catch (err) {

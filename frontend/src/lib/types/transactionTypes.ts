@@ -28,7 +28,7 @@ export interface Transaction {
   entity_type: EntityType;
   transaction_date: string;
   amount: number;
-  payment_mode?: string | null;
+  payment_mode?: string | "card";
   status: TransactionStatus;
   note?: string | null;
   gst_amount?: number;

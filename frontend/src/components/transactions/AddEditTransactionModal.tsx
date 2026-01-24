@@ -95,6 +95,7 @@ const defaultForm: Partial<Transaction> = {
   status: "paid",
   amount: 0,
   transaction_date: formatDate(new Date()),
+  payment_mode: "cash",
 };
 
 export default function AddEditTransactionModal({
@@ -173,7 +174,7 @@ export default function AddEditTransactionModal({
             const unique = [
               ...prev,
               ...newRecords.filter(
-                (n: any) => !prev.some((p) => p.id === n.id)
+                (n: any) => !prev.some((p) => p.id === n.id),
               ),
             ];
             return unique;
@@ -299,6 +300,7 @@ export default function AddEditTransactionModal({
       entity_id: undefined,
       bill_id: undefined,
       amount: 0,
+      payment_mode: "cash",
     }));
 
     setSelectedBillDetails(null);
@@ -336,16 +338,16 @@ export default function AddEditTransactionModal({
   // FIX: Explicitly cast to boolean to avoid 'null' type error
   const isFullyPaid = Boolean(
     selectedBillDetails &&
-      previewBalance <= 0.1 &&
-      (form.type === "payment_in" || form.type === "payment_out") &&
-      !isEditMode
+    previewBalance <= 0.1 &&
+    (form.type === "payment_in" || form.type === "payment_out") &&
+    !isEditMode,
   );
 
   const isOverpaying = Boolean(
     (form.amount || 0) > previewBalance &&
-      (form.type === "payment_in" || form.type === "payment_out") &&
-      !isEditMode &&
-      !isFullyPaid
+    (form.type === "payment_in" || form.type === "payment_out") &&
+    !isEditMode &&
+    !isFullyPaid,
   );
 
   const handleSubmit = async () => {
@@ -363,7 +365,7 @@ export default function AddEditTransactionModal({
 
     if (isFullyPaid) {
       toast.error(
-        "This bill is already fully paid. No further payments can be recorded."
+        "This bill is already fully paid. No further payments can be recorded.",
       );
       return;
     }
@@ -371,8 +373,8 @@ export default function AddEditTransactionModal({
     if (isOverpaying) {
       toast.error(
         `Amount exceeds the pending balance (₹${previewBalance.toLocaleString(
-          "en-IN"
-        )}).`
+          "en-IN",
+        )}).`,
       );
       return;
     }
@@ -530,7 +532,7 @@ export default function AddEditTransactionModal({
                       <Typography variant="body2" fontWeight={700}>
                         ₹
                         {selectedBillDetails.total_amount?.toLocaleString(
-                          "en-IN"
+                          "en-IN",
                         ) ?? 0}
                       </Typography>
                     </Box>
@@ -545,7 +547,7 @@ export default function AddEditTransactionModal({
                       >
                         ₹
                         {selectedBillDetails.payment_summary?.total_paid?.toLocaleString(
-                          "en-IN"
+                          "en-IN",
                         ) ?? 0}
                       </Typography>
                     </Box>
@@ -590,7 +592,7 @@ export default function AddEditTransactionModal({
             helperText={
               isOverpaying
                 ? `Error: Amount exceeds pending balance of ₹${previewBalance.toLocaleString(
-                    "en-IN"
+                    "en-IN",
                   )}`
                 : ""
             }

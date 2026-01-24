@@ -146,7 +146,7 @@ export function getCategoryRevenue(filters) {
 export function getPaymentModeBreakdown(filters) {
   const { where, params } = getDateFilter({ ...filters, alias: "s" });
   const totalStmt = db.prepare(
-    `SELECT SUM(paid_amount) AS total FROM sales WHERE ${where} AND status IN ('paid', 'pending')`
+    `SELECT SUM(paid_amount) AS total FROM sales WHERE ${where} AND status IN ('paid', 'pending')`,
   );
   const total = totalStmt.get(...params)?.total || 0;
 
@@ -220,6 +220,7 @@ export function getSalesTable({ page = 1, limit = 20, ...filters }) {
     SELECT
       s.id AS id,
       s.reference_no as reference,
+      c.id AS customer_id,
       c.name AS customer,
       s.total_amount AS total,
       s.paid_amount AS paid_amount,
@@ -232,7 +233,7 @@ export function getSalesTable({ page = 1, limit = 20, ...filters }) {
     WHERE ${finalWhere}
     ORDER BY s.created_at DESC
     LIMIT ? OFFSET ?
-  `
+  `,
     )
     .all(...params, limit, offset);
 
@@ -244,7 +245,7 @@ export function getSalesTable({ page = 1, limit = 20, ...filters }) {
     FROM sales s
     LEFT JOIN customers c ON s.customer_id = c.id
     WHERE ${finalWhere}
-  `
+  `,
     )
     .get(...params).count;
 
@@ -360,7 +361,7 @@ export function getTotalStockSummary() {
       SUM(quantity) AS total_quantity,
       SUM(quantity * mrp) AS total_value
     FROM products
-  `
+  `,
     )
     .get();
 
@@ -376,7 +377,7 @@ export function getTotalStockSummary() {
     LEFT JOIN categories c ON p.category = c.id
     GROUP BY c.id
     ORDER BY total_value DESC
-  `
+  `,
     )
     .all();
 
@@ -392,7 +393,7 @@ export function getTotalStockSummary() {
     LEFT JOIN categories sc ON p.subcategory = sc.id
     GROUP BY sc.id
     ORDER BY total_value DESC
-  `
+  `,
     )
     .all();
 

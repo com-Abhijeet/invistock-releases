@@ -146,8 +146,9 @@ export default function SalesTablePage() {
 
   // ✅ Action Handler for "Mark Payment"
   const handleMarkPayment = (sale: any) => {
+    console.log("sale mark payment :", sale);
     // Check if fully paid first?
-    const pending = (sale.total_amount || 0) - (sale.paid_amount || 0);
+    const pending = (sale.total || 0) - (sale.paid_amount || 0);
 
     if (pending <= 0.9) {
       // Using standard buffer
@@ -165,6 +166,7 @@ export default function SalesTablePage() {
       amount: pending > 0 ? pending : 0, // Auto-fill pending amount
       transaction_date: new Date().toISOString().split("T")[0],
       status: "paid",
+      payment_mode: "cash",
     });
     setTransactionModalOpen(true);
   };

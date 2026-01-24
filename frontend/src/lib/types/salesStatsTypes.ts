@@ -22,7 +22,6 @@ export interface TrendData {
   monthly: TrendPoint[];
 }
 
-
 export interface FinancialMetrics {
   totalSales: number;
   totalPaid: number;
@@ -66,6 +65,7 @@ export interface BestSalesDay {
 
 export interface SalesTable {
   id: number;
+  customer_id?: number;
   customer: string;
   total: number;
   paid_amount: number;

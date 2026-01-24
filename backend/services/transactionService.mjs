@@ -10,8 +10,12 @@ import {
   getEntityTransactions as getEntityTransactionsRepo,
 } from "../repositories/transactionRepository.mjs";
 
-import { getSaleById } from "../repositories/salesRepository.mjs";
-import { getPurchaseById } from "../repositories/purchaseRepository.mjs";
+// ✅ Updated Imports to include Update methods
+import { getSaleById, updateSale } from "../repositories/salesRepository.mjs";
+import {
+  getPurchaseById,
+  updatePurchase,
+} from "../repositories/purchaseRepository.mjs";
 
 /**
  * @description Creates a new transaction record, applying rigid business and GST logic.
@@ -22,11 +26,12 @@ import { getPurchaseById } from "../repositories/purchaseRepository.mjs";
 export async function createTransactionService(transactionData) {
   try {
     const { type, bill_id, bill_type, amount, payment_mode } = transactionData;
+    console.log(transactionData);
 
     // 1. Basic Validation
     if (!bill_id || !bill_type) {
       throw new Error(
-        "Transaction must be linked to a valid Bill ID and Bill Type."
+        "Transaction must be linked to a valid Bill ID and Bill Type.",
       );
     }
     if (!amount || isNaN(amount) || amount <= 0) {
@@ -45,9 +50,8 @@ export async function createTransactionService(transactionData) {
     } else if (bill_type === "purchase") {
       originalBill = await getPurchaseById(bill_id);
     } else if (bill_type === "sale_non_gst") {
-      // Assuming a similar repository exists, or throw if not supported yet
       throw new Error(
-        "Non-GST Sales are not yet supported for automated transaction validation."
+        "Non-GST Sales are not yet supported for automated transaction validation.",
       );
     } else {
       throw new Error(`Invalid bill_type provided: ${bill_type}`);
@@ -60,10 +64,9 @@ export async function createTransactionService(transactionData) {
     totalBillAmount = originalBill.total_amount || 0;
 
     // 3. Logic Validation based on Type & Overpayment Check
-    // We need to calculate the current balance *before* this new transaction.
     const relatedTransactions = getTransactionsByRelatedIdRepo(
       bill_id,
-      bill_type
+      bill_type,
     );
 
     let totalPaid = 0;
@@ -83,7 +86,7 @@ export async function createTransactionService(transactionData) {
     const netPayable = totalBillAmount - totalAdjustments;
     const currentBalance = netPayable - totalPaid;
 
-    // Precision helper to avoid floating point weirdness (e.g. 0.000000001)
+    // Precision helper
     const round = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
     const pendingBalance = round(currentBalance);
 
@@ -94,7 +97,7 @@ export async function createTransactionService(transactionData) {
           throw new Error("Payment-in is only valid for Sales.");
         if (amount > pendingBalance) {
           throw new Error(
-            `Overpayment Error: You are trying to pay ₹${amount}, but the pending balance is only ₹${pendingBalance}.`
+            `Overpayment Error: You are trying to pay ₹${amount}, but the pending balance is only ₹${pendingBalance}.`,
           );
         }
         break;
@@ -104,7 +107,7 @@ export async function createTransactionService(transactionData) {
           throw new Error("Payment-out is only valid for Purchases.");
         if (amount > pendingBalance) {
           throw new Error(
-            `Overpayment Error: You are trying to pay ₹${amount}, but the pending balance is only ₹${pendingBalance}.`
+            `Overpayment Error: You are trying to pay ₹${amount}, but the pending balance is only ₹${pendingBalance}.`,
           );
         }
         break;
@@ -112,11 +115,9 @@ export async function createTransactionService(transactionData) {
       case "credit_note":
         if (bill_type !== "sale")
           throw new Error("Credit Notes are only valid for Sales.");
-        // Credit note reduces the bill amount. It shouldn't exceed the total bill amount?
-        // Or strictly, it shouldn't exceed the (Total - Existing Credit Notes).
         if (amount > totalBillAmount - totalAdjustments) {
           throw new Error(
-            "Credit Note amount cannot exceed the remaining net bill value."
+            "Credit Note amount cannot exceed the remaining net bill value.",
           );
         }
         break;
@@ -126,7 +127,7 @@ export async function createTransactionService(transactionData) {
           throw new Error("Debit Notes are only valid for Purchases.");
         if (amount > totalBillAmount - totalAdjustments) {
           throw new Error(
-            "Debit Note amount cannot exceed the remaining net bill value."
+            "Debit Note amount cannot exceed the remaining net bill value.",
           );
         }
         break;
@@ -138,11 +139,14 @@ export async function createTransactionService(transactionData) {
     // 4. Create Transaction
     const result = createTransactionRepo(transactionData);
 
-    // 5. Return the new record
+    // 5. ✅ NEW: Sync Bill Status and Paid Amount
+    await syncBillFinancials(bill_id, bill_type);
+
+    // 6. Return the new record
     return getTransactionByIdRepo(result.lastInsertRowid);
   } catch (error) {
     console.error("[TransactionService] Create Failed:", error.message);
-    throw new Error(error.message); // Pass clean message to controller
+    throw new Error(error.message);
   }
 }
 
@@ -182,7 +186,7 @@ export async function getTransactionsByRelatedIdService(relatedId, entityType) {
 }
 
 /**
- * @description Updates a transaction. STRICTLY prohibits updating 'Bill ID' or 'Type' to maintain integrity.
+ * @description Updates a transaction. STRICTLY prohibits updating 'Bill ID' or 'Type'.
  */
 export async function updateTransactionService(id, updatedData) {
   try {
@@ -195,22 +199,22 @@ export async function updateTransactionService(id, updatedData) {
     // 2. Prevent changing critical fields that would break the audit trail
     if (updatedData.bill_id && updatedData.bill_id !== existing.bill_id) {
       throw new Error(
-        "Modification of Linked Bill ID is not allowed. Delete and recreate if necessary."
+        "Modification of Linked Bill ID is not allowed. Delete and recreate if necessary.",
       );
     }
     if (updatedData.type && updatedData.type !== existing.type) {
       throw new Error("Modification of Transaction Type is not allowed.");
     }
 
-    // 3. If Amount is changing, we must re-validate overpayment
-    if (updatedData.amount && updatedData.amount !== existing.amount) {
-      // Fetch bill and recalculate balance logic (Simplified version of create logic)
-      // For now, we assume if they are editing, they might know what they are doing,
-      // BUT strict logic dictates we check bounds again.
-      // (Skipping full re-calc for brevity, but in a rigid system, you would call the same logic as Create here)
+    // 3. Execute Update
+    const result = updateTransactionRepo(id, updatedData);
+
+    // 4. ✅ NEW: Sync Bill Status (Logic re-evaluates totals)
+    // We sync the bill linked to the transaction
+    if (updatedData.amount || updatedData.status) {
+      await syncBillFinancials(existing.bill_id, existing.bill_type);
     }
 
-    const result = updateTransactionRepo(id, updatedData);
     return getTransactionByIdRepo(id);
   } catch (error) {
     throw new Error(error.message);
@@ -232,6 +236,9 @@ export async function deleteTransactionService(id) {
     const result = deleteTransactionRepo(id);
     if (result.changes === 0)
       throw new Error("Database failed to delete record.");
+
+    // 5. ✅ NEW: Sync Bill Status (Revert status if needed)
+    await syncBillFinancials(existing.bill_id, existing.bill_type);
 
     return { message: "Transaction deleted successfully." };
   } catch (error) {
@@ -255,4 +262,84 @@ export async function getEntityTransactionsService(filters) {
   if (!filters.entityId || !filters.entityType)
     throw new Error("Entity ID and Type are required.");
   return getEntityTransactionsRepo(filters);
+}
+
+/**
+ * @private
+ * @description Helper function to recalculate the financial status of a bill (Sale/Purchase)
+ * and update its 'paid_amount' and 'status' in the database.
+ */
+async function syncBillFinancials(billId, billType) {
+  try {
+    let bill = null;
+    let updateFn = null;
+
+    // 1. Identify Bill and Update Function
+    if (billType === "sale") {
+      bill = await getSaleById(billId);
+      updateFn = updateSale;
+    } else if (billType === "purchase") {
+      bill = await getPurchaseById(billId);
+      updateFn = updatePurchase;
+    } else {
+      return; // Not a supported bill type
+    }
+
+    if (!bill) return;
+
+    // 2. Fetch All Valid Transactions
+    const transactions = getTransactionsByRelatedIdRepo(billId, billType);
+
+    let totalPaid = 0;
+    let totalAdjustments = 0;
+
+    transactions.forEach((t) => {
+      // Ignore deleted transactions
+      if (t.status === "deleted" || t.status === "cancelled") return;
+
+      if (t.type === "payment_in" || t.type === "payment_out") {
+        totalPaid += t.amount;
+      } else if (t.type === "credit_note" || t.type === "debit_note") {
+        totalAdjustments += t.amount;
+      }
+    });
+
+    // 3. Calculate Logic
+    const netBillAmount = bill.total_amount - totalAdjustments;
+
+    // Precision rounding to handle float mishaps
+    const round = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
+    const safePaid = round(totalPaid);
+    const safeNet = round(netBillAmount);
+
+    let newStatus = "pending";
+
+    // If fully paid (or overpaid slightly/exactly)
+    // Also handle cases where Net Bill becomes 0 due to credit notes -> effectively PAID
+    if (safePaid >= safeNet) {
+      newStatus = "paid";
+    } else if (safePaid > 0) {
+      newStatus = "partial";
+    } else {
+      newStatus = "pending";
+    }
+
+    // 4. Update the Parent Record
+    // We update both status and the cached paid_amount column
+    await updateFn(billId, {
+      status: newStatus,
+      paid_amount: safePaid,
+    });
+
+    console.log(
+      `[TransactionSync] Updated ${billType} #${bill.reference_no}: Status=${newStatus}, Paid=${safePaid}`,
+    );
+  } catch (error) {
+    console.error(
+      `[TransactionSync] Failed to sync ${billType} #${billId}:`,
+      error,
+    );
+    // We swallow the error here to prevent the main transaction flow from failing
+    // just because the background sync failed, but we log it.
+  }
 }
