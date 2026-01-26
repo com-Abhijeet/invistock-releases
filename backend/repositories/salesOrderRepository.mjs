@@ -20,7 +20,7 @@ export function createSalesOrder(orderData, items) {
       orderData.status || "pending",
       orderData.total_amount,
       orderData.note || "",
-      orderData.fulfilled_invoice_id || null
+      orderData.fulfilled_invoice_id || null,
     );
     const orderId = info.lastInsertRowid;
 
@@ -41,7 +41,7 @@ export function createSalesOrder(orderData, items) {
         item.gst_rate || 0,
         item.discount || 0,
         item.batch_id || null,
-        item.serial_id || null
+        item.serial_id || null,
       );
     }
 
@@ -63,19 +63,19 @@ export function updateSalesOrder(orderId, orderData, items) {
       UPDATE sales_orders 
       SET customer_id = ?, status = ?, total_amount = ?, note = ?, fulfilled_invoice_id = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `
+    `,
     ).run(
       orderData.customer_id,
       orderData.status,
       orderData.total_amount,
       orderData.note || "",
       orderData.fulfilled_invoice_id || null,
-      orderId
+      orderId,
     );
 
     // 2. Delete old items
     db.prepare(`DELETE FROM sales_order_items WHERE sales_order_id = ?`).run(
-      orderId
+      orderId,
     );
 
     // 3. Insert new items
@@ -95,7 +95,7 @@ export function updateSalesOrder(orderId, orderData, items) {
         item.gst_rate || 0,
         item.discount || 0,
         item.batch_id || null,
-        item.serial_id || null
+        item.serial_id || null,
       );
     }
   });
@@ -113,11 +113,11 @@ export function getSalesOrderById(orderId) {
       `
     SELECT o.*, 
       c.name as customer_name, c.phone as customer_phone, c.address as customer_address, c.gst_no as customer_gstin,
-      c.city as customer_city, c.state as customer_state, c.pincode as customer_pincode
+      c.city as customer_city, c.state as customer_state, c.pincode as customer_pincode, c.id as customer_id
     FROM sales_orders o
     LEFT JOIN customers c ON o.customer_id = c.id
     WHERE o.id = ?
-  `
+  `,
     )
     .get(orderId);
 
@@ -135,7 +135,7 @@ export function getSalesOrderById(orderId) {
     LEFT JOIN product_batches pb ON oi.batch_id = pb.id
     LEFT JOIN product_serials ps ON oi.serial_id = ps.id
     WHERE oi.sales_order_id = ?
-  `
+  `,
     )
     .all(orderId);
 
