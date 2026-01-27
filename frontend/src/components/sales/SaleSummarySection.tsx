@@ -123,6 +123,19 @@ const SaleSummarySection = ({
     onSaleChange({ ...sale, paid_amount: sale.total_amount, status: "paid" });
   };
 
+  const handleRoundOff = () => {
+    const roundedTotal = Math.floor(sale.total_amount);
+    // If we round off the total, we might also want to update paid_amount if it was full
+    const wasPaidInFull = sale.paid_amount === sale.total_amount;
+
+    onSaleChange({
+      ...sale,
+      total_amount: roundedTotal,
+      paid_amount: wasPaidInFull ? roundedTotal : sale.paid_amount,
+    });
+    toast.success(`Rounded off to ₹${roundedTotal}`);
+  };
+
   const handleCancel = () => {
     resetForm();
     toast("Sale canceled.");
@@ -171,7 +184,7 @@ const SaleSummarySection = ({
               status: "completed",
               fulfilled_invoice_id: savedSale.id,
               total_amount: sale.total_amount,
-              items: [], // We typically don't change items here, but TypeScript might require the shape. Assuming partial update works or we pass empty.
+              items: [], // Assuming partial update works
               customer_id: sale.customer_id || null,
             });
             toast.success("Sales Order marked as Completed");
@@ -197,7 +210,7 @@ const SaleSummarySection = ({
                 (item: any, index: number) =>
                   `${index + 1}. ${item.product_name} x ${item.quantity} = ₹${(
                     item.quantity * item.rate
-                  ).toLocaleString("en-IN")}`
+                  ).toLocaleString("en-IN")}`,
               )
               .join(nl);
 
@@ -206,7 +219,7 @@ const SaleSummarySection = ({
             },${nl}Bill No: ${
               savedSale.reference_no
             }${nl}${nl}*Items Ordered:*${nl}${itemsList}${nl}------------------------------${nl}*Total: ₹${savedSale.total_amount.toLocaleString(
-              "en-IN"
+              "en-IN",
             )}*${nl}------------------------------${nl}Thank you!`;
 
             toast.loading("Sending WhatsApp...");
@@ -282,7 +295,7 @@ const SaleSummarySection = ({
                 {sale.total_amount.toLocaleString("en-IN", {
                   style: "currency",
                   currency: "INR",
-                  maximumFractionDigits: 0,
+                  maximumFractionDigits: 2,
                 })}
               </Typography>
               <Typography
@@ -297,6 +310,25 @@ const SaleSummarySection = ({
               >
                 Net Payable
               </Typography>
+
+              {/* Round Off Button */}
+              {mode !== "view" && sale.total_amount % 1 !== 0 && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleRoundOff}
+                  sx={{
+                    ml: 2,
+                    borderRadius: 4,
+                    fontSize: "0.65rem",
+                    py: 0,
+                    height: 20,
+                    textTransform: "none",
+                  }}
+                >
+                  Round Off
+                </Button>
+              )}
             </Stack>
             <Typography
               variant="body2"
@@ -319,7 +351,7 @@ const SaleSummarySection = ({
                   onChange={(e) =>
                     handleFieldChange(
                       "paid_amount",
-                      parseFloat(e.target.value) || 0
+                      parseFloat(e.target.value) || 0,
                     )
                   }
                   InputProps={{
@@ -402,8 +434,8 @@ const SaleSummarySection = ({
                         paymentSummary.status === "paid"
                           ? "success.main"
                           : paymentSummary.status === "partial"
-                          ? "warning.main"
-                          : "error.main",
+                            ? "warning.main"
+                            : "error.main",
                     }}
                   >
                     {paymentSummary.status}

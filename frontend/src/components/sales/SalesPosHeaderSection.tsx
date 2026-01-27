@@ -14,7 +14,6 @@ import {
   Collapse,
   Divider,
   Tooltip,
-  IconButton,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect, useRef } from "react";
@@ -29,16 +28,12 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  Briefcase,
-  Edit2,
-  Check,
-  Lock, // Added Lock Icon
+  Briefcase, // Icon for Salesperson
 } from "lucide-react";
 import { indianStates } from "../../lib/constants/statesList";
 import BooleanToggle from "../BooleanToggle";
-import { api } from "../../lib/api/api";
-import toast from "react-hot-toast";
 
+// Minimal Employee Type for Props
 interface EmployeeOption {
   id: number;
   name: string;
@@ -48,7 +43,7 @@ interface EmployeeOption {
 interface Props {
   sale: SalePayload;
   options: CustomerType[];
-  employees: EmployeeOption[];
+  employees: EmployeeOption[]; // ✅ ADDED: List of employees
   loading: boolean;
   mode: "new" | "view";
   customerId: number;
@@ -101,10 +96,6 @@ export default function SalesPosHeaderSection({
   const theme = useTheme();
   const [showMore, setShowMore] = useState(false);
 
-  // State for editing mode
-  const [isEditingRef, setIsEditingRef] = useState(false);
-  const [refError, setRefError] = useState(false);
-
   // Refs for focusing
   const customerInputRef = useRef<HTMLInputElement>(null);
   const employeeInputRef = useRef<HTMLInputElement>(null);
@@ -112,6 +103,7 @@ export default function SalesPosHeaderSection({
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl + B: Focus Customer Search (Bill To)
       if (
         (e.ctrlKey || e.metaKey) &&
         (e.code === "KeyB" || e.key.toLowerCase() === "b")
@@ -119,10 +111,14 @@ export default function SalesPosHeaderSection({
         e.preventDefault();
         customerInputRef.current?.focus();
       }
+
+      // Alt + E: Focus Employee Select
       if (e.altKey && (e.code === "KeyE" || e.key.toLowerCase() === "e")) {
         e.preventDefault();
         employeeInputRef.current?.focus();
       }
+
+      // Ctrl + D: Toggle Address Details
       if (
         (e.ctrlKey || e.metaKey) &&
         (e.code === "KeyD" || e.key.toLowerCase() === "d")
@@ -131,46 +127,12 @@ export default function SalesPosHeaderSection({
         setShowMore((prev) => !prev);
       }
     };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const checkDuplicate = async (val: string) => {
-    if (!val || val === "Auto Generated On Submit") return;
-    try {
-      const res = await api.get(`/api/sales/search?query=${val}`);
-      if (
-        res.data.success &&
-        res.data.data.some((s: any) => s.reference_no === val)
-      ) {
-        setRefError(true);
-        toast.error("Invoice number already exists!");
-      } else {
-        setRefError(false);
-      }
-    } catch (e) {}
-  };
-
-  const toggleRefEdit = () => {
-    if (isEditingRef) {
-      // Stop Editing (Validation happens on change/blur)
-      if (refError) {
-        toast.error("Cannot save duplicate reference");
-        return;
-      }
-      // Ensure we don't save empty string, revert to Auto if empty
-      if (!sale.reference_no || sale.reference_no.trim() === "") {
-        handleFieldChange("reference_no", "Auto Generated On Submit");
-      }
-    } else {
-      // Start Editing: Clear the "Auto..." text for easier typing
-      if (sale.reference_no === "Auto Generated On Submit") {
-        handleFieldChange("reference_no", "");
-      }
-    }
-    setIsEditingRef(!isEditingRef);
-  };
-
+  // Reusable label style
   const labelStyle = {
     variant: "caption" as const,
     fontWeight: 700,
@@ -180,8 +142,6 @@ export default function SalesPosHeaderSection({
     sx: { textTransform: "uppercase", letterSpacing: 0.5 },
   };
 
-  const isRefEditable = mode === "new" || sale.status === "draft";
-
   return (
     <Box
       sx={{
@@ -189,6 +149,7 @@ export default function SalesPosHeaderSection({
         overflow: "hidden",
       }}
     >
+      {/* --- Section 1: Meta Data (Ref, Date, Type, Salesperson) --- */}
       <Box sx={{ p: 3, pb: 2 }}>
         <Stack
           direction={{ xs: "column", md: "row" }}
@@ -196,12 +157,14 @@ export default function SalesPosHeaderSection({
           alignItems={{ xs: "flex-start", md: "center" }}
           spacing={3}
         >
+          {/* Left Block: Document Settings */}
           <Stack
             direction={{ xs: "column", sm: "row" }}
             spacing={4}
             alignItems={{ xs: "stretch", sm: "center" }}
             width={{ xs: "100%", md: "auto" }}
           >
+            {/* 1. Document Type */}
             <Stack direction="row" spacing={2} alignItems="center">
               <Box
                 sx={{
@@ -227,6 +190,7 @@ export default function SalesPosHeaderSection({
               </Box>
             </Stack>
 
+            {/* 2. Salesperson Selector (New) */}
             <Box sx={{ minWidth: 200 }}>
               <Tooltip title="Shortcut: Alt + E" placement="top-start">
                 <Typography {...labelStyle}>SALESPERSON</Typography>
@@ -267,6 +231,7 @@ export default function SalesPosHeaderSection({
             </Box>
           </Stack>
 
+          {/* Right Block: Ref & Date */}
           <Stack
             direction="row"
             spacing={4}
@@ -279,80 +244,20 @@ export default function SalesPosHeaderSection({
             }
           >
             <Box>
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <Typography {...labelStyle}>REF NO</Typography>
-                {isRefEditable ? (
-                  <Tooltip
-                    title={
-                      isEditingRef
-                        ? "Save Manual Ref"
-                        : "Edit Reference No manually (e.g. match Tally)"
-                    }
-                  >
-                    <IconButton
-                      size="small"
-                      onClick={toggleRefEdit}
-                      sx={{ p: 0.5 }}
-                    >
-                      {isEditingRef ? (
-                        <Check size={14} color="green" />
-                      ) : (
-                        <Edit2 size={14} />
-                      )}
-                    </IconButton>
-                  </Tooltip>
-                ) : (
-                  <Tooltip title="Reference number is locked for finalized invoices">
-                    <Lock
-                      size={14}
-                      color={theme.palette.text.disabled}
-                      style={{ marginLeft: 4 }}
-                    />
-                  </Tooltip>
-                )}
-              </Stack>
-
-              {/* ✅ Editable Reference Field */}
-              {isEditingRef && isRefEditable ? (
-                <TextField
-                  variant="standard"
-                  size="small"
-                  // ✅ Directly bind to parent state to ensure value is captured even without clicking save
-                  value={
-                    sale.reference_no === "Auto Generated On Submit"
-                      ? ""
-                      : sale.reference_no
-                  }
-                  onChange={(e) =>
-                    handleFieldChange("reference_no", e.target.value)
-                  }
-                  onBlur={() => checkDuplicate(sale.reference_no)}
-                  error={refError}
-                  placeholder="Enter Invoice No."
-                  autoFocus
-                  InputProps={{
-                    disableUnderline: false,
-                    sx: {
-                      fontWeight: 700,
-                      fontSize: "0.9rem",
-                      width: 150,
-                      color: refError ? "error.main" : "inherit",
-                    },
-                  }}
-                />
-              ) : (
-                <Typography
-                  variant="body2"
-                  fontWeight={700}
-                  color={
-                    sale.reference_no === "Auto Generated On Submit"
-                      ? "text.secondary"
-                      : "primary.main"
-                  }
-                >
-                  {sale.reference_no || "AUTO-GENERATED"}
-                </Typography>
-              )}
+              <Typography {...labelStyle}>REF NO</Typography>
+              <TextField
+                variant="standard"
+                value={sale.reference_no || ""}
+                onChange={(e) =>
+                  handleFieldChange("reference_no", e.target.value)
+                }
+                placeholder="Auto Generated"
+                InputProps={{
+                  disableUnderline: true,
+                  sx: { fontWeight: 700, fontSize: "0.9rem" },
+                }}
+                disabled={mode === "view"}
+              />
             </Box>
 
             <Box>
@@ -374,9 +279,10 @@ export default function SalesPosHeaderSection({
 
       <Divider sx={{ borderStyle: "dashed" }} />
 
-      {/* ... (Rest of Customer Section is Unchanged) ... */}
+      {/* --- Section 2: Customer Details (Bill To) --- */}
       <Box sx={{ p: 3 }}>
         <Grid container spacing={4}>
+          {/* Customer Name */}
           <Grid item xs={12} md={5}>
             <Tooltip title="Shortcut: Ctrl + B" placement="top-start">
               <Typography {...labelStyle}>BILL TO (CUSTOMER)</Typography>
@@ -431,6 +337,10 @@ export default function SalesPosHeaderSection({
                       fontSize: "1.1rem",
                       fontWeight: 600,
                       color: "text.primary",
+                      "& input::placeholder": {
+                        fontSize: "1rem",
+                        fontWeight: 400,
+                      },
                     },
                     startAdornment: (
                       <InputAdornment position="start">
@@ -449,6 +359,7 @@ export default function SalesPosHeaderSection({
             />
           </Grid>
 
+          {/* Phone Number */}
           <Grid item xs={12} md={3}>
             <Typography {...labelStyle}>CONTACT</Typography>
             <TextField
@@ -470,6 +381,7 @@ export default function SalesPosHeaderSection({
             />
           </Grid>
 
+          {/* Address Toggle Trigger */}
           <Grid
             item
             xs={12}
@@ -503,6 +415,7 @@ export default function SalesPosHeaderSection({
           </Grid>
         </Grid>
 
+        {/* Collapsible Section for Address & GST */}
         <Collapse in={showMore}>
           <Box mt={2} pt={2} borderTop={`1px dashed ${theme.palette.divider}`}>
             <Grid container spacing={3}>

@@ -8,11 +8,7 @@ const BASE_URL = "/api/sales"; // Adjust base if needed
 //  Create a new sale bill with items
 export async function createSale(payload: SalePayload) {
   try {
-    console.log(payload);
-    const { reference_no, ...salePayload } = payload;
-    const apiPayload = { ...salePayload };
-    console.log("api Payload", apiPayload);
-    const response = await api.post(`${BASE_URL}`, apiPayload);
+    const response = await api.post(`${BASE_URL}`, payload);
     toast.success("Sale bill created successfully!");
     return response.data;
   } catch (error: any) {
@@ -69,7 +65,7 @@ export async function updateSaleStatus(saleId: number, status: string) {
 
 export async function fetchCustomerSales(
   customerId: number,
-  filters: ApiFilterParams
+  filters: ApiFilterParams,
 ) {
   try {
     const response = await api.get(`${BASE_URL}/customer/${customerId}`, {

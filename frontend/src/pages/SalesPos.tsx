@@ -42,7 +42,7 @@ import { api } from "../lib/api/api"; // Added for employee fetch
 
 // Define the default payload to avoid duplication
 const defaultSalePayload: SalePayload = {
-  reference_no: "Auto Generated On Submit",
+  reference_no: "",
   payment_mode: "cash",
   note: "",
   paid_amount: 0,
