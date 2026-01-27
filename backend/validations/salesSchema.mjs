@@ -43,6 +43,7 @@ export const saleItemSchema = z.object({
 export const saleSchema = z.object({
   id: z.string().optional(),
   customer_id: z.number().int().optional(),
+  employee_id: z.number().int().optional().nullable(),
   reference_no: z.string().optional().nullable(),
   payment_mode: paymentModeEnum,
   note: z.string().optional().nullable(), // Allow null/undefined

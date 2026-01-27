@@ -20,8 +20,8 @@ import {
 import { createTransaction } from "../repositories/transactionRepository.mjs";
 import { generateReference } from "../repositories/referenceRepository.mjs";
 import * as salesStatsRepository from "../repositories/salesStatsRepository.mjs";
-import * as batchService from "../services/batchService.mjs"; // Import Batch Service
-
+import * as batchService from "../services/batchService.mjs";
+import * as EmployeeSalesService from "../services/employeeSalesService.mjs"; // ✅ Import Employee Sales Service
 export function createSaleWithItems(saleData) {
   const {
     customer_id,
@@ -35,6 +35,8 @@ export function createSaleWithItems(saleData) {
     is_reverse_charge = false,
     is_ecommerce_sale = false,
     is_quote = false,
+    employee_id,
+    reference_no, // ✅ Destructure potential manual reference
   } = saleData;
 
   if (!items || items.length === 0) {
@@ -42,17 +44,36 @@ export function createSaleWithItems(saleData) {
   }
 
   const transaction = db.transaction(() => {
-    const newReferenceNo = is_quote
-      ? `QUO-${Date.now()}`
-      : generateReference("S");
+    let finalReferenceNo = reference_no;
 
-    // 1. Create Sale Header
-    // NOTE: Passing empty array [] for items to prevent repo from creating generic items.
-    // We handle item creation explicitly in the loop below to support Batch/Serial logic.
+    // 1. Determine Reference Number
+    // If frontend sent "Auto Generated On Submit" or empty, we generate one.
+    // Otherwise, we use the manual input.
+    console.log("reference_no", reference_no);
+    if (
+      !finalReferenceNo ||
+      finalReferenceNo === "Auto Generated On Submit" ||
+      finalReferenceNo.trim() === ""
+    ) {
+      finalReferenceNo = is_quote
+        ? `QUO-${Date.now()}`
+        : generateReference("S");
+    } else {
+      // ✅ Manual Reference Check
+      // Ensure manual reference is unique to avoid primary key/unique constraint violations or logical dupes
+      const check = db
+        .prepare("SELECT id FROM sales WHERE reference_no = ?")
+        .get(finalReferenceNo);
+      if (check) {
+        throw new Error(`Invoice Number '${finalReferenceNo}' already exists.`);
+      }
+    }
+
+    // 2. Create Sale Header
     const saleId = createSale(
       {
         customer_id: customer_id || null,
-        reference_no: newReferenceNo,
+        reference_no: finalReferenceNo, // Use the resolved reference
         paid_amount,
         payment_mode,
         note,
@@ -62,8 +83,9 @@ export function createSaleWithItems(saleData) {
         is_reverse_charge,
         is_ecommerce_sale,
         is_quote,
+        employee_id: employee_id || null,
       },
-      []
+      [],
     );
 
     if (!saleId) {
@@ -72,12 +94,11 @@ export function createSaleWithItems(saleData) {
 
     let totalGstAmount = 0;
 
-    // 2. Process Items (Batch/Serial Logic)
+    // 3. Process Items
     items.forEach((item) => {
-      // Create item with Batch/Serial IDs
       createSaleItem({
         sale_id: saleId,
-        ...item, // This now includes batch_id, serial_id from frontend
+        ...item,
       });
 
       if (!is_quote) {
@@ -85,17 +106,13 @@ export function createSaleWithItems(saleData) {
         if (!product)
           throw new Error(`Product not found (ID: ${item.product_id})`);
 
-        // A. Deduct Aggregate Stock (General Product Qty)
-        if (product.quantity < item.quantity) {
-          // Optional: You can disable this check if you allow negative stock
-          // throw new Error(`Insufficient stock for '${product.name}'`);
-        }
+        // Deduct Stock
         updateProductQuantity(
           item.product_id,
-          product.quantity - item.quantity
+          product.quantity - item.quantity,
         );
 
-        // B. Deduct Specific Batch/Serial Stock
+        // Deduct Batch/Serial Stock
         if (item.batch_id || item.serial_id) {
           batchService.processSaleItemStockDeduction({
             batchId: item.batch_id,
@@ -105,7 +122,6 @@ export function createSaleWithItems(saleData) {
         }
       }
 
-      // Calculate GST
       const baseValue = item.rate * item.quantity;
       const discountAmount = (baseValue * (item.discount || 0)) / 100;
       const taxableValue = baseValue - discountAmount;
@@ -113,7 +129,12 @@ export function createSaleWithItems(saleData) {
       totalGstAmount += itemGst;
     });
 
-    // 3. Create Payment Transaction
+    // 4. Record Employee Commission
+    if (employee_id && !is_quote) {
+      EmployeeSalesService.recordCommission(saleId, employee_id, total_amount);
+    }
+
+    // 5. Create Payment Transaction
     if (!is_quote && paid_amount > 0) {
       createTransaction({
         type: "payment_in",
@@ -125,7 +146,7 @@ export function createSaleWithItems(saleData) {
         amount: paid_amount,
         payment_mode,
         status: "completed",
-        note: `Payment for Sale #${newReferenceNo}`,
+        note: `Payment for Sale #${finalReferenceNo}`,
         gst_amount: totalGstAmount,
       });
     }
@@ -142,7 +163,6 @@ export function createSaleWithItems(saleData) {
   }
 }
 
-// ... (Rest of the service functions remain unchanged)
 async function updateSale(id, saleData) {
   const existing = await getSaleById(id);
   if (!existing) {
@@ -167,10 +187,8 @@ export async function deleteSaleByIdService(saleId) {
   const sale = await getSaleById(saleId);
   if (!sale) return null;
   const items = await getItemsBySaleId(saleId);
-  // Rollback stocks
   for (const item of items) {
     await updateProductStockById(item.product_id, item.quantity);
-    // Note: Full batch rollback logic would go here if implementing delete
   }
   await deleteSale(saleId);
   return { message: "Sale and items deleted with stock rollback" };

@@ -75,6 +75,8 @@ import SalesOrderPage from "./pages/SalesOrderPage";
 import SalesOrdersList from "./pages/SalesOrdersList";
 import ViewSalesOrderPage from "./pages/ViewSalesOrderPage";
 import SupplierLedgerPage from "./pages/SupplierLedgerPage";
+import EmployeeListPage from "./pages/EmployeeListPage";
+import EmployeeDetailPage from "./pages/EmployeeDetailPage";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -442,6 +444,22 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="access-logs">
                         <AccessLogs />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/employees"
+                    element={
+                      <PermissionGuard requiredPermission="users">
+                        <EmployeeListPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/employees/:id"
+                    element={
+                      <PermissionGuard requiredPermission="users">
+                        <EmployeeDetailPage />
                       </PermissionGuard>
                     }
                   />
