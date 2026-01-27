@@ -33,11 +33,12 @@ import type { SaleItemPayload, SalePayload } from "../lib/types/salesTypes";
 import SaleSummarySection from "../components/sales/SaleSummarySection";
 import { useParams, useNavigate } from "react-router-dom";
 import { getSaleById } from "../lib/api/salesService";
-import { getSalesOrderById } from "../lib/api/salesOrderService"; // Added import
+import { getSalesOrderById } from "../lib/api/salesOrderService";
 import SalesPosHeaderSection from "../components/sales/SalesPosHeaderSection";
 import ProductOverviewModal from "../components/products/ProductOverviewModal";
 import theme from "../../theme";
 import toast from "react-hot-toast";
+import { api } from "../lib/api/api"; // Added for employee fetch
 
 // Define the default payload to avoid duplication
 const defaultSalePayload: SalePayload = {
@@ -52,6 +53,7 @@ const defaultSalePayload: SalePayload = {
   is_ecommerce_sale: false,
   is_quote: false,
   is_reverse_charge: false,
+  employee_id: null, // Default
 };
 
 // --- DRAFT TYPES ---
@@ -80,6 +82,7 @@ const SALES_SHORTCUTS = [
     shortcuts: [
       { keys: ["Ctrl", "B"], description: "Find Customer" },
       { keys: ["Ctrl", "D"], description: "Toggle Address Details" },
+      { keys: ["Alt", "E"], description: "Select Salesperson" },
     ],
   },
   {
@@ -113,12 +116,12 @@ export default function SalesPos() {
   const [success, setSuccess] = useState(false);
 
   // Track if this sale is fulfilling a sales order
-  const [salesOrderId, setSalesOrderId] = useState<number | null>(null);
+  const [_salesOrderId, setSalesOrderId] = useState<number | null>(null);
 
   // state for product overview modal
   const [overviewModalOpen, setOverviewModalOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
-    null
+    null,
   );
 
   // State for customer search and selection
@@ -132,6 +135,9 @@ export default function SalesPos() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
+
+  // --- EMPLOYEE STATE ---
+  const [employees, setEmployees] = useState<any[]>([]);
 
   // --- DRAFT STATE ---
   const [draftsModalOpen, setDraftsModalOpen] = useState(false);
@@ -161,6 +167,19 @@ export default function SalesPos() {
   };
 
   useEffect(() => {
+    // 1. Fetch Employees
+    const fetchEmployees = async () => {
+      try {
+        const res = await api.get("/api/employees?activeOnly=true");
+        if (res.data.success) {
+          setEmployees(res.data.data);
+        }
+      } catch (e) {
+        console.error("Failed to fetch employees", e);
+      }
+    };
+    fetchEmployees();
+
     const init = async () => {
       // HANDLE VIEW MODE
       if (id && action === "view") {
@@ -199,7 +218,6 @@ export default function SalesPos() {
             setCustomerName(order.customer_name || "");
             setCustomerPhone(order.customer_phone || "");
             setCustomerGstNo(order.customer_gstin || "");
-            // Address might not be fully available in shallow order object, handle gracefully
             setAddress(order.customer_address || "");
 
             // Track Origin Order ID
@@ -210,9 +228,8 @@ export default function SalesPos() {
               (item: any, idx: number) => ({
                 ...item,
                 sr_no: (idx + 1).toString(),
-                // Ensure we don't carry over order-specific IDs that might conflict
                 id: undefined,
-              })
+              }),
             );
 
             setSale({
@@ -223,7 +240,6 @@ export default function SalesPos() {
               note:
                 order.note ||
                 `Converted from Sales Order #${order.reference_no}`,
-              // Keep other defaults
             });
 
             toast.success(`Loaded details from Order #${order.reference_no}`);
@@ -334,7 +350,7 @@ export default function SalesPos() {
   const saveDraft = () => {
     if (!sale.items.length && !customerName) {
       toast.error(
-        "Cannot save an empty draft. Add items or select a customer."
+        "Cannot save an empty draft. Add items or select a customer.",
       );
       return;
     }
@@ -385,7 +401,7 @@ export default function SalesPos() {
     // UI Feedback
     setDraftsModalOpen(false);
     toast.success(
-      `Draft for ${draft.customerDetails.name || "Unknown Customer"} loaded`
+      `Draft for ${draft.customerDetails.name || "Unknown Customer"} loaded`,
     );
   };
 
@@ -405,6 +421,7 @@ export default function SalesPos() {
         <SalesPosHeaderSection
           sale={sale}
           options={options}
+          employees={employees} // ✅ Passed employees to header
           loading={false}
           handleFieldChange={handleFieldChange}
           mode={mode}
@@ -476,7 +493,7 @@ export default function SalesPos() {
           }}
           resetForm={resetForm}
           mode={mode}
-          salesOrderId={salesOrderId} // Pass down the order ID
+          // Remove employees prop from here as it's now in the header
         />
       </Box>
 

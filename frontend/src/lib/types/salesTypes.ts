@@ -26,6 +26,8 @@ export interface SalePayload {
   id?: number;
   customer_id?: number;
   reference_no: string;
+  employee_id?: number | null;
+
   payment_mode:
     | "cash"
     | "card"
@@ -98,4 +100,6 @@ export interface SaleData {
   is_quote?: boolean;
   is_ecommerce_sale?: boolean;
   is_reverse_charge?: boolean;
+
+  employee_id?: number | null;
 }

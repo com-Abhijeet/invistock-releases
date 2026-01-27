@@ -506,6 +506,27 @@ export function initializeDatabase(dbPath) {
       FOREIGN KEY (batch_id) REFERENCES product_batches(id),
       FOREIGN KEY (serial_id) REFERENCES product_serials(id)
     );
+
+    CREATE TABLE IF NOT EXISTS employees (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      role TEXT DEFAULT 'staff',
+      commission_rate REAL DEFAULT 0, -- Percentage (e.g., 5.0 for 5%)
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS employee_sales (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      sale_id INTEGER NOT NULL,
+      sale_amount REAL NOT NULL,
+      commission_amount REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(employee_id) REFERENCES employees(id),
+      FOREIGN KEY(sale_id) REFERENCES sales(id)
+    );
   `);
 
   // ---------------------------------------------------------

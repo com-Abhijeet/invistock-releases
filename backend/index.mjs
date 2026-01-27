@@ -31,6 +31,8 @@ import userRoutes from "./routes/userRoutes.mjs";
 import searchRoutes from "./routes/searchRoutes.mjs";
 import batchRoutes from "./routes/batchRoutes.mjs";
 import salesOrderRoutes from "./routes/salesOrderRoutes.mjs";
+import employeeRoutes from "./routes/employeeRoutes.mjs";
+import employeeSalesRoutes from "./routes/employeeSalesRoutes.mjs";
 
 // ✅ NEW: Import the Sync Routes for Mobile
 import syncRoutes from "./routes/syncRoutes.mjs";
@@ -120,6 +122,8 @@ export function startServer(dbPath, userDataPath) {
   app.use("/api/search", searchRoutes);
   app.use("/api/batches", batchRoutes);
   app.use("/api/sales-orders", salesOrderRoutes);
+  app.use("/api/employees", employeeRoutes);
+  app.use("/api/employee-sales", employeeSalesRoutes);
 
   // ✅ Register Sync Routes
   app.use("/api/sync", syncRoutes);

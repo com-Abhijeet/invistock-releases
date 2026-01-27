@@ -24,6 +24,7 @@ import {
   BookAlert,
   Clipboard,
   ClipboardCheck,
+  UsersRound,
 } from "lucide-react";
 
 export const menuSections = [
@@ -205,6 +206,11 @@ export const menuSections = [
         label: "Access Logs", // Kept as requested
         icon: <ShieldCheck size={20} />,
         path: "/access-logs",
+      },
+      {
+        label: "Employees",
+        icon: <UsersRound size={20} />,
+        path: "/employees",
       },
     ],
   },
