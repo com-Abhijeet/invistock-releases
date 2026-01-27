@@ -410,6 +410,7 @@ export default function SaleItemSection({
       ...currentItem,
       product_id: product.id!,
       product_name: product.name,
+      hsn: product.hsn || currentItem.hsn || "",
       rate: finalRate,
       gst_rate: product.gst_rate ?? 0,
       quantity: 1,
@@ -628,7 +629,7 @@ export default function SaleItemSection({
                         color: "text.secondary",
                       }}
                     >
-                      {product?.hsn || "—"}
+                      {product?.hsn || item.hsn || "—"}
                     </TableCell>
                   )}
 

@@ -27,14 +27,18 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
 
         const salesData = getExportableSalesData({ startDate, endDate });
 
+        // Updated mapping to include all columns from the repository
         const result = await generateExcelReport(salesData, filePath, {
           reference_no: "Invoice No",
           invoice_date: "Date",
           customer_name: "Customer",
           product_name: "Product",
+          hsn: "HSN",
           quantity: "Qty",
           rate: "Rate",
           price: "Total Price",
+          gst_rate: "GST %",
+          discount: "Discount",
         });
 
         return result;
@@ -42,7 +46,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
         console.error("Excel export failed:", error);
         return { success: false, error: "Failed to export Excel file." };
       }
-    }
+    },
   );
 
   ipcMain.handle(
@@ -73,14 +77,14 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
           const win = new BrowserWindow({ show: false });
           const htmlContent = createInvoiceHTML({ sale, shop });
           await win.loadURL(
-            "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent)
+            "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent),
           );
           const pdfBuffer = await win.webContents.printToPDF({
             printBackground: true,
           });
           const pdfPath = path.join(
             destFolder,
-            `${sale.reference_no.replace(/\//g, "-")}.pdf`
+            `${sale.reference_no.replace(/\//g, "-")}.pdf`,
           );
           await fs.promises.writeFile(pdfPath, pdfBuffer);
           win.close();
@@ -94,7 +98,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
         console.error("PDF export failed:", error);
         return { success: false, error: "Failed to export PDF files." };
       }
-    }
+    },
   );
 
   ipcMain.handle("export-main-categories", async () => {
@@ -116,7 +120,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
       return await generateExcelReport(
         mainCategories,
         defaultFileName,
-        columnMap
+        columnMap,
       );
     } catch (error) {
       console.error("Failed to export main categories:", error);
@@ -152,7 +156,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
       return await generateExcelReport(
         flattenedSubcategories,
         defaultFileName,
-        columnMap
+        columnMap,
       );
     } catch (error) {
       console.error("Failed to export subcategories:", error);
@@ -180,7 +184,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
         })();
         const sales =
           require("../../backend/repositories/nonGstSalesRepository.mjs").getNonGstSalesForPDFExport(
-            { startDate, endDate }
+            { startDate, endDate },
           );
         if (sales.length === 0)
           return { success: true, message: "No sales found in this period." };
@@ -195,17 +199,17 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
             require("../nonGstReceiptTemplate.js").createNonGstReceiptHTML(
               shop,
               sale,
-              shop ? shop.invoice_printer_width_mm : undefined
+              shop ? shop.invoice_printer_width_mm : undefined,
             );
           await win.loadURL(
-            "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent)
+            "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent),
           );
           const pdfBuffer = await win.webContents.printToPDF({
             printBackground: true,
           });
           const pdfPath = path.join(
             destFolder,
-            `${sale.reference_no.replace(/\//g, "-")}.pdf`
+            `${sale.reference_no.replace(/\//g, "-")}.pdf`,
           );
           await fs.promises.writeFile(pdfPath, pdfBuffer);
           win.close();
@@ -215,7 +219,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
         console.error("Non-GST PDF export failed:", error);
         return { success: false, error: "Failed to export PDF files." };
       }
-    }
+    },
   );
 
   ipcMain.handle(
@@ -224,7 +228,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
       try {
         const items =
           require("../../backend/repositories/nonGstSalesRepository.mjs").getNonGstSaleItemsForExport(
-            { startDate, endDate }
+            { startDate, endDate },
           );
         if (items.length === 0)
           return { success: true, message: "No items found in this period." };
@@ -246,7 +250,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
         console.error("Non-GST Excel export failed:", error);
         return { success: false, error: "Failed to export to Excel." };
       }
-    }
+    },
   );
 }
 

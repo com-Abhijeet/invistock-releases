@@ -1,6 +1,6 @@
 {
     "name": "kosh",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "description": "KOSH is a inventory and operational software built to cater specific needs of businesses.",
     "main": "electron/main.js",
     "type": "commonjs",

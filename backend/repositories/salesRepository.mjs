@@ -547,9 +547,12 @@ export function getExportableSalesData(filters) {
         date(s.created_at) as invoice_date,
         COALESCE(c.name, 'Walk-in Customer') as customer_name,
         p.name as product_name,
+        p.hsn as hsn,
         si.quantity,
         si.rate,
-        si.price
+        si.price,
+        si.gst_rate,
+        si.discount
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
     JOIN products p ON si.product_id = p.id
