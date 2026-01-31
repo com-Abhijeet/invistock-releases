@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Button } from "@mui/material";
+import { Box } from "@mui/material";
 import DashboardHeader from "../components/DashboardHeader";
 import SalesOrdersTable from "../components/sales-orders/SalesOrdersTable";
 import theme from "../../theme";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import KbdButton from "../components/ui/Button";
 
 export default function SalesOrdersList() {
   const navigate = useNavigate();
@@ -28,19 +29,15 @@ export default function SalesOrdersList() {
         showDateFilters={false} // Date filtering not yet in backend repo for orders
         onSearch={setSearchQuery}
         actions={
-          <Button
-            variant="contained"
+          <KbdButton
+            variant="primary"
+            label="Create Order"
+            underlineChar="C"
+            shortcut="ctrl+c"
             onClick={() => navigate("/sales-order")}
             startIcon={<Plus size={18} />}
-            sx={{
-              borderRadius: "8px",
-              textTransform: "none",
-              fontWeight: 600,
-              boxShadow: "none",
-            }}
-          >
-            Create Order
-          </Button>
+            sx={{ px: 3 }}
+          />
         }
       />
 

@@ -8,7 +8,6 @@ import {
   CardContent,
   Typography,
   CircularProgress,
-  Button,
   Table,
   TableBody,
   TableCell,
@@ -26,20 +25,19 @@ import {
   ChevronDown,
   ChevronUp,
   CreditCard,
-  MessageCircle, // Imported Icon
+  MessageCircle,
 } from "lucide-react";
 import DashboardHeader from "../components/DashboardHeader";
 import { getCustomerLedger } from "../lib/api/customerService";
-import { getShopData } from "../lib/api/shopService"; // Import shop service
+import { getShopData } from "../lib/api/shopService";
 import toast from "react-hot-toast";
 import type { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
+import KbdButton from "../components/ui/Button";
 
-// Helper for initial date range (Last 30 Days)
 const getInitialFilters = (): DashboardFilter => {
   const end = new Date();
   const start = new Date();
   start.setDate(start.getDate() - 30);
-
   return {
     from: start.toISOString().split("T")[0],
     to: end.toISOString().split("T")[0],
@@ -54,7 +52,6 @@ interface Transaction {
   payment_mode: string;
   type: string;
 }
-
 interface LedgerEntry {
   id: number;
   date: string;
@@ -68,20 +65,17 @@ interface LedgerEntry {
 
 export default function CustomerLedgerPage() {
   const { id } = useParams();
-
   const customerId = Number(id);
-
   const [activeFilters, setActiveFilters] =
     useState<DashboardFilter>(getInitialFilters);
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<any>(null);
   const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
   const [totals, setTotals] = useState({ billed: 0, paid: 0, pending: 0 });
-  const [shop, setShop] = useState<any>(null); // Store shop data
+  const [shop, setShop] = useState<any>(null);
 
   useEffect(() => {
     fetchLedger();
-    // Fetch Shop Data
     getShopData().then((res) => setShop(res));
   }, [customerId, activeFilters.from, activeFilters.to]);
 
@@ -93,31 +87,24 @@ export default function CustomerLedgerPage() {
         startDate: activeFilters.from,
         endDate: activeFilters.to,
       });
-
       if (response.success) {
         setCustomer(response.customer);
         processLedger(response.ledger);
       }
-      // console.log(response);
     } catch (error) {
-      console.error(error);
       toast.error("Failed to load ledger.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Process data to keep Bill structure with nested transactions
   const processLedger = (rawLedger: any[]) => {
-    let totalBilled = 0;
-    let totalPaid = 0;
-    let totalPending = 0;
-
-    const processedEntries: LedgerEntry[] = rawLedger.map((bill: any) => {
-      const billAmount = parseFloat(bill.total_amount || 0);
-
-      // Calculate paid amount from transactions if not provided directly, or use the API's paid_amount
-      const transactions =
+    let tb = 0,
+      tp = 0,
+      tpen = 0;
+    const entries: LedgerEntry[] = rawLedger.map((bill: any) => {
+      const amt = parseFloat(bill.total_amount || 0);
+      const txs =
         bill.transactions?.map((t: any) => ({
           id: t.id,
           date: t.transaction_date || t.date,
@@ -125,86 +112,55 @@ export default function CustomerLedgerPage() {
           payment_mode: t.payment_mode,
           type: t.type,
         })) || [];
-
-      // Use the root paid_amount if available (reconciled), otherwise sum transactions
-      const paidAmount =
+      const paid =
         bill.paid_amount !== undefined
           ? parseFloat(bill.paid_amount)
-          : transactions.reduce(
-              (sum: number, t: Transaction) => sum + t.amount,
-              0
-            );
-
-      const balance = billAmount - paidAmount;
-
-      // Update Globals
-      totalBilled += billAmount;
-      totalPaid += paidAmount;
-      totalPending += balance;
-
-      // Determine Status
-      let status: "PAID" | "PARTIAL" | "PENDING" = "PENDING";
-      if (balance <= 0.9) status = "PAID";
-      else if (paidAmount > 0) status = "PARTIAL";
-
+          : txs.reduce((s: number, t: any) => s + t.amount, 0);
+      const bal = amt - paid;
+      tb += amt;
+      tp += paid;
+      tpen += bal;
+      let status: LedgerEntry["status"] = "PENDING";
+      if (bal <= 0.9) status = "PAID";
+      else if (paid > 0) status = "PARTIAL";
       return {
         id: bill.id,
         date: bill.bill_date,
         reference: bill.reference_no,
-        total_amount: billAmount,
-        paid_amount: paidAmount,
-        balance: balance > 0 ? balance : 0,
+        total_amount: amt,
+        paid_amount: paid,
+        balance: bal > 0 ? bal : 0,
         status,
-        transactions,
+        transactions: txs,
       };
     });
-
-    // Sort by Date Descending (Newest first) or Ascending depending on preference.
-    processedEntries.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    entries.sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
-
-    setLedgerData(processedEntries);
-    setTotals({
-      billed: totalBilled,
-      paid: totalPaid,
-      pending: totalPending,
-    });
+    setLedgerData(entries);
+    setTotals({ billed: tb, paid: tp, pending: tpen });
   };
 
-  const handlePrint = () => {
+  const handlePrint = () =>
     window.electron.ipcRenderer.invoke("print-customer-ledger", {
       customerId,
-      filters: {
-        startDate: activeFilters.from,
-        endDate: activeFilters.to,
-      },
+      filters: { startDate: activeFilters.from, endDate: activeFilters.to },
     });
-  };
 
   const handleWhatsApp = async () => {
-    if (!customer?.phone) {
-      toast.error("Customer phone number is missing");
-      return;
-    }
-
-    const toastId = toast.loading("Generating and sending ledger PDF...");
-
+    if (!customer?.phone)
+      return toast.error("Customer phone number is missing");
+    const toastId = toast.loading("Sending ledger via WhatsApp...");
     try {
       const res = await window.electron.sendWhatsAppCustomerLedger({
-        customerId, // Just ID needed now
+        customerId,
         phone: customer.phone,
-        filters: {
-          startDate: activeFilters.from,
-          endDate: activeFilters.to,
-        },
+        filters: { startDate: activeFilters.from, endDate: activeFilters.to },
       });
-
-      if (res.success) {
+      if (res.success)
         toast.success("Ledger sent successfully!", { id: toastId });
-      } else {
+      else
         toast.error("Failed to send WhatsApp: " + res.error, { id: toastId });
-      }
     } catch (e: any) {
       toast.error("Error sending ledger: " + e.message, { id: toastId });
     }
@@ -219,45 +175,24 @@ export default function CustomerLedgerPage() {
         onFilterChange={setActiveFilters}
         actions={
           <Stack direction="row" spacing={2}>
-            <Button
-              variant="contained"
-              color="success"
+            <KbdButton
+              variant="secondary"
+              label="Share Ledger"
+              underlineChar="s"
+              shortcut="ctrl+s"
               startIcon={<MessageCircle size={18} />}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-                px: 3,
-                boxShadow: "none",
-                bgcolor: "#2e7d32",
-                "&:hover": {
-                  bgcolor: "#1b5e20",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                },
-              }}
               onClick={handleWhatsApp}
               disabled={loading || !customer || !shop}
-            >
-              Share Ledger PDF
-            </Button>
-            <Button
-              variant="contained"
+            />
+            <KbdButton
+              variant="primary"
+              label="Print Statement"
+              underlineChar="p"
+              shortcut="ctrl+p"
               startIcon={<Printer size={18} />}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-                px: 3,
-                boxShadow: "none",
-                "&:hover": {
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                },
-              }}
               onClick={handlePrint}
               disabled={loading || !customer}
-            >
-              Print Statement
-            </Button>
+            />
           </Stack>
         }
       />
@@ -268,7 +203,6 @@ export default function CustomerLedgerPage() {
         </Box>
       ) : (
         <Stack spacing={3}>
-          {/* Customer Summary Card */}
           {customer && (
             <Card
               elevation={0}
@@ -313,7 +247,6 @@ export default function CustomerLedgerPage() {
             </Card>
           )}
 
-          {/* Ledger Table */}
           <Paper
             elevation={0}
             sx={{
@@ -378,8 +311,6 @@ export default function CustomerLedgerPage() {
                 </TableBody>
               </Table>
             </TableContainer>
-
-            {/* Totals Footer */}
             <Box
               sx={{
                 bgcolor: "grey.100",
@@ -432,11 +363,9 @@ export default function CustomerLedgerPage() {
   );
 }
 
-// Sub-component for Collapsible Row
 function Row({ row }: { row: LedgerEntry }) {
   const [open, setOpen] = useState(false);
   const hasTransactions = row.transactions && row.transactions.length > 0;
-
   return (
     <>
       <TableRow
@@ -450,7 +379,6 @@ function Row({ row }: { row: LedgerEntry }) {
         <TableCell>
           {hasTransactions && (
             <IconButton
-              aria-label="expand row"
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
@@ -485,8 +413,8 @@ function Row({ row }: { row: LedgerEntry }) {
               row.status === "PAID"
                 ? "success"
                 : row.status === "PARTIAL"
-                ? "warning"
-                : "error"
+                  ? "warning"
+                  : "error"
             }
             variant="outlined"
             sx={{ fontWeight: "bold", fontSize: "0.7rem" }}
@@ -506,8 +434,6 @@ function Row({ row }: { row: LedgerEntry }) {
           {row.balance.toLocaleString()}
         </TableCell>
       </TableRow>
-
-      {/* Nested Transactions Row */}
       {hasTransactions && (
         <TableRow>
           <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
@@ -531,7 +457,7 @@ function Row({ row }: { row: LedgerEntry }) {
                 >
                   <CreditCard size={16} /> Transaction History
                 </Typography>
-                <Table size="small" aria-label="purchases">
+                <Table size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell
@@ -555,13 +481,13 @@ function Row({ row }: { row: LedgerEntry }) {
                   <TableBody>
                     {row.transactions.map((t) => (
                       <TableRow key={t.id}>
-                        <TableCell component="th" scope="row">
+                        <TableCell>
                           {new Date(t.date).toLocaleDateString("en-IN")}
                         </TableCell>
                         <TableCell sx={{ textTransform: "capitalize" }}>
                           {t.payment_mode}
                         </TableCell>
-                        <TableCell align="right" sx={{ fontWeight: "medium" }}>
+                        <TableCell align="right">
                           ₹{t.amount.toLocaleString()}
                         </TableCell>
                       </TableRow>

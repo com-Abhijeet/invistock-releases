@@ -3,21 +3,29 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Box,
-  Button,
   LinearProgress,
-  Menu,
-  MenuItem,
   Typography,
+  Stack,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  IconButton,
 } from "@mui/material";
+import {
+  FileDownIcon as FileDownloadIcon,
+  X,
+  Download,
+  FileText,
+} from "lucide-react";
 import DashboardHeader from "../components/DashboardHeader";
 import type { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
 import SalesTable from "../components/sales/SalesTable";
 import theme from "../../theme";
 import toast from "react-hot-toast";
 import ExportDateRangeModal from "../components/ExportDateRangeModal";
-import { FileDownIcon as FileDownloadIcon } from "lucide-react"; // Wallet icon for payment
-import AddEditTransactionModal from "../components/transactions/AddEditTransactionModal"; // ✅ Import Modal
+import AddEditTransactionModal from "../components/transactions/AddEditTransactionModal";
 import type { Transaction } from "../lib/types/transactionTypes";
+import KbdButton from "../components/ui/Button";
 
 const { ipcRenderer } = window.electron || {};
 
@@ -46,7 +54,6 @@ export default function SalesTablePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const shop = JSON.parse(localStorage.getItem("shop") || "{}");
 
-  // ✅ Stability wrapper
   const handleFilterChange = useCallback((newFilters: DashboardFilter) => {
     setActiveFilters((prev) => {
       if (
@@ -60,30 +67,29 @@ export default function SalesTablePage() {
     });
   }, []);
 
-  // --- Payment Modal State ---
+  // --- Modal States ---
   const [transactionModalOpen, setTransactionModalOpen] = useState(false);
   const [transactionInitialData, setTransactionInitialData] =
     useState<Partial<Transaction> | null>(null);
 
-  // --- Export State ---
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  // Format selection pop-up
+  const [formatSelectorOpen, setFormatSelectorOpen] = useState(false);
+
+  // Date range modal for export
   const [exportModal, setExportModal] = useState<{
     open: boolean;
     type: "excel" | "pdf" | null;
   }>({ open: false, type: null });
+
   const [exportLoading, setExportLoading] = useState(false);
   const [pdfProgress, setPdfProgress] = useState<{
     current: number;
     total: number;
   } | null>(null);
 
-  const handleExportMenuClick = (event: React.MouseEvent<HTMLElement>) =>
-    setAnchorEl(event.currentTarget);
-  const handleExportMenuClose = () => setAnchorEl(null);
-
-  const openExportModal = (type: "excel" | "pdf") => {
+  const openExportDateModal = (type: "excel" | "pdf") => {
     setExportModal({ open: true, type });
-    handleExportMenuClose();
+    setFormatSelectorOpen(false);
   };
 
   const handleExport = async ({
@@ -118,10 +124,10 @@ export default function SalesTablePage() {
     setExportLoading(false);
     setExportModal({ open: false, type: null });
 
-    if (result.success) {
+    if (result && result.success) {
       toast.success(result.message || "Export successful!");
     } else {
-      toast.error(result.error || "Export failed.");
+      toast.error(result?.error || "Export failed.");
     }
   };
 
@@ -144,17 +150,11 @@ export default function SalesTablePage() {
     };
   }, []);
 
-  // ✅ Action Handler for "Mark Payment"
   const handleMarkPayment = (sale: any) => {
-    console.log("sale mark payment :", sale);
-    // Check if fully paid first?
     const pending = (sale.total || 0) - (sale.paid_amount || 0);
 
     if (pending <= 0.9) {
-      // Using standard buffer
       toast("This bill is already fully paid.", { icon: "ℹ️" });
-      // We allow opening anyway in case they want to overpay or record a specific adjustment,
-      // but typically we'd return. Let's proceed but warn or just set amount to 0.
     }
 
     setTransactionInitialData({
@@ -163,7 +163,7 @@ export default function SalesTablePage() {
       entity_type: "customer",
       entity_id: sale.customer_id,
       bill_id: sale.id,
-      amount: pending > 0 ? pending : 0, // Auto-fill pending amount
+      amount: pending > 0 ? pending : 0,
       transaction_date: new Date().toISOString().split("T")[0],
       status: "paid",
       payment_mode: "cash",
@@ -194,38 +194,121 @@ export default function SalesTablePage() {
         onSearch={setSearchQuery}
         onFilterChange={handleFilterChange}
         actions={
-          <>
-            <Button
-              variant="contained"
-              onClick={handleExportMenuClick}
-              startIcon={<FileDownloadIcon size={18} />}
+          <KbdButton
+            variant="primary"
+            label="Export Records"
+            underlineChar="E"
+            shortcut="ctrl+e"
+            onClick={() => setFormatSelectorOpen(true)}
+            startIcon={<FileDownloadIcon size={18} />}
+          />
+        }
+      />
+
+      {/* Format Selector Pop-up */}
+      <Dialog
+        open={formatSelectorOpen}
+        onClose={() => setFormatSelectorOpen(false)}
+        PaperProps={{
+          sx: { borderRadius: "20px", width: "100%", maxWidth: 400 },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Typography variant="h6" fontWeight={700}>
+            Choose Export Format
+          </Typography>
+          <IconButton onClick={() => setFormatSelectorOpen(false)}>
+            <X size={20} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pb: 4 }}>
+          <Stack spacing={2} mt={1}>
+            <Box
+              onClick={() => openExportDateModal("excel")}
               sx={{
-                borderRadius: "8px",
-                textTransform: "none",
-                fontWeight: 600,
-                boxShadow: "none",
+                p: 2.5,
+                borderRadius: "16px",
+                border: "2px solid",
+                borderColor: "divider",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
                 "&:hover": {
-                  boxShadow: "none",
+                  borderColor: "primary.main",
+                  backgroundColor: "rgba(25, 118, 210, 0.04)",
+                  transform: "translateY(-2px)",
                 },
               }}
             >
-              Export Records
-            </Button>
-            <Menu
-              anchorEl={anchorEl}
-              open={Boolean(anchorEl)}
-              onClose={handleExportMenuClose}
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: "12px",
+                  bgcolor: "#E8F5E9",
+                  color: "#2E7D32",
+                }}
+              >
+                <Download size={24} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  Excel Spreadsheet
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Detailed list of all sales data
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box
+              onClick={() => openExportDateModal("pdf")}
+              sx={{
+                p: 2.5,
+                borderRadius: "16px",
+                border: "2px solid",
+                borderColor: "divider",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                "&:hover": {
+                  borderColor: "primary.main",
+                  backgroundColor: "rgba(25, 118, 210, 0.04)",
+                  transform: "translateY(-2px)",
+                },
+              }}
             >
-              <MenuItem onClick={() => openExportModal("excel")}>
-                Export All to Excel
-              </MenuItem>
-              <MenuItem onClick={() => openExportModal("pdf")}>
-                Export Invoices as PDF
-              </MenuItem>
-            </Menu>
-          </>
-        }
-      />
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: "12px",
+                  bgcolor: "#FFEBEE",
+                  color: "#C62828",
+                }}
+              >
+                <FileText size={24} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  PDF Batch
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Download individual invoice copies
+                </Typography>
+              </Box>
+            </Box>
+          </Stack>
+        </DialogContent>
+      </Dialog>
 
       <ExportDateRangeModal
         open={exportModal.open}
@@ -263,21 +346,12 @@ export default function SalesTablePage() {
         </Box>
       )}
 
-      {/* ✅ Pass the custom action to SalesTable */}
       <SalesTable filters={finalFilters} onMarkPayment={handleMarkPayment} />
 
-      {/* ✅ Add Edit Transaction Modal */}
       <AddEditTransactionModal
         open={transactionModalOpen}
         onClose={() => setTransactionModalOpen(false)}
         onSuccess={() => {
-          // Force refresh of table?
-          // SalesTable uses its own internal fetch based on props.
-          // We might need to trigger a refetch.
-          // Since activeFilters is state, we can toggle it slightly or add a refresh trigger prop.
-          // For now, reloading the page or relying on user refresh is simple,
-          // but ideally we pass a 'refreshTrigger' prop to SalesTable.
-          // We'll update state to trigger re-render:
           setActiveFilters((prev) => ({ ...prev }));
         }}
         initialData={transactionInitialData}

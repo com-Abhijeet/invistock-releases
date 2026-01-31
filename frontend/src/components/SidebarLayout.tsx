@@ -22,6 +22,7 @@ import {
   Collapse,
   Menu,
   MenuItem,
+  Button,
 } from "@mui/material";
 import {
   User,
@@ -61,12 +62,13 @@ const SidebarNav = ({
   onCollapseToggle: () => void;
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [openSection, setOpenSection] = useState<string | null>(null);
 
   useEffect(() => {
     const activeSection = menuSections.find((section) =>
-      section.items.some((item) => item.path === location.pathname)
+      section.items.some((item) => item.path === location.pathname),
     );
     if (activeSection) {
       setOpenSection(activeSection.title);
@@ -101,14 +103,16 @@ const SidebarNav = ({
         }}
       >
         {!isCollapsed && (
-          <Typography
-            variant="h6"
-            fontWeight={800}
-            color="primary.main"
-            sx={{ letterSpacing: "-0.5px" }}
-          >
-            KOSH
-          </Typography>
+          <Button onClick={() => navigate("/about")}>
+            <Typography
+              variant="h6"
+              fontWeight={800}
+              color="primary.main"
+              sx={{ letterSpacing: "-0.5px" }}
+            >
+              KOSH
+            </Typography>
+          </Button>
         )}
         <IconButton
           onClick={onCollapseToggle}
@@ -143,7 +147,7 @@ const SidebarNav = ({
         {menuSections.map((section, index) => {
           const isOpen = isCollapsed || openSection === section.title;
           const hasActiveChild = section.items.some(
-            (item) => item.path === location.pathname
+            (item) => item.path === location.pathname,
           );
 
           return (

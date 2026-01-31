@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Box,
-  Button,
   Typography,
   Chip,
   CircularProgress,
@@ -13,6 +12,7 @@ import {
   DialogActions,
   TextField,
   Stack,
+  Button,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -22,7 +22,7 @@ import {
   TrendingDown,
   Wallet,
   Download,
-} from "lucide-react"; // ✅ Added Download icon
+} from "lucide-react";
 import toast from "react-hot-toast";
 import type { Column } from "../lib/types/DataTableTypes";
 
@@ -40,9 +40,10 @@ import type { Expense, ExpenseStats } from "../lib/types/expenseTypes";
 import { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
 
 import { DataCard } from "../components/DataCard";
+import KbdButton from "../components/ui/Button";
 
-// Get electron from window
-const { electron } = window;
+// Get electron from window safely
+const { electron } = window as any;
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -57,10 +58,10 @@ export default function ExpensesPage() {
   // ✅ Export Modal States
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportFrom, setExportFrom] = useState(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
   const [exportTo, setExportTo] = useState(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
 
   // Filter State
@@ -124,7 +125,6 @@ export default function ExpensesPage() {
     setDeleteId(null);
   };
 
-  // ✅ HANDLE EXPORT
   const handleExport = async () => {
     if (!exportFrom || !exportTo) {
       return toast.error("Please select both start and end dates.");
@@ -132,7 +132,6 @@ export default function ExpensesPage() {
 
     const toastId = toast.loading("Generating export...");
     try {
-      // 1. Fetch expenses for the selected range
       const dataToExport = await getExpenses(exportFrom, exportTo);
 
       if (!dataToExport || dataToExport.length === 0) {
@@ -140,7 +139,6 @@ export default function ExpensesPage() {
         return;
       }
 
-      // 2. Define Columns for Excel
       const columnMap = {
         date: "Date",
         category: "Category",
@@ -150,25 +148,27 @@ export default function ExpensesPage() {
         created_at: "Entry Created At",
       };
 
-      // 3. Call Electron
-      if (electron) {
-        const result = await electron.ipcRenderer.invoke(
-          "generate-excel-report",
-          {
-            data: dataToExport,
-            fileName: `Expenses_${exportFrom}_to_${exportTo}`,
-            columnMap: columnMap,
-          }
-        );
+      if (!electron || !electron.ipcRenderer) {
+        toast.error("Export is only available in the desktop application.", {
+          id: toastId,
+        });
+        return;
+      }
 
-        if (result.success) {
-          toast.success("Export successful!", { id: toastId });
-          setExportModalOpen(false);
-        } else {
-          toast.error("Export failed: " + result.message, { id: toastId });
-        }
+      const result = await electron.ipcRenderer.invoke(
+        "generate-excel-report",
+        {
+          data: dataToExport,
+          fileName: `Expenses_${exportFrom}_to_${exportTo}`,
+          columnMap: columnMap,
+        },
+      );
+
+      if (result.success) {
+        toast.success("Export successful!", { id: toastId });
+        setExportModalOpen(false);
       } else {
-        toast.error("Export not available in browser mode.", { id: toastId });
+        toast.error("Export failed: " + result.message, { id: toastId });
       }
     } catch (error) {
       console.error(error);
@@ -217,8 +217,6 @@ export default function ExpensesPage() {
       pt={3}
       sx={{
         backgroundColor: "#fff",
-        borderTopLeftRadius: "36px",
-        borderBottomLeftRadius: "36px",
         minHeight: "100vh",
       }}
     >
@@ -230,39 +228,26 @@ export default function ExpensesPage() {
         onRefresh={() => fetchData(filters)}
         actions={
           <Stack direction="row" spacing={1.5}>
-            {/* ✅ Export Button */}
-            <Button
-              variant="outlined"
+            {/* ✅ Updated Export Button with KbdButton */}
+            <KbdButton
+              variant="secondary"
+              label="Export"
+              underlineChar="E"
+              shortcut="ctrl+e"
               onClick={() => setExportModalOpen(true)}
               startIcon={<Download size={18} />}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Export
-            </Button>
+            />
 
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<Plus size={18} />}
+            {/* ✅ Updated Add Button with KbdButton */}
+            <KbdButton
+              variant="primary"
+              label="Add Expense"
+              underlineChar="A"
+              shortcut="ctrl+a"
               onClick={() => setAddOpen(true)}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-                px: 3,
-                boxShadow: "none",
-                "&:hover": {
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                },
-              }}
-            >
-              Add Expense
-            </Button>
+              startIcon={<Plus size={18} />}
+              sx={{ px: 3 }}
+            />
           </Stack>
         }
       />
@@ -333,19 +318,20 @@ export default function ExpensesPage() {
         disclaimer="Are you sure? This will permanently remove this expense record."
       />
 
-      {/* ✅ Export Date Range Modal */}
+      {/* ✅ Styled Export Date Range Modal */}
       <Dialog
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         maxWidth="xs"
         fullWidth
+        PaperProps={{ sx: { borderRadius: "16px" } }}
       >
-        <DialogTitle>Export Expenses</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>Export Expenses</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" mb={2}>
+          <Typography variant="body2" color="text.secondary" mb={3}>
             Select the date range you want to export to Excel.
           </Typography>
-          <Stack spacing={2}>
+          <Stack spacing={3}>
             <TextField
               label="Start Date"
               type="date"
@@ -364,7 +350,7 @@ export default function ExpensesPage() {
             />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setExportModalOpen(false)} color="inherit">
             Cancel
           </Button>
@@ -373,6 +359,11 @@ export default function ExpensesPage() {
             variant="contained"
             color="primary"
             startIcon={<Download size={18} />}
+            sx={{
+              borderRadius: "10px",
+              textTransform: "none",
+              fontWeight: 600,
+            }}
           >
             Export Excel
           </Button>

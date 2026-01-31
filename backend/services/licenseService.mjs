@@ -78,7 +78,7 @@ function validateLocal(licenseKey) {
 
     if (now > expiryDate) {
       const gracePeriodEndDate = new Date(expiryDate);
-      gracePeriodEndDate.setDate(gracePeriodEndDate.getDate() + 15);
+      gracePeriodEndDate.setDate(gracePeriodEndDate.getDate() + 1);
 
       if (now < gracePeriodEndDate) {
         const daysLeft = Math.ceil(

@@ -1,114 +1,90 @@
 "use client";
 
-import { Box, Button, Menu, MenuItem, Stack, TextField } from "@mui/material";
+import {
+  Box,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Stack,
+  Typography,
+  TextField,
+  MenuItem,
+  IconButton,
+} from "@mui/material";
 import { useState } from "react";
 import ProductTable from "../components/products/ProductTable";
 import toast from "react-hot-toast";
 import type { Product } from "../lib/types/product";
 import AddProductModal from "../components/products/AddProductModal";
 import DashboardHeader from "../components/DashboardHeader";
-import { Download, Filter, Plus, Upload } from "lucide-react";
+import { Download, Filter, Plus, Upload, FileText, X } from "lucide-react";
 import { exportToExcel } from "../lib/exportToExcel";
 import { deleteProduct, getAllProducts } from "../lib/api/productService";
 import ProductImportModal from "../components/products/ProductImportModal";
 import ConfirmModal from "../components/ConfirmModal";
 import theme from "../../theme";
+import KbdButton from "../components/ui/Button";
 
 export default function ProductsPage() {
   const [search, setSearch] = useState("");
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const exportMenuOpen = Boolean(anchorEl);
   const [importOpen, setImportOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
 
   const [isActiveFilter, setIsActiveFilter] = useState(1);
-
-  // ✅ ADDED: State to trigger a refresh in the child table
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
-  const handleExportClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
+  const handleExportFormat = async (format: "Excel" | "PDF") => {
+    setExportDialogOpen(false);
 
-  const handleExportClose = () => {
-    setAnchorEl(null);
-  };
-
-  const handleExportFormat = async (format: string) => {
-    handleExportClose();
     if (format === "Excel") {
-      toast.loading("Preparing export...");
+      const loadId = toast.loading("Preparing Excel export...");
       try {
-        // Fetch all products without any filters
         const allProductsData = await getAllProducts({
           all: true,
           page: 0,
           limit: 0,
           query: "",
-          isActive: undefined, // Ensure both active and inactive are fetched
+          isActive: undefined,
         });
 
         await exportToExcel({
           data: allProductsData.records,
-          fileName: "Product_List_Full", // Updated filename
+          fileName: "Product_List_Full",
           columnMap: {
-            // --- Core Details ---
             name: "Product Name",
-            name_local: "Product Name (Marathi)", // ✅ ADDED
-            product_code: "Product Code",
+            name_local: "Product Name (Local)",
+            product_code: "Code",
             barcode: "Barcode",
-            hsn: "HSN Code",
-            // --- Category ---
             category_name: "Category",
-            subcategory_name: "Subcategory",
-            // --- Pricing ---
             mrp: "MRP",
-            mop: "MOP (Min. Operating Price)",
-            mfw_price: "MF/W Price", // ✅ ADDED
-            average_purchase_price: "Avg. Purchase Price",
-            gst_rate: "GST Rate (%)",
-            // --- Inventory & Physical ---
-            quantity: "Stock Quantity",
-            low_stock_threshold: "Low Stock Threshold", // ✅ ADDED
-            size: "Size", // ✅ ADDED
-            weight: "Weight", // ✅ ADDED
-            storage_location: "Storage Location",
-            brand: "Brand",
-            // --- Other ---
-            description: "Description",
-            is_active: "Is Active (1=Yes, 0=No)",
-            image_url: "Image URL",
-            created_at: "Created At",
-            updated_at: "Last Updated At",
+            quantity: "Stock",
+            is_active: "Active Status",
           },
         });
-        toast.dismiss();
-        toast.success("Excel exported successfully.");
+        toast.success("Excel exported successfully.", { id: loadId });
       } catch (err) {
-        toast.dismiss();
-        console.error("Export failed:", err);
-        toast.error("Failed to export Excel.");
+        toast.error("Failed to export Excel.", { id: loadId });
       }
     } else {
-      toast("Unsupported format: " + format);
+      // Logic for PDF would go here
+      toast.error("PDF Export logic is coming soon!");
     }
   };
 
-  // ✅ UPDATED: Handlers now trigger a refresh instead of updating stale state
   const handleSuccess = () => {
     setAddOpen(false);
     setEditOpen(false);
     setEditProduct(null);
-    setRefreshKey((prevKey) => prevKey + 1); // Increment key to trigger refetch
+    setRefreshKey((prevKey) => prevKey + 1);
   };
 
-  // ✅ 3. New handlers for the delete process
   const handleOpenDeleteModal = (product: Product) => {
     setProductToDelete(product);
     setDeleteModalOpen(true);
@@ -121,29 +97,18 @@ export default function ProductsPage() {
 
   const handleConfirmDelete = async () => {
     if (!productToDelete) return;
-
     try {
-      // Use the 'deleteProduct' function which now does a soft delete
       await deleteProduct(String(productToDelete.id!));
-      toast.success(`"${productToDelete.name}" was deactivated successfully.`);
-      setRefreshKey((prevKey) => prevKey + 1); // Refresh the table
+      toast.success(`"${productToDelete.name}" deactivated.`);
+      setRefreshKey((prevKey) => prevKey + 1);
     } catch (error: any) {
-      toast.error(error.message || "Failed to deactivate product.");
+      toast.error(error.message || "Failed to deactivate.");
     }
-    // The modal closes itself, but we reset the state
     setProductToDelete(null);
   };
 
   return (
-    <Box
-      p={2}
-      pt={3}
-      sx={{
-        backgroundColor: "#fff",
-
-        minHeight: "100vh",
-      }}
-    >
+    <Box p={2} pt={3} sx={{ backgroundColor: "#fff", minHeight: "100vh" }}>
       <DashboardHeader
         title="Products"
         showSearch={true}
@@ -152,7 +117,7 @@ export default function ProductsPage() {
         showDateFilters={false}
         actions={
           <Stack direction="row" spacing={1.5} alignItems="center">
-            {/* ✅ 1. Status Filter (Styled like Header inputs) */}
+            {/* Status Filter */}
             <TextField
               select
               size="small"
@@ -161,12 +126,9 @@ export default function ProductsPage() {
               sx={{
                 minWidth: 130,
                 "& .MuiOutlinedInput-root": {
-                  borderRadius: "12px", // Matching rounded style
+                  borderRadius: "12px",
                   backgroundColor: theme.palette.grey[50],
                   "& fieldset": { borderColor: theme.palette.divider },
-                  "&:hover fieldset": {
-                    borderColor: theme.palette.text.secondary,
-                  },
                 },
               }}
               InputProps={{
@@ -175,88 +137,44 @@ export default function ProductsPage() {
                 ),
               }}
             >
-              <MenuItem value="1">Active</MenuItem>
-              <MenuItem value="0">Inactive</MenuItem>
+              <MenuItem value="1">Active Only</MenuItem>
+              <MenuItem value="0">Inactive Only</MenuItem>
             </TextField>
 
-            {/* ✅ 2. Import Button (Soft styling) */}
-            <Button
-              variant="outlined"
+            <KbdButton
+              variant="secondary"
+              label="Import"
+              underlineChar="I"
+              shortcut="ctrl+i"
               onClick={() => setImportOpen(true)}
               startIcon={<Upload size={18} />}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-                borderColor: theme.palette.divider,
-                color: theme.palette.text.secondary,
-                "&:hover": {
-                  borderColor: theme.palette.text.primary,
-                  color: theme.palette.text.primary,
-                  backgroundColor: theme.palette.action.hover,
-                },
-              }}
-            >
-              Import
-            </Button>
+            />
 
-            {/* ✅ 3. Export Button (Soft styling) */}
-            <Button
-              variant="outlined"
-              onClick={handleExportClick}
+            {/* Export Action */}
+            <KbdButton
+              variant="secondary"
+              label="Export"
+              underlineChar="E"
+              shortcut="ctrl+e"
+              onClick={() => setExportDialogOpen(true)}
               startIcon={<Download size={18} />}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-                borderColor: theme.palette.divider,
-                color: theme.palette.text.secondary,
-                "&:hover": {
-                  borderColor: theme.palette.text.primary,
-                  color: theme.palette.text.primary,
-                  backgroundColor: theme.palette.action.hover,
-                },
-              }}
-            >
-              Export
-            </Button>
-            <Menu
-              anchorEl={anchorEl}
-              open={exportMenuOpen}
-              onClose={handleExportClose}
-              PaperProps={{ sx: { borderRadius: 2, mt: 1 } }}
-            >
-              <MenuItem onClick={() => handleExportFormat("Excel")}>
-                Excel (.xlsx)
-              </MenuItem>
-              <MenuItem onClick={() => handleExportFormat("CSV")}>CSV</MenuItem>
-            </Menu>
+            />
 
-            {/* ✅ 4. Add Button (Primary Action) */}
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<Plus size={18} />}
+            <KbdButton
+              variant="primary"
+              label="Add Product"
+              underlineChar="A"
+              shortcut="ctrl+a"
               onClick={() => setAddOpen(true)}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-                px: 3,
-                boxShadow: "none",
-                "&:hover": {
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                },
-              }}
-            >
-              Add Product
-            </Button>
+              startIcon={<Plus size={18} />}
+              sx={{ px: 3 }}
+            />
           </Stack>
         }
       />
 
       <ProductTable
-        key={refreshKey} // ✅ ADDED: Pass the key to force re-mounting on change
+        key={refreshKey}
         onEdit={(product) => {
           setEditProduct(product);
           setEditOpen(true);
@@ -265,6 +183,111 @@ export default function ProductsPage() {
         searchQuery={search}
         isActive={isActiveFilter}
       />
+
+      {/* Export Format Pop-up Selector */}
+      <Dialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        PaperProps={{
+          sx: { borderRadius: "20px", width: "100%", maxWidth: 400 },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Typography variant="h6" fontWeight={700}>
+            Select Export Format
+          </Typography>
+          <IconButton onClick={() => setExportDialogOpen(false)}>
+            <X size={20} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pb: 4 }}>
+          <Stack spacing={2} mt={1}>
+            <Box
+              onClick={() => handleExportFormat("Excel")}
+              sx={{
+                p: 2.5,
+                borderRadius: "16px",
+                border: "2px solid",
+                borderColor: "divider",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                "&:hover": {
+                  borderColor: "primary.main",
+                  backgroundColor: "rgba(25, 118, 210, 0.04)",
+                  transform: "translateY(-2px)",
+                },
+              }}
+            >
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: "12px",
+                  bgcolor: "#E8F5E9",
+                  color: "#2E7D32",
+                }}
+              >
+                <Download size={24} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  Excel (.xlsx)
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Best for inventory management & editing
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box
+              onClick={() => handleExportFormat("PDF")}
+              sx={{
+                p: 2.5,
+                borderRadius: "16px",
+                border: "2px solid",
+                borderColor: "divider",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                "&:hover": {
+                  borderColor: "primary.main",
+                  backgroundColor: "rgba(25, 118, 210, 0.04)",
+                  transform: "translateY(-2px)",
+                },
+              }}
+            >
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: "12px",
+                  bgcolor: "#FFEBEE",
+                  color: "#C62828",
+                }}
+              >
+                <FileText size={24} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  PDF Document
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Best for printing or sharing as a report
+                </Typography>
+              </Box>
+            </Box>
+          </Stack>
+        </DialogContent>
+      </Dialog>
 
       <AddProductModal
         open={addOpen}
@@ -293,7 +316,7 @@ export default function ProductsPage() {
         onClose={handleCloseDeleteModal}
         onConfirm={handleConfirmDelete}
         header="Deactivate Product"
-        disclaimer={`Are you sure you want to deactivate "${productToDelete?.name}"? This will hide it from the POS and new sales, but it will still appear in old reports.`}
+        disclaimer={`Are you sure you want to deactivate "${productToDelete?.name}"?`}
       />
     </Box>
   );

@@ -7,7 +7,6 @@ import {
   TextField,
   Typography,
   CircularProgress,
-  Button,
   Stack,
   Chip,
 } from "@mui/material";
@@ -19,9 +18,10 @@ import DashboardHeader from "../components/DashboardHeader";
 import DataTable from "../components/DataTable";
 import { getDayBook, DayBookEntry } from "../lib/api/reportService";
 import { DataCard } from "../components/DataCard";
+import KbdButton from "../components/ui/Button";
 
-// Get electron from window
-const { electron } = window;
+// Get electron from window safely
+const { electron } = window as any;
 
 export default function DayBookPage() {
   // Default to Today (YYYY-MM-DD)
@@ -76,7 +76,7 @@ export default function DayBookPage() {
         debit: t.debit || "",
       }));
 
-      // ✅ MODIFIED: Add "Net Day Change" Row to Export
+      // ✅ Add "Net Day Change" Row to Export
       const netDayChange = data.totalIn - data.totalOut;
 
       exportData.push({
@@ -87,8 +87,15 @@ export default function DayBookPage() {
         description: "",
         credit: data.totalIn,
         debit: data.totalOut,
-        balance: netDayChange, // Exporting the day's net change
+        balance: netDayChange,
       } as any);
+
+      if (!electron || !electron.ipcRenderer) {
+        toast.error("Export is only available in the desktop application.", {
+          id: toastId,
+        });
+        return;
+      }
 
       await electron.ipcRenderer.invoke("generate-excel-report", {
         data: exportData,
@@ -168,22 +175,28 @@ export default function DayBookPage() {
         showSearch={false}
         showDateFilters={false}
         actions={
-          <Stack direction="row" spacing={2}>
+          <Stack direction="row" spacing={2} alignItems="center">
             <TextField
               type="date"
               size="small"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: "12px",
+                  bgcolor: "grey.50",
+                },
+              }}
             />
-            <Button
-              variant="outlined"
-              startIcon={<Download size={18} />}
+            {/* ✅ Updated Export Button with KbdButton */}
+            <KbdButton
+              variant="secondary"
+              label="Export"
+              underlineChar="E"
+              shortcut="ctrl+e"
               onClick={handleExport}
-              sx={{ borderRadius: "12px" }}
-            >
-              Export
-            </Button>
+              startIcon={<Download size={18} />}
+            />
           </Stack>
         }
       />
@@ -243,13 +256,13 @@ export default function DayBookPage() {
             onRowsPerPageChange={() => {}}
           />
 
-          {/* ✅ Custom Footer for Totals (Shows Day's Net Change) */}
+          {/* ✅ Custom Footer for Totals */}
           <Paper
             variant="outlined"
             sx={{
               mt: -1,
               borderTop: "none",
-              borderRadius: "0 0 8px 8px",
+              borderRadius: "0 0 12px 12px",
               bgcolor: "grey.50",
               p: 2,
             }}

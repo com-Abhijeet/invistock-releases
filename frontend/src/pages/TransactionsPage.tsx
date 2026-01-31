@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   Box,
-  Button,
   CircularProgress,
   Dialog,
   DialogTitle,
@@ -12,6 +11,7 @@ import {
   TextField,
   Stack,
   Typography,
+  Button,
 } from "@mui/material";
 import { Edit, Eye, Trash2, Plus, Download, FileText } from "lucide-react";
 import AddEditTransactionModal from "../components/transactions/AddEditTransactionModal";
@@ -28,7 +28,8 @@ import type {
   DashboardFilterType,
 } from "../lib/types/inventoryDashboardTypes";
 import toast from "react-hot-toast";
-import { useNavigate } from "react-router-dom"; // ✅ Import useNavigate
+import { useNavigate } from "react-router-dom";
+import KbdButton from "../components/ui/Button";
 
 // Get electron from window
 const { electron } = window;
@@ -43,7 +44,7 @@ const getInitialFilters = (): DashboardFilter => {
 };
 
 export default function TransactionsPage() {
-  const navigate = useNavigate(); // ✅ Initialize hook
+  const navigate = useNavigate();
   // ✅ Simplified Filter States
   const [activeFilters, setActiveFilters] =
     useState<DashboardFilter>(getInitialFilters);
@@ -64,16 +65,15 @@ export default function TransactionsPage() {
   // ✅ Export Modal States
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportFrom, setExportFrom] = useState(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
   const [exportTo, setExportTo] = useState(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
 
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      // ✅ Simplified API call parameters
       const res = await getAllTransactions({
         ...activeFilters,
         query: searchQuery,
@@ -82,7 +82,6 @@ export default function TransactionsPage() {
       });
       setTransactions(res.data || []);
       setTotalRecords(res.totalRecords || 0);
-      console.log(res);
     } catch (error) {
       console.error("Failed to fetch transactions:", error);
       toast.error("Failed to fetch transactions.");
@@ -91,7 +90,6 @@ export default function TransactionsPage() {
     }
   };
 
-  // ✅ Simplified dependency array
   useEffect(() => {
     const debounceTimeout = setTimeout(() => {
       fetchTransactions();
@@ -122,7 +120,6 @@ export default function TransactionsPage() {
     }
   };
 
-  // ✅ Export Logic
   const handleExport = async () => {
     if (!exportFrom || !exportTo) {
       return toast.error("Please select both start and end dates.");
@@ -130,14 +127,13 @@ export default function TransactionsPage() {
 
     const toastId = toast.loading("Generating export...");
     try {
-      // 1. Fetch ALL transactions for the selected range (using custom filter)
       const res = await getAllTransactions({
         filter: "custom",
         startDate: exportFrom,
         endDate: exportTo,
         page: 1,
-        limit: 0, // 0 or -1 usually signals 'all' in APIs, or we rely on 'all: true' param if implemented
-        all: true, // Explicitly request all records if supported
+        limit: 0,
+        all: true,
       });
 
       const dataToExport = res.data || [];
@@ -147,45 +143,31 @@ export default function TransactionsPage() {
         return;
       }
 
-      // 2. Define Columns for Excel (Updated for CA Requirements)
       const columnMap = {
         reference_no: "Transaction Ref No",
         transaction_date: "Transaction Date",
-        type: "Transaction Type", // (e.g., Payment In, Credit Note)
-
-        // Entity Details
-        entity_type: "Party Type", // (Customer/Supplier)
-        entity_name: "Party Name", // ✅ Replaced entity_id with Name
-        entity_phone: "Party Phone", // ✅ Added Phone for contact
-
-        // Bill Linking
-        bill_type: "Linked Bill Type", // (Sale/Purchase)
-        bill_ref_no: "Linked Bill Ref No", // ✅ Replaced bill_id with Ref No
-
-        // Financials
+        type: "Transaction Type",
+        entity_type: "Party Type",
+        entity_name: "Party Name",
+        entity_phone: "Party Phone",
+        bill_type: "Linked Bill Type",
+        bill_ref_no: "Linked Bill Ref No",
         amount: "Total Amount",
         payment_mode: "Payment Mode",
-
-        // Tax & Adjustments (Critical for CA)
         gst_amount: "GST Tax Amount",
         discount: "Discount Given",
-
-        // Status & Remarks
         status: "Status",
         note: "Remarks / Narration",
-
-        // Audit Timestamps
         created_at: "Entry Created At",
       };
 
-      // 3. Call Electron to generate Excel
-      const result = await electron.ipcRenderer.invoke(
+      const result = await (electron as any).ipcRenderer.invoke(
         "generate-excel-report",
         {
           data: dataToExport,
           fileName: `Transactions_${exportFrom}_to_${exportTo}`,
           columnMap: columnMap,
-        }
+        },
       );
 
       if (result.success) {
@@ -223,16 +205,11 @@ export default function TransactionsPage() {
       icon: <Eye size={18} />,
       onClick: (row: Transaction) => handleOpenModal(row),
     },
-    // ✅ New "View Bill" Action
     {
       label: "View Bill",
-      icon: <FileText size={18} color="#1976d2" />, // Blue icon to distinguish
-      // Only show/enable if there is a linked bill
+      icon: <FileText size={18} color="#1976d2" />,
       onClick: (row: Transaction) => {
         if (row.bill_id && row.bill_type) {
-          // Determine route based on bill type
-          // Assuming 'sale' maps to /billing/:id/view and 'purchase' maps to /purchase/view/:id (or similar)
-          // Adjust paths as per your routing structure
           if (row.bill_type === "sale") {
             navigate(`/billing/view/${row.bill_id}`);
           } else if (row.bill_type === "purchase") {
@@ -244,10 +221,6 @@ export default function TransactionsPage() {
           toast.error("No bill linked to this transaction.");
         }
       },
-      // Optional: You might want to filter this action out entirely if no bill is linked
-      // But DataTable types usually don't support dynamic action filtering per row easily
-      // without checking inside onClick or using a custom render.
-      // For now, we'll keep it and handle the logic inside onClick.
     },
     {
       label: "Edit",
@@ -267,8 +240,6 @@ export default function TransactionsPage() {
       pt={3}
       sx={{
         backgroundColor: "#fff",
-        borderTopLeftRadius: "36px",
-        borderBottomLeftRadius: "36px",
         minHeight: "100vh",
       }}
     >
@@ -281,41 +252,25 @@ export default function TransactionsPage() {
         onFilterChange={setActiveFilters}
         actions={
           <Stack direction="row" spacing={1.5}>
-            {/* ✅ Export Button */}
-            <Button
-              variant="outlined"
+            {/* ✅ Updated Export Button with KbdButton */}
+            <KbdButton
+              variant="secondary"
+              label="Export"
+              underlineChar="E"
+              shortcut="ctrl+e"
               onClick={() => setExportModalOpen(true)}
               startIcon={<Download size={18} />}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Export
-            </Button>
-            {/* Add Button */}
-            <Button
-              variant="contained"
-              color="primary"
+            />
+            {/* ✅ Updated Add Button with KbdButton */}
+            <KbdButton
+              variant="primary"
+              label="Add Transaction"
+              underlineChar="A"
+              shortcut="ctrl+a"
               onClick={() => handleOpenModal()}
               startIcon={<Plus size={18} />}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-                px: 3,
-                whiteSpace: "nowrap",
-                minWidth: "fit-content",
-                boxShadow: "none",
-                "&:hover": {
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                },
-              }}
-            >
-              Add Transaction
-            </Button>
+              sx={{ px: 3 }}
+            />
           </Stack>
         }
       />
@@ -348,19 +303,20 @@ export default function TransactionsPage() {
         initialData={selectedTransaction}
       />
 
-      {/* ✅ Export Date Range Modal */}
+      {/* ✅ Styled Export Date Range Modal */}
       <Dialog
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         maxWidth="xs"
         fullWidth
+        PaperProps={{ sx: { borderRadius: "16px" } }}
       >
-        <DialogTitle>Export Transactions</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>Export Transactions</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" mb={2}>
+          <Typography variant="body2" color="text.secondary" mb={3}>
             Select the date range you want to export to Excel.
           </Typography>
-          <Stack spacing={2}>
+          <Stack spacing={3}>
             <TextField
               label="Start Date"
               type="date"
@@ -379,7 +335,7 @@ export default function TransactionsPage() {
             />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setExportModalOpen(false)} color="inherit">
             Cancel
           </Button>
@@ -388,6 +344,11 @@ export default function TransactionsPage() {
             variant="contained"
             color="primary"
             startIcon={<Download size={18} />}
+            sx={{
+              borderRadius: "10px",
+              textTransform: "none",
+              fontWeight: 600,
+            }}
           >
             Export Excel
           </Button>
