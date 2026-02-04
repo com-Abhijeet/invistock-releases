@@ -180,7 +180,7 @@ function AppLayout() {
                     }
                   />
                   <Route
-                    path="/sales-order/view/:id"
+                    path="/sales-order/:action/:id"
                     element={
                       <PermissionGuard requiredPermission="sales">
                         <SalesOrderPage />

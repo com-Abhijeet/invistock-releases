@@ -3,12 +3,11 @@ import fs from "fs";
 import path from "path";
 import bcrypt from "bcrypt";
 
-let db; // Main DB (GST, Auth, Inventory)
-let nonGstDb; // Non-GST DB (Sales Only)
+let db; // Main DB
+let nonGstDb; // Non-GST DB
 
 /**
  * Helper to safely add a column if it doesn't exist.
- * This allows the schema to evolve without deleting the database.
  */
 function safeMigrate(database, tableName, columnName, columnDef) {
   try {
@@ -17,7 +16,6 @@ function safeMigrate(database, tableName, columnName, columnDef) {
       .run();
     console.log(`[DB] Migrated ${tableName}: Added column ${columnName}`);
   } catch (error) {
-    // Error usually means column exists, which is fine.
     if (!error.message.includes("duplicate column name")) {
       console.warn(
         `[DB] Migration warning for ${tableName}.${columnName}: ${error.message}`,
@@ -27,56 +25,266 @@ function safeMigrate(database, tableName, columnName, columnDef) {
 }
 
 /**
- * Initializes the database connection using a path provided by the main process.
- * This function must be called on startup before any database operations.
- * @param {string} dbPath - The absolute path to the MAIN database file.
+ * 1. PREPARE BACKUP (Safe Mode)
+ * Checks if migration is needed. Preserves existing backup if it contains data.
  */
+function ensureBackupExists(dbPath) {
+  const backupPath = path.join(path.dirname(dbPath), "main_backup_utc.db");
+
+  if (fs.existsSync(dbPath)) {
+    try {
+      // Check if current DB needs migration
+      const tempDb = new Database(dbPath);
+      const version = tempDb.pragma("user_version", { simple: true });
+      tempDb.close();
+
+      if (version < 2) {
+        console.log(
+          `[DB] Migration needed (Current v${version}). Preparing backup...`,
+        );
+
+        const currentStats = fs.statSync(dbPath);
+
+        if (fs.existsSync(backupPath)) {
+          const backupStats = fs.statSync(backupPath);
+          console.log(
+            `[DB] Backup file exists (${backupStats.size} bytes). Current DB is (${currentStats.size} bytes).`,
+          );
+
+          // CRITICAL: Only overwrite backup if current DB is significantly larger (has data)
+          // If backup is 0 bytes, we always overwrite it.
+          if (
+            backupStats.size === 0 ||
+            currentStats.size > backupStats.size + 8192
+          ) {
+            console.log("[DB] Overwriting old/empty backup with current DB.");
+            try {
+              fs.unlinkSync(backupPath);
+            } catch (e) {}
+            fs.renameSync(dbPath, backupPath);
+          } else {
+            console.log(
+              "[DB] Existing backup is larger/safer. Deleting current unmigrated DB to force restore.",
+            );
+            fs.unlinkSync(dbPath);
+          }
+        } else {
+          // No backup exists, create it
+          fs.renameSync(dbPath, backupPath);
+        }
+      }
+    } catch (e) {
+      console.error("[DB] Backup Check failed:", e);
+    }
+  }
+  return backupPath;
+}
+
+/**
+ * 2. RESTORE DATA
+ * Copies data from backup to active DB using ATTACH.
+ */
+function restoreDataFromBackup(activeDb, backupPath) {
+  if (!fs.existsSync(backupPath)) {
+    console.log("[DB] No backup file found to restore.");
+    return;
+  }
+
+  const stats = fs.statSync(backupPath);
+  console.log(`[DB] Found backup file: ${backupPath} (${stats.size} bytes)`);
+
+  if (stats.size === 0) {
+    console.error(
+      "[DB] ⚠️ CRITICAL: Backup file is empty (0 bytes). Cannot restore data.",
+    );
+    console.error(
+      "[DB] Please check if 'database_old.db' or a Google Drive backup is available.",
+    );
+    return;
+  }
+
+  // Check if we are already migrated
+  const version = activeDb.pragma("user_version", { simple: true });
+  if (version >= 2) {
+    console.log("[DB] Database already migrated (v2). Skipping restore.");
+    return;
+  }
+
+  console.log("[DB] Starting restoration...");
+
+  try {
+    // FIX: Use forward slashes for SQL path compatibility
+    const safeBackupPath = backupPath.replace(/\\/g, "/");
+
+    // Attach the old DB
+    activeDb.exec(`ATTACH DATABASE '${safeBackupPath}' AS old_db`);
+
+    const tables = [
+      "users",
+      "access_logs",
+      "license_info",
+      "shop",
+      "categories",
+      "subcategories",
+      "storage_locations",
+      "suppliers",
+      "customers",
+      "products",
+      "product_batches",
+      "product_serials",
+      "sales",
+      "sales_items",
+      "sales_orders",
+      "sales_order_items",
+      "purchases",
+      "purchase_items",
+      "transactions",
+      "expenses",
+      "stock_adjustments",
+      "employees",
+      "employee_sales",
+    ];
+
+    activeDb.transaction(() => {
+      // 1. CLEAR NEW DB TABLES (to prevent constraints issues during retry)
+      for (const table of tables) {
+        try {
+          activeDb.prepare(`DELETE FROM main.${table}`).run();
+        } catch (e) {}
+      }
+
+      // 2. COPY DATA
+      for (const table of tables) {
+        try {
+          // Check if table exists in backup
+          const check = activeDb
+            .prepare(
+              `SELECT name FROM old_db.sqlite_master WHERE type='table' AND name='${table}'`,
+            )
+            .get();
+          if (!check) continue;
+
+          // Get common columns
+          const columnsRaw = activeDb
+            .prepare(`PRAGMA table_info(${table})`)
+            .all();
+          if (columnsRaw.length === 0) continue;
+          const columns = columnsRaw.map((c) => c.name);
+
+          // Build SELECT with conversion
+          const selectCols = columns
+            .map((col) => {
+              if (
+                col === "created_at" ||
+                col === "updated_at" ||
+                col === "timestamp" ||
+                col === "checked_at"
+              ) {
+                return `datetime(${col}, 'localtime')`;
+              }
+              return col;
+            })
+            .join(", ");
+
+          const insertSql = `INSERT INTO main.${table} (${columns.join(", ")}) SELECT ${selectCols} FROM old_db.${table}`;
+          activeDb.exec(insertSql);
+          console.log(`[DB] Restored ${table}`);
+        } catch (err) {
+          if (!err.message.includes("no such table")) {
+            console.warn(`[DB] Restore error for ${table}: ${err.message}`);
+          }
+        }
+      }
+
+      activeDb.pragma("user_version = 2");
+    })();
+
+    activeDb.exec("DETACH DATABASE old_db");
+    console.log("[DB] Restore Process Complete.");
+  } catch (error) {
+    console.error("[DB] CRITICAL RESTORE ERROR:", error);
+    try {
+      activeDb.exec("DETACH DATABASE old_db");
+    } catch (e) {}
+  }
+}
+
 export function initializeDatabase(dbPath) {
-  if (db) {
-    return; // Prevent re-initialization
-  }
+  if (db) return;
 
-  // Ensure the directory for the database exists
   const dbDir = path.dirname(dbPath);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+  if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+
+  // 1. ENSURE BACKUP EXISTS
+  const backupPath = ensureBackupExists(dbPath);
+
+  // 2. CONNECT MAIN DB
+  console.log(`[DB] Connecting to MAIN database at: ${dbPath}`);
+  try {
+    db = new Database(dbPath);
+    // This pragma line is usually where it crashes if DB is corrupt
+    db.pragma("foreign_keys = ON");
+    db.pragma("journal_mode = WAL");
+  } catch (err) {
+    // Catch "malformed database schema" or "orphan index"
+    console.error(`[DB] 🚨 CONNECTION FAILED: ${err.message}`);
+
+    if (
+      err.message.includes("malformed") ||
+      err.message.includes("orphan index") ||
+      err.message.includes("corrupt")
+    ) {
+      console.log(
+        "[DB] Attempting Corruption Recovery: Renaming bad file and starting fresh...",
+      );
+
+      // Close if it opened partially
+      if (db && db.open)
+        try {
+          db.close();
+        } catch (e) {}
+
+      const timestamp = Date.now();
+      const corruptPath = `${dbPath}.corrupted_${timestamp}`;
+
+      try {
+        fs.renameSync(dbPath, corruptPath);
+        console.log(`[DB] Moved corrupted file to: ${corruptPath}`);
+      } catch (renameErr) {
+        console.error(
+          "[DB] Failed to rename corrupt file. App may crash again.",
+          renameErr,
+        );
+      }
+
+      // Try creating a new, fresh database instance
+      db = new Database(dbPath);
+      db.pragma("foreign_keys = ON");
+      db.pragma("journal_mode = WAL");
+      console.log("[DB] Fresh database created successfully.");
+      // The script will now proceed to create Schema and Restore from Backup (if available)
+    } else {
+      throw err; // Re-throw unknown errors
+    }
   }
 
-  // ---------------------------------------------------------
-  // 1. CONNECT TO MAIN DATABASE
-  // ---------------------------------------------------------
-  console.log(`[DB] Connecting to MAIN database at: ${dbPath}`);
-  db = new Database(dbPath);
-  db.pragma("foreign_keys = ON");
-  db.pragma("journal_mode = WAL");
-
-  // ---------------------------------------------------------
-  // 2. CONNECT TO NON-GST DATABASE (Decoupled)
-  // ---------------------------------------------------------
+  // 3. CONNECT NON-GST DB
   const nonGstPath = path.join(dbDir, "database_old.db");
   console.log(`[DB] Connecting to NON-GST database at: ${nonGstPath}`);
   nonGstDb = new Database(nonGstPath);
   nonGstDb.pragma("foreign_keys = ON");
   nonGstDb.pragma("journal_mode = WAL");
 
-  // ---------------------------------------------------------
-  // 3. EXECUTE MAIN SCHEMA
-  // ---------------------------------------------------------
+  // 4. MAIN SCHEMA (Updated Defaults)
   db.exec(`
-    /* =============================================================== */
-    /* CORE CONFIGURATION & SETTINGS
-    /* =============================================================== */
     CREATE TABLE IF NOT EXISTS license_info (
       id INTEGER PRIMARY KEY CHECK (id = 1), 
       license_key TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('valid', 'invalid', 'expired', 'grace_period')),
       expiry_date TEXT,
-      checked_at TEXT DEFAULT CURRENT_TIMESTAMP
+      checked_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
-    /* =============================================================== */
-    /* USER MANAGEMENT & RBAC
-    /* =============================================================== */
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -85,8 +293,9 @@ export function initializeDatabase(dbPath) {
       role TEXT CHECK(role IN ('admin', 'employee')) NOT NULL DEFAULT 'employee',
       permissions TEXT,
       is_active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT (datetime('now', 'localtime'))
     );
+
     CREATE TABLE IF NOT EXISTS access_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
@@ -95,7 +304,7 @@ export function initializeDatabase(dbPath) {
       details TEXT,
       machine_type TEXT,
       ip_address TEXT,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+      timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
@@ -169,9 +378,6 @@ export function initializeDatabase(dbPath) {
       last_reset_fy TEXT
     );
 
-    /* =============================================================== */
-    /* LOOKUP & MASTER TABLES
-    /* =============================================================== */
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
@@ -192,9 +398,6 @@ export function initializeDatabase(dbPath) {
       name TEXT UNIQUE NOT NULL
     );
 
-    /* =============================================================== */
-    /* CORE ENTITY TABLES
-    /* =============================================================== */
     CREATE TABLE IF NOT EXISTS suppliers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -211,8 +414,8 @@ export function initializeDatabase(dbPath) {
       ifsc_code TEXT,
       upi_id TEXT,
       notes TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS customers (
@@ -226,16 +429,13 @@ export function initializeDatabase(dbPath) {
       gst_no TEXT,
       credit_limit REAL DEFAULT 0 CHECK (credit_limit >= 0),
       additional_info TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
     CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
     CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
 
-    /* =============================================================== */
-    /* PRODUCTS & INVENTORY
-    /* =============================================================== */
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -254,11 +454,10 @@ export function initializeDatabase(dbPath) {
       brand TEXT,
       barcode TEXT,
       image_url TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
       is_active INTEGER DEFAULT 1,
       low_stock_threshold INTEGER DEFAULT 0,
-
       size TEXT,
       weight TEXT,
       tracking_type TEXT CHECK(tracking_type IN ('none', 'batch', 'serial')) DEFAULT 'none',
@@ -266,37 +465,22 @@ export function initializeDatabase(dbPath) {
       FOREIGN KEY (subcategory) REFERENCES subcategories(id) ON DELETE SET NULL
     );
 
-    /* UPDATED: PRODUCT BATCHES & SERIALS */
-    /* This table holds the Batch Group info */
-    
     CREATE TABLE IF NOT EXISTS product_batches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL,
-      purchase_id INTEGER, -- Link to origin Purchase (for Supplier tracking)
-      
-      -- Internal Tracking (batch_productID_incrementalID)
+      purchase_id INTEGER,
       batch_uid TEXT UNIQUE,    
-      
-      -- Vendor Identification
-      batch_number TEXT,        -- Manufacturer/Supplier batch no (e.g., 'B-2025-X')
-      
-      -- Dates
-      expiry_date TEXT,         -- YYYY-MM-DD
+      batch_number TEXT,
+      expiry_date TEXT,
       mfg_date TEXT,
-      
-      -- Economics (Batch Specific)
       mrp REAL DEFAULT 0,
       mop REAL DEFAULT 0,
       mfw_price TEXT,
-      
-      -- Stock
-      quantity REAL DEFAULT 0,  -- Remaining stock for this batch
+      quantity REAL DEFAULT 0,
       location TEXT,
-      
       is_active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      
+      created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+      updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
       FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE SET NULL
     );
@@ -305,19 +489,14 @@ export function initializeDatabase(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_batches_expiry ON product_batches(expiry_date);
     CREATE INDEX IF NOT EXISTS idx_batches_uid ON product_batches(batch_uid);
 
-    /* NEW: PRODUCT SERIALS */
-    /* This table holds individual serial numbers inside a batch */
     CREATE TABLE IF NOT EXISTS product_serials (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL,
-      batch_id INTEGER NOT NULL, -- Link to the batch group
-      
+      batch_id INTEGER NOT NULL,
       serial_number TEXT NOT NULL,
       status TEXT CHECK(status IN ('available', 'sold', 'returned', 'defective', 'in_repair', 'adjusted_out')) DEFAULT 'available',
-      
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      
+      created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+      updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
       FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE CASCADE
     );
@@ -325,10 +504,6 @@ export function initializeDatabase(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_serials_batch_id ON product_serials(batch_id);
     CREATE INDEX IF NOT EXISTS idx_serials_number ON product_serials(serial_number);
 
-
-    /* =============================================================== */
-    /* MAIN TRANSACTION TABLES (Sales & Purchases)
-    /* =============================================================== */
     CREATE TABLE IF NOT EXISTS sales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
@@ -342,9 +517,8 @@ export function initializeDatabase(dbPath) {
       is_reverse_charge INTEGER DEFAULT 0,
       is_ecommerce_sale INTEGER DEFAULT 0,
       is_quote INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-
+      created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+      updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (customer_id) REFERENCES customers(id)
     );
 
@@ -361,11 +535,8 @@ export function initializeDatabase(dbPath) {
       gst_rate REAL DEFAULT 0,
       discount REAL DEFAULT 0,
       price REAL NOT NULL,
-      
-      -- Batch & Serial Link
       batch_id INTEGER,
       serial_id INTEGER,
-      
       FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
       FOREIGN KEY (product_id) REFERENCES products(id),
       FOREIGN KEY (batch_id) REFERENCES product_batches(id),
@@ -381,9 +552,9 @@ export function initializeDatabase(dbPath) {
       status TEXT CHECK(status IN ('pending', 'completed', 'cancelled')) DEFAULT 'pending',
       total_amount REAL DEFAULT 0,
       note TEXT,
-      fulfilled_invoice_id INTEGER, -- Link to Sales Table
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      fulfilled_invoice_id INTEGER,
+      created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+      updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
       FOREIGN KEY (fulfilled_invoice_id) REFERENCES sales(id) ON DELETE SET NULL
     );
@@ -397,11 +568,8 @@ export function initializeDatabase(dbPath) {
       price REAL NOT NULL,
       gst_rate REAL DEFAULT 0,
       discount REAL DEFAULT 0,
-      
-      -- Tracking Intent (Optional in Order)
       batch_id INTEGER,
       serial_id INTEGER,
-
       FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
       FOREIGN KEY (product_id) REFERENCES products(id)
     );
@@ -418,7 +586,7 @@ export function initializeDatabase(dbPath) {
       paid_amount REAL NOT NULL,
       payment_mode TEXT DEFAULT 'Cash',
       is_reverse_charge INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
     );
 
@@ -431,27 +599,19 @@ export function initializeDatabase(dbPath) {
       gst_rate REAL NOT NULL,
       discount REAL DEFAULT 0,
       price REAL DEFAULT 0,
-      
-      -- Tracking Information at Purchase Time
-      batch_uid TEXT,           -- Internal UID created during purchase
-      batch_number TEXT,        -- Manufacturer batch no
-      serial_numbers TEXT,      -- Raw serials (CSV/JSON) for reference
+      batch_uid TEXT,           
+      batch_number TEXT,        
+      serial_numbers TEXT,      
       expiry_date TEXT,
       mfg_date TEXT,
-
-      --Selling Information at Purchase Time
       mrp REAL DEFAULT 0,
       mop REAL DEFAULT 0,
       mfw_price TEXT,
-      
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
       FOREIGN KEY (product_id) REFERENCES products(id)
     );
 
-    /* =============================================================== */
-    /* LOGGING & ACCOUNTING
-    /* =============================================================== */
     CREATE TABLE IF NOT EXISTS transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       reference_no TEXT NOT NULL UNIQUE,
@@ -467,8 +627,8 @@ export function initializeDatabase(dbPath) {
       note TEXT,
       gst_amount REAL DEFAULT 0,
       discount REAL DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS audit_logs (
@@ -486,7 +646,7 @@ export function initializeDatabase(dbPath) {
       amount REAL NOT NULL,
       payment_mode TEXT DEFAULT 'Cash', 
       description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT (datetime('now', 'localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS stock_adjustments (
@@ -500,8 +660,7 @@ export function initializeDatabase(dbPath) {
       adjusted_by TEXT DEFAULT 'Admin',
       batch_id INTEGER,
       serial_id INTEGER,
-      
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (product_id) REFERENCES products(id),
       FOREIGN KEY (batch_id) REFERENCES product_batches(id),
       FOREIGN KEY (serial_id) REFERENCES product_serials(id)
@@ -512,9 +671,9 @@ export function initializeDatabase(dbPath) {
       name TEXT NOT NULL,
       phone TEXT,
       role TEXT DEFAULT 'staff',
-      commission_rate REAL DEFAULT 0, -- Percentage (e.g., 5.0 for 5%)
+      commission_rate REAL DEFAULT 0,
       is_active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT (datetime('now', 'localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS employee_sales (
@@ -523,24 +682,19 @@ export function initializeDatabase(dbPath) {
       sale_id INTEGER NOT NULL,
       sale_amount REAL NOT NULL,
       commission_amount REAL NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY(employee_id) REFERENCES employees(id),
       FOREIGN KEY(sale_id) REFERENCES sales(id)
     );
   `);
 
-  // ---------------------------------------------------------
-  // 4. MIGRATION FOR MAIN DB (Applying changes to existing DBs)
-  // ---------------------------------------------------------
-  // Safe migrate products
+  // 5. SAFE MIGRATE MAIN DB (Ensure columns exist before restore)
   safeMigrate(
     db,
     "products",
     "tracking_type",
     "TEXT CHECK(tracking_type IN ('none', 'batch', 'serial')) DEFAULT 'none'",
   );
-
-  // Safe migrate product_batches (columns added if table existed without them)
   safeMigrate(db, "product_batches", "batch_uid", "TEXT UNIQUE");
   safeMigrate(
     db,
@@ -548,15 +702,11 @@ export function initializeDatabase(dbPath) {
     "purchase_id",
     "INTEGER REFERENCES purchases(id) ON DELETE SET NULL",
   );
-
-  // Safe migrate purchase_items
   safeMigrate(db, "purchase_items", "batch_uid", "TEXT");
   safeMigrate(db, "purchase_items", "batch_number", "TEXT");
   safeMigrate(db, "purchase_items", "serial_numbers", "TEXT");
   safeMigrate(db, "purchase_items", "expiry_date", "TEXT");
   safeMigrate(db, "purchase_items", "mfg_date", "TEXT");
-
-  // Safe migrate sales_items
   safeMigrate(
     db,
     "sales_items",
@@ -572,9 +722,7 @@ export function initializeDatabase(dbPath) {
   safeMigrate(db, "stock_adjustments", "batch_id", "INTEGER");
   safeMigrate(db, "stock_adjustments", "serial_id", "INTEGER");
 
-  // ---------------------------------------------------------
-  // 5. EXECUTE NON-GST SCHEMA (Separated)
-  // ---------------------------------------------------------
+  // 6. EXECUTE NON-GST SCHEMA (Standard Default)
   nonGstDb.exec(`
     CREATE TABLE IF NOT EXISTS sales_non_gst (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -589,7 +737,6 @@ export function initializeDatabase(dbPath) {
       discount REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
-
     CREATE TABLE IF NOT EXISTS sales_items_non_gst (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sale_id INTEGER NOT NULL,
@@ -599,62 +746,43 @@ export function initializeDatabase(dbPath) {
       quantity REAL NOT NULL,
       discount REAL DEFAULT 0,
       price REAL NOT NULL,
-      
-      -- Snapshot of batch/serial details for receipt
       batch_details TEXT,
-      
       FOREIGN KEY (sale_id) REFERENCES sales_non_gst(id) ON DELETE CASCADE
     );
   `);
-
-  // Migration for Non-GST DB
   safeMigrate(nonGstDb, "sales_items_non_gst", "batch_details", "TEXT");
 
-  // ---------------------------------------------------------
-  // 6. SEED DEFAULT DATA
-  // ---------------------------------------------------------
+  // 7. RESTORE DATA (Crucial Step: If main is empty, pull from backup)
+  restoreDataFromBackup(db, backupPath);
+
+  // 8. SEED ADMIN
   const adminCheck = db
     .prepare("SELECT count(*) as count FROM users WHERE role = 'admin'")
     .get();
   if (adminCheck.count === 0) {
-    console.log("[DB] Seeding default admin user...");
     const hash = bcrypt.hashSync("admin123", 10);
     db.prepare(
-      `
-      INSERT INTO users (name, username, password, role, permissions) 
-      VALUES ('Super Admin', 'admin', ?, 'admin', '["*"]')
-    `,
+      "INSERT INTO users (name, username, password, role, permissions) VALUES ('Super Admin', 'admin', ?, 'admin', '[\"*\"]')",
     ).run(hash);
   }
 }
 
-/**
- * Returns the initialized MAIN database instance.
- */
 function getDb() {
-  if (!db) {
+  if (!db)
     throw new Error(
       "Main Database not initialized. Call initializeDatabase() first.",
     );
-  }
   return db;
 }
 
-/**
- * Returns the initialized NON-GST database instance.
- */
 function getNonGstDbInternal() {
-  if (!nonGstDb) {
+  if (!nonGstDb)
     throw new Error(
       "Non-GST Database not initialized. Call initializeDatabase() first.",
     );
-  }
   return nonGstDb;
 }
 
-/**
- * Closes BOTH database connections.
- */
 export function closeDatabase() {
   if (db) {
     db.close();
@@ -668,36 +796,16 @@ export function closeDatabase() {
   }
 }
 
-// Default export is the Main DB proxy
 const dbProxy = new Proxy(
   {},
   {
     get(target, prop) {
       const realDb = getDb();
       const value = realDb[prop];
-      if (typeof value === "function") {
-        return value.bind(realDb);
-      }
-      return value;
+      return typeof value === "function" ? value.bind(realDb) : value;
     },
   },
 );
 
 export default dbProxy;
-
-// Named export for the Non-GST DB proxy
-nonGstDb = new Proxy(
-  {},
-  {
-    get(target, prop) {
-      const realDb = getNonGstDbInternal();
-      const value = realDb[prop];
-      if (typeof value === "function") {
-        return value.bind(realDb);
-      }
-      return value;
-    },
-  },
-);
-
 export { nonGstDb };

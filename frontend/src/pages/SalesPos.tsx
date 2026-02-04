@@ -13,8 +13,11 @@ import {
   IconButton,
   Typography,
   Chip,
-  Fab,
   Tooltip,
+  SpeedDial,
+  SpeedDialIcon,
+  SpeedDialAction,
+  Backdrop,
 } from "@mui/material";
 import {
   Save as SaveIcon,
@@ -23,6 +26,8 @@ import {
   Restore as RestoreIcon,
   History as HistoryIcon,
   Close as CloseIcon,
+  Drafts as DraftsIcon,
+  Keyboard as KeyboardIcon,
 } from "@mui/icons-material";
 import Grid from "@mui/material/GridLegacy";
 
@@ -38,7 +43,7 @@ import SalesPosHeaderSection from "../components/sales/SalesPosHeaderSection";
 import ProductOverviewModal from "../components/products/ProductOverviewModal";
 import theme from "../../theme";
 import toast from "react-hot-toast";
-import { api } from "../lib/api/api"; // Added for employee fetch
+import { api } from "../lib/api/api";
 
 // Define the default payload to avoid duplication
 const defaultSalePayload: SalePayload = {
@@ -53,7 +58,7 @@ const defaultSalePayload: SalePayload = {
   is_ecommerce_sale: false,
   is_quote: false,
   is_reverse_charge: false,
-  employee_id: null, // Default
+  employee_id: null,
 };
 
 // --- DRAFT TYPES ---
@@ -75,7 +80,7 @@ interface SavedDraft {
   salePayload: SalePayload;
 }
 
-// --- SHORTCUTS DATA (Sales Specific) ---
+// --- SHORTCUTS DATA ---
 const SALES_SHORTCUTS = [
   {
     category: "Header Actions",
@@ -143,8 +148,34 @@ export default function SalesPos() {
   const [draftsModalOpen, setDraftsModalOpen] = useState(false);
   const [drafts, setDrafts] = useState<SavedDraft[]>([]);
 
+  // SpeedDial State
+  const [dialOpen, setDialOpen] = useState(false);
+
   // --- SHORTCUT HELP MODAL STATE ---
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+
+  /**
+   * SAFETY GUARD: Warn user before leaving if they have unsaved items
+   */
+  useEffect(() => {
+    const isDirty = sale.items.length > 0;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty && mode === "new") {
+        const message =
+          "You have unsaved items in the cart. Do you want to save a draft before leaving?";
+        e.preventDefault();
+        e.returnValue = message; // Standard for most browsers
+        return message;
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [sale.items.length, mode]);
 
   /**
    * RESETS ALL FORM DATA
@@ -405,6 +436,25 @@ export default function SalesPos() {
     );
   };
 
+  // --- SPEED DIAL ACTIONS ---
+  const actions = [
+    {
+      icon: <KeyboardIcon />,
+      name: "Shortcuts",
+      onClick: () => setShortcutHelpOpen(true),
+    },
+    ...(mode === "new"
+      ? [
+          { icon: <SaveIcon />, name: "Save Draft", onClick: saveDraft },
+          {
+            icon: <FolderIcon />,
+            name: "View Drafts",
+            onClick: () => setDraftsModalOpen(true),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <Box
       sx={{
@@ -421,7 +471,7 @@ export default function SalesPos() {
         <SalesPosHeaderSection
           sale={sale}
           options={options}
-          employees={employees} // ✅ Passed employees to header
+          employees={employees}
           loading={false}
           handleFieldChange={handleFieldChange}
           mode={mode}
@@ -493,7 +543,6 @@ export default function SalesPos() {
           }}
           resetForm={resetForm}
           mode={mode}
-          // Remove employees prop from here as it's now in the header
         />
       </Box>
 
@@ -503,50 +552,43 @@ export default function SalesPos() {
         productId={selectedProductId || ""}
       />
 
-      {/* --- DRAFTING UI CONTROLS & SHORTCUT HELP --- */}
-      <Box
+      {/* --- FLOATING ACTION MENU (APPLE STYLE) --- */}
+      {/* Backdrop for better focus when menu is open */}
+      <Backdrop
+        open={dialOpen}
         sx={{
-          position: "absolute",
-          bottom: 100,
-          right: 24,
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
           zIndex: 20,
+          bgcolor: "rgba(255,255,255,0.3)",
+          backdropFilter: "blur(2px)",
+        }}
+      />
+
+      <SpeedDial
+        ariaLabel="Sales Actions"
+        sx={{ position: "absolute", bottom: 100, right: 24, zIndex: 30 }}
+        icon={<SpeedDialIcon icon={<DraftsIcon />} openIcon={<CloseIcon />} />}
+        onClose={() => setDialOpen(false)}
+        onOpen={() => setDialOpen(true)}
+        open={dialOpen}
+        direction="up"
+        FabProps={{
+          color: "secondary",
+          size: "medium",
+          sx: { boxShadow: theme.shadows[4] },
         }}
       >
-        <Tooltip title="Keyboard Shortcuts" placement="left">
-          <Fab
-            size="small"
-            onClick={() => setShortcutHelpOpen(true)}
-            sx={{ bgcolor: "#fff" }}
-          >
-            <Typography variant="h6" fontWeight="bold">
-              ?
-            </Typography>
-          </Fab>
-        </Tooltip>
-
-        {mode === "new" && (
-          <>
-            <Tooltip title="View Saved Drafts" placement="left">
-              <Fab
-                color="primary"
-                size="medium"
-                onClick={() => setDraftsModalOpen(true)}
-              >
-                <FolderIcon />
-              </Fab>
-            </Tooltip>
-
-            <Tooltip title="Save Current Draft" placement="left">
-              <Fab color="secondary" size="medium" onClick={saveDraft}>
-                <SaveIcon />
-              </Fab>
-            </Tooltip>
-          </>
-        )}
-      </Box>
+        {actions.map((action) => (
+          <SpeedDialAction
+            key={action.name}
+            icon={action.icon}
+            tooltipTitle={action.name}
+            onClick={() => {
+              action.onClick();
+              setDialOpen(false);
+            }}
+          />
+        ))}
+      </SpeedDial>
 
       {/* --- KEYBOARD SHORTCUTS MODAL --- */}
       <Dialog
