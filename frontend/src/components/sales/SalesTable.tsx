@@ -8,7 +8,8 @@ import {
   Truck,
   Undo2,
   MessageCircle,
-  Wallet, // ✅ Import Wallet icon
+  Wallet,
+  Pencil, // ✅ Import Wallet icon
 } from "lucide-react";
 import type {
   SalesFilter,
@@ -35,7 +36,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
   const [sales, setSales] = useState<SalesTableType[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [totalRecords, setTotalRecords] = useState(0);
   const navigate = useNavigate();
 
@@ -280,6 +281,11 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
       label: "View Sale",
       icon: <Eye size={18} />,
       onClick: (row: SalesTableType) => navigate(`/billing/view/${row.id}`),
+    },
+    {
+      label: "Edit Sale",
+      icon: <Pencil size={18} />,
+      onClick: (row: SalesTableType) => navigate(`/billing/edit/${row.id}`),
     },
     ...(onMarkPayment
       ? [

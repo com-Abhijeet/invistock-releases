@@ -17,12 +17,11 @@ import {
   CircularProgress,
   useTheme,
   Divider,
-  Tooltip,
 } from "@mui/material";
 import { useState, useEffect } from "react";
 import type { SalePayload } from "../../lib/types/salesTypes";
-import { createSale } from "../../lib/api/salesService";
-import { updateSalesOrder } from "../../lib/api/salesOrderService"; // Import update service
+import { createSale, updateSale } from "../../lib/api/salesService";
+import { updateSalesOrder } from "../../lib/api/salesOrderService";
 import { handlePrint } from "../../lib/handleInvoicePrint";
 import { createCustomer } from "../../lib/api/customerService";
 import type { CustomerType } from "../../lib/types/customerTypes";
@@ -36,9 +35,9 @@ interface Props {
   onSaleChange: (updated: SalePayload) => void;
   setSuccess: (value: boolean) => void;
   customer?: CustomerType;
-  mode: "new" | "view";
+  mode: "new" | "view" | "edit";
   resetForm: () => void;
-  salesOrderId?: number | null; // Optional prop to link order
+  salesOrderId?: number | null;
 }
 
 const SaleSummarySection = ({
@@ -55,51 +54,29 @@ const SaleSummarySection = ({
   const [warningOpen, setWarningOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Actions Checkbox State
   const [doPrint, setDoPrint] = useState(true);
   const [doWhatsApp, setDoWhatsApp] = useState(false);
 
-  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only active in "new" mode and when not submitting
-      if (mode !== "new" || isSubmitting) return;
-
-      // Ctrl + S: Save/Complete Sale
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.code === "KeyS" || e.key.toLowerCase() === "s")
-      ) {
+      if ((mode !== "new" && mode !== "edit") || isSubmitting) return;
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyS") {
         e.preventDefault();
         handleSubmit();
       }
-
-      // Ctrl + U: Full Payment
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.code === "KeyU" || e.key.toLowerCase() === "u")
-      ) {
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyU") {
         e.preventDefault();
         handlePaidInFull();
       }
-
-      // Escape: Cancel
       if (e.key === "Escape") {
         e.preventDefault();
-        if (
-          sale.items.length > 0 &&
-          confirm("Are you sure you want to cancel and clear?")
-        ) {
-          handleCancel();
-        }
+        if (sale.items.length > 0 && confirm("Are you sure?")) handleCancel();
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mode, isSubmitting, sale]);
 
-  // Helper to access the reconciled data safely from the repo update
   const paymentSummary = (sale as any).payment_summary || {
     total_paid: sale.paid_amount || 0,
     balance: sale.total_amount - (sale.paid_amount || 0),
@@ -125,9 +102,7 @@ const SaleSummarySection = ({
 
   const handleRoundOff = () => {
     const roundedTotal = Math.floor(sale.total_amount);
-    // If we round off the total, we might also want to update paid_amount if it was full
     const wasPaidInFull = sale.paid_amount === sale.total_amount;
-
     onSaleChange({
       ...sale,
       total_amount: roundedTotal,
@@ -138,7 +113,7 @@ const SaleSummarySection = ({
 
   const handleCancel = () => {
     resetForm();
-    toast("Sale canceled.");
+    toast("Operation canceled.");
   };
 
   const handleSubmit = async () => {
@@ -173,79 +148,34 @@ const SaleSummarySection = ({
         items: saleDataWithCustomer.items.filter((item) => item.product_id > 0),
       };
 
-      const response = await createSale(payload);
-      const savedSale = response.data;
-
-      if (response?.status === "success") {
-        // --- If this sale fulfills an Order, update the Order now ---
-        if (salesOrderId) {
-          try {
-            await updateSalesOrder(salesOrderId, {
-              status: "completed",
-              fulfilled_invoice_id: savedSale.id,
-              total_amount: sale.total_amount,
-              items: [], // Assuming partial update works
-              customer_id: sale.customer_id || null,
-            });
-            toast.success("Sales Order marked as Completed");
-          } catch (orderErr) {
-            console.error("Failed to update sales order status", orderErr);
-            toast.error("Sale saved, but failed to update Order status.");
-          }
-        }
-        // ------------------------------------------------------------
-
-        setSuccess(true);
-        toast.success("Sale Saved!");
-
-        if (doPrint) handlePrint(savedSale);
-
-        if (doWhatsApp) {
-          const phoneToSend = customer?.phone;
-          if (phoneToSend) {
-            const nl = "\n";
-            const shopName = shop?.shop_name || "Our Shop";
-            const itemsList = savedSale.items
-              .map(
-                (item: any, index: number) =>
-                  `${index + 1}. ${item.product_name} x ${item.quantity} = ₹${(
-                    item.quantity * item.rate
-                  ).toLocaleString("en-IN")}`,
-              )
-              .join(nl);
-
-            const message = `*Invoice from ${shopName}*${nl}${nl}Hello ${
-              customer?.name || "Customer"
-            },${nl}Bill No: ${
-              savedSale.reference_no
-            }${nl}${nl}*Items Ordered:*${nl}${itemsList}${nl}------------------------------${nl}*Total: ₹${savedSale.total_amount.toLocaleString(
-              "en-IN",
-            )}*${nl}------------------------------${nl}Thank you!`;
-
-            toast.loading("Sending WhatsApp...");
-            window.electron
-              .sendWhatsAppMessage(phoneToSend, message)
-              .then((res: { success: any; error: string }) => {
-                if (res.success) {
-                  window.electron.sendWhatsAppInvoicePdf({
-                    sale: savedSale,
-                    shop: shop,
-                    customerPhone: phoneToSend,
-                  });
-                  toast.dismiss();
-                  toast.success("WhatsApp Sent!");
-                } else {
-                  toast.error("WhatsApp Failed: " + res.error);
-                }
-              });
-          } else {
-            toast.error("No phone number for WhatsApp.");
-          }
-        }
-        resetForm();
+      let savedSale;
+      if (mode === "edit" && sale.id) {
+        const response = await updateSale(Number(sale.id), payload);
+        savedSale = response.data;
       } else {
-        toast.error(response?.error || "Failed to save.");
+        const response = await createSale(payload);
+        savedSale = response.data;
+        if (salesOrderId) {
+          await updateSalesOrder(salesOrderId, {
+            status: "completed",
+            fulfilled_invoice_id: savedSale.id,
+            total_amount: sale.total_amount,
+            items: [],
+            customer_id: sale.customer_id || null,
+          });
+        }
       }
+
+      setSuccess(true);
+      toast.success(mode === "edit" ? "Sale Updated!" : "Sale Saved!");
+      if (doPrint) handlePrint(savedSale);
+
+      if (doWhatsApp && customer?.phone) {
+        const nl = "\n";
+        const message = `*Invoice from ${shop?.shop_name || "Our Shop"}*${nl}${nl}Bill No: ${savedSale.reference_no}${nl}Total: ₹${savedSale.total_amount}${nl}Thank you!`;
+        window.electron.sendWhatsAppMessage(customer.phone, message);
+      }
+      resetForm();
     } catch (err: any) {
       toast.error(err.message || "Error during submission.");
     } finally {
@@ -253,9 +183,10 @@ const SaleSummarySection = ({
     }
   };
 
+  const isViewMode = mode === "view";
+
   return (
     <Box sx={{ bgcolor: theme.palette.background.default }}>
-      {/* 1. Notes Section (Clean Input) */}
       <Box px={3} py={1}>
         <TextField
           fullWidth
@@ -265,8 +196,9 @@ const SaleSummarySection = ({
           maxRows={3}
           value={sale.note}
           onChange={(e) => handleFieldChange("note", e.target.value)}
-          placeholder="Add notes, warranty info, or delivery details..."
+          placeholder="Add notes..."
           variant="standard"
+          disabled={isViewMode}
           InputProps={{
             disableUnderline: true,
             sx: { fontSize: "0.9rem", color: "text.secondary" },
@@ -275,7 +207,6 @@ const SaleSummarySection = ({
         <Divider sx={{ mt: 1 }} />
       </Box>
 
-      {/* 2. Unified Footer (Total + Actions) */}
       <Box sx={{ px: 3, py: 2 }}>
         <Stack
           direction={{ xs: "column", lg: "row" }}
@@ -283,48 +214,22 @@ const SaleSummarySection = ({
           alignItems="flex-end"
           spacing={4}
         >
-          {/* Left: Total + Word Amount */}
           <Stack spacing={0.5} flex={1}>
             <Stack direction="row" alignItems="baseline" spacing={2}>
-              <Typography
-                variant="h4"
-                fontWeight={800}
-                color="text.primary"
-                lineHeight={1}
-              >
+              <Typography variant="h4" fontWeight={800} color="text.primary">
                 {sale.total_amount.toLocaleString("en-IN", {
                   style: "currency",
                   currency: "INR",
-                  maximumFractionDigits: 2,
                 })}
               </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{
-                  textTransform: "uppercase",
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  letterSpacing: 0.5,
-                }}
-              >
+              <Typography variant="body2" color="text.secondary">
                 Net Payable
               </Typography>
-
-              {/* Round Off Button */}
-              {mode !== "view" && sale.total_amount % 1 !== 0 && (
+              {!isViewMode && sale.total_amount % 1 !== 0 && (
                 <Button
                   size="small"
                   variant="outlined"
                   onClick={handleRoundOff}
-                  sx={{
-                    ml: 2,
-                    borderRadius: 4,
-                    fontSize: "0.65rem",
-                    py: 0,
-                    height: 20,
-                    textTransform: "none",
-                  }}
                 >
                   Round Off
                 </Button>
@@ -338,9 +243,7 @@ const SaleSummarySection = ({
               {numberToWords(sale.total_amount)}
             </Typography>
 
-            {/* Payment Details */}
-            {mode !== "view" ? (
-              // EDIT/NEW MODE: Input fields
+            {!isViewMode ? (
               <Stack direction="row" spacing={2} alignItems="center" mt={2}>
                 <TextField
                   label="Paid"
@@ -358,20 +261,16 @@ const SaleSummarySection = ({
                     startAdornment: (
                       <InputAdornment position="start">₹</InputAdornment>
                     ),
-                    disableUnderline: false,
                   }}
                   sx={{ width: 100 }}
                 />
-                <Tooltip title="Shortcut: Ctrl + U">
-                  <Button
-                    size="small"
-                    sx={{ textTransform: "none", minWidth: "auto" }}
-                    onClick={handlePaidInFull}
-                    disabled={sale.paid_amount >= sale.total_amount}
-                  >
-                    F<span style={{ textDecoration: "underline" }}>u</span>ll
-                  </Button>
-                </Tooltip>
+                <Button
+                  size="small"
+                  onClick={handlePaidInFull}
+                  disabled={sale.paid_amount >= sale.total_amount}
+                >
+                  Full
+                </Button>
                 <TextField
                   select
                   label="Mode"
@@ -402,7 +301,6 @@ const SaleSummarySection = ({
                 </TextField>
               </Stack>
             ) : (
-              // VIEW MODE: Read-Only Reconciled Status
               <Stack
                 direction="row"
                 spacing={3}
@@ -412,44 +310,27 @@ const SaleSummarySection = ({
                   p: 1.5,
                   bgcolor: "action.hover",
                   borderRadius: 2,
-                  width: "fit-content",
                   border: "1px solid",
                   borderColor: "divider",
                 }}
               >
                 <Box>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                  >
-                    Status
-                  </Typography>
+                  <Typography variant="caption">Status</Typography>
                   <Typography
                     variant="subtitle2"
                     fontWeight={700}
-                    sx={{
-                      textTransform: "uppercase",
-                      color:
-                        paymentSummary.status === "paid"
-                          ? "success.main"
-                          : paymentSummary.status === "partial"
-                            ? "warning.main"
-                            : "error.main",
-                    }}
+                    color={
+                      paymentSummary.status === "paid"
+                        ? "success.main"
+                        : "error.main"
+                    }
                   >
                     {paymentSummary.status}
                   </Typography>
                 </Box>
                 <Divider orientation="vertical" flexItem />
                 <Box>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                  >
-                    Paid
-                  </Typography>
+                  <Typography variant="caption">Paid</Typography>
                   <Typography variant="body2" fontWeight={600}>
                     {paymentSummary.total_paid?.toLocaleString("en-IN", {
                       style: "currency",
@@ -458,18 +339,8 @@ const SaleSummarySection = ({
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                  >
-                    Balance
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    color="text.secondary"
-                  >
+                  <Typography variant="caption">Balance</Typography>
+                  <Typography variant="body2" fontWeight={600}>
                     {paymentSummary.balance?.toLocaleString("en-IN", {
                       style: "currency",
                       currency: "INR",
@@ -480,10 +351,8 @@ const SaleSummarySection = ({
             )}
           </Stack>
 
-          {/* Right: Actions Block */}
-          {mode !== "view" && (
+          {!isViewMode && (
             <Stack spacing={2} alignItems="flex-end">
-              {/* Toggles Row */}
               <Stack direction="row" spacing={2} alignItems="center">
                 <FormControlLabel
                   control={
@@ -511,11 +380,7 @@ const SaleSummarySection = ({
                   }
                   label={<Typography variant="caption">E-Commerce</Typography>}
                 />
-                <Divider
-                  orientation="vertical"
-                  flexItem
-                  sx={{ height: 20, alignSelf: "center" }}
-                />
+                <Divider orientation="vertical" flexItem sx={{ height: 20 }} />
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -525,7 +390,7 @@ const SaleSummarySection = ({
                     />
                   }
                   label={
-                    <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Stack direction="row" spacing={0.5}>
                       <Printer size={14} />
                       <Typography variant="caption">Print</Typography>
                     </Stack>
@@ -540,7 +405,7 @@ const SaleSummarySection = ({
                     />
                   }
                   label={
-                    <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Stack direction="row" spacing={0.5}>
                       <MessageCircle size={14} />
                       <Typography variant="caption">WhatsApp</Typography>
                     </Stack>
@@ -548,61 +413,43 @@ const SaleSummarySection = ({
                 />
               </Stack>
 
-              {/* Buttons Row */}
               <Stack direction="row" spacing={2}>
-                <Tooltip title="Shortcut: Esc">
-                  <Button
-                    variant="text"
-                    color="error"
-                    onClick={handleCancel}
-                    disabled={isSubmitting}
-                  >
-                    <span style={{ textDecoration: "underline" }}>C</span>ancel
-                  </Button>
-                </Tooltip>
-
-                <Tooltip title="Shortcut: Ctrl + S">
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    size="large"
-                    onClick={() => handleSubmit()}
-                    disabled={isSubmitting}
-                    startIcon={
-                      isSubmitting && (
-                        <CircularProgress size={20} color="inherit" />
-                      )
-                    }
-                    sx={{
-                      px: 5,
-                      borderRadius: 2,
-                      fontWeight: 700,
-                      fontSize: "1rem",
-                      boxShadow: theme.shadows[4],
-                    }}
-                  >
-                    {isSubmitting ? (
-                      "Saving..."
-                    ) : (
-                      <>
-                        <span style={{ textDecoration: "underline" }}> S</span>
-                        AVE SALE
-                      </>
-                    )}
-                  </Button>
-                </Tooltip>
+                <Button
+                  variant="text"
+                  color="error"
+                  onClick={handleCancel}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  startIcon={
+                    isSubmitting && (
+                      <CircularProgress size={20} color="inherit" />
+                    )
+                  }
+                >
+                  {isSubmitting
+                    ? "Processing..."
+                    : mode === "edit"
+                      ? "UPDATE SALE"
+                      : "SAVE SALE"}
+                </Button>
               </Stack>
             </Stack>
           )}
         </Stack>
       </Box>
 
-      {/* Warning Dialog */}
       <Dialog open={warningOpen} onClose={() => setWarningOpen(false)}>
         <DialogTitle>Partial Payment Warning</DialogTitle>
         <DialogContent>
-          Paid amount is less than total. Status will be marked{" "}
-          <b>Partial Payment</b>.
+          Paid amount is less than total. Mark as <b>Partial Payment</b>?
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setWarningOpen(false)}>OK</Button>

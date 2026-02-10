@@ -48,7 +48,7 @@ export function createCustomer(customerData) {
       pincode,
       gst_no,
       credit_limit,
-      additional_info
+      additional_info,
     );
 
     return { id: result.lastInsertRowid, ...customerData };
@@ -102,7 +102,7 @@ export function getAllCustomers({ page = 1, limit = 10, query = "", all }) {
     `;
     const totalRecordsStmt = db.prepare(totalRecordsQuery);
     const totalRecords = totalRecordsStmt.get(
-      ...params.slice(0, query ? 2 : 0)
+      ...params.slice(0, query ? 2 : 0),
     ).count;
 
     return { records, totalRecords };
@@ -127,7 +127,7 @@ export function updateCustomer(id, updates) {
 
   // ✅ FIX: Replaced invalid db.run() with db.prepare().run()
   const stmt = db.prepare(
-    `UPDATE customers SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    `UPDATE customers SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
   );
 
   stmt.run(...values, id);
@@ -163,7 +163,7 @@ export function bulkInsertCustomers(customers) {
     db
       .prepare("SELECT phone FROM customers WHERE phone IS NOT NULL")
       .all()
-      .map((c) => c.phone)
+      .map((c) => c.phone),
   );
 
   const errors = [];
@@ -175,21 +175,21 @@ export function bulkInsertCustomers(customers) {
       errors.push(
         `Row ${index + 2}: Phone number '${
           customer.phone
-        }' already exists in the database.`
+        }' already exists in the database.`,
       );
     }
   });
 
   if (errors.length > 0) {
     throw new Error(
-      `Import failed. Please fix these errors:\n- ${errors.join("\n- ")}`
+      `Import failed. Please fix these errors:\n- ${errors.join("\n- ")}`,
     );
   }
 
   // --- Transactional Insert ---
   const stmt = db.prepare(
     `INSERT INTO customers (name, phone, address, city, state, pincode, gst_no, credit_limit, additional_info)
-     VALUES (@name, @phone, @address, @city, @state, @pincode, @gst_no, @credit_limit, @additional_info)`
+     VALUES (@name, @phone, @address, @city, @state, @pincode, @gst_no, @credit_limit, @additional_info)`,
   );
 
   const insertMany = db.transaction((items) => {
@@ -222,12 +222,12 @@ export function bulkInsertCustomers(customers) {
 /**
  * Fetches a complete financial ledger for a customer, grouped by sale.
  * This now ONLY fetches GST sales (Main App).
+ * Accounts for Payments In and Refunds (Payment Out) as negative amounts.
  * @param {number} customerId The customer's ID.
  * @param {object} filters Date filters (startDate, endDate).
  * @returns {object} An object containing the customer details and their sale/transaction history.
  */
 export function getCustomerLedger(customerId, filters) {
-  console.log("filters in getcustomerledger", filters);
   // 1. Get the customer's details
   const customer = db
     .prepare("SELECT * FROM customers WHERE id = ?")
@@ -242,7 +242,6 @@ export function getCustomerLedger(customerId, filters) {
   });
 
   // 3. Fetch all main GST sales (that aren't quotes)
-  // REMOVED Non-GST Sales fetch
   const allSales = db
     .prepare(
       `
@@ -257,15 +256,19 @@ export function getCustomerLedger(customerId, filters) {
     FROM sales s
     WHERE customer_id = ? AND is_quote = 0 AND ${gstWhere}
     ORDER BY created_at DESC
-  `
+  `,
     )
     .all(customerId, ...gstParams);
 
-  // 4. Update the payments query
+  // 4. Update the transactions query to handle payment_in and payment_out (as negative)
   const getPaymentsStmt = db.prepare(`
-    SELECT transaction_date, amount, payment_mode
+    SELECT 
+      transaction_date, 
+      (CASE WHEN type = 'payment_out' THEN amount ELSE amount END) AS amount, 
+      payment_mode,
+      type
     FROM transactions
-    WHERE bill_id = ? AND bill_type = ? AND type = 'payment_in'
+    WHERE bill_id = ? AND bill_type = ? AND (type = 'payment_in' OR type = 'payment_out')
     ORDER BY transaction_date ASC
   `);
 
@@ -310,7 +313,7 @@ export function getOverdueCustomerSummary() {
     -- Only include customers whose oldest bill is over 7 days
     HAVING oldest_bill_age > 7
     ORDER BY oldest_bill_age DESC
-  `
+  `,
     )
     .all();
 

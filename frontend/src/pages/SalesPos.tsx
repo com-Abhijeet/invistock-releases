@@ -45,7 +45,6 @@ import theme from "../../theme";
 import toast from "react-hot-toast";
 import { api } from "../lib/api/api";
 
-// Define the default payload to avoid duplication
 const defaultSalePayload: SalePayload = {
   reference_no: "",
   payment_mode: "cash",
@@ -61,7 +60,6 @@ const defaultSalePayload: SalePayload = {
   employee_id: null,
 };
 
-// --- DRAFT TYPES ---
 interface CustomerDetails {
   id: number;
   name: string;
@@ -80,7 +78,6 @@ interface SavedDraft {
   salePayload: SalePayload;
 }
 
-// --- SHORTCUTS DATA ---
 const SALES_SHORTCUTS = [
   {
     category: "Header Actions",
@@ -112,24 +109,17 @@ export default function SalesPos() {
   const { action, id } = useParams<{ action?: string; id?: string }>();
   const navigate = useNavigate();
 
-  // State for the main sale payload
   const [sale, setSale] = useState<SalePayload>(defaultSalePayload);
-
-  // State for UI mode and data loading
-  const [mode, setMode] = useState<"new" | "view">("new");
-  const [_loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"new" | "view" | "edit">("new");
+  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [salesOrderId, setSalesOrderId] = useState<number | null>(null);
 
-  // Track if this sale is fulfilling a sales order
-  const [_salesOrderId, setSalesOrderId] = useState<number | null>(null);
-
-  // state for product overview modal
   const [overviewModalOpen, setOverviewModalOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null,
   );
 
-  // State for customer search and selection
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<CustomerType[]>([]);
   const [customerId, setCustomerId] = useState(0);
@@ -141,45 +131,27 @@ export default function SalesPos() {
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
 
-  // --- EMPLOYEE STATE ---
   const [employees, setEmployees] = useState<any[]>([]);
-
-  // --- DRAFT STATE ---
   const [draftsModalOpen, setDraftsModalOpen] = useState(false);
   const [drafts, setDrafts] = useState<SavedDraft[]>([]);
-
-  // SpeedDial State
   const [dialOpen, setDialOpen] = useState(false);
-
-  // --- SHORTCUT HELP MODAL STATE ---
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
 
-  /**
-   * SAFETY GUARD: Warn user before leaving if they have unsaved items
-   */
   useEffect(() => {
     const isDirty = sale.items.length > 0;
-
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isDirty && mode === "new") {
         const message =
-          "You have unsaved items in the cart. Do you want to save a draft before leaving?";
+          "You have unsaved items in the cart. Save a draft before leaving?";
         e.preventDefault();
-        e.returnValue = message; // Standard for most browsers
+        e.returnValue = message;
         return message;
       }
     };
-
     window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [sale.items.length, mode]);
 
-  /**
-   * RESETS ALL FORM DATA
-   */
   const resetForm = () => {
     setSale(defaultSalePayload);
     setQuery("");
@@ -193,68 +165,60 @@ export default function SalesPos() {
     setState("");
     setPincode("");
     setMode("new");
-    setSalesOrderId(null); // Reset order linking
+    setSalesOrderId(null);
     if (id) navigate("/billing");
   };
 
   useEffect(() => {
-    // 1. Fetch Employees
     const fetchEmployees = async () => {
       try {
         const res = await api.get("/api/employees?activeOnly=true");
-        if (res.data.success) {
-          setEmployees(res.data.data);
-        }
+        if (res.data.success) setEmployees(res.data.data);
       } catch (e) {
-        console.error("Failed to fetch employees", e);
+        console.error(e);
       }
     };
     fetchEmployees();
 
     const init = async () => {
-      // HANDLE VIEW MODE
-      if (id && action === "view") {
-        setMode("view");
+      if (id && (action === "view" || action === "edit")) {
+        setMode(action === "view" ? "view" : "edit");
         setLoading(true);
         try {
           const res = await getSaleById(Number(id));
           if (res && res.data) {
-            setSale(res.data);
-            setCustomerId(res.data.customer_id || 0);
-            setCustomerName(res.data.customer_name || "");
-            setCustomerPhone(res.data.customer_phone || "");
-            setCustomerGstNo(res.data.customer_gstin || "");
+            const data = res.data;
+            setSale(data);
+            setCustomerId(data.customer_id || 0);
+            setCustomerName(data.customer_name || "");
+            setCustomerPhone(data.customer_phone || "");
+            setCustomerGstNo(data.customer_gst_no || "");
+            setAddress(data.customer_address || "");
+            setCity(data.customer_city || "");
+            setState(data.customer_state || "");
+            setPincode(data.customer_pincode || "");
           } else {
             toast.error("Sale not found");
             navigate("/billing");
           }
         } catch (error) {
-          console.error("Failed to load sale", error);
           toast.error("Failed to load sale details");
         } finally {
           setLoading(false);
         }
-      }
-      // HANDLE CONVERT MODE (From Sales Order)
-      else if (id && action === "convert") {
+      } else if (id && action === "convert") {
         setMode("new");
         setLoading(true);
         try {
           const res = await getSalesOrderById(Number(id));
           if (res && res.data) {
             const order = res.data;
-
-            // Map Customer
             setCustomerId(order.customer_id || 0);
             setCustomerName(order.customer_name || "");
             setCustomerPhone(order.customer_phone || "");
             setCustomerGstNo(order.customer_gstin || "");
             setAddress(order.customer_address || "");
-
-            // Track Origin Order ID
             setSalesOrderId(Number(id));
-
-            // Map Items (Ensure types match SaleItemPayload)
             const mappedItems = (order.items || []).map(
               (item: any, idx: number) => ({
                 ...item,
@@ -262,7 +226,6 @@ export default function SalesPos() {
                 id: undefined,
               }),
             );
-
             setSale({
               ...defaultSalePayload,
               customer_id: order.customer_id || 0,
@@ -272,30 +235,22 @@ export default function SalesPos() {
                 order.note ||
                 `Converted from Sales Order #${order.reference_no}`,
             });
-
             toast.success(`Loaded details from Order #${order.reference_no}`);
           } else {
             toast.error("Sales Order not found");
             navigate("/billing");
           }
         } catch (error) {
-          console.error("Failed to load sales order", error);
           toast.error("Failed to load sales order");
         } finally {
           setLoading(false);
         }
-      }
-      // HANDLE NEW MODE
-      else {
+      } else {
         setMode("new");
-        if (sale.id) {
-          resetForm();
-        }
+        if (sale.id) resetForm();
       }
     };
     init();
-
-    // Load drafts from local storage on mount
     loadDraftsFromStorage();
   }, [id, action]);
 
@@ -354,10 +309,7 @@ export default function SalesPos() {
   }, [success]);
 
   const handleFieldChange = (field: keyof SalePayload, value: any) => {
-    setSale((prevSale) => ({
-      ...prevSale,
-      [field]: value,
-    }));
+    setSale((prevSale) => ({ ...prevSale, [field]: value }));
   };
 
   const handleOpenOverview = (productId: string) => {
@@ -365,27 +317,20 @@ export default function SalesPos() {
     setOverviewModalOpen(true);
   };
 
-  // --- DRAFT LOGIC ---
-
   const loadDraftsFromStorage = () => {
     try {
       const stored = localStorage.getItem("sales_pos_drafts");
-      if (stored) {
-        setDrafts(JSON.parse(stored));
-      }
+      if (stored) setDrafts(JSON.parse(stored));
     } catch (e) {
-      console.error("Failed to load drafts", e);
+      console.error(e);
     }
   };
 
   const saveDraft = () => {
     if (!sale.items.length && !customerName) {
-      toast.error(
-        "Cannot save an empty draft. Add items or select a customer.",
-      );
+      toast.error("Cannot save an empty draft.");
       return;
     }
-
     const newDraft: SavedDraft = {
       id: Date.now().toString(),
       timestamp: Date.now(),
@@ -401,11 +346,10 @@ export default function SalesPos() {
       },
       salePayload: sale,
     };
-
     const updatedDrafts = [newDraft, ...drafts];
     setDrafts(updatedDrafts);
     localStorage.setItem("sales_pos_drafts", JSON.stringify(updatedDrafts));
-    toast.success("Draft saved to local memory");
+    toast.success("Draft saved");
   };
 
   const deleteDraft = (draftId: string) => {
@@ -416,7 +360,6 @@ export default function SalesPos() {
   };
 
   const loadDraft = (draft: SavedDraft) => {
-    // Restore Customer Details
     setCustomerId(draft.customerDetails.id);
     setCustomerName(draft.customerDetails.name);
     setCustomerPhone(draft.customerDetails.phone);
@@ -425,18 +368,13 @@ export default function SalesPos() {
     setCity(draft.customerDetails.city);
     setState(draft.customerDetails.state);
     setPincode(draft.customerDetails.pincode);
-
-    // Restore Sale Payload
     setSale(draft.salePayload);
-
-    // UI Feedback
     setDraftsModalOpen(false);
     toast.success(
-      `Draft for ${draft.customerDetails.name || "Unknown Customer"} loaded`,
+      `Draft for ${draft.customerDetails.name || "Unknown"} loaded`,
     );
   };
 
-  // --- SPEED DIAL ACTIONS ---
   const actions = [
     {
       icon: <KeyboardIcon />,
@@ -466,15 +404,14 @@ export default function SalesPos() {
         position: "relative",
       }}
     >
-      {/* --- HEADER (Fixed) --- */}
       <Box sx={{ p: 2, pb: 1, flexShrink: 0, zIndex: 10 }}>
         <SalesPosHeaderSection
           sale={sale}
           options={options}
           employees={employees}
-          loading={false}
+          loading={loading}
           handleFieldChange={handleFieldChange}
-          mode={mode}
+          mode={mode === "edit" ? "new" : mode} // Show as interactive if edit
           customerId={customerId}
           customerName={customerName}
           selectedPhone={customerPhone}
@@ -495,31 +432,14 @@ export default function SalesPos() {
           setPincode={setPincode}
         />
       </Box>
-
-      {/* --- ITEMS (Scrollable) --- */}
-      <Box
-        sx={{
-          flexGrow: 1,
-          overflowY: "auto",
-          px: 2,
-          pb: 2,
-          "&::-webkit-scrollbar": { width: "6px" },
-          "&::-webkit-scrollbar-track": { background: "transparent" },
-          "&::-webkit-scrollbar-thumb": {
-            backgroundColor: "#ddd",
-            borderRadius: "4px",
-          },
-        }}
-      >
+      <Box sx={{ flexGrow: 1, overflowY: "auto", px: 2, pb: 2 }}>
         <SaleItemSection
           items={sale.items}
           onItemsChange={handleItemsChange}
-          mode={mode}
+          mode={mode === "edit" ? "new" : mode}
           onOpenOverview={handleOpenOverview}
         />
       </Box>
-
-      {/* --- SUMMARY (Fixed Bottom) --- */}
       <Box
         sx={{
           flexShrink: 0,
@@ -535,24 +455,22 @@ export default function SalesPos() {
           customer={{
             name: customerName,
             phone: customerPhone,
-            address: address,
-            city: city,
-            state: state,
-            pincode: pincode,
+            address,
+            city,
+            state,
+            pincode,
             gst_no: customerGstNo,
           }}
           resetForm={resetForm}
           mode={mode}
+          salesOrderId={salesOrderId}
         />
       </Box>
-
       <ProductOverviewModal
         open={overviewModalOpen}
         onClose={() => setOverviewModalOpen(false)}
         productId={selectedProductId || ""}
       />
-
-      {/* --- FLOATING ACTION MENU (APPLE STYLE) --- */}
       {/* Backdrop for better focus when menu is open */}
       <Backdrop
         open={dialOpen}

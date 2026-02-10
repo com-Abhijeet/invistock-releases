@@ -49,7 +49,7 @@ export default function CustomerAccountsPage() {
 
   // Pagination & Filter State
   const [page, setPage] = useState(0); // DataTable uses 0-based index
-  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [searchQuery, setSearchQuery] = useState("");
 
   const fetchData = useCallback(async () => {
@@ -65,7 +65,7 @@ export default function CustomerAccountsPage() {
       });
 
       const response = await api.get(
-        `/api/customers/financials?${queryParams}`
+        `/api/customers/financials?${queryParams}`,
       );
       if (response.data.status === "success") {
         setCustomers(response.data.data);
@@ -92,18 +92,18 @@ export default function CustomerAccountsPage() {
     const message = `Hello ${
       customer.name
     },\n\nHere is your financial overview from our shop:\n\nTotal Sales: ₹${customer.total_purchased.toLocaleString(
-      "en-IN"
+      "en-IN",
     )}\nTotal Paid: ₹${customer.total_amount_paid.toLocaleString(
-      "en-IN"
+      "en-IN",
     )}\n\n*Outstanding Balance: ₹${customer.total_overdue.toLocaleString(
-      "en-IN"
+      "en-IN",
     )}*\n\nPlease clear your dues at the earliest. Thank you!`;
 
     try {
       toast.loading("Sending message...");
       const res = await window.electron.sendWhatsAppMessage(
         customer.phone,
-        message
+        message,
       );
       toast.dismiss();
       if (res.success) {
@@ -120,18 +120,18 @@ export default function CustomerAccountsPage() {
   const handleBulkMessage = async () => {
     // Filter for valid phones AND outstanding dues
     const validRecipients = customers.filter(
-      (c) => c.phone && c.phone.length >= 10 && c.total_overdue > 0
+      (c) => c.phone && c.phone.length >= 10 && c.total_overdue > 0,
     );
 
     if (validRecipients.length === 0) {
       return toast.error(
-        "No customers with outstanding dues and valid phones found."
+        "No customers with outstanding dues and valid phones found.",
       );
     }
 
     if (
       !confirm(
-        `Send payment reminders to ${validRecipients.length} customers with outstanding dues?`
+        `Send payment reminders to ${validRecipients.length} customers with outstanding dues?`,
       )
     ) {
       return;
@@ -147,13 +147,13 @@ export default function CustomerAccountsPage() {
       const message = `Hello ${
         customer.name
       },\n\nGentle reminder regarding your account balance:\n\n*Outstanding Due: ₹${customer.total_overdue.toLocaleString(
-        "en-IN"
+        "en-IN",
       )}*\n\nPlease make payment soon. Ignore if already paid.`;
 
       try {
         const res = await window.electron.sendWhatsAppMessage(
           customer.phone,
-          message
+          message,
         );
         if (res.success) successCount++;
         else failCount++;

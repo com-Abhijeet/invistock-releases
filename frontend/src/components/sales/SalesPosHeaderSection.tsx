@@ -100,6 +100,8 @@ export default function SalesPosHeaderSection({
   const customerInputRef = useRef<HTMLInputElement>(null);
   const employeeInputRef = useRef<HTMLInputElement>(null);
 
+  // console.log("Sale in sales header", sale);
+
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

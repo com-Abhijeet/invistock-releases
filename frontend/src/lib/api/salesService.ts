@@ -19,6 +19,20 @@ export async function createSale(payload: SalePayload) {
   }
 }
 
+// UPDATE an existing sale
+export async function updateSale(saleId: number, payload: SalePayload) {
+  try {
+    console.log("payload for update", payload);
+    const response = await api.put(`${BASE_URL}/${saleId}`, payload);
+    toast.success("Sale updated successfully!");
+    return response.data;
+  } catch (error: any) {
+    const message = error?.response?.data?.message || "Failed to update sale.";
+    toast.error(message);
+    throw new Error(message);
+  }
+}
+
 //  Get paginated list of all sales (optional filters can be added later)
 export async function getSales(page = 1, limit = 10) {
   try {

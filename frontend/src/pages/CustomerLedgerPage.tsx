@@ -134,9 +134,9 @@ export default function CustomerLedgerPage() {
         transactions: txs,
       };
     });
-    entries.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
+    // entries.sort(
+    //   (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    // );
     setLedgerData(entries);
     setTotals({ billed: tb, paid: tp, pending: tpen });
   };
@@ -471,6 +471,11 @@ function Row({ row }: { row: LedgerEntry }) {
                         Mode
                       </TableCell>
                       <TableCell
+                        sx={{ fontSize: "0.75rem", color: "text.secondary" }}
+                      >
+                        In/Out
+                      </TableCell>
+                      <TableCell
                         align="right"
                         sx={{ fontSize: "0.75rem", color: "text.secondary" }}
                       >
@@ -486,6 +491,11 @@ function Row({ row }: { row: LedgerEntry }) {
                         </TableCell>
                         <TableCell sx={{ textTransform: "capitalize" }}>
                           {t.payment_mode}
+                        </TableCell>
+                        <TableCell sx={{ textTransform: "capitalize" }}>
+                          {t.type === "payment_in"
+                            ? "Inwards payment"
+                            : "Outwards Payment"}
                         </TableCell>
                         <TableCell align="right">
                           ₹{t.amount.toLocaleString()}

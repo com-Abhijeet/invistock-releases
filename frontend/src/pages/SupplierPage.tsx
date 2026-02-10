@@ -57,7 +57,7 @@ export default function SupplierPage() {
   // Data for the table
   const [tableData, setTableData] = useState<any[]>([]);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [totalRecords, setTotalRecords] = useState(0);
   const [activeTab, setActiveTab] = useState<"purchases" | "transactions">(
     "purchases",

@@ -507,6 +507,7 @@ export function initializeDatabase(dbPath) {
     CREATE TABLE IF NOT EXISTS sales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
+      employee_id INTEGER,
       reference_no TEXT NOT NULL UNIQUE,
       payment_mode TEXT NOT NULL DEFAULT 'Cash',
       paid_amount REAL NOT NULL DEFAULT 0,
@@ -721,6 +722,7 @@ export function initializeDatabase(dbPath) {
   );
   safeMigrate(db, "stock_adjustments", "batch_id", "INTEGER");
   safeMigrate(db, "stock_adjustments", "serial_id", "INTEGER");
+  safeMigrate(db, "sales", "employee_id", "INTEGER");
 
   // 6. EXECUTE NON-GST SCHEMA (Standard Default)
   nonGstDb.exec(`

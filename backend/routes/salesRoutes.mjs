@@ -9,27 +9,33 @@ const salesRoutes = express.Router();
 salesRoutes.post(
   "/",
   validateRequest(saleSchema),
-  salesController.createSaleController
+  salesController.createSaleController,
 );
+
 salesRoutes.post("/return", salesController.processSalesReturnController);
 
-salesRoutes.put("/update/:id", salesController.updateSaleStatusController);
+// Added Full Update Route
+salesRoutes.put(
+  "/:id",
+  // validateRequest(saleSchema),
+  salesController.updateSaleController,
+);
 
 salesRoutes.get("/trend", salesController.getSalesTrendController);
 salesRoutes.get(
   "/financial-metrics",
-  salesController.getFinancialMetricsController
+  salesController.getFinancialMetricsController,
 );
 salesRoutes.get("/order-metrics", salesController.getOrderMetricsController);
 salesRoutes.get("/top-customers", salesController.getTopCustomersController);
 salesRoutes.get("/top-products", salesController.getTopProductsController);
 salesRoutes.get(
   "/category-revenue",
-  salesController.getCategoryRevenueController
+  salesController.getCategoryRevenueController,
 );
 salesRoutes.get(
   "/payment-mode-breakdown",
-  salesController.getPaymentModeBreakdownController
+  salesController.getPaymentModeBreakdownController,
 );
 salesRoutes.get("/credit-sales", salesController.getCreditSalesController);
 salesRoutes.get("/best-sales-day", salesController.getBestSalesDayController);
@@ -38,7 +44,7 @@ salesRoutes.get("/table", salesController.getSalesTableController);
 salesRoutes.get("/customer/:id", salesController.getCustomerSalesController);
 salesRoutes.get(
   "/customerMetrics/:id",
-  salesController.getCustomerSalesKPIController
+  salesController.getCustomerSalesKPIController,
 );
 
 salesRoutes.get("/", salesController.getSalesPaginatedController);
@@ -48,7 +54,7 @@ salesRoutes.delete("/:id", salesController.deleteSaleByIdController);
 salesRoutes.get("/summary/stats", salesController.getSalesSummaryController);
 salesRoutes.get(
   "/search/ref",
-  salesController.searchSalesByReferenceController
+  salesController.searchSalesByReferenceController,
 );
 
 export default salesRoutes;

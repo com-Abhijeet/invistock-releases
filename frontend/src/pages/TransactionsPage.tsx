@@ -54,7 +54,7 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [totalRecords, setTotalRecords] = useState(0);
 
   // Modal States
@@ -197,6 +197,11 @@ export default function TransactionsPage() {
       format: (val: number) => `₹${val.toLocaleString("en-IN")}`,
     },
     { key: "status", label: "Status" },
+    {
+      key: "created_at",
+      label: "Time",
+      format: (val: string) => new Date(val).toLocaleTimeString("en-IN"),
+    },
   ];
 
   const actions: Action[] = [

@@ -16,14 +16,15 @@ import * as BatchRepo from "../repositories/batchRepository.mjs";
  * @throws {Error} If sale creation or item insertion fails.
  */
 export function createSale(saleData, items) {
+  console.log(saleData);
   try {
     const runTransaction = db.transaction(() => {
       // Create the sale record
       const saleStmt = db.prepare(`
         INSERT INTO sales (
           customer_id, reference_no, payment_mode, paid_amount, total_amount,
-          note, status, discount, is_reverse_charge, is_ecommerce_sale, is_quote
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          note, status, discount, is_reverse_charge, is_ecommerce_sale, is_quote, employee_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const {
@@ -38,6 +39,7 @@ export function createSale(saleData, items) {
         is_reverse_charge,
         is_ecommerce_sale,
         is_quote,
+        employee_id,
       } = saleData;
 
       const {
@@ -58,6 +60,7 @@ export function createSale(saleData, items) {
         normalised_is_reverse_charge,
         normalised_is_ecommerce_sale,
         normalised_is_quote,
+        employee_id,
       );
       const saleId = saleResult.lastInsertRowid;
 
@@ -243,7 +246,6 @@ export function processSalesReturn(payload) {
  */
 export function getSaleWithItemsById(saleId) {
   try {
-    // 1. Fetch the main sale record.
     const saleStmt = db.prepare(`
       SELECT
         s.*,
@@ -253,34 +255,21 @@ export function getSaleWithItemsById(saleId) {
         c.city as customer_city,
         c.state as customer_state,
         c.pincode as customer_pincode,
-        c.gst_no AS customer_gst_no
+        c.gst_no AS customer_gst_no,
+        es.employee_id
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN employee_sales es ON s.id = es.sale_id
       WHERE s.id = ?
     `);
     const sale = saleStmt.get(saleId);
 
-    // If the sale doesn't exist, return null early.
-    if (!sale) {
-      return null;
-    }
+    if (!sale) return null;
 
-    // 2. Fetch the related sale items with Batch & Serial Info
-    // UPDATED: Joined with product_batches and product_serials
     const itemsStmt = db.prepare(`
       SELECT
-        si.*,
-        p.name AS product_name,
-        p.product_code,
-        p.hsn,
-        p.brand,
-        p.mrp,
-        p.mop,
-        p.barcode,
-        -- Tracking Details
-        pb.batch_number,
-        pb.expiry_date,
-        ps.serial_number
+        si.*, p.name AS product_name, p.product_code, p.hsn,
+        pb.batch_number, ps.serial_number
       FROM sales_items si
       LEFT JOIN products p ON si.product_id = p.id
       LEFT JOIN product_batches pb ON si.batch_id = pb.id
@@ -290,55 +279,54 @@ export function getSaleWithItemsById(saleId) {
     `);
     const items = itemsStmt.all(saleId);
 
-    // 3. Reconcile with transactions to get actual payment status
+    /**
+     * FINANCIAL RECONCILIATION LOGIC
+     * total_paid: (Inflows) - (Outflows/Refunds)
+     * total_credit_notes: Reductions in bill value (Returns)
+     */
     const transactionStmt = db.prepare(`
       SELECT 
-        COALESCE(SUM(CASE WHEN type IN ('payment_in', 'sale') THEN amount ELSE 0 END), 0) as total_paid,
-        COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as total_credit_notes
+        COALESCE(SUM(CASE 
+          WHEN type IN ('payment_in', 'sale') THEN amount 
+          WHEN type = 'payment_out' THEN -amount 
+          ELSE 0 END), 0) as total_paid,
+        COALESCE(SUM(CASE 
+          WHEN type = 'credit_note' THEN amount 
+          ELSE 0 END), 0) as total_credit_notes
       FROM transactions
       WHERE bill_id = ? AND bill_type = 'sale' AND status != 'deleted'
     `);
     const transactionResult = transactionStmt.get(saleId);
 
-    const reconciledPaidAmount = transactionResult
-      ? transactionResult.total_paid
-      : 0;
-    const creditNotes = transactionResult
-      ? transactionResult.total_credit_notes
-      : 0; // Usually negative
+    const reconciledPaid = transactionResult?.total_paid || 0;
+    const creditNotes = transactionResult?.total_credit_notes || 0; // Stored as positive in DB, but reduces payable
 
-    // Net Payable is the original bill minus any credit notes (returns/adjustments)
-    const netPayable = (sale.total_amount || 0) + creditNotes;
+    // Net Payable = Original Total - Returns/Credit Notes
+    // Note: If you store credit notes as positive amounts in your transaction table,
+    // you should subtract them here.
+    const netPayable = (sale.total_amount || 0) - Math.abs(creditNotes);
+    const balance = netPayable - reconciledPaid;
 
-    // Balance is Net Payable minus what has been paid
-    const balance = netPayable - reconciledPaidAmount;
+    // Standard accounting tolerance (0.9) to handle tiny rounding issues
+    const isPaid = balance <= 0.9;
+    const isPartial = !isPaid && reconciledPaid > 0;
 
-    // Determine status based on reconciliation
-    let paymentStatus = "pending";
-    if (balance <= 0.9) {
-      paymentStatus = "paid";
-    } else if (reconciledPaidAmount > 0) {
-      paymentStatus = "partial";
-    }
-
-    // 4. Return the combined object.
     return {
       ...sale,
       items,
-      // Add a specific summary object for the UI to use easily
       payment_summary: {
-        total_paid: reconciledPaidAmount,
+        total_paid: reconciledPaid,
         total_credit_notes: creditNotes,
         net_payable: netPayable > 0 ? netPayable : 0,
         balance: balance > 0 ? balance : 0,
-        status: paymentStatus,
+        status: isPaid ? "paid" : isPartial ? "partial" : "pending",
       },
-      // We also update the root properties so legacy code using sale.paid_amount works with the reconciled value
-      paid_amount: reconciledPaidAmount,
-      status: paymentStatus,
+      // Root properties updated for UI consistency
+      paid_amount: reconciledPaid,
+      status: isPaid ? "paid" : isPartial ? "partial" : "pending",
     };
   } catch (error) {
-    console.error(" Failed to fetch sale with items:", error.message);
+    console.error("Failed to fetch sale with items:", error.message);
     throw new Error("Failed to fetch sale with items: " + error.message);
   }
 }
@@ -395,6 +383,86 @@ export function getSalesForPDFExport(filters) {
     ...sale,
     items: items.filter((item) => item.sale_id === sale.id),
   }));
+}
+
+/**
+ * @description Updates the header of a sale.
+ */
+export function updateSaleHeader(id, saleData) {
+  const {
+    customer_id,
+    reference_no,
+    payment_mode,
+    paid_amount,
+    total_amount,
+    note,
+    status,
+    discount,
+    is_reverse_charge,
+    is_ecommerce_sale,
+    is_quote,
+    employee_id,
+  } = saleData;
+
+  const {
+    is_reverse_charge: normalised_is_reverse_charge,
+    is_ecommerce_sale: normalised_is_ecommerce_sale,
+    is_quote: normalised_is_quote,
+  } = normalizeBooleans({ is_reverse_charge, is_ecommerce_sale, is_quote });
+
+  const stmt = db.prepare(`
+    UPDATE sales SET 
+      customer_id = ?, reference_no = ?, payment_mode = ?, paid_amount = ?, 
+      total_amount = ?, note = ?, status = ?, discount = ?, 
+      is_reverse_charge = ?, is_ecommerce_sale = ?, is_quote = ?, employee_id = ?,
+      updated_at = datetime('now', 'localtime')
+    WHERE id = ?
+  `);
+
+  return stmt.run(
+    customer_id,
+    reference_no,
+    payment_mode,
+    paid_amount,
+    total_amount,
+    note ?? "",
+    status,
+    discount,
+    normalised_is_reverse_charge,
+    normalised_is_ecommerce_sale,
+    normalised_is_quote,
+    employee_id || null,
+    id,
+  );
+}
+
+/**
+ * @description Fully replaces items for a sale.
+ */
+export function replaceSaleItems(saleId, items) {
+  const deleteStmt = db.prepare("DELETE FROM sales_items WHERE sale_id = ?");
+  deleteStmt.run(saleId);
+
+  const insertStmt = db.prepare(`
+    INSERT INTO sales_items (
+      sale_id, product_id, sr_no, rate, quantity, gst_rate, discount, price, batch_id, serial_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const item of items) {
+    insertStmt.run(
+      saleId,
+      item.product_id,
+      item.sr_no,
+      item.rate,
+      item.quantity,
+      item.gst_rate,
+      item.discount,
+      item.price,
+      item.batch_id || null,
+      item.serial_id || null,
+    );
+  }
 }
 
 /**

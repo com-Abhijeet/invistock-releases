@@ -35,6 +35,47 @@ export const createSaleController = async (req, res) => {
 };
 
 /**
+ * @description Updates an existing sale.
+ * @route PUT /api/sales/:id
+ */
+export const updateSaleController = async (req, res) => {
+  try {
+    const saleId = parseInt(req.params.id);
+    const saleData = req.body;
+
+    if (isNaN(saleId) || saleId <= 0) {
+      return res
+        .status(400)
+        .json({ status: "error", message: "Invalid Sale ID." });
+    }
+
+    if (!saleData || !saleData.items || saleData.items.length === 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "Missing sale data or items in the request body.",
+      });
+    }
+
+    const updatedSale = await salesService.updateSaleWithItemsService(
+      saleId,
+      saleData,
+    );
+
+    return res.status(200).json({
+      status: "success",
+      message: "Sale updated successfully.",
+      data: updatedSale,
+    });
+  } catch (error) {
+    console.error("Error in updateSaleController:", error.message);
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Failed to update sale.",
+    });
+  }
+};
+
+/**
  * @description Gets a paginated list of sales.
  * @route GET /api/sales/
  * @param {object} req - Express request object (query: page, limit).

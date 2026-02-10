@@ -46,7 +46,7 @@ export default function NGSalesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [totalRecords, setTotalRecords] = useState(0);
 
   // ✅ State for export menu
@@ -57,7 +57,7 @@ export default function NGSalesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [exportType, setExportType] = useState<"pdf" | "excel" | null>(null);
   const [startDate, setStartDate] = useState(
-    getISODate(new Date(new Date().setMonth(new Date().getMonth() - 1)))
+    getISODate(new Date(new Date().setMonth(new Date().getMonth() - 1))),
   );
   const [endDate, setEndDate] = useState(getISODate());
 
@@ -128,7 +128,7 @@ export default function NGSalesPage() {
           (item: any, i: number) =>
             `${i + 1}. ${item.product_name} x ${item.quantity} = ₹${(
               item.rate * item.quantity
-            ).toLocaleString("en-IN")}`
+            ).toLocaleString("en-IN")}`,
         )
         .join(nl);
 
@@ -200,7 +200,7 @@ export default function NGSalesPage() {
     if (!exportType) return;
 
     const toastId = toast.loading(
-      `Exporting ${exportType === "pdf" ? "PDFs" : "Excel file"}...`
+      `Exporting ${exportType === "pdf" ? "PDFs" : "Excel file"}...`,
     );
     handleCloseDateModal();
 

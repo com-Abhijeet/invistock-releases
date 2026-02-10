@@ -8,6 +8,8 @@ import {
   getSaleById,
   updateSaleStatus,
   processSalesReturn,
+  updateSaleHeader,
+  replaceSaleItems,
 } from "../repositories/salesRepository.mjs";
 import {
   createSaleItem,
@@ -22,6 +24,7 @@ import { generateReference } from "../repositories/referenceRepository.mjs";
 import * as salesStatsRepository from "../repositories/salesStatsRepository.mjs";
 import * as batchService from "../services/batchService.mjs";
 import * as EmployeeSalesService from "../services/employeeSalesService.mjs"; // ✅ Import Employee Sales Service
+
 export function createSaleWithItems(saleData) {
   const {
     customer_id,
@@ -160,6 +163,96 @@ export function createSaleWithItems(saleData) {
   } catch (err) {
     console.error("Sale creation failed:", err.message);
     throw new Error("Sale creation failed: " + err.message);
+  }
+}
+
+/**
+ * @description Updates an existing sale, handling inventory rollbacks and financial deltas.
+ */
+export async function updateSaleWithItemsService(saleId, newData) {
+  const oldSale = getSaleWithItemsById(saleId);
+  console.log("new sale data", newData);
+  if (!oldSale) throw new Error("Sale not found.");
+
+  const transaction = db.transaction(() => {
+    // 1. Rollback Stock for OLD items
+    for (const item of oldSale.items) {
+      const product = getProductById(item.product_id);
+      if (product) {
+        updateProductQuantity(
+          item.product_id,
+          product.quantity + item.quantity,
+        );
+        if (item.batch_id || item.serial_id) {
+          batchService.processSaleItemStockReturn({
+            batchId: item.batch_id,
+            serialId: item.serial_id,
+            quantity: item.quantity,
+          });
+        }
+      }
+    }
+
+    // 2. Deduct Stock for NEW items
+    for (const item of newData.items) {
+      const product = getProductById(item.product_id);
+      if (!product) throw new Error(`Product ${item.product_id} not found.`);
+
+      updateProductQuantity(item.product_id, product.quantity - item.quantity);
+      if (item.batch_id || item.serial_id) {
+        batchService.processSaleItemStockDeduction({
+          batchId: item.batch_id,
+          serialId: item.serial_id,
+          quantity: item.quantity,
+        });
+      }
+    }
+
+    // 3. Update Sale Header and Replace Items
+    updateSaleHeader(saleId, newData);
+    replaceSaleItems(saleId, newData.items);
+
+    // 4. Handle Commission Changes
+    // If employee changed or amount changed, we re-record/update commission
+    if (!newData.is_quote) {
+      // Clear old commission if exists
+      db.prepare("DELETE FROM employee_sales WHERE sale_id = ?").run(saleId);
+      if (newData.employee_id) {
+        EmployeeSalesService.recordCommission(
+          saleId,
+          newData.employee_id,
+          newData.total_amount,
+        );
+      }
+    }
+
+    // 5. Handle Payment Delta
+    // For simplicity, if paid_amount changed, we create a delta transaction
+    const deltaPaid = newData.paid_amount - oldSale.paid_amount;
+    if (deltaPaid !== 0 && !newData.is_quote) {
+      createTransaction({
+        type: deltaPaid > 0 ? "payment_in" : "payment_out",
+        bill_id: saleId,
+        bill_type: "sale",
+        entity_id: newData.customer_id,
+        entity_type: "customer",
+        transaction_date: new Date().toISOString().slice(0, 10),
+        amount: Math.abs(deltaPaid),
+        payment_mode: newData.payment_mode,
+        status: "completed",
+        note: `Adjustment for Sale Update #${newData.reference_no}`,
+      });
+    }
+
+    return saleId;
+  });
+
+  try {
+    transaction();
+    return getSaleWithItemsById(saleId);
+  } catch (err) {
+    console.error("Sale update failed:", err.message);
+    throw new Error("Sale update failed: " + err.message);
   }
 }
 

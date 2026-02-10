@@ -29,11 +29,12 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [_activeFilters, setActiveFilters] = useState<DashboardFilter>(getInitialFilters);
+  const [_activeFilters, setActiveFilters] =
+    useState<DashboardFilter>(getInitialFilters);
 
   // Pagination State
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
   // Form State
   const [formData, setFormData] = useState<CreateUserPayload>({
@@ -43,7 +44,7 @@ export default function UserManagement() {
     role: "employee",
     permissions: [],
   });
-  
+
   // Edit State
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
 
@@ -59,7 +60,7 @@ export default function UserManagement() {
       result = result.filter(
         (u) =>
           u.name.toLowerCase().includes(lower) ||
-          u.username.toLowerCase().includes(lower)
+          u.username.toLowerCase().includes(lower),
       );
     }
     setFilteredUsers(result);
@@ -98,7 +99,7 @@ export default function UserManagement() {
       username: user.username,
       password: "", // Clear password for security (optional update)
       role: user.role,
-      permissions: user.permissions
+      permissions: user.permissions,
     });
     setOpenModal(true);
   };
@@ -108,7 +109,7 @@ export default function UserManagement() {
       toast.error("Please fill in Name and Username");
       return;
     }
-    
+
     // Validation: Password is required only for creating new users
     if (!editingUserId && !data.password) {
       toast.error("Password is required for new users");
@@ -123,7 +124,7 @@ export default function UserManagement() {
         await userApiService.createUser(data);
         toast.success("User created successfully");
       }
-      
+
       setOpenModal(false);
       resetForm();
       fetchUsers();
@@ -162,7 +163,10 @@ export default function UserManagement() {
           <Button
             variant="contained"
             startIcon={<Plus size={18} />}
-            onClick={() => { resetForm(); setOpenModal(true); }}
+            onClick={() => {
+              resetForm();
+              setOpenModal(true);
+            }}
             sx={{
               borderRadius: "8px",
               textTransform: "none",
@@ -192,7 +196,10 @@ export default function UserManagement() {
 
       <UserFormModal
         open={openModal}
-        onClose={() => { setOpenModal(false); resetForm(); }}
+        onClose={() => {
+          setOpenModal(false);
+          resetForm();
+        }}
         onSubmit={handleCreateOrUpdate}
         formData={formData}
         setFormData={setFormData}

@@ -2,7 +2,7 @@
  * Generates the HTML for a Customer Statement of Account.
  * @param {object} shop - Shop details.
  * @param {object} customer - Customer details.
- *_ @param {Array<object>} ledger - The nested array of sales and transactions.
+ * @param {Array<object>} ledger - The nested array of sales and transactions.
  * @returns {string} The complete HTML string.
  */
 function createCustomerLedgerHTML(shop, customer, ledger) {
@@ -29,92 +29,129 @@ function createCustomerLedgerHTML(shop, customer, ledger) {
     </style>
   `;
 
-  // Loop through each bill and its transactions
+  /* ============================================================
+     LEDGER ROWS
+  ============================================================ */
+
   const ledgerHtml = ledger
-    .map(
-      (bill) => `
-    <tr class="bill-row">
-      <td>${new Date(bill.bill_date).toLocaleDateString("en-IN")}</td>
-      <td>${bill.reference_no}</td>
-      <td class="right">₹${bill.total_amount.toLocaleString("en-IN")}</td>
-      <td class="right">₹${bill.paid_amount.toLocaleString("en-IN")}</td>
-      <td class="right">₹${bill.amount_pending.toLocaleString("en-IN")}</td>
-    </tr>
-    
-    ${
-      bill.transactions.length > 0
-        ? `
-      <tr class="txn-header">
-        <td></td>
-        <td colspan="4">Payments for this bill:</td>
-      </tr>
-      ${bill.transactions
-        .map(
-          (txn) => `
-        <tr class="txn-row">
+    .map((bill) => {
+      const txRows =
+        bill.transactions.length > 0
+          ? `
+        <tr class="txn-header">
           <td></td>
-          <td colspan="2">${new Date(txn.transaction_date).toLocaleDateString(
-            "en-IN"
-          )}</td>
-          <td class="right">(${txn.payment_mode || "Unspecified"})</td>
-          <td class="right">- ₹${txn.amount.toLocaleString("en-IN")}</td>
+          <td colspan="4">Payments for this bill:</td>
         </tr>
+
+        ${bill.transactions
+          .map((txn) => {
+            const date = new Date(
+              txn.transaction_date || txn.date,
+            ).toLocaleDateString("en-IN");
+
+            // ✅ new: show transaction type
+            const typeLabel = (txn.type || "payment")
+              .replace("_", " ")
+              .toUpperCase();
+
+            // ✅ new: remove negative sign safely
+            const amount = Math.abs(Number(txn.amount || 0)).toLocaleString(
+              "en-IN",
+            );
+
+            return `
+            <tr class="txn-row">
+              <td></td>
+              <td colspan="2">${date}</td>
+              <td class="right">${typeLabel} (${txn.payment_mode || "Unspecified"})</td>
+              <td class="right">₹${amount}</td>
+            </tr>
+          `;
+          })
+          .join("")}
       `
-        )
-        .join("")}
-    `
-        : ""
-    }
-  `
-    )
+          : "";
+
+      return `
+        <tr class="bill-row">
+          <td>${new Date(bill.bill_date).toLocaleDateString("en-IN")}</td>
+          <td>${bill.reference_no}</td>
+          <td class="right">₹${bill.total_amount.toLocaleString("en-IN")}</td>
+          <td class="right">₹${bill.paid_amount.toLocaleString("en-IN")}</td>
+          <td class="right">₹${bill.amount_pending.toLocaleString("en-IN")}</td>
+        </tr>
+        ${txRows}
+      `;
+    })
     .join("");
+
+  /* ============================================================
+     TOTALS
+  ============================================================ */
 
   const totalOutstanding = ledger.reduce(
     (sum, bill) => sum + bill.amount_pending,
-    0
+    0,
   );
+
+  /* ============================================================
+     FINAL HTML
+  ============================================================ */
 
   const html = `
     <!DOCTYPE html>
-    <html><head><title>Customer Ledger</title>${style}</head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h2>${shop.shop_name}</h2>
-          <p>${shop.address_line1 || ""}, ${shop.city || ""}</p>
-          <h3>Statement of Account</h3>
+    <html>
+      <head>
+        <title>Customer Ledger</title>
+        ${style}
+      </head>
+      <body>
+        <div class="container">
+
+          <div class="header">
+            <h2>${shop.shop_name}</h2>
+            <p>${shop.address_line1 || ""}, ${shop.city || ""}</p>
+            <h3>Statement of Account</h3>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="customer-details">
+            <p><strong>Customer:</strong> ${customer.name}</p>
+            <p><strong>Phone:</strong> ${customer.phone || "N/A"}</p>
+            <p><strong>Address:</strong> ${[customer.address, customer.city]
+              .filter(Boolean)
+              .join(", ")}</p>
+          </div>
+
+          <table class="summary-table">
+            <thead>
+              <tr>
+                <th>Bill Date</th>
+                <th>Reference No.</th>
+                <th class="right">Bill Amount</th>
+                <th class="right">Amount Paid</th>
+                <th class="right">Amount Pending</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${ledgerHtml}
+            </tbody>
+
+            <tfoot>
+              <tr style="border-top: 2px solid #333; font-size: 1.2em; font-weight: bold;">
+                <td colspan="4" class="right">Total Outstanding Balance:</td>
+                <td class="right">₹${totalOutstanding.toLocaleString("en-IN")}</td>
+              </tr>
+            </tfoot>
+          </table>
+
         </div>
-        <div class="divider"></div>
-        <div class="customer-details">
-          <p><strong>Customer:</strong> ${customer.name}</p>
-          <p><strong>Phone:</strong> ${customer.phone || "N/A"}</p>
-          <p><strong>Address:</strong> ${[customer.address, customer.city]
-            .filter(Boolean)
-            .join(", ")}</p>
-        </div>
-        <table class="summary-table">
-          <thead>
-            <tr>
-              <th>Bill Date</th>
-              <th>Reference No.</th>
-              <th class="right">Bill Amount</th>
-              <th class="right">Amount Paid</th>
-              <th class="right">Amount Pending</th>
-            </tr>
-          </thead>
-          <tbody>${ledgerHtml}</tbody>
-          <tfoot>
-            <tr style="border-top: 2px solid #333; font-size: 1.2em; font-weight: bold;">
-              <td colspan="4" class="right">Total Outstanding Balance:</td>
-              <td class="right">₹${totalOutstanding.toLocaleString(
-                "en-IN"
-              )}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </body></html>
+      </body>
+    </html>
   `;
+
   return html;
 }
 
