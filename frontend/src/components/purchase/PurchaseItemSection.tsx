@@ -22,6 +22,7 @@ import {
   Chip,
   Stack,
   Tooltip,
+  MenuItem,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { Trash2, Plus, ScanBarcode, Settings } from "lucide-react";
@@ -31,6 +32,7 @@ import type { Product } from "../../lib/types/product";
 import type { PurchaseItem } from "../../lib/types/purchaseTypes";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
 import toast from "react-hot-toast";
+import { UNIT_FAMILIES } from "../../lib/services/unitService";
 
 // Extended interface for local state to include batch details
 interface ExtendedPurchaseItem extends PurchaseItem {
@@ -43,6 +45,7 @@ interface ExtendedPurchaseItem extends PurchaseItem {
   mfw_price?: string;
   location?: string;
   serial_numbers?: string[];
+  unit?: string; // Ensure unit is here
 }
 
 interface Props {
@@ -64,6 +67,7 @@ const defaultItem = (): ExtendedPurchaseItem => ({
   expiry_date: "",
   location: "",
   serial_numbers: [],
+  unit: "pcs",
 });
 
 const PurchaseItemSection = ({
@@ -181,6 +185,7 @@ const PurchaseItemSection = ({
         rate: product.mop,
         gst_rate: product.gst_rate || 0,
         tracking_type: (product as any).tracking_type || "none",
+        unit: product.base_unit || "pcs", // Default to base unit
       };
       updated[index].price = calculatePrice(updated[index]);
       onItemsChange(updated);
@@ -224,7 +229,8 @@ const PurchaseItemSection = ({
     field: string,
   ) => {
     if (readOnly) return;
-    const fields = ["product", "quantity", "rate", "gst_rate"];
+    // Updated navigation order to include 'unit'
+    const fields = ["product", "quantity", "unit", "rate", "gst_rate"];
     const activeFields = shop?.gst_enabled
       ? fields
       : fields.filter((f) => f !== "gst_rate");
@@ -266,6 +272,31 @@ const PurchaseItemSection = ({
         focusInput(idx - 1, field);
       }
     }
+  };
+
+  // Helper to get allowed units for a product
+  const getUnitsForProduct = (product: Product | undefined) => {
+    if (!product) return [];
+
+    const units = new Set<string>();
+
+    // Add product specific units
+    if (product.base_unit) units.add(product.base_unit);
+    if (product.secondary_unit) units.add(product.secondary_unit);
+
+    // Add family units
+    const baseFamily = Object.values(UNIT_FAMILIES).find((family) =>
+      family.units.some((u) => u.value === product.base_unit),
+    );
+
+    if (baseFamily) {
+      baseFamily.units.forEach((u) => units.add(u.value));
+    }
+
+    // Fallback if no units found
+    if (units.size === 0) units.add("pcs");
+
+    return Array.from(units);
   };
 
   const openBatchModal = (index: number) => {
@@ -339,11 +370,13 @@ const PurchaseItemSection = ({
               <TableCell sx={{ ...headerSx, width: "5%" }} align="center">
                 #
               </TableCell>
-              <TableCell sx={{ ...headerSx, width: "25%" }}>PRODUCT</TableCell>
-              <TableCell sx={{ ...headerSx, width: "10%" }} align="center">
+              <TableCell sx={{ ...headerSx, width: "20%" }}>PRODUCT</TableCell>
+              <TableCell sx={{ ...headerSx, width: "8%" }} align="center">
                 DETAILS
               </TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
+              {/* ✅ NEW UNIT COLUMN */}
+              <TableCell sx={{ ...headerSx, width: "10%" }}>UNIT</TableCell>
               <TableCell sx={{ ...headerSx, width: "12%" }}>RATE</TableCell>
               {shop?.gst_enabled && (
                 <TableCell sx={{ ...headerSx, width: "8%" }} align="center">
@@ -362,6 +395,7 @@ const PurchaseItemSection = ({
               const product = products.find((p) => p.id === item.product_id);
               const hasTracking =
                 item.tracking_type && item.tracking_type !== "none";
+              const allowedUnits = getUnitsForProduct(product);
 
               return (
                 <TableRow
@@ -475,6 +509,31 @@ const PurchaseItemSection = ({
                       }}
                       inputProps={{ min: 1 }}
                     />
+                  </TableCell>
+
+                  {/* ✅ UNIT DROPDOWN */}
+                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
+                    <TextField
+                      select
+                      variant="standard"
+                      fullWidth
+                      value={item.unit || ""}
+                      inputRef={(el) => (gridRefs.current[`${idx}-unit`] = el)}
+                      onChange={(e) =>
+                        handleFieldChange(idx, "unit", e.target.value)
+                      }
+                      onFocus={() => setActiveRowIndex(idx)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "unit")}
+                      disabled={!product || readOnly}
+                      InputProps={{ disableUnderline: true }}
+                      SelectProps={{ displayEmpty: true }}
+                    >
+                      {allowedUnits.map((u) => (
+                        <MenuItem key={u} value={u}>
+                          {u}
+                        </MenuItem>
+                      ))}
+                    </TextField>
                   </TableCell>
 
                   <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>

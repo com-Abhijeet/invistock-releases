@@ -10,6 +10,7 @@ export interface SaleItemPayload {
   gst_rate?: number;
   discount?: number;
   price: number;
+  unit?: string; // ✅ Added unit field
 }
 
 /**
@@ -64,6 +65,7 @@ export interface SaleItem {
   quantity: number;
   rate: number;
   price: number;
+  unit?: string; // ✅ Added unit field
 }
 
 export interface SaleData {

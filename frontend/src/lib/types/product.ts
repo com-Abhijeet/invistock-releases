@@ -25,6 +25,11 @@ export interface Product {
   size?: string;
   weight?: string; // Changed String to string for TS primitive best practice
 
+  // ✅ UNIT CONVERSION FIELDS
+  base_unit?: string; // e.g., 'kg', 'pcs'
+  secondary_unit?: string | null; // e.g., 'box', 'bag'
+  conversion_factor?: number; // e.g., 25 (meaning 1 secondary = 25 base)
+
   // Added to support Batch/Serial logic
   tracking_type?: "none" | "batch" | "serial";
 
@@ -50,6 +55,11 @@ export type ProductOverviewType = {
   mfw_price?: string;
   size?: string;
   weight?: string;
+
+  // New unit fields for overview
+  base_unit?: string;
+  secondary_unit?: string | null;
+  conversion_factor?: number;
 
   // These are fields that would be joined or calculated in your backend query
   category_name?: string | null;
@@ -85,6 +95,11 @@ export type productDetails = {
   mfw_price?: string;
   size?: string;
   weight?: string;
+
+  // ✅ UNIT CONVERSION FIELDS
+  base_unit?: string;
+  secondary_unit?: string | null;
+  conversion_factor?: number;
 
   tracking_type?: "none" | "batch" | "serial";
 

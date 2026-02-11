@@ -71,6 +71,9 @@ const PurchasePage = () => {
   const isView = action === "view";
   const isEdit = action === "edit";
 
+  console.log(action, id);
+  console.log(typeof action, typeof id);
+
   // Shortcut Modal State
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
 
@@ -81,6 +84,7 @@ const PurchasePage = () => {
         try {
           const data = await getPurchaseById(id);
           if (data) setPurchase(data.data);
+          console.log(data.data);
         } catch (err) {
           console.error("Failed to fetch purchase:", err);
         } finally {
@@ -103,7 +107,7 @@ const PurchasePage = () => {
     if (!purchase) return;
     const total = purchase.items.reduce((acc, item) => acc + item.price, 0);
     setPurchase((prev) =>
-      prev ? { ...prev, total_amount: parseFloat(total.toFixed(2)) } : null
+      prev ? { ...prev, total_amount: parseFloat(total.toFixed(2)) } : null,
     );
   }, [purchase?.items]);
 

@@ -23,7 +23,8 @@ import { createTransaction } from "../repositories/transactionRepository.mjs";
 import { generateReference } from "../repositories/referenceRepository.mjs";
 import * as salesStatsRepository from "../repositories/salesStatsRepository.mjs";
 import * as batchService from "../services/batchService.mjs";
-import * as EmployeeSalesService from "../services/employeeSalesService.mjs"; // ✅ Import Employee Sales Service
+import * as EmployeeSalesService from "../services/employeeSalesService.mjs";
+import { convertToStockQuantity } from "../services/unitService.mjs"; // Import unit service
 
 export function createSaleWithItems(saleData) {
   const {
@@ -50,8 +51,6 @@ export function createSaleWithItems(saleData) {
     let finalReferenceNo = reference_no;
 
     // 1. Determine Reference Number
-    // If frontend sent "Auto Generated On Submit" or empty, we generate one.
-    // Otherwise, we use the manual input.
     console.log("reference_no", reference_no);
     if (
       !finalReferenceNo ||
@@ -63,7 +62,6 @@ export function createSaleWithItems(saleData) {
         : generateReference("S");
     } else {
       // ✅ Manual Reference Check
-      // Ensure manual reference is unique to avoid primary key/unique constraint violations or logical dupes
       const check = db
         .prepare("SELECT id FROM sales WHERE reference_no = ?")
         .get(finalReferenceNo);
@@ -88,7 +86,7 @@ export function createSaleWithItems(saleData) {
         is_quote,
         employee_id: employee_id || null,
       },
-      [],
+      items, // Pass items to repo to handle DB insertion with unit
     );
 
     if (!saleId) {
@@ -97,30 +95,35 @@ export function createSaleWithItems(saleData) {
 
     let totalGstAmount = 0;
 
-    // 3. Process Items
+    // 3. Process Items (Stock Deduction)
     items.forEach((item) => {
-      createSaleItem({
-        sale_id: saleId,
-        ...item,
-      });
+      // NOTE: Repo createSale now handles INSERT into sales_items.
+      // We don't need createSaleItem here unless createSale implementation changed back.
+      // Looking at `salesRepository.mjs` `createSale`, it DOES insert items.
+      // So removing `createSaleItem` call here to avoid duplication.
 
       if (!is_quote) {
         const product = getProductById(item.product_id);
         if (!product)
           throw new Error(`Product not found (ID: ${item.product_id})`);
 
-        // Deduct Stock
-        updateProductQuantity(
-          item.product_id,
-          product.quantity - item.quantity,
+        // --- UNIT CONVERSION ---
+        const deductionQty = convertToStockQuantity(
+          item.quantity,
+          item.unit,
+          product,
         );
 
+        // Deduct Stock
+        updateProductQuantity(item.product_id, product.quantity - deductionQty);
+
         // Deduct Batch/Serial Stock
+        // Batch deduction logic usually handles base unit if batch stock is in base unit
         if (item.batch_id || item.serial_id) {
           batchService.processSaleItemStockDeduction({
             batchId: item.batch_id,
             serialId: item.serial_id,
-            quantity: item.quantity,
+            quantity: deductionQty, // Use converted qty for batches
           });
         }
       }
@@ -179,15 +182,19 @@ export async function updateSaleWithItemsService(saleId, newData) {
     for (const item of oldSale.items) {
       const product = getProductById(item.product_id);
       if (product) {
-        updateProductQuantity(
-          item.product_id,
-          product.quantity + item.quantity,
+        // Old items have 'unit' property from DB now (via updated repo)
+        const addBackQty = convertToStockQuantity(
+          item.quantity,
+          item.unit,
+          product,
         );
+
+        updateProductQuantity(item.product_id, product.quantity + addBackQty);
         if (item.batch_id || item.serial_id) {
           batchService.processSaleItemStockReturn({
             batchId: item.batch_id,
             serialId: item.serial_id,
-            quantity: item.quantity,
+            quantity: addBackQty,
           });
         }
       }
@@ -198,12 +205,18 @@ export async function updateSaleWithItemsService(saleId, newData) {
       const product = getProductById(item.product_id);
       if (!product) throw new Error(`Product ${item.product_id} not found.`);
 
-      updateProductQuantity(item.product_id, product.quantity - item.quantity);
+      const deductionQty = convertToStockQuantity(
+        item.quantity,
+        item.unit,
+        product,
+      );
+
+      updateProductQuantity(item.product_id, product.quantity - deductionQty);
       if (item.batch_id || item.serial_id) {
         batchService.processSaleItemStockDeduction({
           batchId: item.batch_id,
           serialId: item.serial_id,
-          quantity: item.quantity,
+          quantity: deductionQty,
         });
       }
     }

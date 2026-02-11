@@ -73,6 +73,10 @@ export async function importProducts(filePath, mappings) {
       "low_stock_threshold",
       "size",
       "weight",
+      // New Conversion Fields
+      "base_unit",
+      "secondary_unit",
+      "conversion_factor",
     ];
 
     const productsToInsert = data.map((row) => {
@@ -92,6 +96,10 @@ export async function importProducts(filePath, mappings) {
           // Use 0 for numbers and null for strings
           if (["mrp", "mop", "gst_rate", "quantity"].includes(field)) {
             newProduct[field] = 0;
+          } else if (field === "conversion_factor") {
+            newProduct[field] = 1;
+          } else if (field === "base_unit") {
+            newProduct[field] = "pcs";
           } else {
             newProduct[field] = null;
           }
