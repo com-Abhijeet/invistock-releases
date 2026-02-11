@@ -284,42 +284,70 @@ export function getCustomerLedger(customerId, filters) {
 
   return { customer, ledger };
 }
-
 /**
- * Gets a summary of all customers with overdue payments,
- * grouped by the age of their oldest overdue bill.
+ * @description Gets a summary of all customers with overdue payments,
+ * reconciled against the transactions table for accuracy.
+ * @returns {Array<object>} List of customers with overdue bill metrics.
  */
 export function getOverdueCustomerSummary() {
-  // This query finds all customers who have at least one bill
-  // that is not fully paid and older than 7 days.
-  const customers = db
-    .prepare(
-      `
-    SELECT
-      c.id,
-      c.name,
-      c.phone,
-      COUNT(s.id) as overdue_bills_count,
-      SUM(s.total_amount - s.paid_amount) as total_due,
-      -- Find the age of the oldest overdue bill for this customer
-      MAX(julianday('now') - julianday(s.created_at)) as oldest_bill_age
-    FROM sales s
-    JOIN customers c ON s.customer_id = c.id
-    WHERE 
-      s.status != 'paid' 
-      AND s.is_quote = 0 
-      AND (s.total_amount > s.paid_amount)
-    GROUP BY c.id
-    -- Only include customers whose oldest bill is over 7 days
-    HAVING oldest_bill_age > 7
-    ORDER BY oldest_bill_age DESC
-  `,
-    )
-    .all();
+  try {
+    const customers = db
+      .prepare(
+        `
+      WITH BillBalances AS (
+        -- Step 1: Calculate reconciled balance for every non-quote sale
+        SELECT
+          s.id AS sale_id,
+          s.customer_id,
+          s.created_at,
+          s.total_amount,
+          COALESCE(SUM(CASE 
+            WHEN t.type IN ('payment_in', 'sale') THEN t.amount 
+            WHEN t.type = 'payment_out' THEN -t.amount 
+            ELSE 0 END), 0) AS total_paid,
+          COALESCE(SUM(CASE 
+            WHEN t.type = 'credit_note' THEN t.amount 
+            ELSE 0 END), 0) AS total_credit_notes
+        FROM sales s
+        LEFT JOIN transactions t ON s.id = t.bill_id 
+          AND t.bill_type = 'sale' 
+          AND t.status != 'deleted'
+        WHERE s.is_quote = 0
+        GROUP BY s.id
+      ),
+      ReconciledPending AS (
+        -- Step 2: Determine actual pending amount and age
+        SELECT
+          *,
+          ((total_amount - total_credit_notes) - total_paid) AS reconciled_balance,
+          (julianday('now', 'localtime') - julianday(created_at)) AS bill_age
+        FROM BillBalances
+        -- 0.9 tolerance to handle floating point rounding issues
+        WHERE ((total_amount - total_credit_notes) - total_paid) > 0.9
+      )
+      -- Step 3: Group by customer and filter by the 7-day overdue rule
+      SELECT
+        c.id,
+        c.name,
+        c.phone,
+        COUNT(rp.sale_id) as overdue_bills_count,
+        SUM(rp.reconciled_balance) as total_due,
+        MAX(rp.bill_age) as oldest_bill_age
+      FROM ReconciledPending rp
+      JOIN customers c ON rp.customer_id = c.id
+      WHERE rp.bill_age > 7
+      GROUP BY c.id
+      ORDER BY oldest_bill_age DESC
+    `,
+      )
+      .all();
 
-  return customers;
+    return customers;
+  } catch (error) {
+    console.error("Error in getOverdueCustomerSummary:", error.message);
+    throw new Error("Failed to fetch overdue summary: " + error.message);
+  }
 }
-
 /**
  * Retrieves a paginated list of customers with their financial summaries.
  * Metrics:

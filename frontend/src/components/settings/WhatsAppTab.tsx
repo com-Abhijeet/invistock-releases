@@ -159,7 +159,7 @@ export default function WhatsAppTab() {
                   alignItems="center"
                 >
                   <Chip
-                    label={`Status: ${status.toUpperCase()}`}
+                    label={`Status: ${status?.toUpperCase()}`}
                     color={status === "scanning" ? "warning" : "default"}
                     variant="outlined"
                   />
