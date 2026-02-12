@@ -127,7 +127,7 @@ export default function ProductDetailPage() {
     },
     {
       key: "quantity",
-      label: "Quantity Change",
+      label: `Quantity Change (${product.base_unit || "pcs"})`,
       format: (val: string) => (
         <Typography
           fontWeight="bold"
@@ -214,12 +214,18 @@ export default function ProductDetailPage() {
         <Alert
           severity="warning"
           icon={<AlertTriangle />}
-          sx={{ mt: 2, mx: 2, borderRadius: 2 }}
+          sx={{ mt: 2, mx: 2, mb: 2, borderRadius: 2 }}
         >
           <AlertTitle>Low Stock Warning</AlertTitle>
           This product is at or below its low stock threshold. (Current:{" "}
-          <strong>{product.quantity}</strong> | Threshold:{" "}
-          <strong>{product.low_stock_threshold}</strong>)
+          <strong>
+            {product.quantity} {product.base_unit || "pcs"}
+          </strong>{" "}
+          | Threshold:{" "}
+          <strong>
+            {product.low_stock_threshold} {product.base_unit || "pcs"}
+          </strong>
+          )
         </Alert>
       )}
 
@@ -347,6 +353,24 @@ export default function ProductDetailPage() {
                 />
               </Grid>
               <Grid item xs={6} sm={4}>
+                <DetailItem
+                  label="Base Unit"
+                  value={(product.base_unit || "pcs").toUpperCase()}
+                />
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <DetailItem
+                  label="Bulk Packaging"
+                  value={
+                    product.secondary_unit
+                      ? `1 ${product.secondary_unit} = ${product.conversion_factor} ${
+                          product.base_unit || "pcs"
+                        }`
+                      : "Single unit only"
+                  }
+                />
+              </Grid>
+              <Grid item xs={6} sm={4}>
                 <DetailItem label="Brand" value={product.brand} />
               </Grid>
               <Grid item xs={6} sm={4}>
@@ -360,12 +384,6 @@ export default function ProductDetailPage() {
               </Grid>
               <Grid item xs={6} sm={4}>
                 <DetailItem label="Weight" value={product.weight} />
-              </Grid>
-              <Grid item xs={6} sm={4}>
-                <DetailItem
-                  label="Low Stock Threshold"
-                  value={product.low_stock_threshold}
-                />
               </Grid>
             </Grid>
           </Grid>
@@ -393,21 +411,25 @@ export default function ProductDetailPage() {
               <StatisticCard
                 icon={<TrendingUp size={28} />}
                 title="Total Purchased"
-                value={summary.totalPurchased}
+                value={`${summary.totalPurchased} ${
+                  product.base_unit || "pcs"
+                }`}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
               <StatisticCard
                 icon={<TrendingDown size={28} />}
                 title="Total Sold"
-                value={summary.totalSold}
+                value={`${summary.totalSold} ${product.base_unit || "pcs"}`}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
               <StatisticCard
                 icon={<Boxes size={28} />}
                 title="Current Stock"
-                value={summary.currentQuantity}
+                value={`${summary.currentQuantity} ${
+                  product.base_unit || "pcs"
+                }`}
               />
             </Grid>
           </Grid>

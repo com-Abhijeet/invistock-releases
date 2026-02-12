@@ -104,8 +104,22 @@ export default function PreferencesTab({ data, onChange }: Props) {
                         />
                       }
                       label={
+                        <Typography variant="body2">Enable GST</Typography>
+                      }
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={Boolean(data.show_gst_breakup)}
+                          onChange={(e) =>
+                            onChange("show_gst_breakup", e.target.checked)
+                          }
+                        />
+                      }
+                      label={
                         <Typography variant="body2">
-                          Enable GST Calculation
+                          Show Gst Breakup
                         </Typography>
                       }
                     />
