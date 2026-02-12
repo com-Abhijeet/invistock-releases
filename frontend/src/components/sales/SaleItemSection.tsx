@@ -47,6 +47,7 @@ import {
   ListFilter,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { UNIT_FAMILIES } from "../../lib/services/unitService";
 
 // --- Types ---
 type PriceType = "mrp" | "mop" | "mfw";
@@ -66,6 +67,28 @@ type SaleItemRow = SaleItemPayload & {
   // Configuration
   price_type?: string;
   pricing_strategy?: string;
+
+  // Unit
+  unit?: string;
+};
+
+// Conversion Factors for standard units (Base: kg, l, m, pcs)
+const STANDARD_FACTORS: Record<string, number> = {
+  kg: 1,
+  g: 0.001,
+  mg: 0.000001,
+  quintal: 100,
+  tonne: 1000,
+  l: 1,
+  ml: 0.001,
+  m: 1,
+  cm: 0.01,
+  mm: 0.001,
+  ft: 0.3048,
+  in: 0.0254,
+  pcs: 1,
+  doz: 12,
+  gross: 144,
 };
 
 const defaultItem = (): SaleItemRow => ({
@@ -80,6 +103,7 @@ const defaultItem = (): SaleItemRow => ({
   tracking_type: "none",
   price_type: "mrp",
   pricing_strategy: "batch_pricing",
+  unit: "pcs",
 });
 
 interface SaleItemSectionProps {
@@ -180,6 +204,8 @@ export default function SaleItemSection({
             id: item.product_id,
             name: item.product_name,
             hsn: item.hsn,
+            // Mocking these properties for cache if not present in item
+            // Ideally should fetch full product details if missing
           } as Product;
           modified = true;
         }
@@ -300,6 +326,37 @@ export default function SaleItemSection({
     return Number(p.mrp) || 0;
   };
 
+  // Helper to recalculate rate based on unit conversion
+  // Logic:
+  // 1. Get base rate from product (e.g. rate per kg)
+  // 2. Convert to target unit (e.g. rate per g)
+  const calculateConvertedRate = (
+    product: Product,
+    targetUnit: string,
+    baseRate: number,
+  ) => {
+    const baseUnit = product.base_unit || "pcs";
+
+    if (targetUnit === baseUnit) return baseRate;
+
+    // Case 1: Secondary Unit (Packaging)
+    // If selling a Box, Rate = BaseRate * ConversionFactor
+    if (product.secondary_unit && targetUnit === product.secondary_unit) {
+      return baseRate * (product.conversion_factor || 1);
+    }
+
+    // Case 2: Standard Unit Conversion (e.g. g -> kg)
+    // Rate per g = Rate per kg * (0.001 / 1)
+    const targetFactor = STANDARD_FACTORS[targetUnit];
+    const baseFactor = STANDARD_FACTORS[baseUnit];
+
+    if (targetFactor !== undefined && baseFactor !== undefined) {
+      return baseRate * (targetFactor / baseFactor);
+    }
+
+    return baseRate;
+  };
+
   const handleGlobalTypeSelect = (type: PriceType) => {
     setGlobalPriceType(type);
     setHeaderMenuAnchor(null);
@@ -307,7 +364,11 @@ export default function SaleItemSection({
       if (!item.product_id || item.product_id === 0) {
         return { ...item, price_type: type };
       }
-      return item;
+      // Re-calculate price for existing items based on new global type is risky without full context,
+      // generally we only apply global type to new items or empty ones.
+      // But if user explicitly sets global type, they might expect update.
+      // For safety, let's only update the 'config', user must re-select or we'd need robust recalc.
+      return { ...item, price_type: type };
     });
     onItemsChange(updatedItems);
     toast.success(`Default Rate set to: ${type.toUpperCase()}`);
@@ -323,20 +384,31 @@ export default function SaleItemSection({
     const product = productCache[item.product_id];
     if (setting === "type") item.price_type = value;
     if (setting === "strategy") item.pricing_strategy = value;
+
     if (product) {
-      let newRate = 0;
+      let baseRate = 0;
       const strategy = item.pricing_strategy || "batch_pricing";
       const pType = (item.price_type as PriceType) || "mrp";
+
+      // 1. Determine Base Rate (per base unit)
       if (
         strategy === "batch_pricing" &&
         (item.tracking_type === "batch" || item.tracking_type === "serial")
       ) {
-        if (pType === "mrp" && item.batch_mrp) newRate = item.batch_mrp;
-        else if (pType === "mop" && item.batch_mop) newRate = item.batch_mop;
-        else if (pType === "mfw" && item.batch_mfw) newRate = item.batch_mfw;
+        if (pType === "mrp" && item.batch_mrp) baseRate = item.batch_mrp;
+        else if (pType === "mop" && item.batch_mop) baseRate = item.batch_mop;
+        else if (pType === "mfw" && item.batch_mfw) baseRate = item.batch_mfw;
       }
-      if (!newRate) newRate = getProductPrice(product, pType);
-      item.rate = newRate;
+      if (!baseRate) baseRate = getProductPrice(product, pType);
+
+      // 2. Convert Rate to Selected Unit
+      item.rate = calculateConvertedRate(
+        product,
+        item.unit || product.base_unit || "pcs",
+        baseRate,
+      );
+
+      // 3. Recalculate Price
       item.price = calculateItemPrice(item);
     }
     onItemsChange(updatedItems);
@@ -399,13 +471,20 @@ export default function SaleItemSection({
     const bMrp = batchInfo?.mrp ? Number(batchInfo.mrp) : undefined;
     const bMop = batchInfo?.mop ? Number(batchInfo.mop) : undefined;
     const bMfw = batchInfo?.mfw_price ? Number(batchInfo.mfw_price) : undefined;
-    let finalRate = 0;
+
+    // 1. Get Base Rate
+    let baseRate = 0;
     if (strategy === "batch_pricing") {
-      if (pType === "mrp" && bMrp) finalRate = bMrp;
-      else if (pType === "mop" && bMop) finalRate = bMop;
-      else if (pType === "mfw" && bMfw) finalRate = bMfw;
+      if (pType === "mrp" && bMrp) baseRate = bMrp;
+      else if (pType === "mop" && bMop) baseRate = bMop;
+      else if (pType === "mfw" && bMfw) baseRate = bMfw;
     }
-    if (!finalRate) finalRate = getProductPrice(product, pType);
+    if (!baseRate) baseRate = getProductPrice(product, pType);
+
+    // 2. Convert to Unit Rate (Default Unit)
+    const defaultUnit = product.base_unit || "pcs";
+    const finalRate = calculateConvertedRate(product, defaultUnit, baseRate);
+
     const newItem: SaleItemRow = {
       ...currentItem,
       product_id: product.id!,
@@ -414,6 +493,7 @@ export default function SaleItemSection({
       rate: finalRate,
       gst_rate: product.gst_rate ?? 0,
       quantity: 1,
+      unit: defaultUnit, // Set default unit
       tracking_type: product.tracking_type,
       batch_id: batchInfo?.id,
       batch_number: batchInfo?.batch_number,
@@ -451,8 +531,38 @@ export default function SaleItemSection({
     value: any,
   ) => {
     const updated = [...items];
-    (updated[index] as any)[field] = value;
-    updated[index].price = calculateItemPrice(updated[index]);
+    const item = updated[index];
+    (item as any)[field] = value;
+
+    // Special Logic for Unit Change
+    if (field === "unit") {
+      const product = productCache[item.product_id];
+      if (product) {
+        // Recalculate rate based on new unit
+        // Note: We need the BASE rate to convert from.
+        // Reverse engineering base rate from current rate might have rounding errors.
+        // Better to re-fetch base rate from logic.
+
+        let baseRate = 0;
+        const strategy = item.pricing_strategy || "batch_pricing";
+        const pType = (item.price_type as PriceType) || "mrp";
+
+        if (
+          strategy === "batch_pricing" &&
+          (item.tracking_type === "batch" || item.tracking_type === "serial")
+        ) {
+          if (pType === "mrp" && item.batch_mrp) baseRate = item.batch_mrp;
+          else if (pType === "mop" && item.batch_mop) baseRate = item.batch_mop;
+          else if (pType === "mfw" && item.batch_mfw) baseRate = item.batch_mfw;
+        }
+        if (!baseRate) baseRate = getProductPrice(product, pType);
+
+        // Apply conversion
+        item.rate = calculateConvertedRate(product, value, baseRate);
+      }
+    }
+
+    item.price = calculateItemPrice(item);
     onItemsChange(updated);
   };
 
@@ -470,7 +580,8 @@ export default function SaleItemSection({
     idx: number,
     field: string,
   ) => {
-    const fields = ["product", "quantity", "rate", "discount"];
+    // Add unit to navigation
+    const fields = ["product", "quantity", "unit", "rate", "discount"];
     const activeFields = shop?.show_discount_column
       ? fields
       : fields.filter((f) => f !== "discount");
@@ -478,9 +589,6 @@ export default function SaleItemSection({
     const isLastField = currentIdx === activeFields.length - 1;
 
     if (e.key === "Enter") {
-      // Don't prevent default for product because Autocomplete needs it for selection
-      // but if selection menu is not open, we want to move.
-      // Easiest Tally behavior: Enter always attempts to move to next.
       if (isLastField) {
         e.preventDefault();
         if (idx === items.length - 1) {
@@ -491,8 +599,6 @@ export default function SaleItemSection({
           focusInput(idx + 1, "product");
         }
       } else {
-        // Only prevent default if we are moving (not if Autocomplete is selecting)
-        // Autocomplete typically handles Enter itself. We add a small delay or check.
         if (field !== "product") {
           e.preventDefault();
           focusInput(idx, activeFields[currentIdx + 1]);
@@ -521,6 +627,31 @@ export default function SaleItemSection({
     }
   };
 
+  // Helper to get allowed units for a product
+  const getUnitsForProduct = (product: Product | undefined) => {
+    if (!product) return [];
+
+    const units = new Set<string>();
+
+    // Add product specific units
+    if (product.base_unit) units.add(product.base_unit);
+    if (product.secondary_unit) units.add(product.secondary_unit);
+
+    // Add family units
+    const baseFamily = Object.values(UNIT_FAMILIES).find((family) =>
+      family.units.some((u) => u.value === product.base_unit),
+    );
+
+    if (baseFamily) {
+      baseFamily.units.forEach((u) => units.add(u.value));
+    }
+
+    // Fallback if no units found
+    if (units.size === 0) units.add("pcs");
+
+    return Array.from(units);
+  };
+
   const headerSx = {
     fontWeight: 700,
     color: "text.secondary",
@@ -543,9 +674,11 @@ export default function SaleItemSection({
               {shop?.hsn_required && (
                 <TableCell sx={{ ...headerSx, width: "8%" }}>HSN</TableCell>
               )}
-              <TableCell sx={{ ...headerSx, width: "30%" }}>PRODUCT</TableCell>
+              <TableCell sx={{ ...headerSx, width: "25%" }}>PRODUCT</TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
-              <TableCell sx={{ ...headerSx, width: "15%", p: 0.5 }}>
+              {/* ✅ Unit Column */}
+              <TableCell sx={{ ...headerSx, width: "10%" }}>UNIT</TableCell>
+              <TableCell sx={{ ...headerSx, width: "12%", p: 0.5 }}>
                 <Stack direction="row" alignItems="center" spacing={0.5}>
                   <Typography
                     variant="inherit"
@@ -594,6 +727,12 @@ export default function SaleItemSection({
             {items.map((item, idx) => {
               const product = productCache[item.product_id];
               const isSerial = item.tracking_type === "serial";
+
+              // ✅ FIX: Ensure the item's unit is always in the list (for View Mode / Cache Miss)
+              const allowedUnits = getUnitsForProduct(product);
+              if (item.unit && !allowedUnits.includes(item.unit)) {
+                allowedUnits.push(item.unit);
+              }
 
               return (
                 <TableRow
@@ -738,6 +877,34 @@ export default function SaleItemSection({
                         style: { fontWeight: "bold", fontSize: "0.95rem" },
                       }}
                     />
+                  </TableCell>
+
+                  {/* ✅ Unit Dropdown */}
+                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
+                    <TextField
+                      select
+                      variant="standard"
+                      fullWidth
+                      value={item.unit || ""}
+                      disabled={mode === "view" || !product}
+                      inputRef={(el) => (gridRefs.current[`${idx}-unit`] = el)}
+                      onChange={(e) =>
+                        handleFieldChange(idx, "unit", e.target.value)
+                      }
+                      onFocus={() => setActiveRowIndex(idx)}
+                      onKeyDown={(e) => handleGridKeyDown(e, idx, "unit")}
+                      InputProps={{
+                        disableUnderline: true,
+                        sx: { fontSize: "0.9rem" },
+                      }}
+                      SelectProps={{ displayEmpty: true }}
+                    >
+                      {allowedUnits.map((u) => (
+                        <MenuItem key={u} value={u} dense>
+                          {u}
+                        </MenuItem>
+                      ))}
+                    </TextField>
                   </TableCell>
 
                   <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>

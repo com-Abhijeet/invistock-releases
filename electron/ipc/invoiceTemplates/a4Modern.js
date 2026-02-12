@@ -92,7 +92,7 @@ const a4Modern = (data) => {
                         : ""
                     }
                   </td>
-                  <td style="text-align:center">${item.quantity}</td>
+                  <td style="text-align:center">${item.quantity} ${item.unit || ""}</td>
                   <td style="text-align:right">${formatAmount(item.rate)}</td>
                   <td style="text-align:right; font-weight:600;">${formatAmount(
                     item.price,

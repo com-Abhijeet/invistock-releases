@@ -20,6 +20,8 @@ const purchaseItemSchema = z.object({
 
   // Serial numbers can be an array of strings (from frontend) or null
   serial_numbers: z.array(z.string()).optional().nullable(),
+
+  unit: z.string().optional().nullable(),
 });
 
 // Enum definitions for reuse

@@ -136,9 +136,9 @@ export const createProduct = (product) => {
       `INSERT INTO products (
         name, product_code, hsn, gst_rate, mrp, mop, category, subcategory,
         storage_location, quantity, description, brand, barcode,
-        image_url, is_active, average_purchase_price, mfw_price, low_Stock_threshold, size, weight,
-        tracking_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        image_url, is_active, average_purchase_price, mfw_price, low_stock_threshold, size, weight,
+        tracking_type, base_unit, secondary_unit, conversion_factor
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     const info = stmt.run(
@@ -163,6 +163,9 @@ export const createProduct = (product) => {
       product.size,
       product.weight,
       product.tracking_type || "none",
+      product.base_unit || "pcs",
+      product.secondary_unit || null,
+      product.conversion_factor || 1,
     );
     return {
       id: info.lastInsertRowid,
@@ -194,7 +197,7 @@ export const updateProduct = (id, product) => {
         category = ?, subcategory = ?, storage_location = ?, quantity = ?,
         description = ?, brand = ?, barcode = ?, image_url = ?,
         is_active = ?, updated_at = datetime('now'), average_purchase_price = ?, mfw_price=?, low_stock_threshold = ?, size = ?, weight=?,
-        tracking_type = ?
+        tracking_type = ?, base_unit = ?, secondary_unit = ?, conversion_factor = ?
        WHERE id = ?`,
     ).run(
       product.name,
@@ -218,6 +221,9 @@ export const updateProduct = (id, product) => {
       product.size,
       product.weight,
       product.tracking_type || "none",
+      product.base_unit || "pcs",
+      product.secondary_unit || null,
+      product.conversion_factor || 1,
       id,
     );
 
@@ -335,7 +341,7 @@ export function getProductHistory(productId) {
   const purchases = db
     .prepare(
       `
-    SELECT p.date, pi.quantity, pi.rate
+    SELECT p.date, pi.quantity, pi.rate, pi.unit
     FROM purchase_items pi
     JOIN purchases p ON pi.purchase_id = p.id
     WHERE pi.product_id = ?
@@ -347,7 +353,7 @@ export function getProductHistory(productId) {
   const gstSales = db
     .prepare(
       `
-    SELECT s.created_at as date, si.quantity, si.rate
+    SELECT s.created_at as date, si.quantity, si.rate, si.unit
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
     WHERE si.product_id = ? AND s.is_quote = 0
@@ -375,12 +381,12 @@ export function getProductHistory(productId) {
     ...purchases.map((p) => ({
       date: p.date,
       type: "Purchase",
-      quantity: `+${p.quantity}`,
+      quantity: `+${p.quantity} ${p.unit || ""}`,
     })),
     ...gstSales.map((s) => ({
       date: s.date,
       type: "Sale",
-      quantity: `-${s.quantity}`,
+      quantity: `-${s.quantity} ${s.unit || ""}`,
     })),
     ...adjustments.map((a) => ({
       date: a.date,
@@ -393,6 +399,10 @@ export function getProductHistory(productId) {
   const totalGstSold = gstSales.reduce((sum, s) => sum + s.quantity, 0);
   const totalAdjusted = adjustments.reduce((sum, a) => sum + a.quantity, 0);
   const totalSold = totalGstSold;
+  // Note: Expected Quantity calculation here is simplistic because it assumes
+  // quantity stored in sales/purchase items is already normalized to base units.
+  // If not, we would need unitService to convert them here.
+  // For now, assuming Service Layer handles conversion BEFORE insert.
   const expectedQuantity = totalPurchased - totalSold + totalAdjusted;
   const discrepancy = product.quantity - expectedQuantity;
 
@@ -446,12 +456,12 @@ export function bulkInsertProducts(products) {
   const insertStmt = db.prepare(
     `INSERT INTO products (
       name, product_code, mrp, mop, gst_rate, quantity, hsn, brand,
-      category, subcategory, average_purchase_price, storage_location, description, barcode, mfw_price, low_Stock_threshold, size, weight,
-      tracking_type
+      category, subcategory, average_purchase_price, storage_location, description, barcode, mfw_price, low_stock_threshold, size, weight,
+      tracking_type, base_unit, secondary_unit, conversion_factor
     ) VALUES (
       @name, @product_code, @mrp, @mop, @gst_rate, @quantity, @hsn, @brand,
       @category, @subcategory, @average_purchase_price, @storage_location, @description, @barcode, @mfw_price, @low_stock_threshold, @size, @weight,
-      @tracking_type
+      @tracking_type, @base_unit, @secondary_unit, @conversion_factor
     )`,
   );
 
@@ -493,6 +503,9 @@ export function bulkInsertProducts(products) {
         storage_location: null,
         description: null,
         tracking_type: "none",
+        base_unit: "pcs",
+        secondary_unit: null,
+        conversion_factor: 1,
         ...item,
       };
 
@@ -544,7 +557,7 @@ export function getLowStockProducts() {
   return db
     .prepare(
       `
-    SELECT id, name, product_code, quantity, low_stock_threshold, image_url
+    SELECT id, name, product_code, quantity, base_unit, low_stock_threshold, image_url
     FROM products
     WHERE 
       is_active = 1

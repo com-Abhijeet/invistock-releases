@@ -37,6 +37,9 @@ export const saleItemSchema = z.object({
   // Tracking Fields (Optional - only if product is tracked)
   batch_id: z.number().int().optional().nullable(),
   serial_id: z.number().int().optional().nullable(),
+
+  //unit
+  unit: z.string().optional().nullable(),
 });
 
 // Schema for full sale

@@ -16,7 +16,7 @@ const thermal80mm = (data) => {
           ${getTrackingHtml(item)}
         </div>
         <div style="display:flex; justify-content:space-between; font-size:11px; color:#444;">
-          <span>${item.quantity} x ${formatAmount(item.rate)} ${
+          <span>${item.quantity} ${item.unit || ""} x ${formatAmount(item.rate)} ${
             showDiscount && item.discount ? `(-${item.discount}%)` : ""
           }</span>
           <span style="font-weight:600; color:#000;">${formatAmount(

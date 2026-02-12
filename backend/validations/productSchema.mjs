@@ -14,7 +14,13 @@ export const productSchema = z.object({
   subcategory: z.union([z.number(), z.string()]).optional(),
 
   storage_location: z.string().optional(),
-  quantity: z.number().int().min(0, "Quantity must be non-negative"),
+  quantity: z.number().min(0, "Quantity must be non-negative"), // Removed .int() to allow float
+
+  // ✅ UNIT CONVERSION FIELDS
+  base_unit: z.string().default("pcs"),
+  secondary_unit: z.string().optional().nullable(),
+  conversion_factor: z.number().default(1),
+
   description: z.string().optional().nullable(),
   brand: z.string().optional().nullable(),
   barcode: z.string().optional().nullable(),

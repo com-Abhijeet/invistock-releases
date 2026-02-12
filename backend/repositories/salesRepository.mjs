@@ -4,19 +4,17 @@ import { normalizeBooleans } from "../utils/normalizeBooleans.mjs";
 import * as ProductRepo from "../repositories/productRepository.mjs";
 import * as AdjustmentRepo from "../repositories/stockAdjustmentRepository.mjs";
 import * as BatchRepo from "../repositories/batchRepository.mjs";
+import { convertToStockQuantity } from "../services/unitService.mjs"; // Import converter
+
 /* -------------------------------------------------------------------------- */
 /* SALE REPOSITORY FUNCTIONS                                                  */
 /* -------------------------------------------------------------------------- */
 
 /**
  * @description Creates a new sale record in the database.
- * @param {object} saleData - The data for the new sale.
- * @param {Array<object>} items - An array of sale item objects.
- * @returns {number} The ID of the newly created sale.
- * @throws {Error} If sale creation or item insertion fails.
  */
 export function createSale(saleData, items) {
-  console.log(saleData);
+  console.log(items);
   try {
     const runTransaction = db.transaction(() => {
       // Create the sale record
@@ -66,10 +64,11 @@ export function createSale(saleData, items) {
 
       // Check for items and create them
       if (items && items.length > 0) {
+        // UPDATED: Added 'unit' to INSERT
         const itemStmt = db.prepare(`
           INSERT INTO sales_items (
-            sale_id, product_id, sr_no, rate, quantity, gst_rate, discount, price
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            sale_id, product_id, sr_no, rate, quantity, gst_rate, discount, price, unit
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         items.forEach((item) => {
@@ -82,6 +81,7 @@ export function createSale(saleData, items) {
             item.gst_rate,
             item.discount,
             item.price,
+            item.unit || null, // Store unit
           );
         });
       }
@@ -118,42 +118,57 @@ export function processSalesReturn(payload) {
       const currentProduct = ProductRepo.getProductById(item.product_id);
       if (!currentProduct) continue; // Skip if product deleted/invalid
 
-      // C. Retrieve Batch/Serial Context from original Sales Item
+      // C. Retrieve Batch/Serial/Unit Context from original Sales Item
       let batchId = null;
       let serialId = null;
+      let soldUnit = null;
 
       if (item.sales_item_id) {
         const saleItem = db
-          .prepare("SELECT batch_id, serial_id FROM sales_items WHERE id = ?")
+          .prepare(
+            "SELECT batch_id, serial_id, unit FROM sales_items WHERE id = ?",
+          )
           .get(item.sales_item_id);
         if (saleItem) {
           batchId = saleItem.batch_id;
           serialId = saleItem.serial_id;
+          soldUnit = saleItem.unit;
         }
       } else {
         // Fallback: Try to find a matching sales item (less precise for batches)
         const saleItem = db
           .prepare(
-            "SELECT batch_id, serial_id FROM sales_items WHERE sale_id = ? AND product_id = ? LIMIT 1",
+            "SELECT batch_id, serial_id, unit FROM sales_items WHERE sale_id = ? AND product_id = ? LIMIT 1",
           )
           .get(saleId, item.product_id);
         if (saleItem) {
           batchId = saleItem.batch_id;
           serialId = saleItem.serial_id;
+          soldUnit = saleItem.unit;
         }
       }
+
+      // --- UNIT CONVERSION ---
+      // We must return stock in the BASE UNIT.
+      // The item.quantity is usually in the same unit as sold (e.g., returned 1 Box).
+      // If soldUnit exists, use it. Otherwise assume base unit.
+      const qtyToReturn = convertToStockQuantity(
+        item.quantity,
+        soldUnit || item.unit,
+        currentProduct,
+      );
 
       // D. Inventory & Status Updates
       if (item.returnToStock) {
         // --- Option 1: Good condition -> Back to shelf ---
 
         // 1. Update Master Product Quantity
-        const newQty = currentProduct.quantity + item.quantity;
+        const newQty = currentProduct.quantity + qtyToReturn;
         ProductRepo.updateProductQuantity(item.product_id, newQty);
 
         // 2. Update Batch Quantity
         if (batchId) {
-          BatchRepo.updateBatchQuantity(batchId, item.quantity);
+          BatchRepo.updateBatchQuantity(batchId, qtyToReturn);
         }
 
         // 3. Update Serial Status
@@ -168,7 +183,7 @@ export function processSalesReturn(payload) {
           category: "Sales Return",
           old_quantity: currentProduct.quantity,
           new_quantity: newQty,
-          adjustment: item.quantity,
+          adjustment: qtyToReturn,
           reason: `Restocked from Bill #${sale.reference_no}`,
           adjusted_by: "System",
           batch_id: batchId,
@@ -240,9 +255,6 @@ export function processSalesReturn(payload) {
 
 /**
  * @description Retrieves a sale and its associated items by ID, reconciling payment status with transactions.
- * @param {number} saleId - The ID of the sale to retrieve.
- * @returns {object|null} The sale object with a nested array of items and payment summary, or null if not found.
- * @throws {Error} If fetching the sale fails.
  */
 export function getSaleWithItemsById(saleId) {
   try {
@@ -266,9 +278,10 @@ export function getSaleWithItemsById(saleId) {
 
     if (!sale) return null;
 
+    // UPDATED: Fetch 'unit'
     const itemsStmt = db.prepare(`
       SELECT
-        si.*, p.name AS product_name, p.product_code, p.hsn,
+        si.*, p.name AS product_name, p.product_code, p.hsn, p.base_unit,
         pb.batch_number, ps.serial_number
       FROM sales_items si
       LEFT JOIN products p ON si.product_id = p.id
@@ -443,10 +456,11 @@ export function replaceSaleItems(saleId, items) {
   const deleteStmt = db.prepare("DELETE FROM sales_items WHERE sale_id = ?");
   deleteStmt.run(saleId);
 
+  // UPDATED: Insert with 'unit'
   const insertStmt = db.prepare(`
     INSERT INTO sales_items (
-      sale_id, product_id, sr_no, rate, quantity, gst_rate, discount, price, batch_id, serial_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sale_id, product_id, sr_no, rate, quantity, gst_rate, discount, price, batch_id, serial_id, unit
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const item of items) {
@@ -461,6 +475,7 @@ export function replaceSaleItems(saleId, items) {
       item.price,
       item.batch_id || null,
       item.serial_id || null,
+      item.unit || null,
     );
   }
 }
@@ -541,8 +556,8 @@ export async function updateSaleById(id, saleData) {
     for (const item of saleData.items) {
       await db.run(
         `
-          INSERT INTO sale_items (sale_id, product_id, rate, quantity, gst_rate, discount, price)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO sale_items (sale_id, product_id, rate, quantity, gst_rate, discount, price, unit)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           `,
         [
           id,
@@ -552,6 +567,7 @@ export async function updateSaleById(id, saleData) {
           item.gst_rate,
           item.discount,
           item.price,
+          item.unit || null,
         ],
       );
     }
@@ -620,7 +636,8 @@ export function getExportableSalesData(filters) {
         si.rate,
         si.price,
         si.gst_rate,
-        si.discount
+        si.discount,
+        si.unit
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
     JOIN products p ON si.product_id = p.id
@@ -694,7 +711,7 @@ export function getSalesForCustomer(customerId, filters = {}) {
         s.total_amount,
         s.paid_amount,
         s.status,
-        GROUP_CONCAT(p.name || ' (' || si.quantity || ')', '; ') AS items_summary
+        GROUP_CONCAT(p.name || ' (' || si.quantity || ' ' || COALESCE(si.unit, '') || ')', '; ') AS items_summary
       FROM sales s
       JOIN sales_items si ON s.id = si.sale_id
       JOIN products p ON si.product_id = p.id

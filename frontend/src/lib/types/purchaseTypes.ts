@@ -7,11 +7,13 @@ export type PurchaseItem = {
   gst_rate: number;
   discount: number;
   price: number;
+  unit?: string; // ✅ Added unit field
 };
 
 export type PurchasePayload = {
+  id?: string;
   reference_no: string; // UUID or ≤8 digit string
-  internal_ref_no? : string;
+  internal_ref_no?: string;
   date: string; // "YYYY-MM-DD"
   supplier_id: number;
   note: string;
@@ -19,7 +21,22 @@ export type PurchasePayload = {
   total_amount: number;
   discount: number;
   paid_amount: number;
-  payment_mode: "cash"| "card"| "upi"| "bank_transfer"| "credit"| "cheque"| "voucher"| "mixed";
-status: "pending" | "paid" | "partial_payment"| "refunded" | "returned" | "cancelled" | "draft";
-  is_reverse_charge ?: boolean;
+  payment_mode:
+    | "cash"
+    | "card"
+    | "upi"
+    | "bank_transfer"
+    | "credit"
+    | "cheque"
+    | "voucher"
+    | "mixed";
+  status:
+    | "pending"
+    | "paid"
+    | "partial_payment"
+    | "refunded"
+    | "returned"
+    | "cancelled"
+    | "draft";
+  is_reverse_charge?: boolean;
 };

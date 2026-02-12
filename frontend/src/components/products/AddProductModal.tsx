@@ -22,9 +22,11 @@ import {
   FormControlLabel,
   Alert,
   Autocomplete,
+  ListSubheader,
+  Divider,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import { getCategories } from "../../lib/api/categoryService";
 import type { Product } from "../../lib/types/product";
@@ -53,8 +55,10 @@ import {
   Layers,
   ScanBarcode,
   Package,
+  ArrowRightLeft,
 } from "lucide-react";
 import { FormField } from "../FormField";
+import { UNIT_FAMILIES, getUnitFamily } from "../../lib/services/unitService";
 
 type Mode = "add" | "edit";
 
@@ -88,9 +92,29 @@ const defaultForm: Partial<Product> = {
   weight: "",
   is_active: 1,
   tracking_type: "none",
+  base_unit: "pcs",
+  secondary_unit: "",
+  conversion_factor: 1,
 };
 
 const steps = ["Essential Details", "Inventory & Tracking", "Additional Info"];
+
+// Helper to get conversion multiplier for pricing
+// e.g. If tracking in 'g' but pricing in 'kg', multiplier is 1000
+const getPricingMultiplier = (baseUnit: string, pricingUnit: string) => {
+  if (baseUnit === pricingUnit) return 1;
+  // Weight
+  if (baseUnit === "g" && pricingUnit === "kg") return 1000;
+  if (baseUnit === "mg" && pricingUnit === "g") return 1000;
+  if (baseUnit === "kg" && pricingUnit === "tonne") return 1000;
+  // Volume
+  if (baseUnit === "ml" && pricingUnit === "l") return 1000;
+  // Length
+  if (baseUnit === "cm" && pricingUnit === "m") return 100;
+  if (baseUnit === "mm" && pricingUnit === "m") return 1000;
+
+  return 1; // Default fallback
+};
 
 export default function AddEditProductModal({
   open,
@@ -113,6 +137,10 @@ export default function AddEditProductModal({
   >([]);
   const [error, setError] = useState<string | null>(null);
 
+  // State for Unit Toggle
+  const [hasSecondaryUnit, setHasSecondaryUnit] = useState(false);
+  const [pricingUnit, setPricingUnit] = useState<string>("pcs");
+
   // Ref map for keyboard navigation
   const fieldRefs = useRef<{
     [key: string]: HTMLInputElement | HTMLElement | null;
@@ -120,6 +148,33 @@ export default function AddEditProductModal({
 
   const isNewCategory = typeof form.category === "string";
   const isNewSubcategory = typeof form.subcategory === "string";
+
+  // Calculate pricing multiplier
+  // If base is 'g' and pricing is 'kg', multiplier is 1000.
+  // DB stores price per 'g' (e.g. 0.06), UI shows price per 'kg' (e.g. 60)
+  const pricingMultiplier = useMemo(() => {
+    return getPricingMultiplier(form.base_unit || "pcs", pricingUnit);
+  }, [form.base_unit, pricingUnit]);
+
+  // When base unit changes, try to set a smart default for pricing unit
+  // e.g. If user selects 'g', default pricing to 'kg' because that's standard for Kirana
+  useEffect(() => {
+    if (form.base_unit) {
+      if (form.base_unit === "g") setPricingUnit("kg");
+      else if (form.base_unit === "ml") setPricingUnit("l");
+      else if (form.base_unit === "cm") setPricingUnit("m");
+      else setPricingUnit(form.base_unit);
+    }
+  }, [form.base_unit]);
+
+  // Ensure pricing unit stays valid if category changes
+  useEffect(() => {
+    const baseFamily = getUnitFamily(form.base_unit || "pcs");
+    const pricingFamily = getUnitFamily(pricingUnit);
+    if (baseFamily && pricingFamily && baseFamily !== pricingFamily) {
+      setPricingUnit(form.base_unit || "pcs");
+    }
+  }, [form.base_unit, pricingUnit]);
 
   const focusField = (id: string) => {
     const el = fieldRefs.current[id];
@@ -158,6 +213,18 @@ export default function AddEditProductModal({
       setForm(
         mode === "edit" ? { ...defaultForm, ...initialData } : defaultForm,
       );
+
+      // Check if secondary unit exists to toggle switch
+      if (initialData?.secondary_unit) {
+        setHasSecondaryUnit(true);
+      } else {
+        setHasSecondaryUnit(false);
+      }
+
+      // Initialize pricing unit to base unit (smart effect above will upgrade it to kg/l if needed)
+      if (initialData?.base_unit) {
+        setPricingUnit(initialData.base_unit);
+      }
 
       if (mode === "add") {
         setForm((prev) => ({ ...prev, barcode: "Loading..." }));
@@ -257,6 +324,18 @@ export default function AddEditProductModal({
     if (error) setError(null);
   };
 
+  // Wrapper for price changes to handle multiplier
+  const handlePriceChange = (key: keyof Product, uiValue: string) => {
+    const numVal = parseFloat(uiValue);
+    if (isNaN(numVal)) {
+      handleChange(key, 0);
+      return;
+    }
+    // Store value = UI Value / Multiplier
+    // e.g. UI says 60/kg. Multiplier is 1000. Stored is 0.06/g.
+    handleChange(key, numVal / pricingMultiplier);
+  };
+
   const validateStep = (step: number) => {
     if (step === 0) {
       if (!form.name?.trim()) return "Product Name is required.";
@@ -270,7 +349,16 @@ export default function AddEditProductModal({
         return "GST Rate is required.";
       if (!isNewCategory && !isNewSubcategory && !form.product_code)
         return "Product Code is required.";
+
+      // MOVED UNIT VALIDATION TO STEP 0
+      if (!form.base_unit) return "Base Unit is required.";
+      if (hasSecondaryUnit) {
+        if (!form.secondary_unit) return "Secondary Unit name is required.";
+        if (!form.conversion_factor || form.conversion_factor <= 0)
+          return "Valid conversion factor is required.";
+      }
     }
+    // Step 1 now only handles inventory/tracking
     return null;
   };
 
@@ -301,7 +389,13 @@ export default function AddEditProductModal({
         low_stock_threshold: form.low_stock_threshold || 5,
         hsn: form.hsn || "",
         tracking_type: form.tracking_type || "none",
+        base_unit: form.base_unit || "pcs",
+        secondary_unit: hasSecondaryUnit ? form.secondary_unit : null,
+        conversion_factor: hasSecondaryUnit
+          ? Number(form.conversion_factor)
+          : 1,
       };
+
       let result;
       if (mode === "add") {
         result = await createProduct(finalPayload);
@@ -356,6 +450,15 @@ export default function AddEditProductModal({
     form.category !== undefined &&
     form.category !== "";
 
+  // Helper to get allowed pricing units based on selected base unit family
+  const getAllowedPricingUnits = () => {
+    const familyKey = getUnitFamily(form.base_unit || "pcs");
+    if (familyKey && UNIT_FAMILIES[familyKey as keyof typeof UNIT_FAMILIES]) {
+      return UNIT_FAMILIES[familyKey as keyof typeof UNIT_FAMILIES].units;
+    }
+    return [{ value: form.base_unit || "pcs", label: form.base_unit || "pcs" }];
+  };
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle sx={{ bgcolor: "primary.main", color: "white", pb: 3 }}>
@@ -377,7 +480,7 @@ export default function AddEditProductModal({
         </Stepper>
       </Box>
 
-      <DialogContent sx={{ mt: 2, minHeight: "320px" }}>
+      <DialogContent sx={{ mt: 2, minHeight: "350px" }}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
@@ -559,7 +662,7 @@ export default function AddEditProductModal({
                     variant="outlined"
                     value={form.hsn || ""}
                     inputRef={(el) => (fieldRefs.current["hsn"] = el)}
-                    onKeyDown={(e) => handleKeyDown(e, "hsn", "mrp")}
+                    onKeyDown={(e) => handleKeyDown(e, "hsn", "base_unit")}
                     onChange={(e) => handleChange("hsn", e.target.value)}
                     placeholder="Enter HSN/SAC code"
                     InputProps={{
@@ -591,19 +694,191 @@ export default function AddEditProductModal({
                 </FormField>
               </Grid>
 
+              {/* --- UNIT SECTION START --- */}
+              <Grid
+                item
+                xs={12}
+                container
+                spacing={2}
+                sx={{
+                  my: 1,
+                  p: 2,
+                  bgcolor: "background.default",
+                  borderRadius: 2,
+                }}
+              >
+                <Grid item xs={12}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <ArrowRightLeft size={18} />
+                    <Typography variant="subtitle2" fontWeight="bold">
+                      Unit Configuration
+                    </Typography>
+                  </Stack>
+                  <Divider sx={{ my: 1 }} />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormField label="Stock Tracking Unit (Smallest) *">
+                    <TextField
+                      select
+                      fullWidth
+                      size="small"
+                      value={form.base_unit || "pcs"}
+                      onChange={(e) =>
+                        handleChange("base_unit", e.target.value)
+                      }
+                      inputRef={(el) => (fieldRefs.current["base_unit"] = el)}
+                      onKeyDown={(e) =>
+                        handleKeyDown(e, "base_unit", "pricing_unit")
+                      }
+                      helperText="The unit you will count stock in (e.g. g for grams)"
+                    >
+                      {Object.entries(UNIT_FAMILIES).map(([key, family]) => [
+                        <ListSubheader
+                          key={`header-${key}`}
+                          sx={{ fontWeight: "bold", color: "text.primary" }}
+                        >
+                          {family.label}
+                        </ListSubheader>,
+                        ...family.units.map((unit) => (
+                          <MenuItem
+                            key={unit.value}
+                            value={unit.value}
+                            sx={{ pl: 4 }}
+                          >
+                            {unit.label}
+                          </MenuItem>
+                        )),
+                      ])}
+                    </TextField>
+                  </FormField>
+                </Grid>
+
+                {/* PRICING UNIT SELECTOR */}
+                <Grid item xs={12} sm={6}>
+                  <FormField label="Price Input Unit *">
+                    <TextField
+                      select
+                      fullWidth
+                      size="small"
+                      value={pricingUnit}
+                      onChange={(e) => setPricingUnit(e.target.value)}
+                      inputRef={(el) =>
+                        (fieldRefs.current["pricing_unit"] = el)
+                      }
+                      helperText="The unit you use for MRP (e.g. kg)"
+                    >
+                      {getAllowedPricingUnits().map((unit) => (
+                        <MenuItem key={unit.value} value={unit.value}>
+                          {unit.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </FormField>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormField label="Has Bulk Packaging?">
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={hasSecondaryUnit}
+                          onChange={(e) => {
+                            setHasSecondaryUnit(e.target.checked);
+                            if (!e.target.checked) {
+                              handleChange("secondary_unit", null);
+                              handleChange("conversion_factor", 1);
+                            } else {
+                              setTimeout(
+                                () => focusField("secondary_unit"),
+                                100,
+                              );
+                            }
+                          }}
+                        />
+                      }
+                      label={
+                        hasSecondaryUnit
+                          ? "Yes, sell in bulk too"
+                          : "No, single unit only"
+                      }
+                    />
+                  </FormField>
+                </Grid>
+
+                {hasSecondaryUnit && (
+                  <>
+                    <Grid item xs={12} sm={3}>
+                      <FormField label="Secondary Unit Name *">
+                        <TextField
+                          fullWidth
+                          size="small"
+                          placeholder="e.g. Box"
+                          value={form.secondary_unit || ""}
+                          onChange={(e) =>
+                            handleChange("secondary_unit", e.target.value)
+                          }
+                          inputRef={(el) =>
+                            (fieldRefs.current["secondary_unit"] = el)
+                          }
+                          onKeyDown={(e) =>
+                            handleKeyDown(
+                              e,
+                              "secondary_unit",
+                              "conversion_factor",
+                            )
+                          }
+                        />
+                      </FormField>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <FormField
+                        label={`Qty in 1 ${form.secondary_unit || "Pack"}`}
+                      >
+                        <TextField
+                          fullWidth
+                          size="small"
+                          type="number"
+                          placeholder="e.g. 25"
+                          value={form.conversion_factor || ""}
+                          onChange={(e) =>
+                            handleChange(
+                              "conversion_factor",
+                              Number(e.target.value),
+                            )
+                          }
+                          inputRef={(el) =>
+                            (fieldRefs.current["conversion_factor"] = el)
+                          }
+                          onKeyDown={(e) =>
+                            handleKeyDown(e, "conversion_factor", "mrp")
+                          }
+                          InputProps={{
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                {form.base_unit || "pcs"}
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                      </FormField>
+                    </Grid>
+                  </>
+                )}
+              </Grid>
+              {/* --- UNIT SECTION END --- */}
+
               <Grid item xs={12} sm={3}>
-                <FormField label="MRP">
+                <FormField label={`MRP (per ${pricingUnit})`}>
                   <TextField
                     fullWidth
                     size="small"
                     variant="outlined"
                     type="number"
-                    value={form.mrp ?? ""}
+                    // Display Value = Stored Value * Multiplier
+                    value={form.mrp ? form.mrp * pricingMultiplier : ""}
                     inputRef={(el) => (fieldRefs.current["mrp"] = el)}
                     onKeyDown={(e) => handleKeyDown(e, "mrp", "mop")}
-                    onChange={(e) =>
-                      handleChange("mrp", Number(e.target.value))
-                    }
+                    onChange={(e) => handlePriceChange("mrp", e.target.value)}
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">₹</InputAdornment>
@@ -613,18 +888,16 @@ export default function AddEditProductModal({
                 </FormField>
               </Grid>
               <Grid item xs={12} sm={3}>
-                <FormField label="Max. offer price MOP">
+                <FormField label={`MOP (per ${pricingUnit})`}>
                   <TextField
                     fullWidth
                     size="small"
                     variant="outlined"
                     type="number"
-                    value={form.mop ?? ""}
+                    value={form.mop ? form.mop * pricingMultiplier : ""}
                     inputRef={(el) => (fieldRefs.current["mop"] = el)}
                     onKeyDown={(e) => handleKeyDown(e, "mop", "mfw_price")}
-                    onChange={(e) =>
-                      handleChange("mop", Number(e.target.value))
-                    }
+                    onChange={(e) => handlePriceChange("mop", e.target.value)}
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">₹</InputAdornment>
@@ -749,7 +1022,9 @@ export default function AddEditProductModal({
               </Grid>
 
               <Grid item xs={12} sm={6}>
-                <FormField label="Opening Quantity">
+                <FormField
+                  label={`Opening Quantity (${form.base_unit || "pcs"})`}
+                >
                   <TextField
                     fullWidth
                     size="small"
@@ -767,6 +1042,11 @@ export default function AddEditProductModal({
                       startAdornment: (
                         <InputAdornment position="start">
                           <Boxes size={18} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          {form.base_unit}
                         </InputAdornment>
                       ),
                     }}
@@ -872,13 +1152,17 @@ export default function AddEditProductModal({
                 </FormField>
               </Grid>
               <Grid item xs={12} sm={4}>
-                <FormField label="Avg. Purchase Price">
+                <FormField label={`Avg. Purchase Price (per ${pricingUnit})`}>
                   <TextField
                     fullWidth
                     size="small"
                     variant="outlined"
                     type="number"
-                    value={form.average_purchase_price ?? 0}
+                    value={
+                      form.average_purchase_price
+                        ? form.average_purchase_price * pricingMultiplier
+                        : ""
+                    }
                     inputRef={(el) =>
                       (fieldRefs.current["average_purchase_price"] = el)
                     }
@@ -886,9 +1170,9 @@ export default function AddEditProductModal({
                       handleKeyDown(e, "average_purchase_price", "image_url")
                     }
                     onChange={(e) =>
-                      handleChange(
+                      handlePriceChange(
                         "average_purchase_price",
-                        Math.round(Number(e.target.value) * 100) / 100,
+                        e.target.value,
                       )
                     }
                     InputProps={{

@@ -66,7 +66,7 @@ const PurchaseTablePage = () => {
       <DashboardHeader
         title="Purchase Orders"
         showSearch={true}
-        showDateFilters={false}
+        showDateFilters={true}
         onFilterChange={handleFilterChange} // ✅ Use the wrapper
         onSearch={setSearchQuery}
         initialFilter="today"

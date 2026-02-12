@@ -8,6 +8,7 @@ import DataTable from "../DataTable";
 import { useNavigate } from "react-router-dom";
 import type { DashboardFilter } from "../../lib/types/inventoryDashboardTypes";
 import BulkLabelPrintModal from "../BulkLabelPrintModal"; // ✅ Import the modal
+import { PurchasePayload } from "../../lib/types/purchaseTypes";
 
 interface PurchaseTableProps {
   filters: DashboardFilter & { query?: string; status?: string };
@@ -22,7 +23,7 @@ export default function PurchaseTable({ filters }: PurchaseTableProps) {
   // ✅ State for the bulk print modal
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(
-    null
+    null,
   );
 
   const [page, setPage] = useState(0);
@@ -84,7 +85,7 @@ export default function PurchaseTable({ filters }: PurchaseTableProps) {
     {
       icon: <Eye size={16} />,
       label: "View",
-      onClick: (row: any) => {
+      onClick: (row: PurchasePayload) => {
         navigate(`/purchase/view/${row.id}`);
       },
     },

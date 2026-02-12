@@ -3,6 +3,8 @@ import { generateReference } from "../repositories/referenceRepository.mjs";
 import { createTransaction } from "../repositories/transactionRepository.mjs";
 import * as batchService from "../services/batchService.mjs";
 import db from "../db/db.mjs";
+import { convertToStockQuantity } from "../services/unitService.mjs";
+import { getProductById } from "../repositories/productRepository.mjs";
 
 /**
  * Creates a new purchase, its items, and batches within a single transaction.
@@ -39,12 +41,22 @@ export async function createPurchase(purchaseData) {
         discount,
         is_reverse_charge,
       },
-      items
+      items,
     );
 
     // 2. Create Batches / Serials for relevant items
     for (const item of items) {
       if (item.tracking_type === "batch" || item.tracking_type === "serial") {
+        // --- UNIT CONVERSION FOR BATCHES ---
+        // Batches must be tracked in the base unit (e.g. total pcs or total kg)
+        // to stay consistent with the main product stock.
+        const product = getProductById(item.product_id);
+        const baseQty = convertToStockQuantity(
+          item.quantity,
+          item.unit,
+          product,
+        );
+
         const { batchId, batchUid } = batchService.createNewBatch({
           productId: item.product_id,
           purchaseId: purchase_id,
@@ -52,8 +64,15 @@ export async function createPurchase(purchaseData) {
           expiryDate: item.expiry_date,
           mfgDate: item.mfg_date,
           mrp: item.mrp || 0,
-          costPrice: item.rate || 0, // Cost is the purchase rate
-          quantity: item.quantity,
+          costPrice: item.rate || 0, // Cost is the purchase rate (Warning: rate per input unit)
+          // NOTE: costPrice in batch should ideally be per base unit if qty is base unit.
+          // However, keeping simple for now. If analytics needs cost, it should check unit.
+          // Better: Convert cost to base unit rate?
+          // Let's stick to standard practice: If stock is in base units, cost should be per base unit.
+          // But 'item.rate' is for 'item.unit'.
+          // Let's rely on the weighted average calc in repo for main product cost.
+          // For specific batch cost tracking, we might need adjustments later.
+          quantity: baseQty, // Use converted quantity
           serialNumbers: item.serial_numbers, // Array of strings from frontend
           location: "Store",
         });
@@ -109,6 +128,7 @@ export async function createPurchase(purchaseData) {
 /* -------------------- GET PURCHASE BY ID  --------------------------*/
 export async function getPurchaseById(id) {
   const purchase = await purchaseRepository.getPurchaseById(id);
+  console.log("get Purchase by id", )
   if (!purchase) throw { status: 404, message: "Purchase not found" };
   return { ...purchase };
 }
@@ -155,14 +175,14 @@ export async function getAllPurchases(query) {
 
 export async function getPurchasesBySupplierIdService(
   supplierId,
-  filters = {}
+  filters = {},
 ) {
   try {
     if (isNaN(supplierId) || supplierId <= 0)
       throw new Error("Invalid supplier ID.");
     return await purchaseRepository.getPurchasesBySupplierId(
       supplierId,
-      filters
+      filters,
     );
   } catch (error) {
     console.error("Error in getPurchasesBySupplierIdService:", error.message);

@@ -449,7 +449,10 @@ export function initializeDatabase(dbPath) {
       category INTEGER,
       subcategory INTEGER,
       storage_location TEXT,
-      quantity INTEGER,
+      quantity REAL DEFAULT 0, -- UPDATED: REAL for fractional support
+      base_unit TEXT DEFAULT 'pcs', -- UPDATED: New column
+      secondary_unit TEXT, -- UPDATED: New column
+      conversion_factor REAL DEFAULT 1, -- UPDATED: New column
       description TEXT,
       brand TEXT,
       barcode TEXT,
@@ -533,6 +536,7 @@ export function initializeDatabase(dbPath) {
       product_id INTEGER NOT NULL,
       rate REAL NOT NULL,
       quantity REAL NOT NULL,
+      unit TEXT, -- UPDATED: New column
       gst_rate REAL DEFAULT 0,
       discount REAL DEFAULT 0,
       price REAL NOT NULL,
@@ -567,6 +571,7 @@ export function initializeDatabase(dbPath) {
       quantity REAL NOT NULL,
       rate REAL NOT NULL,
       price REAL NOT NULL,
+      unit TEXT, -- UPDATED: New column
       gst_rate REAL DEFAULT 0,
       discount REAL DEFAULT 0,
       batch_id INTEGER,
@@ -600,6 +605,7 @@ export function initializeDatabase(dbPath) {
       gst_rate REAL NOT NULL,
       discount REAL DEFAULT 0,
       price REAL DEFAULT 0,
+      unit TEXT, -- UPDATED: New column
       batch_uid TEXT,           
       batch_number TEXT,        
       serial_numbers TEXT,      
@@ -696,6 +702,14 @@ export function initializeDatabase(dbPath) {
     "tracking_type",
     "TEXT CHECK(tracking_type IN ('none', 'batch', 'serial')) DEFAULT 'none'",
   );
+  // Universal Units Migration
+  safeMigrate(db, "products", "base_unit", "TEXT DEFAULT 'pcs'");
+  safeMigrate(db, "products", "secondary_unit", "TEXT");
+  safeMigrate(db, "products", "conversion_factor", "REAL DEFAULT 1");
+  safeMigrate(db, "sales_items", "unit", "TEXT");
+  safeMigrate(db, "sales_order_items", "unit", "TEXT");
+  safeMigrate(db, "purchase_items", "unit", "TEXT");
+
   safeMigrate(db, "product_batches", "batch_uid", "TEXT UNIQUE");
   safeMigrate(
     db,
@@ -746,6 +760,7 @@ export function initializeDatabase(dbPath) {
       product_name TEXT NOT NULL,
       rate REAL NOT NULL,
       quantity REAL NOT NULL,
+      unit TEXT,
       discount REAL DEFAULT 0,
       price REAL NOT NULL,
       batch_details TEXT,
@@ -753,6 +768,7 @@ export function initializeDatabase(dbPath) {
     );
   `);
   safeMigrate(nonGstDb, "sales_items_non_gst", "batch_details", "TEXT");
+  safeMigrate(nonGstDb, "sales_items_non_gst", "unit", "TEXT");
 
   // 7. RESTORE DATA (Crucial Step: If main is empty, pull from backup)
   restoreDataFromBackup(db, backupPath);

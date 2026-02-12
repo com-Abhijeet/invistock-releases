@@ -200,7 +200,7 @@ function createInvoiceHTML({ sale, shop }) {
         ${getTrackingHtml(item)}
       </td>
       ${showHSN ? `<td class="text-center">${item.hsn || "-"}</td>` : ""}
-      <td class="text-center">${item.quantity}</td>
+      <td class="text-center">${item.quantity} ${item.unit || ""}</td>
       <td class="text-right">${formatAmount(item.rate)}</td>
       ${showDiscountCol ? `<td class="text-center">${item.discount || 0}%</td>` : ""}
       ${showGstPerItem ? `<td class="text-center">${item.gst_rate}%</td>` : ""}
@@ -290,15 +290,29 @@ function createInvoiceHTML({ sale, shop }) {
             <div class="bold">Amount in Words:</div>
             <div style="font-style:italic; margin-bottom:8px;">${numberToWords(sale.total_amount)}</div>
            ${
-             gstEnabled && showGstBreakup && !inclusiveTax
+             gstEnabled
                ? `
-                <div style="margin-top:6px; font-size:9px; border-top:1px dotted #ccc; padding-top:4px;">
-                    Taxable: ${formatAmount(totalTaxableValue)}<br>
-                    ${isInterstate ? `IGST: ${formatAmount(totalIgst)}` : `CGST: ${formatAmount(totalCgst)} | SGST: ${formatAmount(totalSgst)}`}
-                </div>`
+      ${
+        showGstBreakup
+          ? `
+          <div style="margin-top:6px; font-size:9px; border-top:1px dotted #ccc; padding-top:4px;">
+              Taxable: ${formatAmount(totalTaxableValue)}<br>
+              ${
+                isInterstate
+                  ? `IGST: ${formatAmount(totalIgst)}`
+                  : `CGST: ${formatAmount(totalCgst)} | SGST: ${formatAmount(totalSgst)}`
+              }
+          </div>`
+          : ""
+      }
+      ${
+        inclusiveTax
+          ? `<div style="margin-top: 10px; font-weight: bold; font-size: 10px;">* All prices are inclusive of GST</div>`
+          : ""
+      }
+    `
                : ""
            }
-            ${inclusiveTax ? `<div style="margin-top: 10px; font-weight: bold; font-size: 10px;">* All prices are inclusive of GST</div>` : ""}
           </div>
           
           <div class="bank-details">

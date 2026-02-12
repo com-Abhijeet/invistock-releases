@@ -14,7 +14,7 @@ const thermal58mm = (data) => {
         ${getTrackingHtml(item)}
       </div>
       <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:2px;">
-        <span>${item.quantity} x ${item.rate}</span>
+        <span>${item.quantity} ${item.unit || ""} x ${item.rate}</span>
         <span style="font-weight:600;">${formatAmount(item.price)}</span>
       </div>
     </div>
