@@ -12,9 +12,11 @@ const purchaseItemSchema = z.object({
   // New Tracking Fields
   tracking_type: z.enum(["none", "batch", "serial"]).optional(),
   batch_number: z.string().optional().nullable(),
+  barcode: z.string().optional().nullable(), // Added barcode
   expiry_date: z.string().optional().nullable(),
   mfg_date: z.string().optional().nullable(),
   mrp: z.number().optional(),
+  margin: z.number().optional().default(0), // Added margin
   mop: z.number().optional(),
   mfw_price: z.string().optional(),
 

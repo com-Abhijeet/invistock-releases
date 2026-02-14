@@ -71,9 +71,6 @@ const PurchasePage = () => {
   const isView = action === "view";
   const isEdit = action === "edit";
 
-  console.log(action, id);
-  console.log(typeof action, typeof id);
-
   // Shortcut Modal State
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
 
@@ -84,7 +81,6 @@ const PurchasePage = () => {
         try {
           const data = await getPurchaseById(id);
           if (data) setPurchase(data.data);
-          console.log(data.data);
         } catch (err) {
           console.error("Failed to fetch purchase:", err);
         } finally {
@@ -172,7 +168,8 @@ const PurchasePage = () => {
           purchase={purchase}
           onPurchaseChange={(p) => !isView && setPurchase(p)}
           setSuccess={setSuccess}
-          mode={isView ? "view" : "new"}
+          // FIXED: Correctly pass 'edit' mode when action is edit
+          mode={isView ? "view" : isEdit ? "edit" : "new"}
           resetForm={generateInitialPurchase}
         />
       </Box>

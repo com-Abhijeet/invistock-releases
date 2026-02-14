@@ -26,7 +26,7 @@ import { handlePrint } from "../../lib/handleInvoicePrint";
 import { createCustomer } from "../../lib/api/customerService";
 import type { CustomerType } from "../../lib/types/customerTypes";
 import { numberToWords } from "../../utils/numberToWords";
-import { Printer, MessageCircle } from "lucide-react";
+import { Printer, MessageCircle, Percent } from "lucide-react";
 import toast from "react-hot-toast";
 import { getShopData } from "../../lib/api/shopService";
 
@@ -55,7 +55,33 @@ const SaleSummarySection = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [doPrint, setDoPrint] = useState(true);
-  const [doWhatsApp, setDoWhatsApp] = useState(false);
+  // UPDATED: WhatsApp default to true
+  const [doWhatsApp, setDoWhatsApp] = useState(true);
+
+  // --- AUTOMATIC TOTAL CALCULATION ---
+  // Recalculate Total whenever Items or Discount % changes
+  useEffect(() => {
+    if (mode === "view") return;
+
+    const subtotal = sale.items.reduce(
+      (sum, item) => sum + (Number(item.price) || 0),
+      0,
+    );
+    const discountPct = Number(sale.discount) || 0;
+    const discountAmount = (subtotal * discountPct) / 100;
+    const calculatedTotal = Math.max(0, subtotal - discountAmount);
+
+    // Round to 2 decimals to avoid floating point jitter
+    const finalTotal =
+      Math.round((calculatedTotal + Number.EPSILON) * 100) / 100;
+
+    // Only update if value is different to avoid loops
+    // Note: We do NOT include sale.total_amount in dependency array.
+    // This allows "Round Off" to persist until items/discount are touched again.
+    if (Math.abs(finalTotal - sale.total_amount) > 0.05) {
+      onSaleChange({ ...sale, total_amount: finalTotal });
+    }
+  }, [sale.items, sale.discount, mode]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -117,6 +143,14 @@ const SaleSummarySection = ({
   };
 
   const handleSubmit = async () => {
+    // --- UPDATED: Frontend Validation for Customer ---
+    if (!sale.customer_id || sale.customer_id === 0) {
+      if (!customer?.name || !customer?.phone) {
+        toast.error("Customer Name and Phone Number are required.");
+        return;
+      }
+    }
+
     if (sale.status === "paid" && sale.paid_amount < sale.total_amount) {
       setWarningOpen(true);
       return;
@@ -126,6 +160,7 @@ const SaleSummarySection = ({
     try {
       let saleDataWithCustomer = { ...sale };
 
+      // Create Customer if needed
       if (!sale.customer_id || sale.customer_id === 0) {
         const customerData = {
           name: customer?.name!,
@@ -136,11 +171,17 @@ const SaleSummarySection = ({
           pincode: customer?.pincode,
           gst_no: customer?.gst_no,
         };
-        const customerRes = await createCustomer(customerData);
-        saleDataWithCustomer = {
-          ...saleDataWithCustomer,
-          customer_id: customerRes.id,
-        };
+        try {
+          const customerRes = await createCustomer(customerData);
+          saleDataWithCustomer = {
+            ...saleDataWithCustomer,
+            customer_id: customerRes.id,
+          };
+        } catch (err) {
+          toast.error("Failed to create customer. Please check details.");
+          setIsSubmitting(false);
+          return;
+        }
       }
 
       const payload = {
@@ -173,7 +214,20 @@ const SaleSummarySection = ({
       if (doWhatsApp && customer?.phone) {
         const nl = "\n";
         const message = `*Invoice from ${shop?.shop_name || "Our Shop"}*${nl}${nl}Bill No: ${savedSale.reference_no}${nl}Total: ₹${savedSale.total_amount}${nl}Thank you!`;
-        window.electron.sendWhatsAppMessage(customer.phone, message);
+        if (window.electron && window.electron.sendWhatsAppMessage) {
+          window.electron.sendWhatsAppMessage(customer.phone, message);
+        }
+        const pdfRes = await window.electron.sendWhatsAppInvoicePdf({
+          sale: sale,
+          shop: shop,
+          customerPhone: customer?.phone,
+        });
+
+        if (pdfRes.success) {
+          toast.success("Invoice sent successfully!");
+        } else {
+          toast.error("Failed to send PDF.");
+        }
       }
       resetForm();
     } catch (err: any) {
@@ -245,6 +299,29 @@ const SaleSummarySection = ({
 
             {!isViewMode ? (
               <Stack direction="row" spacing={2} alignItems="center" mt={2}>
+                {/* UPDATED: Discount Field Added */}
+                <TextField
+                  label="Disc %"
+                  size="small"
+                  type="number"
+                  variant="standard"
+                  value={sale.discount || ""}
+                  onChange={(e) =>
+                    handleFieldChange(
+                      "discount",
+                      Math.max(0, parseFloat(e.target.value) || 0),
+                    )
+                  }
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Percent size={14} />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ width: 80 }}
+                />
+
                 <TextField
                   label="Paid"
                   size="small"

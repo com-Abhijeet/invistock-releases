@@ -4,7 +4,10 @@ import { createTransaction } from "../repositories/transactionRepository.mjs";
 import * as batchService from "../services/batchService.mjs";
 import db from "../db/db.mjs";
 import { convertToStockQuantity } from "../services/unitService.mjs";
-import { getProductById } from "../repositories/productRepository.mjs";
+import {
+  getProductById,
+  updateProductQuantity,
+} from "../repositories/productRepository.mjs";
 
 /**
  * Creates a new purchase, its items, and batches within a single transaction.
@@ -47,9 +50,6 @@ export async function createPurchase(purchaseData) {
     // 2. Create Batches / Serials for relevant items
     for (const item of items) {
       if (item.tracking_type === "batch" || item.tracking_type === "serial") {
-        // --- UNIT CONVERSION FOR BATCHES ---
-        // Batches must be tracked in the base unit (e.g. total pcs or total kg)
-        // to stay consistent with the main product stock.
         const product = getProductById(item.product_id);
         const baseQty = convertToStockQuantity(
           item.quantity,
@@ -57,29 +57,20 @@ export async function createPurchase(purchaseData) {
           product,
         );
 
-        const { batchId, batchUid } = batchService.createNewBatch({
+        batchService.createNewBatch({
           productId: item.product_id,
           purchaseId: purchase_id,
-          batchNumber: item.batch_number, // From Frontend
+          batchNumber: item.batch_number,
+          barcode: item.barcode,
           expiryDate: item.expiry_date,
           mfgDate: item.mfg_date,
           mrp: item.mrp || 0,
-          costPrice: item.rate || 0, // Cost is the purchase rate (Warning: rate per input unit)
-          // NOTE: costPrice in batch should ideally be per base unit if qty is base unit.
-          // However, keeping simple for now. If analytics needs cost, it should check unit.
-          // Better: Convert cost to base unit rate?
-          // Let's stick to standard practice: If stock is in base units, cost should be per base unit.
-          // But 'item.rate' is for 'item.unit'.
-          // Let's rely on the weighted average calc in repo for main product cost.
-          // For specific batch cost tracking, we might need adjustments later.
-          quantity: baseQty, // Use converted quantity
-          serialNumbers: item.serial_numbers, // Array of strings from frontend
+          margin: item.margin || 0,
+          costPrice: item.rate || 0,
+          quantity: baseQty,
+          serialNumbers: item.serial_numbers,
           location: "Store",
         });
-
-        // NOTE: We rely on the BatchService to create the 'product_batches' row
-        // and 'product_serials' rows.
-        // We already stored the snapshot of this in 'purchase_items' in the repo step above.
       }
     }
 
@@ -128,7 +119,7 @@ export async function createPurchase(purchaseData) {
 /* -------------------- GET PURCHASE BY ID  --------------------------*/
 export async function getPurchaseById(id) {
   const purchase = await purchaseRepository.getPurchaseById(id);
-  console.log("get Purchase by id", )
+  console.log("get Purchase by id");
   if (!purchase) throw { status: 404, message: "Purchase not found" };
   return { ...purchase };
 }
@@ -142,11 +133,113 @@ export async function deletePurchase(id) {
 
 /* -------------------- UPDATE PURCHASE  --------------------------*/
 export async function updatePurchase(id, purchaseData) {
-  // Update logic is complex with batches. For now, we reuse the repo update.
-  // In a real-world scenario, modifying a purchase with batches requires
-  // validating if those batches have already been sold.
-  await purchaseRepository.updatePurchase(id, purchaseData, purchaseData.items);
-  return { status: 200, message: "Purchase updated" };
+  const oldPurchase = purchaseRepository.getPurchaseById(id);
+  if (!oldPurchase) throw new Error("Purchase not found");
+
+  const transaction = db.transaction(() => {
+    // 1. REVERT OLD STOCK (Master + Batch)
+    // We iterate over the *existing* items in the DB
+    for (const item of oldPurchase.items) {
+      const product = getProductById(item.product_id);
+
+      // Calculate quantity in Base Unit to revert
+      const revertQty = convertToStockQuantity(
+        item.quantity,
+        item.unit,
+        product,
+      );
+
+      // A. Revert Master Stock (Decrease, because purchase added it)
+      updateProductQuantity(item.product_id, product.quantity - revertQty);
+
+      // B. Revert Batch/Serial Stock
+      // If the item had batch tracking, we reduce the batch quantity
+      if (
+        product.tracking_type === "batch" ||
+        product.tracking_type === "serial"
+      ) {
+        batchService.revertPurchaseBatchStock({
+          purchaseId: id,
+          productId: item.product_id,
+          quantity: revertQty,
+          serialNumbers: item.serial_numbers, // Pass serials to attempt removal
+        });
+      }
+    }
+
+    // 2. APPLY NEW STOCK (Master + Batch)
+    // Iterate over the *new* items coming from frontend
+    for (const item of purchaseData.items) {
+      const product = getProductById(item.product_id);
+
+      // Calculate quantity in Base Unit to add
+      const addQty = convertToStockQuantity(item.quantity, item.unit, product);
+
+      // A. Add Master Stock (Increase)
+      // Note: We fetched product *before* this loop, but since updateProductQuantity writes to DB
+      // immediately (synchronous in better-sqlite3), next iteration might see old qty object?
+      // Actually `getProductById` fetches fresh. But inside loop we used `product` var.
+      // Better to re-fetch product or just blindly add delta. `updateProductQuantity` sets absolute.
+      // Safe approach: Fetch fresh product quantity or assume cumulative delta.
+      // Since `updateProductQuantity` logic is `SET quantity = ?`, we need current.
+      const freshProduct = getProductById(item.product_id);
+      updateProductQuantity(item.product_id, freshProduct.quantity + addQty);
+
+      // B. Add/Update Batch Stock
+      if (
+        product.tracking_type === "batch" ||
+        product.tracking_type === "serial"
+      ) {
+        batchService.addOrUpdatePurchaseBatch({
+          purchaseId: id,
+          productId: item.product_id,
+          batchNumber: item.batch_number,
+          quantity: addQty,
+          mrp: item.mrp,
+          expiryDate: item.expiry_date,
+          mfgDate: item.mfg_date,
+          serialNumbers: item.serial_numbers,
+        });
+      }
+    }
+
+    // 3. HANDLE FINANCIAL DELTA
+    // Calculate difference in paid amounts to record a new transaction if needed
+    const oldPaid = oldPurchase.paid_amount || 0;
+    const newPaid = purchaseData.paid_amount || 0;
+    const delta = newPaid - oldPaid;
+
+    if (delta !== 0) {
+      createTransaction({
+        type: delta > 0 ? "payment_out" : "payment_in", // Paying more = Out, Getting refund = In (technically refund)
+        // Wait, for Purchase: Payment Out is normal.
+        // If I pay MORE (delta > 0), it is another Payment Out.
+        // If I pay LESS (delta < 0), it implies I got money back? Or just corrected entry?
+        // Usually edits correct mistakes. If I reduce paid amount, I expect cash back (Payment In).
+        bill_id: id,
+        bill_type: "purchase",
+        entity_id: purchaseData.supplier_id,
+        entity_type: "supplier",
+        transaction_date: new Date().toISOString().slice(0, 10),
+        amount: Math.abs(delta),
+        payment_mode: purchaseData.payment_mode,
+        status: "paid",
+        note: `Adjustment for Purchase #${purchaseData.reference_no}`,
+      });
+    }
+
+    // 4. UPDATE RECORDS (Header & Items)
+    // This cleans up purchase_items table and updates header fields
+    purchaseRepository.updatePurchase(id, purchaseData, purchaseData.items);
+  });
+
+  try {
+    transaction();
+    return { status: 200, message: "Purchase updated successfully" };
+  } catch (err) {
+    console.error("Purchase update failed:", err.message);
+    throw new Error("Purchase update failed: " + err.message);
+  }
 }
 
 /* -------------------- GET ALL PURCHASES   --------------------------*/

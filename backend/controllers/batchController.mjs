@@ -133,11 +133,40 @@ export function getBatchAnalytics(req, res) {
   try {
     const { productId } = req.params;
     const analytics = BatchService.getBatchAnalyticsForProduct(
-      Number(productId)
+      Number(productId),
     );
     res.json({ status: "success", data: analytics });
   } catch (error) {
     console.error("[BATCH CONTROLLER] Error getting analytics:", error);
+    res.status(500).json({ status: "error", error: error.message });
+  }
+}
+
+/**
+ * GET /api/batches/check-barcode/:code
+ * Checks if a barcode is unique.
+ */
+export function checkBarcode(req, res) {
+  try {
+    const { code } = req.params;
+    const exists = BatchService.checkBarcodeExistence(code);
+    res.json({ status: "success", exists });
+  } catch (error) {
+    console.error("[BATCH CONTROLLER] Check Barcode Error:", error);
+    res.status(500).json({ status: "error", error: error.message });
+  }
+}
+
+/**
+ * GET /api/batches/generate-barcode
+ * Generates a unique 10-digit numeric barcode.
+ */
+export function generateBarcode(req, res) {
+  try {
+    const barcode = BatchService.generateUniqueBarcode();
+    res.json({ status: "success", barcode });
+  } catch (error) {
+    console.error("[BATCH CONTROLLER] Generate Barcode Error:", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }

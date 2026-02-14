@@ -55,7 +55,7 @@ export const saleSchema = z.object({
   status: saleStatusEnum,
   items: z.array(saleItemSchema).min(1, "At least one sale item is required"),
   createdAt: z.string().optional(),
-  discount: z.string().optional(),
+  discount: z.number().optional(),
 
   is_quote: z.coerce.boolean().optional().default(false),
   is_ecommerce_sale: z.coerce.boolean().optional().default(false),

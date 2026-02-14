@@ -1,6 +1,6 @@
 import { api } from "./api";
 import { toast } from "react-hot-toast";
-import type { PurchasePayload } from "../types/purchaseTypes";
+import type { PurchaseItem, PurchasePayload } from "../types/purchaseTypes";
 import type { ApiFilterParams } from "../types/inventoryDashboardTypes";
 
 const BASE_URL = "/api/purchases";
@@ -98,7 +98,7 @@ export async function getPurchaseSummary(params?: Record<string, any>) {
  */
 export async function getPurchasesBySupplierId(
   supplierId: number,
-  params: ApiFilterParams
+  params: ApiFilterParams,
 ) {
   try {
     const response = await api.get(`${BASE_URL}/supplier/${supplierId}`, {
@@ -108,34 +108,39 @@ export async function getPurchasesBySupplierId(
   } catch (error) {
     console.error(
       `Failed to fetch purchases for supplier ${supplierId}:`,
-      error
+      error,
     );
     throw new Error("Failed to fetch supplier purchases.");
   }
 }
 
-export interface LabelItem {
-  id: number;
+export interface LabelItem extends PurchaseItem {
+  id?: number;
   name: string;
   product_code: string;
   barcode: string;
   mrp: number;
   mop: number;
-  mfw_price?: number;
-  size?: string;
-  weight?: string;
+  mfw_price: string;
   purchase_quantity: number;
-  printQuantity?: number; // Added by frontend logic
-
-  // Tracking fields
-  tracking_type?: "none" | "batch" | "serial";
+  purchase_unit: string;
   batch_uid?: string;
   batch_number?: string;
+  serial_numbers?: string;
+  tracking_type?: "none" | "batch" | "serial";
+  expiry_date?: string;
 }
 
-export async function fetchPurchaseItemsForLabels(
-  purchaseId: number
-): Promise<LabelItem[]> {
-  const res = await api.get(`/api/purchases/${purchaseId}/labels`);
-  return res.data.data;
-}
+export const fetchPurchaseItemsForLabels = async (
+  purchaseId: number,
+): Promise<LabelItem[]> => {
+  try {
+    const response = await api.get(`/api/purchases/${purchaseId}/labels`);
+    return response.data.data;
+  } catch (error: any) {
+    console.error("Error fetching items for labels:", error);
+    throw new Error(
+      error.response?.data?.error || "Failed to fetch label items",
+    );
+  }
+};

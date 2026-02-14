@@ -12,27 +12,24 @@ export interface BatchItem {
   mop?: number;
   mfw_price?: number;
   location?: string;
-  // Added for barcode compatibility
   batch_uid?: string;
   created_at?: string;
+  barcode?: string;
 }
 
 export interface SerialItem {
   id: number;
   serial_number: string;
-  batch_number?: string; // Joined from batch table
+  batch_number?: string;
   status: string;
-  // Join fields if needed for display
   mrp?: number;
   mop?: number;
   mfw_price?: number;
-  // Added for barcode compatibility
   batch_uid?: string;
   batch_id?: number;
   created_at?: string;
 }
 
-// Payload structure for assigning untracked stock to a batch
 export interface AssignStockPayload {
   productId: number;
   quantity: number;
@@ -55,7 +52,7 @@ export interface PrintLabelPayload {
 
 export interface ScanResult {
   type: "product" | "batch" | "serial";
-  product: any; // Replace with Product type if available
+  product: any;
   batch?: BatchItem;
   serial?: SerialItem;
 }
@@ -79,28 +76,21 @@ export interface BatchAnalytics {
 
 // --- API Methods ---
 
-/**
- * Fetches active batches or available serials for a product.
- */
 export async function getProductBatches(
   productId: number,
-  trackingType: "batch" | "serial"
+  trackingType: "batch" | "serial",
 ) {
   try {
     const response = await api.get(
-      `/api/batches/product/${productId}?trackingType=${trackingType}`
+      `/api/batches/product/${productId}?trackingType=${trackingType}`,
     );
-    // console.log(response.data.data);
-    return response.data.data; // Assumes backend returns { status: 'success', data: [...] }
+    return response.data.data;
   } catch (error) {
     console.error("Failed to fetch batches:", error);
     return [];
   }
 }
 
-/**
- * Assigns existing untracked stock to a new batch.
- */
 export async function assignStockToBatch(payload: AssignStockPayload) {
   try {
     const response = await api.post("/api/batches/assign-stock", payload);
@@ -114,15 +104,11 @@ export async function assignStockToBatch(payload: AssignStockPayload) {
   }
 }
 
-/**
- * Fetch formatted label data for printing from Backend.
- * Used by LabelPrintModal.
- */
 export const getBatchPrintData = async (payload: {
   scope: "product" | "batch" | "serial";
   productId: number;
   batchId?: number;
-  serialIds?: number[] | string[]; // IDs or "all"
+  serialIds?: number[] | string[];
   copies: number;
 }): Promise<PrintLabelPayload[]> => {
   try {
@@ -141,18 +127,17 @@ export const getBatchPrintData = async (payload: {
  * Scan a barcode (Product, Batch UID, or Serial Composite).
  * Used by POS Search.
  */
-export const scanBarcodeItem = async (code: string): Promise<ScanResult> => {
+export const scanBarcodeItem = async (code: string) => {
   try {
-    // Encode code to handle special chars safely
     const response = await api.get(
-      `/api/batches/scan/${encodeURIComponent(code)}`
+      `/api/batches/scan/${encodeURIComponent(code)}`,
     );
+    console.log(response.data.data);
     if (response.data.status === "success") {
       return response.data.data;
     }
     throw new Error("Item not found");
   } catch (error: any) {
-    // Allow UI to handle 404 specifically
     if (error.response?.status === 404) {
       throw new Error("Item not found");
     }
@@ -160,15 +145,11 @@ export const scanBarcodeItem = async (code: string): Promise<ScanResult> => {
   }
 };
 
-/**
- * Get analytics for product batches.
- */
 export const getBatchAnalytics = async (
-  productId: number
+  productId: number,
 ): Promise<BatchAnalytics | null> => {
   try {
     const response = await api.get(`/api/batches/analytics/${productId}`);
-    // console.log(response.data);
     if (response.data.status === "success") {
       return response.data.data;
     }
@@ -176,5 +157,32 @@ export const getBatchAnalytics = async (
   } catch (error) {
     console.error("Failed to fetch batch analytics:", error);
     return null;
+  }
+};
+
+// --- New Barcode Methods ---
+
+export const generateBarcode = async (): Promise<string> => {
+  try {
+    const res = await api.get(`/api/batches/generate-barcode`);
+    if (res.data.status === "success") {
+      return res.data.barcode;
+    }
+    throw new Error(res.data.error || "Failed to generate barcode");
+  } catch (error) {
+    console.error("Barcode generation failed:", error);
+    // Fallback to safe timestamp-based string if API fails
+    return Date.now().toString().slice(-10);
+  }
+};
+
+export const checkBarcodeExists = async (code: string): Promise<boolean> => {
+  if (!code) return false;
+  try {
+    const res = await api.get(`/api/batches/check-barcode/${code}`);
+    return res.data.exists;
+  } catch (error) {
+    console.error("Barcode check failed:", error);
+    return false;
   }
 };
