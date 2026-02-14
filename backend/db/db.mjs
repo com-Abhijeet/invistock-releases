@@ -38,7 +38,7 @@ function ensureBackupExists(dbPath) {
       const version = tempDb.pragma("user_version", { simple: true });
       tempDb.close();
 
-      if (version < 2) {
+      if (version < 3) {
         console.log(
           `[DB] Migration needed (Current v${version}). Preparing backup...`,
         );
@@ -105,7 +105,7 @@ function restoreDataFromBackup(activeDb, backupPath) {
 
   // Check if we are already migrated
   const version = activeDb.pragma("user_version", { simple: true });
-  if (version >= 2) {
+  if (version >= 3) {
     console.log("[DB] Database already migrated (v2). Skipping restore.");
     return;
   }
@@ -196,7 +196,7 @@ function restoreDataFromBackup(activeDb, backupPath) {
         }
       }
 
-      activeDb.pragma("user_version = 2");
+      activeDb.pragma("user_version = 3");
     })();
 
     activeDb.exec("DETACH DATABASE old_db");
@@ -474,9 +474,11 @@ export function initializeDatabase(dbPath) {
       purchase_id INTEGER,
       batch_uid TEXT UNIQUE,    
       batch_number TEXT,
+      barcode TEXT,
       expiry_date TEXT,
       mfg_date TEXT,
       mrp REAL DEFAULT 0,
+      margin REAL DEFAULT 0,
       mop REAL DEFAULT 0,
       mfw_price TEXT,
       quantity REAL DEFAULT 0,
@@ -607,11 +609,13 @@ export function initializeDatabase(dbPath) {
       price REAL DEFAULT 0,
       unit TEXT, -- UPDATED: New column
       batch_uid TEXT,           
-      batch_number TEXT,        
+      batch_number TEXT,
+      barcode TEXT,        
       serial_numbers TEXT,      
       expiry_date TEXT,
       mfg_date TEXT,
       mrp REAL DEFAULT 0,
+      margin REAL DEFAULT 0,
       mop REAL DEFAULT 0,
       mfw_price TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
@@ -710,7 +714,11 @@ export function initializeDatabase(dbPath) {
   safeMigrate(db, "sales_order_items", "unit", "TEXT");
   safeMigrate(db, "purchase_items", "unit", "TEXT");
 
+  // Batch specific migrations
   safeMigrate(db, "product_batches", "batch_uid", "TEXT UNIQUE");
+  safeMigrate(db, "product_batches", "barcode", "TEXT");
+  safeMigrate(db, "product_batches", "margin", "REAL DEFAULT 0");
+
   safeMigrate(
     db,
     "product_batches",
@@ -722,6 +730,9 @@ export function initializeDatabase(dbPath) {
   safeMigrate(db, "purchase_items", "serial_numbers", "TEXT");
   safeMigrate(db, "purchase_items", "expiry_date", "TEXT");
   safeMigrate(db, "purchase_items", "mfg_date", "TEXT");
+  safeMigrate(db, "purchase_items", "barcode", "TEXT");
+  safeMigrate(db, "purchase_items", "margin", "REAL DEFAULT 0");
+
   safeMigrate(
     db,
     "sales_items",

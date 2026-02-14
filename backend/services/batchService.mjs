@@ -1,6 +1,6 @@
 import * as BatchRepo from "../repositories/batchRepository.mjs";
 import { generateBatchUid } from "../utils/batchUtils.mjs";
-import db from "../db/db.mjs"; // Assuming access to transaction
+import db from "../db/db.mjs";
 
 // ... existing createNewBatch, processSaleItemStockDeduction ...
 
@@ -15,29 +15,29 @@ export function createNewBatch({
   quantity,
   serialNumbers,
   location,
+  barcode,
+  margin,
 }) {
-  // Use a transaction to ensure the Sequence Count and Insertion happen atomically
   const createTransaction = db.transaction(() => {
-    // 1. Get the current count of batches for this product to determine the next sequence number
     const countStmt = db.prepare(
-      "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?"
+      "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?",
     );
     const result = countStmt.get(productId);
     const nextSequence = (result ? result.count : 0) + 1;
 
-    // 2. Generate the unique internal Batch UID (BAT-<pid>-<seq>)
     const batchUid = generateBatchUid(productId, nextSequence);
 
-    // 3. Prepare Insert Statement
     const insertBatch = db.prepare(`
       INSERT INTO product_batches (
         product_id,
         purchase_id,
         batch_uid,
         batch_number,
+        barcode,
         expiry_date,
         mfg_date,
         mrp,
+        margin,
         mop,
         mfw_price,
         quantity,
@@ -48,9 +48,11 @@ export function createNewBatch({
         @purchaseId,
         @batchUid,
         @batchNumber,
+        @barcode,
         @expiryDate,
         @mfgDate,
         @mrp,
+        @margin,
         @mop,
         @mfwPrice,
         @quantity,
@@ -59,15 +61,16 @@ export function createNewBatch({
       )
     `);
 
-    // 4. Run Insert
     const info = insertBatch.run({
       productId,
       purchaseId,
       batchUid,
       batchNumber: batchNumber || "DEFAULT",
+      barcode: barcode || null,
       expiryDate: expiryDate || null,
       mfgDate: mfgDate || null,
       mrp: mrp || 0,
+      margin: margin || 0,
       mop: costPrice || 0,
       mfwPrice: mrp || 0,
       quantity: quantity || 0,
@@ -76,7 +79,6 @@ export function createNewBatch({
 
     const batchId = info.lastInsertRowid;
 
-    // 5. Handle Serial Numbers (if any)
     if (serialNumbers) {
       let serialList = [];
 
@@ -121,12 +123,116 @@ export function createNewBatch({
 }
 
 /**
- * Assigns existing "untracked" stock to a new batch.
- * Does NOT link to a purchase and does NOT update master product quantity.
+ * Reverts (deducts) stock from a specific batch associated with a purchase.
+ * Used when updating/editing a purchase to rollback old items.
  */
+export function revertPurchaseBatchStock({
+  purchaseId,
+  productId,
+  quantity,
+  serialNumbers,
+}) {
+  const transaction = db.transaction(() => {
+    // 1. Find the batch created by this purchase for this product
+    // Note: If multiple batches were created for same product in same purchase,
+    // this logic assumes 1 batch per product per purchase, or simply deducts from any found.
+    // Ideally we should use batch_uid if available from the old purchase item row.
+    // For now, we look up by purchase_id.
+    const batch = db
+      .prepare(
+        `
+      SELECT id, quantity FROM product_batches 
+      WHERE purchase_id = ? AND product_id = ?
+    `,
+      )
+      .get(purchaseId, productId);
+
+    if (batch) {
+      const newQty = batch.quantity - quantity;
+      // We allow negative quantity during rollback if items were already sold,
+      // but ideally this shouldn't happen often in a healthy flow.
+      db.prepare(`UPDATE product_batches SET quantity = ? WHERE id = ?`).run(
+        newQty,
+        batch.id,
+      );
+
+      // 2. Handle Serials removal
+      // If serials were added, we should try to remove them if they are still 'available'.
+      if (serialNumbers && serialNumbers.length > 0) {
+        const deleteSerial = db.prepare(`
+          DELETE FROM product_serials 
+          WHERE batch_id = ? AND serial_number = ? AND status = 'available'
+        `);
+        for (const sn of serialNumbers) {
+          deleteSerial.run(batch.id, sn);
+        }
+      }
+    }
+  });
+  return transaction();
+}
+
+/**
+ * Adds stock to a batch for a purchase, updating existing if match found or creating new.
+ */
+export function addOrUpdatePurchaseBatch(params) {
+  const { purchaseId, productId, batchNumber, quantity } = params;
+
+  const transaction = db.transaction(() => {
+    // Check if a batch already exists for this purchase and product (and batch number)
+    // This allows updating the SAME batch record during an edit, keeping history cleaner.
+    const existing = db
+      .prepare(
+        `
+      SELECT id, quantity FROM product_batches 
+      WHERE purchase_id = ? AND product_id = ? AND batch_number = ?
+    `,
+      )
+      .get(purchaseId, productId, batchNumber || "DEFAULT");
+
+    if (existing) {
+      // Update existing
+      db.prepare(
+        `
+        UPDATE product_batches 
+        SET quantity = quantity + ?, 
+            mrp = ?, 
+            expiry_date = ?, 
+            mfg_date = ? 
+        WHERE id = ?
+      `,
+      ).run(
+        quantity,
+        params.mrp || 0,
+        params.expiryDate || null,
+        params.mfgDate || null,
+        existing.id,
+      );
+
+      // Add new serials if any
+      if (params.serialNumbers && params.serialNumbers.length > 0) {
+        const insertSerial = db.prepare(`
+          INSERT OR IGNORE INTO product_serials (product_id, batch_id, serial_number, status) 
+          VALUES (?, ?, ?, 'available')
+        `);
+        // We use INSERT OR IGNORE to avoid errors if serial exists (though unlikely if we reverted correctly)
+        for (const sn of params.serialNumbers) {
+          insertSerial.run(productId, existing.id, sn);
+        }
+      }
+      return { batchId: existing.id };
+    } else {
+      // Create new
+      return createNewBatch(params);
+    }
+  });
+  return transaction();
+}
+
 export function assignUntrackedStock({
   productId,
   batchNumber,
+  barcode,
   expiryDate,
   mfgDate,
   mrp,
@@ -137,21 +243,20 @@ export function assignUntrackedStock({
   serials,
 }) {
   const assignTransaction = db.transaction(() => {
-    // 1. Generate Sequence for Batch UID
     const countStmt = db.prepare(
-      "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?"
+      "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?",
     );
     const result = countStmt.get(productId);
     const nextSequence = (result ? result.count : 0) + 1;
     const batchUid = generateBatchUid(productId, nextSequence);
 
-    // 2. Insert Batch (purchase_id is NULL)
     const insertBatch = db.prepare(`
       INSERT INTO product_batches (
         product_id,
         purchase_id,
         batch_uid,
         batch_number,
+        barcode,
         expiry_date,
         mfg_date,
         mrp,
@@ -166,6 +271,7 @@ export function assignUntrackedStock({
         NULL, 
         @batchUid,
         @batchNumber,
+        @barcode,
         @expiryDate,
         @mfgDate,
         @mrp,
@@ -182,6 +288,7 @@ export function assignUntrackedStock({
       productId,
       batchUid,
       batchNumber: batchNumber || "ASSIGNED",
+      barcode: barcode || null,
       expiryDate: expiryDate || null,
       mfgDate: mfgDate || null,
       mrp: mrp || 0,
@@ -193,7 +300,6 @@ export function assignUntrackedStock({
 
     const newBatchId = info.lastInsertRowid;
 
-    // 3. Insert Serials if provided
     if (serials && serials.length > 0) {
       const insertSerial = db.prepare(`
         INSERT INTO product_serials (
@@ -262,11 +368,44 @@ export function traceSerial(serialNumber) {
   return BatchRepo.findSerialHistory(serialNumber);
 }
 
+// --- BARCODE UTILITIES ---
+
+export function checkBarcodeExistence(code) {
+  if (!code) return false;
+  const productCheck = db
+    .prepare("SELECT 1 FROM products WHERE barcode = ? OR product_code = ?")
+    .get(code, code);
+  if (productCheck) return true;
+  const batchCheck = db
+    .prepare("SELECT 1 FROM product_batches WHERE barcode = ?")
+    .get(code);
+  if (batchCheck) return true;
+  const serialCheck = db
+    .prepare("SELECT 1 FROM product_serials WHERE serial_number = ?")
+    .get(code);
+  if (serialCheck) return true;
+  return false;
+}
+
+export function generateUniqueBarcode() {
+  let unique = false;
+  let barcode = "";
+  let attempts = 0;
+  while (!unique && attempts < 5) {
+    barcode = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+    if (!checkBarcodeExistence(barcode)) {
+      unique = true;
+    }
+    attempts++;
+  }
+  if (!unique) {
+    throw new Error("Failed to generate unique barcode after 5 attempts");
+  }
+  return barcode;
+}
+
 // --- NEW FEATURES ---
 
-/**
- * Generates print payloads for labels.
- */
 export async function generatePrintPayload({
   scope,
   productId,
@@ -280,7 +419,6 @@ export async function generatePrintPayload({
   const labels = [];
   const qty = Number(copies) || 1;
 
-  // 1. Product Scope
   if (scope === "product") {
     const code = product.barcode || product.product_code || String(product.id);
     labels.push({
@@ -289,130 +427,134 @@ export async function generatePrintPayload({
       price: product.mrp,
       copies: qty,
     });
-  }
-
-  // 2. Batch Scope
-  else if (scope === "batch") {
+  } else if (scope === "batch") {
     const batch = BatchRepo.getBatchById(batchId);
     if (!batch) throw new Error("Batch not found");
-
-    // Barcode: Batch UID (Priority) -> "BAT-{id}" (Fallback)
-    const code = batch.batch_uid || `BAT-${batch.id}`;
-
+    const code = batch.barcode || batch.batch_uid || `BAT-${batch.id}`;
     labels.push({
       barcode: code,
       label: `${product.name} (Batch: ${batch.batch_number})`,
       price: batch.mrp,
       copies: qty,
     });
-  }
-
-  // 3. Serial Scope
-  else if (scope === "serial") {
+  } else if (scope === "serial") {
     const batch = BatchRepo.getBatchById(batchId);
     if (!batch) throw new Error("Batch not found for serials");
-
     let serials = [];
     if (serialIds && serialIds.includes("all")) {
       serials = BatchRepo.getAllSerialsInBatch(batchId);
     } else {
       serials = BatchRepo.getSerialsByIds(serialIds);
     }
-
     for (const item of serials) {
-      // Barcode Format: <PID>-<BatchUID>-<SerialNum>
-      // Fallback for batchUID if old data
-      const bUid = batch.batch_uid || `BAT-${batch.id}`;
-      const code = `${product.id}-${bUid}-${item.serial_number}`;
-
+      const code = item.serial_number;
       labels.push({
         barcode: code,
         label: `${product.name} (SN: ${item.serial_number})`,
         price: batch.mrp,
-        copies: qty, // Copies per serial
+        copies: qty,
       });
     }
   }
-
   return labels;
 }
 
 /**
  * Scans a barcode and resolves it to a Product, Batch, or Serial.
- * Logic:
- * 1. Try Serial Composite format (PID-BATUID-SN)
- * 2. Try Batch UID format (BAT-...)
- * 3. Try Product Barcode/Code
+ * Priority: Serial > Batch > Product (Exact) > Product (Name fallback)
  */
 export async function scanBarcode(code) {
   if (!code) throw new Error("No code provided");
 
-  // A. Check for Serial Composite (e.g., 101-BAT-101-0001-SN123)
-  // Simple check: does it contain "BAT-" in the middle?
-  if (code.includes("-BAT-")) {
-    const parts = code.split("-BAT-");
-    if (parts.length >= 2) {
-      const pid = parts[0];
-      const rest = "BAT-" + parts[1]; // Restore BAT- prefix
-      // rest might be "BAT-101-0001-SN123" -> Split into UID and SN
-      // Assuming Batch UID is fixed length or we split by last hyphen
-      // Actually, safest is to parse strictly if we know the format generated above:
-      // Gen Format: `${product.id}-${bUid}-${item.serial_number}`
+  const trimmedCode = code.trim();
 
-      // Let's rely on finding the serial by exact string match or composite logic in Repo
-      // But splitting is risky if SN contains hyphens.
-      // Strategy: Try to find a serial containing this exact string or parse carefully.
+  // 1. Check Serial Numbers (Exact Match)
+  // We fetch full product separately to ensure all fields (unit, hsn, tax) are present
+  const serialCheck = db
+    .prepare(
+      `
+    SELECT ps.*, pb.batch_number, pb.mrp as batch_mrp, pb.expiry_date, pb.mop as batch_mop, pb.mfw_price as batch_mfw
+    FROM product_serials ps
+    JOIN product_batches pb ON ps.batch_id = pb.id
+    WHERE ps.serial_number = ?
+  `,
+    )
+    .get(trimmedCode);
 
-      const lastHyphen = code.lastIndexOf("-");
-      const serialNum = code.substring(lastHyphen + 1);
-      const batchUid = code.substring(code.indexOf("-") + 1, lastHyphen); // Middle part
-
-      const serial = BatchRepo.findSerialByCompositeKey(
-        pid,
-        batchUid,
-        serialNum
-      );
-      if (serial) {
-        const product = BatchRepo.getProductById(serial.product_id);
-        const batch = BatchRepo.getBatchById(serial.batch_id);
-        return { type: "serial", product, batch, serial };
-      }
-    }
+  if (serialCheck) {
+    const product = db
+      .prepare("SELECT * FROM products WHERE id = ?")
+      .get(serialCheck.product_id);
+    return {
+      type: "serial",
+      product: product, // Full product details
+      batch: {
+        id: serialCheck.batch_id,
+        batch_number: serialCheck.batch_number,
+        mrp: serialCheck.batch_mrp,
+        mop: serialCheck.batch_mop,
+        mfw_price: serialCheck.batch_mfw,
+        expiry_date: serialCheck.expiry_date,
+      },
+      serial: serialCheck,
+    };
   }
 
-  // B. Check for Batch UID
-  if (code.startsWith("BAT-")) {
-    const batch = BatchRepo.findBatchByUid(code);
-    if (batch) {
-      const product = BatchRepo.getProductById(batch.product_id);
-      return { type: "batch", product, batch };
-    }
+  // 2. Check Batches (Exact Match on 'barcode')
+  const batchCheck = db
+    .prepare(
+      `
+    SELECT pb.*
+    FROM product_batches pb
+    WHERE pb.barcode = ? OR pb.batch_uid = ?
+  `,
+    )
+    .get(trimmedCode, trimmedCode);
+
+  if (batchCheck) {
+    const product = db
+      .prepare("SELECT * FROM products WHERE id = ?")
+      .get(batchCheck.product_id);
+    return {
+      type: "batch",
+      product: product, // Full product details
+      batch: batchCheck,
+    };
   }
 
-  // C. Check for Product Barcode / Code / ID
-  const product = BatchRepo.findProductByBarcode(code);
-  if (product) {
-    return { type: "product", product };
+  // 3. Check Products (Exact Match on 'barcode' or 'product_code')
+  const productCheck = db
+    .prepare(
+      `
+    SELECT * FROM products WHERE barcode = ? OR product_code = ?
+  `,
+    )
+    .get(trimmedCode, trimmedCode);
+
+  if (productCheck) {
+    return {
+      type: "product",
+      product: productCheck,
+    };
   }
 
-  // D. Fallback: Check if scanning just the Serial Number (Legacy support)
-  const serialOnly = BatchRepo.findSerialByExactMatch(code);
-  if (serialOnly) {
-    const product = BatchRepo.getProductById(serialOnly.product_id);
-    const batch = BatchRepo.getBatchById(serialOnly.batch_id);
-    return { type: "serial", product, batch, serial: serialOnly };
+  // 4. Fallback: Exact Name Match
+  // This handles cases where user types a known product name in scan field
+  const nameCheck = db
+    .prepare("SELECT * FROM products WHERE name = ? COLLATE NOCASE")
+    .get(trimmedCode);
+
+  if (nameCheck) {
+    return {
+      type: "product",
+      product: nameCheck,
+    };
   }
 
   throw new Error("Item not found");
 }
 
-/**
- * Aggregates analytics for batches of a specific product.
- * @param {number} productId
- */
 export function getBatchAnalyticsForProduct(productId) {
-  // 1. Price Trend (Purchase Price over time)
-  // We assume 'mop' (Market Operating Price/Cost) reflects the purchase cost.
   const priceTrend = db
     .prepare(
       `
@@ -423,12 +565,10 @@ export function getBatchAnalyticsForProduct(productId) {
     FROM product_batches
     WHERE product_id = ? AND quantity > 0
     ORDER BY created_at ASC
-  `
+  `,
     )
     .all(productId);
 
-  // 2. Stock Age Distribution
-  // Buckets: <30 days, 30-90 days, >90 days
   const ageDistribution = db
     .prepare(
       `
@@ -442,12 +582,10 @@ export function getBatchAnalyticsForProduct(productId) {
     FROM product_batches
     WHERE product_id = ? AND quantity > 0
     GROUP BY age_group
-  `
+  `,
     )
     .all(productId);
 
-  // 3. Supplier Performance (Frequency of batches from suppliers)
-  // Links batches -> purchases -> suppliers
   const supplierPerformance = db
     .prepare(
       `
@@ -462,24 +600,20 @@ export function getBatchAnalyticsForProduct(productId) {
     GROUP BY s.name
     ORDER BY batch_count DESC
     LIMIT 5
-  `
+  `,
     )
     .all(productId);
 
-  // 4. Low Stock Batches Count
   const lowStockCount = db
     .prepare(
       `
     SELECT COUNT(*) as count 
     FROM product_batches 
     WHERE product_id = ? AND quantity < 5 AND quantity > 0
-  `
+  `,
     )
     .get(productId).count;
 
-  // 5. Sales Velocity (Approximate - Batches sold in last 30 days)
-  // This requires joining sales_items to product_batches.
-  // Assuming sales_items has batch_id
   const salesVelocity = db
     .prepare(
       `
@@ -494,7 +628,7 @@ export function getBatchAnalyticsForProduct(productId) {
     GROUP BY pb.batch_number
     ORDER BY sold_qty DESC
     LIMIT 5
-  `
+  `,
     )
     .all(productId);
 

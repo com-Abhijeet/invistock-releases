@@ -7,7 +7,10 @@ export type PurchaseItem = {
   gst_rate: number;
   discount: number;
   price: number;
-  unit?: string; // ✅ Added unit field
+  unit?: string;
+  // ✅ New Fields
+  margin?: number;
+  barcode?: string;
 };
 
 export type PurchasePayload = {
@@ -37,6 +40,7 @@ export type PurchasePayload = {
     | "refunded"
     | "returned"
     | "cancelled"
+    | "ordered"
     | "draft";
   is_reverse_charge?: boolean;
 };

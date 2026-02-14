@@ -91,7 +91,7 @@ const defaultForm: Partial<Product> = {
   size: "",
   weight: "",
   is_active: 1,
-  tracking_type: "none",
+  tracking_type: "batch",
   base_unit: "pcs",
   secondary_unit: "",
   conversion_factor: 1,

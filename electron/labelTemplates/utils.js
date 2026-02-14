@@ -39,16 +39,34 @@ const encodePrice = (price) => {
   if (!price) return "";
   const pStr = Math.round(price).toString();
   const map = {
-    1: "A", 2: "B", 3: "C", 4: "D", 5: "E", 6: "F", 7: "G", 8: "H", 9: "I", 0: "J",
+    1: "A",
+    2: "B",
+    3: "C",
+    4: "D",
+    5: "E",
+    6: "F",
+    7: "G",
+    8: "H",
+    9: "I",
+    0: "J",
   };
-  return pStr.split("").map((d) => map[d] || d).join("");
+  return pStr
+    .split("")
+    .map((d) => map[d] || d)
+    .join("");
 };
 
 const getPriceDetails = (item) => {
-  // Logic: Show MOP if exists, else Rate. 
-  // Strike MRP ONLY if MOP exists and MRP > MOP.
-  const mainPrice = Math.round(item.mop || item.rate || 0);
-  const showStrike = item.mop && item.mrp && item.mrp > item.mop;
+  // Logic:
+  // 1. Determine Selling Price: Use MOP (Offer) > Rate > MRP > 0
+  const mainPrice = Math.round(item.mop || item.rate || item.mrp || 0);
+
+  // 2. Determine if we show a strikethrough MRP
+  // We only strike MRP if we have a specific selling price (MOP/Rate) AND it is lower than MRP.
+  // If we fell back to MRP for the mainPrice (i.e. mop/rate are null), we do NOT show a strike.
+  const sellingPrice = item.mop || item.rate;
+  const showStrike = sellingPrice && item.mrp && item.mrp > sellingPrice;
+
   const mrp = Math.round(item.mrp || 0);
   const encoded = item.mfw_price ? encodePrice(item.mfw_price) : "";
 

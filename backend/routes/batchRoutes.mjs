@@ -7,6 +7,8 @@ import {
   scanBarcode,
   getBatchAnalytics,
   assignStock,
+  checkBarcode,
+  generateBarcode,
 } from "../controllers/batchController.mjs";
 
 const router = Router();
@@ -21,5 +23,9 @@ router.post("/assign-stock", assignStock);
 router.post("/print-data", getPrintData);
 router.get("/scan/:code", scanBarcode);
 router.get("/analytics/:productId", getBatchAnalytics);
+
+// Barcode Management
+router.get("/check-barcode/:code", checkBarcode);
+router.get("/generate-barcode", generateBarcode);
 
 export default router;

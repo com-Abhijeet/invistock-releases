@@ -32,14 +32,14 @@ export function createPurchase(purchaseData, items) {
 
     const purchase_id = insertPurchaseStmtResponse.lastInsertRowid;
 
-    // UPDATED: Included 'unit' in columns
+    // UPDATED: Included 'barcode' and 'margin' in columns
     const insertItemStmt = db.prepare(
       `INSERT INTO purchase_items (
          purchase_id, product_id, quantity, rate, gst_rate, discount, price, unit,
-         batch_uid, batch_number, serial_numbers, expiry_date, mfg_date,
-         mrp, mop, mfw_price
+         batch_uid, batch_number, barcode, serial_numbers, expiry_date, mfg_date,
+         mrp, margin, mop, mfw_price
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     for (const item of items) {
@@ -53,10 +53,12 @@ export function createPurchase(purchaseData, items) {
         unit, // Extract unit
         batch_uid,
         batch_number,
+        barcode,
         serial_numbers,
         expiry_date,
         mfg_date,
         mrp,
+        margin,
         mop,
         mfw_price,
       } = item;
@@ -82,10 +84,12 @@ export function createPurchase(purchaseData, items) {
         unit || product.base_unit || null, // Store the unit used
         batch_uid || null,
         batch_number || null,
+        barcode || null,
         serialsString,
         expiry_date || null,
         mfg_date || null,
         mrp || null,
+        margin || 0,
         mop || null,
         mfw_price || null,
       );
@@ -139,13 +143,13 @@ export function getPurchaseById(id) {
 
     if (!purchase) return null;
 
-    // UPDATED: Fetch 'unit'
+    // UPDATED: Fetch 'barcode' and 'margin'
     const itemsStmt = db.prepare(`
       SELECT 
         pi.id, pi.product_id, pr.name AS product_name, pr.hsn AS hsn_code,
         pi.rate, pi.quantity, pi.unit, pi.gst_rate, pi.discount, pi.price,
-        pi.batch_number, pi.expiry_date, pi.mfg_date, pi.serial_numbers,
-        pi.mrp, pi.mop, pi.mfw_price
+        pi.batch_number, pi.barcode, pi.expiry_date, pi.mfg_date, pi.serial_numbers,
+        pi.mrp, pi.margin, pi.mop, pi.mfw_price
       FROM purchase_items pi
       JOIN products pr ON pi.product_id = pr.id
       WHERE pi.purchase_id = ?
@@ -203,25 +207,47 @@ export function getPurchaseById(id) {
 }
 
 export function getPurchaseItemsForLabels(purchaseId) {
+  // UPDATED: Smart Barcode & MRP Selection
+  // 1. Barcode: Purchase Item -> Product Master -> Product Code
+  // 2. MRP: Product Batch (Actual Created) -> Purchase Item (Entered) -> Product Master (Fallback)
   return db
     .prepare(
       `
     SELECT 
-      p.id, p.name, p.product_code, p.barcode, p.mrp, p.mop, p.mfw_price, p.size, p.weight,
+      p.id, 
+      p.name, 
+      p.product_code, 
+      COALESCE(NULLIF(pi.barcode, ''), NULLIF(p.barcode, ''), p.product_code) as barcode,
+      
+      -- ✅ FIX: Prioritize MRP from the created batch (pb.mrp)
+      COALESCE(pb.mrp, pi.mrp, p.mrp) as mrp, 
+      
+      pi.mop, 
+      pi.mfw_price, 
+      p.size, 
+      p.weight,
       p.tracking_type,
       pi.quantity as purchase_quantity,
       pi.unit as purchase_unit,
-      pi.batch_uid,
-      pi.batch_number,
-      pi.serial_numbers
+      
+      -- Prefer authoritative Batch details from product_batches
+      COALESCE(pb.batch_uid, pi.batch_uid) as batch_uid,
+      COALESCE(pb.batch_number, pi.batch_number) as batch_number,
+      
+      -- Useful for label printing if batch has a specific barcode
+      pb.barcode as batch_barcode, 
+
+      pi.serial_numbers,
+      pi.margin
     FROM purchase_items pi
     JOIN products p ON pi.product_id = p.id
+    -- ✅ JOIN to get the actual batch created for this purchase item
+    LEFT JOIN product_batches pb ON pb.purchase_id = pi.purchase_id AND pb.product_id = pi.product_id
     WHERE pi.purchase_id = ?
   `,
     )
     .all(purchaseId);
 }
-
 export async function deletePurchase(id) {
   await db.run("BEGIN");
   const items = await db.all(
@@ -263,74 +289,78 @@ export async function deletePurchase(id) {
   return true;
 }
 
-export async function updatePurchase(id, data, newItems) {
-  await db.run("BEGIN");
+export function updatePurchase(id, data, newItems) {
+  // Use a synchronous transaction for better-sqlite3
+  // NOTE: Stock updates are removed from here and moved to Service layer
+  const executeUpdate = db.transaction(() => {
+    // 1. Delete old items
+    db.prepare(`DELETE FROM purchase_items WHERE purchase_id = ?`).run(id);
 
-  // 1. Revert Old Items
-  const oldItems = await db.all(
-    `SELECT product_id, quantity, unit FROM purchase_items WHERE purchase_id = ?`,
-    [id],
-  );
-  const getProductStmt = db.prepare(
-    "SELECT base_unit, secondary_unit, conversion_factor FROM products WHERE id = ?",
-  );
+    // 2. Add New Items
+    const insertItemStmt = db.prepare(`
+      INSERT INTO purchase_items (
+        purchase_id, product_id, quantity, rate, gst_rate, discount, unit,
+        batch_uid, batch_number, barcode, serial_numbers, expiry_date, mfg_date,
+        mrp, margin, mop, mfw_price
+      ) VALUES (
+        @purchase_id, @product_id, @quantity, @rate, @gst_rate, @discount, @unit,
+        @batch_uid, @batch_number, @barcode, @serial_numbers, @expiry_date, @mfg_date,
+        @mrp, @margin, @mop, @mfw_price
+      )
+    `);
 
-  for (const item of oldItems) {
-    const product = getProductStmt.get(item.product_id);
-    let qtyToDeduct = item.quantity;
-    if (product) {
-      qtyToDeduct = convertToStockQuantity(item.quantity, item.unit, product);
-    }
-    await db.run(`UPDATE products SET quantity = quantity - ? WHERE id = ?`, [
-      qtyToDeduct,
-      item.product_id,
-    ]);
-  }
-
-  await db.run(`DELETE FROM purchase_items WHERE purchase_id = ?`, [id]);
-
-  // 2. Add New Items
-  for (const item of newItems) {
-    await db.run(
-      `INSERT INTO purchase_items (purchase_id, product_id, quantity, rate, gst_rate, discount, unit) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        item.product_id,
-        item.quantity,
-        item.rate,
-        item.gst_rate,
-        item.discount || 0,
-        item.unit || null,
-      ],
-    );
-
-    // Add stock
-    const product = getProductStmt.get(item.product_id);
-    let qtyToAdd = item.quantity;
-    if (product) {
-      qtyToAdd = convertToStockQuantity(item.quantity, item.unit, product);
+    for (const item of newItems) {
+      insertItemStmt.run({
+        purchase_id: id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        rate: item.rate,
+        gst_rate: item.gst_rate,
+        discount: item.discount || 0,
+        unit: item.unit || null,
+        batch_uid: item.batch_uid || null,
+        batch_number: item.batch_number || null,
+        barcode: item.barcode || null,
+        serial_numbers: item.serial_numbers
+          ? JSON.stringify(item.serial_numbers)
+          : null,
+        expiry_date: item.expiry_date || null,
+        mfg_date: item.mfg_date || null,
+        mrp: item.mrp || null,
+        margin: item.margin || 0,
+        mop: item.mop || null,
+        mfw_price: item.mfw_price || null,
+      });
     }
 
-    await db.run(`UPDATE products SET quantity = quantity + ? WHERE id = ?`, [
-      qtyToAdd,
-      item.product_id,
-    ]);
-  }
+    // 3. Update Purchase Header
+    db.prepare(
+      `
+      UPDATE purchases 
+      SET supplier_id = @supplier_id, 
+          reference_no = @reference_no, 
+          date = @date, 
+          status = @status, 
+          note = @note, 
+          total_amount = @total_amount, 
+          paid_amount = @paid_amount,
+          is_reverse_charge = @is_reverse_charge
+      WHERE id = @id
+    `,
+    ).run({
+      supplier_id: data.supplier_id,
+      reference_no: data.reference_no,
+      date: data.date,
+      status: data.status,
+      note: data.note || "",
+      total_amount: data.total_amount,
+      paid_amount: data.paid_amount,
+      is_reverse_charge: data.is_reverse_charge ? 1 : 0,
+      id: id,
+    });
+  });
 
-  await db.run(
-    `UPDATE purchases SET supplier_id = ?, reference_no = ?, date = ?, status = ?, note = ?, total_amount = ?, paid_amount = ? WHERE id = ?`,
-    [
-      data.supplier_id,
-      data.reference_no,
-      data.date,
-      data.status,
-      data.note || "",
-      data.total_amount,
-      data.paid_amount,
-      id,
-    ],
-  );
-  await db.run("COMMIT");
+  return executeUpdate();
 }
 
 export function getAllPurchases({

@@ -31,7 +31,7 @@ import {
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import { getAllProducts } from "../../lib/api/productService";
-import { getProductBatches } from "../../lib/api/batchService";
+import { getProductBatches, scanBarcodeItem } from "../../lib/api/batchService";
 import type { Product } from "../../lib/types/product";
 import type { SaleItemPayload } from "../../lib/types/salesTypes";
 import { getShopData } from "../../lib/api/shopService";
@@ -45,6 +45,7 @@ import {
   Settings2,
   Check,
   ListFilter,
+  QrCode,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { UNIT_FAMILIES } from "../../lib/services/unitService";
@@ -58,6 +59,7 @@ type SaleItemRow = SaleItemPayload & {
   serial_id?: number;
   batch_number?: string;
   serial_number?: string;
+  barcode?: string;
 
   // Pricing snapshots
   batch_mrp?: number;
@@ -104,6 +106,7 @@ const defaultItem = (): SaleItemRow => ({
   price_type: "mrp",
   pricing_strategy: "batch_pricing",
   unit: "pcs",
+  barcode: "",
 });
 
 interface SaleItemSectionProps {
@@ -127,7 +130,6 @@ export default function SaleItemSection({
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
-  // Unified refs for grid navigation
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const [error, setError] = useState<string | null>(null);
   const [shop, setShop] = useState<ShopSetupForm>();
@@ -154,7 +156,8 @@ export default function SaleItemSection({
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
 
-  // Focus helper
+  const [scanningRowIndex, setScanningRowIndex] = useState<number | null>(null);
+
   const focusInput = (rowIdx: number, field: string) => {
     const key = `${rowIdx}-${field}`;
     const el = gridRefs.current[key];
@@ -194,18 +197,29 @@ export default function SaleItemSection({
     }
   }, [items.length, mode]);
 
+  // Enhanced Cache Hydration
   useEffect(() => {
     setProductCache((prev) => {
       const next = { ...prev };
       let modified = false;
       items.forEach((item) => {
-        if (item.product_id && !next[item.product_id] && item.product_name) {
+        // If product is missing in cache, OR if it's present but lacks unit info (incomplete hydration)
+        const existing = next[item.product_id];
+        const isMissingInfo = existing && !existing.base_unit;
+
+        if (
+          item.product_id &&
+          (!existing || isMissingInfo) &&
+          item.product_name
+        ) {
           next[item.product_id] = {
+            ...existing, // Keep existing fields if any
             id: item.product_id,
             name: item.product_name,
             hsn: item.hsn,
-            // Mocking these properties for cache if not present in item
-            // Ideally should fetch full product details if missing
+            // Fallback: If we don't have the full product, assume the item's unit is the base unit
+            // This ensures the unit dropdown defaults correctly for saved items
+            base_unit: existing?.base_unit || item.unit,
           } as Product;
           modified = true;
         }
@@ -326,27 +340,19 @@ export default function SaleItemSection({
     return Number(p.mrp) || 0;
   };
 
-  // Helper to recalculate rate based on unit conversion
-  // Logic:
-  // 1. Get base rate from product (e.g. rate per kg)
-  // 2. Convert to target unit (e.g. rate per g)
   const calculateConvertedRate = (
     product: Product,
     targetUnit: string,
     baseRate: number,
   ) => {
-    const baseUnit = product.base_unit || "pcs";
+    const baseUnit = product.base_unit || (product as any).unit || "pcs";
 
     if (targetUnit === baseUnit) return baseRate;
 
-    // Case 1: Secondary Unit (Packaging)
-    // If selling a Box, Rate = BaseRate * ConversionFactor
     if (product.secondary_unit && targetUnit === product.secondary_unit) {
       return baseRate * (product.conversion_factor || 1);
     }
 
-    // Case 2: Standard Unit Conversion (e.g. g -> kg)
-    // Rate per g = Rate per kg * (0.001 / 1)
     const targetFactor = STANDARD_FACTORS[targetUnit];
     const baseFactor = STANDARD_FACTORS[baseUnit];
 
@@ -364,10 +370,6 @@ export default function SaleItemSection({
       if (!item.product_id || item.product_id === 0) {
         return { ...item, price_type: type };
       }
-      // Re-calculate price for existing items based on new global type is risky without full context,
-      // generally we only apply global type to new items or empty ones.
-      // But if user explicitly sets global type, they might expect update.
-      // For safety, let's only update the 'config', user must re-select or we'd need robust recalc.
       return { ...item, price_type: type };
     });
     onItemsChange(updatedItems);
@@ -390,7 +392,6 @@ export default function SaleItemSection({
       const strategy = item.pricing_strategy || "batch_pricing";
       const pType = (item.price_type as PriceType) || "mrp";
 
-      // 1. Determine Base Rate (per base unit)
       if (
         strategy === "batch_pricing" &&
         (item.tracking_type === "batch" || item.tracking_type === "serial")
@@ -401,14 +402,12 @@ export default function SaleItemSection({
       }
       if (!baseRate) baseRate = getProductPrice(product, pType);
 
-      // 2. Convert Rate to Selected Unit
       item.rate = calculateConvertedRate(
         product,
         item.unit || product.base_unit || "pcs",
         baseRate,
       );
 
-      // 3. Recalculate Price
       item.price = calculateItemPrice(item);
     }
     onItemsChange(updatedItems);
@@ -459,10 +458,44 @@ export default function SaleItemSection({
     addItemToTable(index, product);
   };
 
+  const handleBarcodeScan = async (index: number, code: string) => {
+    if (!code) return;
+    setScanningRowIndex(index);
+    try {
+      const result = await scanBarcodeItem(code);
+      if (result.product) {
+        setProductCache((prev) => ({
+          ...prev,
+          [result.product.id]: result.product,
+        }));
+
+        let batchInfo = null;
+        if (result.type === "batch") {
+          batchInfo = result.batch;
+        } else if (result.type === "serial" && result.serial) {
+          batchInfo = {
+            ...result.batch,
+            id: result.serial.id,
+            batch_id: result.batch?.id,
+            serial_number: result.serial.serial_number,
+          };
+        }
+
+        addItemToTable(index, result.product, batchInfo, code);
+        toast.success(`Found: ${result.product.name}`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Item not found");
+    } finally {
+      setScanningRowIndex(null);
+    }
+  };
+
   const addItemToTable = (
     index: number,
     product: Product,
     batchInfo: any = null,
+    scannedBarcode: string = "",
   ) => {
     const currentItem = items[index];
     const pType: PriceType =
@@ -481,8 +514,13 @@ export default function SaleItemSection({
     }
     if (!baseRate) baseRate = getProductPrice(product, pType);
 
-    // 2. Convert to Unit Rate (Default Unit)
-    const defaultUnit = product.base_unit || "pcs";
+    // 2. Convert to Unit Rate
+    // Robust fallback: Check base_unit, then unit, then uom, then pcs
+    const defaultUnit =
+      product.base_unit ||
+      (product as any).unit ||
+      (product as any).uom ||
+      "pcs";
     const finalRate = calculateConvertedRate(product, defaultUnit, baseRate);
 
     const newItem: SaleItemRow = {
@@ -493,7 +531,7 @@ export default function SaleItemSection({
       rate: finalRate,
       gst_rate: product.gst_rate ?? 0,
       quantity: 1,
-      unit: defaultUnit, // Set default unit
+      unit: defaultUnit, // Uses robust unit detection
       tracking_type: product.tracking_type,
       batch_id: batchInfo?.id,
       batch_number: batchInfo?.batch_number,
@@ -503,11 +541,16 @@ export default function SaleItemSection({
       batch_mfw: bMfw,
       price_type: pType,
       pricing_strategy: strategy,
+      barcode: scannedBarcode || currentItem.barcode || "",
     };
+
     if (product.tracking_type === "serial" && batchInfo) {
       newItem.serial_id = batchInfo.id;
-      newItem.batch_id = batchInfo.batch_id;
+      if (batchInfo.batch_id) newItem.batch_id = batchInfo.batch_id;
+    } else if (product.tracking_type === "batch" && batchInfo) {
+      newItem.batch_id = batchInfo.id;
     }
+
     const price = calculateItemPrice(newItem);
     const finalItem = { ...newItem, price };
     const updatedItems = [...items];
@@ -515,7 +558,7 @@ export default function SaleItemSection({
     onItemsChange(updatedItems);
     setInputValue("");
     setBatchModalOpen(false);
-    // Auto move to Quantity after product selection
+
     setTimeout(() => focusInput(index, "quantity"), 50);
   };
 
@@ -534,15 +577,9 @@ export default function SaleItemSection({
     const item = updated[index];
     (item as any)[field] = value;
 
-    // Special Logic for Unit Change
     if (field === "unit") {
       const product = productCache[item.product_id];
       if (product) {
-        // Recalculate rate based on new unit
-        // Note: We need the BASE rate to convert from.
-        // Reverse engineering base rate from current rate might have rounding errors.
-        // Better to re-fetch base rate from logic.
-
         let baseRate = 0;
         const strategy = item.pricing_strategy || "batch_pricing";
         const pType = (item.price_type as PriceType) || "mrp";
@@ -557,7 +594,6 @@ export default function SaleItemSection({
         }
         if (!baseRate) baseRate = getProductPrice(product, pType);
 
-        // Apply conversion
         item.rate = calculateConvertedRate(product, value, baseRate);
       }
     }
@@ -580,8 +616,14 @@ export default function SaleItemSection({
     idx: number,
     field: string,
   ) => {
-    // Add unit to navigation
-    const fields = ["product", "quantity", "unit", "rate", "discount"];
+    const fields = [
+      "product",
+      "barcode",
+      "quantity",
+      "unit",
+      "rate",
+      "discount",
+    ];
     const activeFields = shop?.show_discount_column
       ? fields
       : fields.filter((f) => f !== "discount");
@@ -589,8 +631,12 @@ export default function SaleItemSection({
     const isLastField = currentIdx === activeFields.length - 1;
 
     if (e.key === "Enter") {
+      e.preventDefault();
+      if (field === "barcode" && (e.target as HTMLInputElement).value) {
+        return;
+      }
+
       if (isLastField) {
-        e.preventDefault();
         if (idx === items.length - 1) {
           if (items[idx].product_id !== 0) {
             onItemsChange(handleAddRow(items));
@@ -600,7 +646,6 @@ export default function SaleItemSection({
         }
       } else {
         if (field !== "product") {
-          e.preventDefault();
           focusInput(idx, activeFields[currentIdx + 1]);
         }
       }
@@ -627,28 +672,23 @@ export default function SaleItemSection({
     }
   };
 
-  // Helper to get allowed units for a product
   const getUnitsForProduct = (product: Product | undefined) => {
     if (!product) return [];
-
     const units = new Set<string>();
+    // Check multiple potential fields for base unit
+    const base =
+      product.base_unit || (product as any).unit || (product as any).uom;
 
-    // Add product specific units
-    if (product.base_unit) units.add(product.base_unit);
+    if (base) units.add(base);
     if (product.secondary_unit) units.add(product.secondary_unit);
 
-    // Add family units
     const baseFamily = Object.values(UNIT_FAMILIES).find((family) =>
-      family.units.some((u) => u.value === product.base_unit),
+      family.units.some((u) => u.value === base),
     );
-
     if (baseFamily) {
       baseFamily.units.forEach((u) => units.add(u.value));
     }
-
-    // Fallback if no units found
     if (units.size === 0) units.add("pcs");
-
     return Array.from(units);
   };
 
@@ -668,17 +708,17 @@ export default function SaleItemSection({
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ ...headerSx, width: "5%" }} align="center">
+              <TableCell sx={{ ...headerSx, width: "4%" }} align="center">
                 #
               </TableCell>
               {shop?.hsn_required && (
-                <TableCell sx={{ ...headerSx, width: "8%" }}>HSN</TableCell>
+                <TableCell sx={{ ...headerSx, width: "7%" }}>HSN</TableCell>
               )}
-              <TableCell sx={{ ...headerSx, width: "25%" }}>PRODUCT</TableCell>
-              <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
-              {/* ✅ Unit Column */}
-              <TableCell sx={{ ...headerSx, width: "10%" }}>UNIT</TableCell>
-              <TableCell sx={{ ...headerSx, width: "12%", p: 0.5 }}>
+              <TableCell sx={{ ...headerSx, width: "22%" }}>PRODUCT</TableCell>
+              <TableCell sx={{ ...headerSx, width: "12%" }}>BARCODE</TableCell>
+              <TableCell sx={{ ...headerSx, width: "7%" }}>QTY</TableCell>
+              <TableCell sx={{ ...headerSx, width: "9%" }}>UNIT</TableCell>
+              <TableCell sx={{ ...headerSx, width: "11%", p: 0.5 }}>
                 <Stack direction="row" alignItems="center" spacing={0.5}>
                   <Typography
                     variant="inherit"
@@ -717,10 +757,10 @@ export default function SaleItemSection({
                   DISC%
                 </TableCell>
               )}
-              <TableCell sx={{ ...headerSx, width: "12%" }} align="right">
+              <TableCell sx={{ ...headerSx, width: "11%" }} align="right">
                 AMOUNT
               </TableCell>
-              <TableCell sx={{ ...headerSx, width: "5%" }}></TableCell>
+              <TableCell sx={{ ...headerSx, width: "4%" }}></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -728,7 +768,6 @@ export default function SaleItemSection({
               const product = productCache[item.product_id];
               const isSerial = item.tracking_type === "serial";
 
-              // ✅ FIX: Ensure the item's unit is always in the list (for View Mode / Cache Miss)
               const allowedUnits = getUnitsForProduct(product);
               if (item.unit && !allowedUnits.includes(item.unit)) {
                 allowedUnits.push(item.unit);
@@ -796,7 +835,7 @@ export default function SaleItemSection({
                             inputRef={(el) =>
                               (gridRefs.current[`${idx}-product`] = el)
                             }
-                            placeholder="Scan or Search..."
+                            placeholder="Search Name..."
                             variant="standard"
                             onFocus={() => setActiveRowIndex(idx)}
                             InputProps={{
@@ -852,6 +891,49 @@ export default function SaleItemSection({
 
                   <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
                     <TextField
+                      variant="standard"
+                      fullWidth
+                      disabled={mode === "view"}
+                      value={item.barcode || ""}
+                      placeholder="Scan..."
+                      inputRef={(el) =>
+                        (gridRefs.current[`${idx}-barcode`] = el)
+                      }
+                      onFocus={() => {
+                        setActiveRowIndex(idx);
+                        focusInput(idx, "barcode");
+                      }}
+                      onChange={(e) =>
+                        handleFieldChange(idx, "barcode", e.target.value)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleBarcodeScan(idx, item.barcode || "");
+                        } else {
+                          handleGridKeyDown(e, idx, "barcode");
+                        }
+                      }}
+                      InputProps={{
+                        disableUnderline: true,
+                        sx: { fontSize: "0.9rem", fontFamily: "monospace" },
+                        endAdornment:
+                          scanningRowIndex === idx ? (
+                            <CircularProgress size={14} color="inherit" />
+                          ) : (
+                            mode !== "view" && (
+                              <QrCode
+                                size={14}
+                                color={theme.palette.text.disabled}
+                              />
+                            )
+                          ),
+                      }}
+                    />
+                  </TableCell>
+
+                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
+                    <TextField
                       type="number"
                       variant="standard"
                       fullWidth
@@ -879,7 +961,6 @@ export default function SaleItemSection({
                     />
                   </TableCell>
 
-                  {/* ✅ Unit Dropdown */}
                   <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
                     <TextField
                       select

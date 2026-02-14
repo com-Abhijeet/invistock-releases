@@ -21,11 +21,12 @@ import {
 } from "@mui/material";
 import { useState, useEffect } from "react";
 import type { PurchasePayload } from "../../lib/types/purchaseTypes";
-import { createPurchase } from "../../lib/api/purchaseService";
+import { createPurchase, updatePurchase } from "../../lib/api/purchaseService";
 import { createSupplier } from "../../lib/api/supplierService";
 import type { SupplierType } from "../../lib/types/supplierTypes";
 import { numberToWords } from "../../utils/numberToWords";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
 
 interface Props {
   purchase: PurchasePayload;
@@ -48,6 +49,7 @@ const PurchaseSummarySection = ({
   const [warningOpen, setWarningOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const navigate = useNavigate();
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -183,18 +185,31 @@ const PurchaseSummarySection = ({
         items: validItems, // Use the already filtered valid items
       };
 
-      const response = await createPurchase(payload);
+      let response;
 
-      // Assuming response structure { status: 'success', data: ... } or similar
-      // Adjust based on your actual service response
+      // FIXED: Conditional Logic for Create vs Update
+      if (mode === "edit" && (purchase as any).id) {
+        // Use ID from purchase object
+        const purchaseId = (purchase as any).id;
+        response = await updatePurchase(purchaseId, payload);
+      } else {
+        response = await createPurchase(payload);
+      }
+
       if (response) {
         setSuccess(true);
-        toast.success("Purchase Saved Successfully!");
+        toast.success(
+          mode === "edit"
+            ? "Purchase Updated Successfully!"
+            : "Purchase Saved Successfully!",
+        );
         resetForm();
+        navigate("/purchase-history");
       } else {
         toast.error("Failed to save purchase.");
       }
     } catch (err: any) {
+      console.error(err);
       toast.error(err.message || "Error during submission.");
     } finally {
       setIsSubmitting(false);
@@ -282,7 +297,7 @@ const PurchaseSummarySection = ({
                   onChange={(e) =>
                     handleFieldChange(
                       "paid_amount",
-                      parseFloat(e.target.value) || 0
+                      parseFloat(e.target.value) || 0,
                     )
                   }
                   InputProps={{
@@ -369,8 +384,8 @@ const PurchaseSummarySection = ({
                         paymentSummary.status === "paid"
                           ? "success.main"
                           : paymentSummary.status === "partial"
-                          ? "warning.main"
-                          : "error.main",
+                            ? "warning.main"
+                            : "error.main",
                     }}
                   >
                     {paymentSummary.status}
@@ -473,7 +488,7 @@ const PurchaseSummarySection = ({
                       "Saving..."
                     ) : (
                       <>
-                        SAVE PURCHA
+                        {mode === "edit" ? "UPDATE" : "SAVE"} PURCHA
                         <span style={{ textDecoration: "underline" }}>S</span>E
                       </>
                     )}
