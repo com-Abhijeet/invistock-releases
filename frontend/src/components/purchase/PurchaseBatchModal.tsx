@@ -24,7 +24,6 @@ import Grid from "@mui/material/GridLegacy";
 import {
   ScanBarcode,
   Calculator,
-  Keyboard,
   RefreshCw,
   CheckCircle,
   AlertCircle,
@@ -447,7 +446,7 @@ export default function PurchaseBatchModal({
                 }
               }}
               // Track Highlighted Option for Explorer-style Logic
-              onHighlightChange={(e, option) => {
+              onHighlightChange={(_e, option) => {
                 setHighlightedOption(option);
               }}
               // Capture visible options for keyboard navigation context
