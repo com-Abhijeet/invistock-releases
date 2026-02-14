@@ -17,8 +17,14 @@ import {
   CircularProgress,
   useTheme,
   Divider,
+  Select,
+  FormControl,
+  InputLabel,
+  OutlinedInput,
+  ListItemText,
 } from "@mui/material";
-import { useState, useEffect } from "react";
+import Grid from "@mui/material/GridLegacy";
+import { useState, useEffect, useRef } from "react";
 import type { SalePayload } from "../../lib/types/salesTypes";
 import { createSale, updateSale } from "../../lib/api/salesService";
 import { updateSalesOrder } from "../../lib/api/salesOrderService";
@@ -26,7 +32,7 @@ import { handlePrint } from "../../lib/handleInvoicePrint";
 import { createCustomer } from "../../lib/api/customerService";
 import type { CustomerType } from "../../lib/types/customerTypes";
 import { numberToWords } from "../../utils/numberToWords";
-import { Printer, MessageCircle, Percent } from "lucide-react";
+import { Printer, MessageCircle, Percent, Settings } from "lucide-react";
 import toast from "react-hot-toast";
 import { getShopData } from "../../lib/api/shopService";
 
@@ -55,36 +61,69 @@ const SaleSummarySection = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [doPrint, setDoPrint] = useState(true);
-  // UPDATED: WhatsApp default to true
   const [doWhatsApp, setDoWhatsApp] = useState(true);
 
-  // --- AUTOMATIC TOTAL CALCULATION ---
-  // Recalculate Total whenever Items or Discount % changes
+  // Refs for keyboard navigation
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // --- DERIVED CALCULATIONS ---
+  // 1. Subtotal (Sum of Items)
+  const subtotal = sale.items.reduce(
+    (sum, item) => sum + (Number(item.price) || 0),
+    0,
+  );
+
+  // 2. Discount Amount
+  const discountPct = Number(sale.discount) || 0;
+  const discountAmount = (subtotal * discountPct) / 100;
+
+  // 3. Expected Total (Before Round Off)
+  const netBeforeRound = Math.max(0, subtotal - discountAmount);
+
+  // 4. Current Round Off (Difference between stored Total and Expected Total)
+  const currentRoundOff =
+    Math.round((sale.total_amount - netBeforeRound + Number.EPSILON) * 100) /
+    100;
+
+  // Local state for Round Off input to allow typing "-" freely without instant re-calc blocking it
+  const [roundOffInput, setRoundOffInput] = useState<string>("");
+
+  // Sync local input when external round-off changes (e.g. items added reset total)
+  useEffect(() => {
+    const parsed = parseFloat(roundOffInput);
+    // Only update local input if the actual data value is significantly different
+    // (This prevents overwriting user input like "-." or "-0" while typing)
+    // Also update if roundOffInput is empty/invalid but currentRoundOff has a value (e.g. loaded from DB)
+    const inputValue = isNaN(parsed) ? 0 : parsed;
+
+    if (Math.abs(inputValue - currentRoundOff) > 0.05) {
+      setRoundOffInput(currentRoundOff === 0 ? "" : currentRoundOff.toString());
+    }
+  }, [currentRoundOff]);
+
+  // --- AUTOMATIC TOTAL RE-CALCULATION ---
   useEffect(() => {
     if (mode === "view") return;
 
-    const subtotal = sale.items.reduce(
-      (sum, item) => sum + (Number(item.price) || 0),
-      0,
-    );
-    const discountPct = Number(sale.discount) || 0;
-    const discountAmount = (subtotal * discountPct) / 100;
-    const calculatedTotal = Math.max(0, subtotal - discountAmount);
+    const reCalcTotal =
+      Math.round((netBeforeRound + Number.EPSILON) * 100) / 100;
 
-    // Round to 2 decimals to avoid floating point jitter
-    const finalTotal =
-      Math.round((calculatedTotal + Number.EPSILON) * 100) / 100;
+    const isTotalZero = sale.total_amount === 0;
+    const hasItems = sale.items.length > 0;
 
-    // Only update if value is different to avoid loops
-    // Note: We do NOT include sale.total_amount in dependency array.
-    // This allows "Round Off" to persist until items/discount are touched again.
-    if (Math.abs(finalTotal - sale.total_amount) > 0.05) {
-      onSaleChange({ ...sale, total_amount: finalTotal });
+    if (
+      Math.abs(sale.total_amount - reCalcTotal) > 0.5 ||
+      (isTotalZero && hasItems)
+    ) {
+      onSaleChange({ ...sale, total_amount: reCalcTotal });
     }
-  }, [sale.items, sale.discount, mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtotal, sale.discount]);
 
+  // Keyboard Navigation: Enter to Next Field
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Global shortcuts
       if ((mode !== "new" && mode !== "edit") || isSubmitting) return;
       if ((e.ctrlKey || e.metaKey) && e.code === "KeyS") {
         e.preventDefault();
@@ -102,6 +141,24 @@ const SaleSummarySection = ({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mode, isSubmitting, sale]);
+
+  // Handle Enter key for form navigation
+  const handleContainerKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      // Find all focusable elements within the container
+      const focusable = containerRef.current?.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable) {
+        const elements = Array.from(focusable) as HTMLElement[];
+        const index = elements.indexOf(e.target as HTMLElement);
+        if (index > -1 && index < elements.length - 1) {
+          e.preventDefault();
+          elements[index + 1].focus();
+        }
+      }
+    }
+  };
 
   const paymentSummary = (sale as any).payment_summary || {
     total_paid: sale.paid_amount || 0,
@@ -122,19 +179,33 @@ const SaleSummarySection = ({
     onSaleChange({ ...sale, [field]: value });
   };
 
-  const handlePaidInFull = () => {
-    onSaleChange({ ...sale, paid_amount: sale.total_amount, status: "paid" });
+  const handleManualRoundOffChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const valStr = e.target.value;
+    setRoundOffInput(valStr);
+
+    // Only update calculation if it's a valid number
+    // This allows typing "-" or "." without resetting
+    const val = parseFloat(valStr);
+    if (!isNaN(val)) {
+      const newTotal = netBeforeRound + val;
+      const roundedTotal = Math.round((newTotal + Number.EPSILON) * 100) / 100;
+      onSaleChange({ ...sale, total_amount: roundedTotal });
+    } else if (valStr === "" || valStr === "-") {
+      // If empty or just minus sign, we don't update the total yet,
+      // or we could reset to netBeforeRound if empty?
+      // Let's reset to base total if completely empty
+      if (valStr === "") {
+        const roundedTotal =
+          Math.round((netBeforeRound + Number.EPSILON) * 100) / 100;
+        onSaleChange({ ...sale, total_amount: roundedTotal });
+      }
+    }
   };
 
-  const handleRoundOff = () => {
-    const roundedTotal = Math.floor(sale.total_amount);
-    const wasPaidInFull = sale.paid_amount === sale.total_amount;
-    onSaleChange({
-      ...sale,
-      total_amount: roundedTotal,
-      paid_amount: wasPaidInFull ? roundedTotal : sale.paid_amount,
-    });
-    toast.success(`Rounded off to ₹${roundedTotal}`);
+  const handlePaidInFull = () => {
+    onSaleChange({ ...sale, paid_amount: sale.total_amount, status: "paid" });
   };
 
   const handleCancel = () => {
@@ -142,8 +213,31 @@ const SaleSummarySection = ({
     toast("Operation canceled.");
   };
 
+  // Helper for options multi-select
+  const saleOptions = [
+    { label: "Reverse Charge", value: "is_reverse_charge" },
+    { label: "E-Commerce", value: "is_ecommerce_sale" },
+  ];
+
+  const selectedOptions = [
+    ...(sale.is_reverse_charge ? ["is_reverse_charge"] : []),
+    ...(sale.is_ecommerce_sale ? ["is_ecommerce_sale"] : []),
+  ];
+
+  const handleOptionsChange = (event: any) => {
+    const {
+      target: { value },
+    } = event;
+    const values = typeof value === "string" ? value.split(",") : value;
+
+    onSaleChange({
+      ...sale,
+      is_reverse_charge: values.includes("is_reverse_charge"),
+      is_ecommerce_sale: values.includes("is_ecommerce_sale"),
+    });
+  };
+
   const handleSubmit = async () => {
-    // --- UPDATED: Frontend Validation for Customer ---
     if (!sale.customer_id || sale.customer_id === 0) {
       if (!customer?.name || !customer?.phone) {
         toast.error("Customer Name and Phone Number are required.");
@@ -160,7 +254,6 @@ const SaleSummarySection = ({
     try {
       let saleDataWithCustomer = { ...sale };
 
-      // Create Customer if needed
       if (!sale.customer_id || sale.customer_id === 0) {
         const customerData = {
           name: customer?.name!,
@@ -240,7 +333,11 @@ const SaleSummarySection = ({
   const isViewMode = mode === "view";
 
   return (
-    <Box sx={{ bgcolor: theme.palette.background.default }}>
+    <Box
+      sx={{ bgcolor: theme.palette.background.default }}
+      ref={containerRef}
+      onKeyDown={handleContainerKeyDown}
+    >
       <Box px={3} py={1}>
         <TextField
           fullWidth
@@ -265,10 +362,11 @@ const SaleSummarySection = ({
         <Stack
           direction={{ xs: "column", lg: "row" }}
           justifyContent="space-between"
-          alignItems="flex-end"
-          spacing={4}
+          alignItems="flex-start"
+          spacing={3}
         >
-          <Stack spacing={0.5} flex={1}>
+          {/* SECTION 1: Totals & Breakdown (Left) */}
+          <Stack spacing={1} flex={1} maxWidth={{ lg: "30%" }}>
             <Stack direction="row" alignItems="baseline" spacing={2}>
               <Typography variant="h4" fontWeight={800} color="text.primary">
                 {sale.total_amount.toLocaleString("en-IN", {
@@ -279,16 +377,8 @@ const SaleSummarySection = ({
               <Typography variant="body2" color="text.secondary">
                 Net Payable
               </Typography>
-              {!isViewMode && sale.total_amount % 1 !== 0 && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={handleRoundOff}
-                >
-                  Round Off
-                </Button>
-              )}
             </Stack>
+
             <Typography
               variant="body2"
               fontStyle="italic"
@@ -297,94 +387,219 @@ const SaleSummarySection = ({
               {numberToWords(sale.total_amount)}
             </Typography>
 
-            {!isViewMode ? (
-              <Stack direction="row" spacing={2} alignItems="center" mt={2}>
-                {/* UPDATED: Discount Field Added */}
-                <TextField
-                  label="Disc %"
-                  size="small"
-                  type="number"
-                  variant="standard"
-                  value={sale.discount || ""}
-                  onChange={(e) =>
-                    handleFieldChange(
-                      "discount",
-                      Math.max(0, parseFloat(e.target.value) || 0),
-                    )
-                  }
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <Percent size={14} />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{ width: 80 }}
-                />
+            <Divider sx={{ width: "100%", my: 1 }} />
 
-                <TextField
-                  label="Paid"
-                  size="small"
-                  type="number"
-                  variant="standard"
-                  value={sale.paid_amount}
-                  onChange={(e) =>
-                    handleFieldChange(
-                      "paid_amount",
-                      parseFloat(e.target.value) || 0,
-                    )
-                  }
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">₹</InputAdornment>
-                    ),
-                  }}
-                  sx={{ width: 100 }}
-                />
-                <Button
-                  size="small"
-                  onClick={handlePaidInFull}
-                  disabled={sale.paid_amount >= sale.total_amount}
-                >
-                  Full
-                </Button>
-                <TextField
-                  select
-                  label="Mode"
-                  size="small"
-                  variant="standard"
-                  value={sale.payment_mode}
-                  onChange={(e) =>
-                    handleFieldChange("payment_mode", e.target.value)
-                  }
-                  sx={{ width: 100 }}
-                >
-                  <MenuItem value="cash">Cash</MenuItem>
-                  <MenuItem value="upi">UPI</MenuItem>
-                  <MenuItem value="card">Card</MenuItem>
-                  <MenuItem value="credit">Credit</MenuItem>
-                </TextField>
-                <TextField
-                  select
-                  label="Status"
-                  size="small"
-                  variant="standard"
-                  value={sale.status}
-                  onChange={(e) => handleFieldChange("status", e.target.value)}
-                  sx={{ width: 100 }}
-                >
-                  <MenuItem value="paid">Paid</MenuItem>
-                  <MenuItem value="pending">Pending</MenuItem>
-                </TextField>
+            <Stack spacing={0} sx={{ opacity: 0.8 }}>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">
+                  Subtotal:
+                </Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {subtotal.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </Typography>
               </Stack>
+              {discountPct > 0 && (
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  color="error.main"
+                >
+                  <Typography variant="body2">
+                    Discount ({discountPct}%):
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    -{" "}
+                    {discountAmount.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </Typography>
+                </Stack>
+              )}
+              {/* Round Off Display (Read-Only on Left) */}
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <Typography variant="body2" color="text.secondary">
+                  Round Off:
+                </Typography>
+                <Typography
+                  variant="body2"
+                  fontWeight={600}
+                  color={
+                    currentRoundOff !== 0 ? "text.primary" : "text.secondary"
+                  }
+                >
+                  {currentRoundOff > 0 ? "+" : ""}
+                  {currentRoundOff.toFixed(2)}
+                </Typography>
+              </Stack>
+            </Stack>
+          </Stack>
+
+          {/* SECTION 2: Center Grid (Inputs) */}
+          <Box flex={2} width="100%">
+            {!isViewMode ? (
+              <Grid container spacing={2}>
+                {/* Row 1: Discount, Round Off, Paid Amount */}
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    label="Disc %"
+                    size="small"
+                    fullWidth
+                    type="number"
+                    variant="outlined"
+                    value={sale.discount || ""}
+                    onChange={(e) =>
+                      handleFieldChange(
+                        "discount",
+                        Math.max(0, parseFloat(e.target.value) || 0),
+                      )
+                    }
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Percent size={14} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    label="Round Off"
+                    size="small"
+                    fullWidth
+                    type="number"
+                    variant="outlined"
+                    value={roundOffInput}
+                    onChange={handleManualRoundOffChange}
+                    placeholder="0.00"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">₹</InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Paid Amount"
+                    size="small"
+                    fullWidth
+                    type="number"
+                    variant="outlined"
+                    value={sale.paid_amount}
+                    onChange={(e) =>
+                      handleFieldChange(
+                        "paid_amount",
+                        parseFloat(e.target.value) || 0,
+                      )
+                    }
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">₹</InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Button
+                            size="small"
+                            onClick={handlePaidInFull}
+                            disabled={sale.paid_amount >= sale.total_amount}
+                            sx={{
+                              minWidth: "auto",
+                              p: 0.5,
+                              fontSize: "0.75rem",
+                            }}
+                          >
+                            FULL
+                          </Button>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+
+                {/* Row 2: Mode, Status, Options */}
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    select
+                    label="Mode"
+                    size="small"
+                    fullWidth
+                    variant="outlined"
+                    value={sale.payment_mode}
+                    onChange={(e) =>
+                      handleFieldChange("payment_mode", e.target.value)
+                    }
+                  >
+                    <MenuItem value="cash">Cash</MenuItem>
+                    <MenuItem value="upi">UPI</MenuItem>
+                    <MenuItem value="card">Card</MenuItem>
+                    <MenuItem value="credit">Credit</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    select
+                    label="Status"
+                    size="small"
+                    fullWidth
+                    variant="outlined"
+                    value={sale.status}
+                    onChange={(e) =>
+                      handleFieldChange("status", e.target.value)
+                    }
+                  >
+                    <MenuItem value="paid">Paid</MenuItem>
+                    <MenuItem value="pending">Pending</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <FormControl size="small" fullWidth variant="outlined">
+                    <InputLabel>Options</InputLabel>
+                    <Select
+                      multiple
+                      value={selectedOptions}
+                      onChange={handleOptionsChange}
+                      input={<OutlinedInput label="Options" />}
+                      renderValue={(selected) => (
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Settings size={14} />
+                          <Typography variant="caption">
+                            {selected.length} selected
+                          </Typography>
+                        </Stack>
+                      )}
+                    >
+                      {saleOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          <Checkbox
+                            checked={selectedOptions.indexOf(option.value) > -1}
+                            size="small"
+                          />
+                          <ListItemText primary={option.label} />
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
             ) : (
+              /* VIEW MODE SUMMARY */
               <Stack
                 direction="row"
                 spacing={3}
                 alignItems="center"
-                mt={2}
+                justifyContent="center"
                 sx={{
-                  p: 1.5,
+                  height: "100%",
+                  p: 2,
                   bgcolor: "action.hover",
                   borderRadius: 2,
                   border: "1px solid",
@@ -415,6 +630,7 @@ const SaleSummarySection = ({
                     })}
                   </Typography>
                 </Box>
+                <Divider orientation="vertical" flexItem />
                 <Box>
                   <Typography variant="caption">Balance</Typography>
                   <Typography variant="body2" fontWeight={600}>
@@ -426,38 +642,13 @@ const SaleSummarySection = ({
                 </Box>
               </Stack>
             )}
-          </Stack>
+          </Box>
 
+          {/* SECTION 3: Actions (Right) */}
           {!isViewMode && (
-            <Stack spacing={2} alignItems="flex-end">
-              <Stack direction="row" spacing={2} alignItems="center">
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={sale.is_reverse_charge}
-                      onChange={(e) =>
-                        handleFieldChange("is_reverse_charge", e.target.checked)
-                      }
-                    />
-                  }
-                  label={
-                    <Typography variant="caption">Reverse Charge</Typography>
-                  }
-                />
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={sale.is_ecommerce_sale}
-                      onChange={(e) =>
-                        handleFieldChange("is_ecommerce_sale", e.target.checked)
-                      }
-                    />
-                  }
-                  label={<Typography variant="caption">E-Commerce</Typography>}
-                />
-                <Divider orientation="vertical" flexItem sx={{ height: 20 }} />
+            <Stack spacing={2} alignItems="flex-end" minWidth={200}>
+              {/* Checkboxes Row */}
+              <Stack direction="row" spacing={2} justifyContent="flex-end">
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -467,7 +658,7 @@ const SaleSummarySection = ({
                     />
                   }
                   label={
-                    <Stack direction="row" spacing={0.5}>
+                    <Stack direction="row" spacing={0.5} alignItems="center">
                       <Printer size={14} />
                       <Typography variant="caption">Print</Typography>
                     </Stack>
@@ -482,7 +673,7 @@ const SaleSummarySection = ({
                     />
                   }
                   label={
-                    <Stack direction="row" spacing={0.5}>
+                    <Stack direction="row" spacing={0.5} alignItems="center">
                       <MessageCircle size={14} />
                       <Typography variant="caption">WhatsApp</Typography>
                     </Stack>
@@ -490,32 +681,32 @@ const SaleSummarySection = ({
                 />
               </Stack>
 
-              <Stack direction="row" spacing={2}>
+              {/* Buttons Row */}
+              <Stack direction="row" spacing={1} width="100%">
                 <Button
-                  variant="text"
+                  variant="outlined"
                   color="error"
                   onClick={handleCancel}
                   disabled={isSubmitting}
+                  fullWidth
+                  sx={{ flex: 1 }}
                 >
-                  Cancel
+                  CANCEL
                 </Button>
                 <Button
                   variant="contained"
                   color="primary"
-                  size="large"
                   onClick={handleSubmit}
                   disabled={isSubmitting}
+                  fullWidth
+                  sx={{ flex: 1.5, minHeight: 44, fontWeight: "bold" }}
                   startIcon={
                     isSubmitting && (
                       <CircularProgress size={20} color="inherit" />
                     )
                   }
                 >
-                  {isSubmitting
-                    ? "Processing..."
-                    : mode === "edit"
-                      ? "UPDATE SALE"
-                      : "SAVE SALE"}
+                  {isSubmitting ? "..." : mode === "edit" ? "UPDATE" : "SAVE"}
                 </Button>
               </Stack>
             </Stack>

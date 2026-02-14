@@ -66,7 +66,9 @@ function ensureBackupExists(dbPath) {
             console.log(
               "[DB] Existing backup is larger/safer. Deleting current unmigrated DB to force restore.",
             );
-            fs.unlinkSync(dbPath);
+            try {
+              fs.unlinkSync(dbPath);
+            } catch (e) {}
           }
         } else {
           // No backup exists, create it
@@ -83,6 +85,7 @@ function ensureBackupExists(dbPath) {
 /**
  * 2. RESTORE DATA
  * Copies data from backup to active DB using ATTACH.
+ * FIXED: Now calculates column intersection to handle schema mismatches (e.g. new batch_uid).
  */
 function restoreDataFromBackup(activeDb, backupPath) {
   if (!fs.existsSync(backupPath)) {
@@ -106,7 +109,7 @@ function restoreDataFromBackup(activeDb, backupPath) {
   // Check if we are already migrated
   const version = activeDb.pragma("user_version", { simple: true });
   if (version >= 3) {
-    console.log("[DB] Database already migrated (v2). Skipping restore.");
+    console.log("[DB] Database already migrated (v3). Skipping restore.");
     return;
   }
 
@@ -118,6 +121,10 @@ function restoreDataFromBackup(activeDb, backupPath) {
 
     // Attach the old DB
     activeDb.exec(`ATTACH DATABASE '${safeBackupPath}' AS old_db`);
+
+    // FIX: Temporarily disable Foreign Keys to allow out-of-order insertion
+    // This allows product_batches to restore even if purchases haven't restored yet.
+    activeDb.pragma("foreign_keys = OFF");
 
     const tables = [
       "users",
@@ -164,15 +171,31 @@ function restoreDataFromBackup(activeDb, backupPath) {
             .get();
           if (!check) continue;
 
-          // Get common columns
-          const columnsRaw = activeDb
-            .prepare(`PRAGMA table_info(${table})`)
+          // FIX: Get intersection of columns (Only copy columns that exist in BOTH)
+          // 1. Get New Columns (Schema v3)
+          const newColsInfo = activeDb
+            .prepare(`PRAGMA main.table_info(${table})`)
             .all();
-          if (columnsRaw.length === 0) continue;
-          const columns = columnsRaw.map((c) => c.name);
+          const newCols = newColsInfo.map((c) => c.name);
+
+          // 2. Get Old Columns (Schema v2)
+          const oldColsInfo = activeDb
+            .prepare(`PRAGMA old_db.table_info(${table})`)
+            .all();
+          const oldCols = oldColsInfo.map((c) => c.name);
+
+          // 3. Intersect - This ignores new columns like 'batch_uid' that don't exist in backup
+          const commonCols = newCols.filter((col) => oldCols.includes(col));
+
+          if (commonCols.length === 0) {
+            console.warn(
+              `[DB] No common columns found for ${table}. Skipping.`,
+            );
+            continue;
+          }
 
           // Build SELECT with conversion
-          const selectCols = columns
+          const selectCols = commonCols
             .map((col) => {
               if (
                 col === "created_at" ||
@@ -182,13 +205,14 @@ function restoreDataFromBackup(activeDb, backupPath) {
               ) {
                 return `datetime(${col}, 'localtime')`;
               }
+              // SQLite handles implicit casting (INTEGER -> REAL) here for 'quantity'
               return col;
             })
             .join(", ");
 
-          const insertSql = `INSERT INTO main.${table} (${columns.join(", ")}) SELECT ${selectCols} FROM old_db.${table}`;
+          const insertSql = `INSERT INTO main.${table} (${commonCols.join(", ")}) SELECT ${selectCols} FROM old_db.${table}`;
           activeDb.exec(insertSql);
-          console.log(`[DB] Restored ${table}`);
+          console.log(`[DB] Restored ${table} (${commonCols.length} cols)`);
         } catch (err) {
           if (!err.message.includes("no such table")) {
             console.warn(`[DB] Restore error for ${table}: ${err.message}`);
@@ -199,6 +223,8 @@ function restoreDataFromBackup(activeDb, backupPath) {
       activeDb.pragma("user_version = 3");
     })();
 
+    // Re-enable Foreign Keys
+    activeDb.pragma("foreign_keys = ON");
     activeDb.exec("DETACH DATABASE old_db");
     console.log("[DB] Restore Process Complete.");
   } catch (error) {
