@@ -148,15 +148,30 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         )
         .join(nl);
 
+      // const message =
+      //   `*Invoice from ${shop.shop_name}*${nl}${nl}` +
+      //   `Hello ${sale.customer_name || "Customer"},${nl}` +
+      //   `Bill No: ${sale.reference_no}${nl}${nl}` +
+      //   `*Items:*${nl}${itemsList}${nl}` +
+      //   `------------------------------${nl}` +
+      //   `*Total: ₹${sale.total_amount.toLocaleString("en-IN")}*${nl}` +
+      //   `------------------------------${nl}` +
+      //   `Thank you!`;
+
       const message =
-        `*Invoice from ${shop.shop_name}*${nl}${nl}` +
-        `Hello ${sale.customer_name || "Customer"},${nl}` +
-        `Bill No: ${sale.reference_no}${nl}${nl}` +
-        `*Items:*${nl}${itemsList}${nl}` +
-        `------------------------------${nl}` +
-        `*Total: ₹${sale.total_amount.toLocaleString("en-IN")}*${nl}` +
-        `------------------------------${nl}` +
-        `Thank you!`;
+        `*${shop.shop_name}*${nl}` +
+        `Invoice Summary${nl}` +
+        `———————————————${nl}${nl}` +
+        `Hello ${sale.customer_name || "Customer"},${nl}${nl}` +
+        `🧾 *Bill No:* ${sale.reference_no}${nl}` +
+        `📅 *Date:* ${new Date(sale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}` +
+        `*Items Purchased:*${nl}` +
+        `${itemsList}${nl}${nl}` +
+        `———————————————${nl}` +
+        `*Total Amount:* ₹${sale.total_amount.toLocaleString("en-IN")}${nl}` +
+        `———————————————${nl}${nl}` +
+        `Thank you for shopping with us 🙏${nl}` +
+        `Please find your invoice PDF attached.`;
 
       // 4. Send Text
       const textRes = await window.electron.sendWhatsAppMessage(

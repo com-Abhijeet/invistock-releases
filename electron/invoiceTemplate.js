@@ -92,7 +92,7 @@ const getTrackingHtml = (item) => {
 };
 
 const BRANDING_FOOTER = `
-  <div style="text-align:center; margin-top:5px; font-size:9px; color:#888; border-top:1px dotted #ddd; padding-top:2x;">
+  <div style="text-align:center; margin-top:5px; font-size:9px; color:#888; border-top:1px dotted #ddd; padding-top:2px;">
     Powered by KOSH Software &bull; +91 8180904072
   </div>
 `;
@@ -123,6 +123,13 @@ function createInvoiceHTML({ sale, shop }) {
     totalCgst = 0,
     totalSgst = 0,
     totalIgst = 0;
+
+  // Calculate Subtotal and Discount Correctly
+  const subTotal = sale.items.reduce((sum, item) => sum + (item.price || 0), 0);
+  const discountPercentage = sale.discount || 0;
+  const discountAmount = (subTotal * discountPercentage) / 100;
+  const netAmount = subTotal - discountAmount;
+  const roundOff = sale.total_amount - netAmount;
 
   sale.items.forEach((item) => {
     const baseVal = item.rate * item.quantity;
@@ -186,9 +193,10 @@ function createInvoiceHTML({ sale, shop }) {
     const itemsHTML = pageItems
       .map((item, index) => {
         const baseVal = item.rate * item.quantity;
-        const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
+        // let gstAmount = 0; // Unused in display logic for line item, reusing variable if needed
         let gstAmount = 0;
         if (gstEnabled && !inclusiveTax) {
+          const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
           gstAmount = valAfterDisc * (item.gst_rate / 100);
         }
 
@@ -327,8 +335,9 @@ function createInvoiceHTML({ sale, shop }) {
              ${
                isLastPage
                  ? `
-             <div class="flex-between"><span>Subtotal:</span> <span>${formatAmount(sale.total_amount + (sale.discount || 0))}</span></div>
-             ${sale.discount > 0 ? `<div class="flex-between" style="color:red;"><span>Discount:</span> <span>-${formatAmount(sale.discount)}</span></div>` : ""}
+             <div class="flex-between"><span>Subtotal:</span> <span>${formatAmount(subTotal)}</span></div>
+             ${discountPercentage > 0 ? `<div class="flex-between" style="color:red;"><span>Discount (${discountPercentage}%):</span> <span>-${formatAmount(discountAmount)}</span></div>` : ""}
+             ${Math.abs(roundOff) > 0.01 ? `<div class="flex-between"><span>Round Off:</span> <span>${roundOff > 0 ? "+" : ""}${formatAmount(roundOff)}</span></div>` : ""}
              <div class="grand-total flex-between"><span>TOTAL:</span> <span>${formatAmount(sale.total_amount)}</span></div>
              <div class="flex-between" style="font-size:10px; margin-top:2px;"><span>Paid:</span> <span>${formatAmount(sale.paid_amount)}</span></div>
              `

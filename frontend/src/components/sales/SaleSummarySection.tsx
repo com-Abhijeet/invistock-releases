@@ -306,7 +306,31 @@ const SaleSummarySection = ({
 
       if (doWhatsApp && customer?.phone) {
         const nl = "\n";
-        const message = `*Invoice from ${shop?.shop_name || "Our Shop"}*${nl}${nl}Bill No: ${savedSale.reference_no}${nl}Total: ₹${savedSale.total_amount}${nl}Thank you!`;
+
+        const itemsList = savedSale.items
+          .map(
+            (item: any, index: number) =>
+              `${index + 1}. ${item.product_name} x ${item.quantity} = ₹${(
+                item.quantity * item.rate
+              ).toLocaleString("en-IN")}`,
+          )
+          .join(nl);
+
+        const shopName = shop?.shop_name || "Our Shop";
+        const message =
+          `*${shopName}*${nl}` +
+          `Invoice Summary${nl}` +
+          `———————————————${nl}${nl}` +
+          `Hello ${customer?.name || "Customer"},${nl}${nl}` +
+          `🧾 *Bill No:* ${savedSale.reference_no}${nl}` +
+          `📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}` +
+          `*Items Purchased:*${nl}` +
+          `${itemsList}${nl}${nl}` +
+          `———————————————${nl}` +
+          `*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}` +
+          `———————————————${nl}${nl}` +
+          `Thank you for shopping with us 🙏${nl}` +
+          `Please find your invoice PDF attached.`;
         if (window.electron && window.electron.sendWhatsAppMessage) {
           window.electron.sendWhatsAppMessage(customer.phone, message);
         }

@@ -6,6 +6,13 @@ const thermal80mm = (data) => {
   const showDiscount = Boolean(shop.show_discount_column);
   const isInclusive = shop.is_inclusive || false;
 
+  // Calculate Subtotal and Discount Correctly
+  const subTotal = sale.items.reduce((sum, item) => sum + (item.price || 0), 0);
+  const discountPercentage = sale.discount || 0;
+  const discountAmount = (subTotal * discountPercentage) / 100;
+  const netAmount = subTotal - discountAmount;
+  const roundOff = sale.total_amount - netAmount;
+
   const itemsHtml = sale.items
     .map((item) => {
       const total = item.price;
@@ -64,15 +71,20 @@ const thermal80mm = (data) => {
 
         <div class="totals">
           <div class="info-row"><span>Subtotal:</span> <span>${formatAmount(
-            sale.total_amount + (sale.discount || 0),
+            subTotal,
           )}</span></div>
           ${
-            sale.discount > 0
-              ? `<div class="info-row"><span>Discount:</span> <span>-${formatAmount(
-                  sale.discount,
+            discountPercentage > 0
+              ? `<div class="info-row"><span>Discount (${discountPercentage}%):</span> <span>-${formatAmount(
+                  discountAmount,
                 )}</span></div>`
               : ""
           }
+           ${
+             Math.abs(roundOff) > 0.01
+               ? `<div class="info-row"><span>Round Off:</span> <span>${roundOff > 0 ? "+" : ""}${formatAmount(roundOff)}</span></div>`
+               : ""
+           }
           
           ${
             isInclusive

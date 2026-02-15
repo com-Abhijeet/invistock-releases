@@ -39,6 +39,14 @@ const a5Portrait = (data) => {
     totalCgst = 0,
     totalSgst = 0,
     totalIgst = 0;
+
+  // Calculate Subtotal and Discount Correctly
+  const subTotal = sale.items.reduce((sum, item) => sum + (item.price || 0), 0);
+  const discountPercentage = sale.discount || 0;
+  const discountAmount = (subTotal * discountPercentage) / 100;
+  const netAmount = subTotal - discountAmount;
+  const roundOff = sale.total_amount - netAmount;
+
   sale.items.forEach((item) => {
     const baseVal = item.rate * item.quantity;
     const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
@@ -232,8 +240,9 @@ const a5Portrait = (data) => {
                ${
                  isLastPage
                    ? `
-               <div class="flex-between"><span>Subtotal:</span> <span>${formatAmount(sale.total_amount + (sale.discount || 0))}</span></div>
-               ${sale.discount > 0 ? `<div class="flex-between" style="color:red;"><span>Disc:</span> <span>-${formatAmount(sale.discount)}</span></div>` : ""}
+               <div class="flex-between"><span>Subtotal:</span> <span>${formatAmount(subTotal)}</span></div>
+               ${discountPercentage > 0 ? `<div class="flex-between" style="color:red;"><span>Disc (${discountPercentage}%):</span> <span>-${formatAmount(discountAmount)}</span></div>` : ""}
+               ${Math.abs(roundOff) > 0.01 ? `<div class="flex-between"><span>Round Off:</span> <span>${roundOff > 0 ? "+" : ""}${formatAmount(roundOff)}</span></div>` : ""}
                <div class="grand-total flex-between">
                   <span>TOTAL:</span> <span>${formatAmount(sale.total_amount)}</span>
                </div>

@@ -14,6 +14,13 @@ const a4Modern = (data) => {
   const items = sale.items;
   const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
 
+  // Calculate Totals Correctly
+  const subTotal = sale.items.reduce((sum, item) => sum + (item.price || 0), 0);
+  const discountPercentage = sale.discount || 0;
+  const discountAmount = (subTotal * discountPercentage) / 100;
+  const netAmount = subTotal - discountAmount;
+  const roundOff = sale.total_amount - netAmount;
+
   const pages = [];
   for (let i = 0; i < totalPages; i++) {
     const start = i * ROWS_PER_PAGE;
@@ -142,15 +149,19 @@ const a4Modern = (data) => {
              ${
                isLastPage
                  ? `
-                 <div class="summary-row"><span>Subtotal</span> <span>${formatAmount(
-                   sale.total_amount + (sale.discount || 0),
-                 )}</span></div>
+                 <div class="summary-row"><span>Subtotal</span> <span>${formatAmount(subTotal)}</span></div>
                  
                  ${
-                   sale.discount > 0
-                     ? `<div class="summary-row" style="color:#ef4444;"><span>Discount</span> <span>-${formatAmount(
-                         sale.discount,
+                   discountPercentage > 0
+                     ? `<div class="summary-row" style="color:#ef4444;"><span>Discount (${discountPercentage}%)</span> <span>-${formatAmount(
+                         discountAmount,
                        )}</span></div>`
+                     : ""
+                 }
+                 
+                 ${
+                   Math.abs(roundOff) > 0.01
+                     ? `<div class="summary-row"><span>Round Off</span> <span>${roundOff > 0 ? "+" : ""}${formatAmount(roundOff)}</span></div>`
                      : ""
                  }
                  
