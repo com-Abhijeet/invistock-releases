@@ -77,6 +77,7 @@ import ViewSalesOrderPage from "./pages/ViewSalesOrderPage";
 import SupplierLedgerPage from "./pages/SupplierLedgerPage";
 import EmployeeListPage from "./pages/EmployeeListPage";
 import EmployeeDetailPage from "./pages/EmployeeDetailPage";
+import AccountingDashboard from "./pages/AccountingDashboard";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -142,6 +143,14 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="dashboard">
                         <Dashboard />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/accounting"
+                    element={
+                      <PermissionGuard requiredPermission="dashboard">
+                        <AccountingDashboard />
                       </PermissionGuard>
                     }
                   />

@@ -71,7 +71,7 @@ export async function getCustomers(params: GetCustomersParams): Promise<any> {
   };
 
   const res = await api.get(BASE_URL, { params: apiParams });
-
+  
   // Axios nests the response data, so we return it in the expected format.
   return { records: res.data.data, totalRecords: res.data.totalRecords };
 }

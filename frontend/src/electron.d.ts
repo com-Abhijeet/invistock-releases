@@ -51,20 +51,20 @@ declare global {
           arg0: string,
           handleProgressUpdate: (
             _event: any,
-            progress: { current: number; total: number }
-          ) => void
+            progress: { current: number; total: number },
+          ) => void,
         ): unknown;
         removeAllListeners: any;
-        send: (channel: string, data?: any) => void;
-        invoke: (channel: string, data?: any) => Promise<any>;
+        send: (channel: string, ...args: any[]) => void;
+        invoke: (channel: string, ...args: any[]) => Promise<any>;
       };
       getWhatsAppStatus: () => Promise<{ status: string; qr: string | null }>;
       sendWhatsAppMessage: (
         phone: string,
-        message: string
+        message: string,
       ) => Promise<{ success: boolean; error?: string }>;
       onWhatsAppUpdate: (
-        callback: (data: { status: string; qr: string | null }) => void
+        callback: (data: { status: string; qr: string | null }) => void,
       ) => void;
       sendWhatsAppInvoicePdf: (payload: {
         sale: any;
@@ -77,7 +77,7 @@ declare global {
       checkGDriveTokenExpiry: () => Promise<void>;
       onGDriveConnected: (callback: () => void) => void;
       onGDriveTokenExpiring: (
-        callback: (data: { daysUntilExpiry: number }) => void
+        callback: (data: { daysUntilExpiry: number }) => void,
       ) => void;
       onGDriveTokenExpired: (callback: () => void) => void;
     };

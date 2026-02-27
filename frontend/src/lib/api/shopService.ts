@@ -12,6 +12,7 @@ export async function getShopData(): Promise<Shop | null> {
       if (shopData?.shop_name) {
         return shopData;
       }
+      console.log(shopData);
     } catch {
       localStorage.removeItem(SHOP_CACHE_KEY);
     }
@@ -38,7 +39,7 @@ export async function getShopData(): Promise<Shop | null> {
  * @throws {Error} If the API call fails.
  */
 export async function updateShopData(
-  shopData: ShopSetupForm
+  shopData: ShopSetupForm,
 ): Promise<ShopSetupForm> {
   try {
     // Use api.put to send a PUT request to the base endpoint
@@ -50,7 +51,7 @@ export async function updateShopData(
     // Log the detailed error for debugging
     console.error(
       "Failed to update shop settings:",
-      err.response?.data?.message || err.message
+      err.response?.data?.message || err.message,
     );
 
     // Throw a more user-friendly error to be caught by the calling component

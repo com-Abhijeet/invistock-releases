@@ -5,14 +5,16 @@ const originalConsole = { ...console };
 
 contextBridge.exposeInMainWorld("electron", {
   ipcRenderer: {
-    send: (channel, data) => {
+    send: (channel, ...args) => {
       const validSendChannels = ["print-label", "print-invoice", "log"];
       if (validSendChannels.includes(channel)) {
-        ipcRenderer.send(channel, data);
+        ipcRenderer.send(channel, ...args);
       }
     },
-    invoke: (channel, data) => {
+    invoke: (channel, ...args) => {
       const validInvokeChannels = [
+        "print-check",
+        "process-report",
         "print-custom-label",
         "license-updated-restart-app",
         "get-machine-id",
@@ -76,7 +78,7 @@ contextBridge.exposeInMainWorld("electron", {
         "get-server-url",
       ];
       if (validInvokeChannels.includes(channel)) {
-        return ipcRenderer.invoke(channel, data);
+        return ipcRenderer.invoke(channel, ...args);
       } else {
         return Promise.reject(`Invalid invoke channel: ${channel}`);
       }

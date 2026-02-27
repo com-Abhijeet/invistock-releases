@@ -25,6 +25,7 @@ import {
   CreditCard,
   Ban,
   AlertTriangle,
+  WifiOff,
 } from "lucide-react";
 import {
   getLicenseStatus,
@@ -48,11 +49,17 @@ export default function LicensePage() {
   const [machineId, setMachineId] = useState<string>("Loading...");
   const [appMode, setAppMode] = useState<string>("server");
 
-  // Fetch status and Machine ID
+  // Theme Colors matching Kosh website
+  const themeColors = {
+    primary: "#115e59", // Deep Emerald
+    primaryLight: "#ecfdf5",
+    slateText: "#334155",
+    slateBorder: "#e2e8f0",
+  };
+
   useEffect(() => {
     const init = async () => {
       try {
-        // 1. Get Machine ID & Mode
         if (electron) {
           const id = await electron.getMachineId();
           setMachineId(id);
@@ -60,18 +67,13 @@ export default function LicensePage() {
           setAppMode(mode);
         }
 
-        // 2. Check License based on Mode
-        let currentStatus: LicenseStatus;
+        let currentStatus: any;
         if (appMode === "client" && electron) {
-          // For client, we assume invalid initially if we are on this page,
-          // but strictly we could add an IPC 'check-client-license' if needed.
-          // For now, if the app opened this page, it means license failed.
           currentStatus = {
             status: "unlicensed",
             message: "Client activation required.",
           };
         } else {
-          // Server mode checks API
           currentStatus = await getLicenseStatus();
         }
 
@@ -92,7 +94,7 @@ export default function LicensePage() {
       }
     };
     init();
-  }, [navigate, appMode]); // Added appMode to dependency to re-run if it updates
+  }, [navigate, appMode]);
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(machineId);
@@ -105,23 +107,18 @@ export default function LicensePage() {
     try {
       let result;
 
-      // ✅ Conditional Activation Logic
       if (appMode === "client") {
-        console.log("[frontend] : saving license key");
-        // Client: Use IPC to save to local file
         const response = await electron.ipcRenderer.invoke(
           "activate-client-license",
-          licenseKey
+          licenseKey,
         );
         if (response.success) {
-          result = response.status; // { status: 'valid', ... }
+          result = response.status;
         } else {
           throw { response: { data: { error: response.error } } };
         }
       } else {
-        // Server: Use API to save to DB
         result = await activateLicense(licenseKey);
-        console.log("[frontend] : Saved license key", result);
       }
 
       setStatus(result);
@@ -131,16 +128,12 @@ export default function LicensePage() {
 
         if (electron) {
           setTimeout(async () => {
-            // ❌ REMOVE: electron.restartApp();
-
-            // ✅ ADD: Smoothly swap to main window
             if (electron.launchMainApp) {
               await electron.launchMainApp();
             } else {
-              // Fallback if preload isn't updated yet
               window.location.reload();
             }
-          }, 1000); // Small delay to let the user see the success toast
+          }, 1000);
         } else {
           navigate("/");
         }
@@ -157,9 +150,39 @@ export default function LicensePage() {
     }
   };
 
-  // Helper component to show the current status
   const StatusDisplay = () => {
     if (!status) return null;
+
+    // Handle New Backend Logic: Valid local license, but Cancelled Subscription
+    const isCancelledSub =
+      (status.data as any)?.subscriptionStatus === "CANCELLED";
+
+    if (isCancelledSub) {
+      return (
+        <Alert
+          severity="warning"
+          icon={<WifiOff size={20} />}
+          sx={{
+            mt: 3,
+            textAlign: "left",
+            alignItems: "flex-start",
+            borderRadius: 2,
+            bgcolor: "#fffbeb",
+            color: "#b45309",
+            border: "1px solid #fde68a",
+          }}
+        >
+          <Typography variant="body2" fontWeight={800} mb={0.5}>
+            Subscription Suspended (Offline Mode)
+          </Typography>
+          <Typography variant="caption" display="block">
+            Your device license is verified for offline use, but cloud sync and
+            new activations have been disabled.
+            <strong> Please renew via the web platform.</strong>
+          </Typography>
+        </Alert>
+      );
+    }
 
     let severity: "success" | "warning" | "error" | "info" = "info";
     let icon = <Lock size={18} />;
@@ -172,10 +195,10 @@ export default function LicensePage() {
       icon = <AlertTriangle size={18} />;
     } else if (["expired", "invalid", "unlicensed"].includes(status.status)) {
       severity = "error";
-      // Check for specific keywords to show Ban icon
       if (
         status.message?.toLowerCase().includes("banned") ||
-        status.message?.toLowerCase().includes("revoked")
+        status.message?.toLowerCase().includes("revoked") ||
+        status.message?.toLowerCase().includes("denied")
       ) {
         icon = <Ban size={18} />;
       }
@@ -211,17 +234,17 @@ export default function LicensePage() {
         alignItems="center"
         justifyContent="center"
         height="100vh"
-        bgcolor="grey.100"
+        bgcolor="#f8fafc"
       >
-        <CircularProgress />
+        <CircularProgress sx={{ color: themeColors.primary }} />
       </Box>
     );
   }
 
-  // Check if banned to conditionally disable input
   const isBanned =
     status?.message?.toLowerCase().includes("banned") ||
-    status?.message?.toLowerCase().includes("revoked");
+    status?.message?.toLowerCase().includes("revoked") ||
+    status?.message?.toLowerCase().includes("denied");
 
   return (
     <Box
@@ -229,10 +252,7 @@ export default function LicensePage() {
       alignItems="center"
       justifyContent="center"
       minHeight="100vh"
-      sx={{
-        backgroundColor: "grey.100",
-        p: 2,
-      }}
+      sx={{ backgroundColor: "#f8fafc", p: 2 }}
     >
       <Card
         variant="outlined"
@@ -240,7 +260,8 @@ export default function LicensePage() {
           width: "100%",
           maxWidth: 480,
           borderRadius: 4,
-          boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.05)",
+          borderColor: themeColors.slateBorder,
         }}
       >
         <CardContent sx={{ p: 4 }}>
@@ -250,38 +271,47 @@ export default function LicensePage() {
                 display: "inline-flex",
                 p: 2,
                 borderRadius: "50%",
-                bgcolor: isBanned ? "error.light" : "primary.light", // Red if banned
-                color: isBanned ? "error.main" : "primary.main",
+                bgcolor: isBanned ? "#fee2e2" : themeColors.primaryLight,
+                color: isBanned ? "#dc2626" : themeColors.primary,
                 mb: 2,
               }}
             >
               {isBanned ? <Ban size={32} /> : <KeyRound size={32} />}
             </Box>
-            <Typography variant="h5" fontWeight="800" gutterBottom>
+            <Typography
+              variant="h5"
+              fontWeight="800"
+              color="#0f172a"
+              gutterBottom
+            >
               {isBanned ? "Access Denied" : "Activate KOSH"}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="#64748b">
               {isBanned
                 ? "Your access has been revoked. Please contact support."
                 : "Enter your product license key to unlock the full potential of your inventory management system."}
             </Typography>
-            {/* Added Mode Badge */}
             <Chip
               label={appMode === "client" ? "Client Mode" : "Server Mode"}
               size="small"
-              sx={{ mt: 1, fontWeight: "bold" }}
+              sx={{
+                mt: 1.5,
+                fontWeight: "bold",
+                bgcolor: "#f1f5f9",
+                color: "#475569",
+              }}
             />
           </Box>
 
-          <Divider />
+          <Divider sx={{ borderColor: themeColors.slateBorder }} />
 
           {/* Machine ID Section */}
           <Box
             mt={3}
             p={2}
-            bgcolor="grey.50"
+            bgcolor="#f8fafc"
             borderRadius={2}
-            border="1px dashed #ccc"
+            border={`1px dashed #cbd5e1`}
             display="flex"
             flexDirection="column"
             alignItems="center"
@@ -289,18 +319,20 @@ export default function LicensePage() {
             <Typography
               variant="caption"
               fontWeight="bold"
-              color="text.secondary"
+              color="#64748b"
+              letterSpacing={1}
               gutterBottom
             >
               YOUR MACHINE ID
             </Typography>
 
             <Stack direction="row" alignItems="center" spacing={1} width="100%">
-              <Monitor size={16} color="#666" />
+              <Monitor size={16} color="#64748b" />
               <Typography
                 variant="body2"
                 fontFamily="monospace"
                 fontWeight="bold"
+                color="#0f172a"
                 sx={{
                   flexGrow: 1,
                   wordBreak: "break-all",
@@ -311,20 +343,22 @@ export default function LicensePage() {
               </Typography>
               <Tooltip title="Copy ID">
                 <IconButton size="small" onClick={handleCopyId}>
-                  <Copy size={16} />
+                  <Copy size={16} color={themeColors.primary} />
                 </IconButton>
               </Tooltip>
             </Stack>
-
-            <Typography variant="caption" color="text.disabled" mt={1}>
-              This ID is required for generating your license key.
-            </Typography>
           </Box>
 
           <StatusDisplay />
 
           <Box mt={3}>
-            <Typography variant="subtitle2" fontWeight="bold" mb={1} ml={0.5}>
+            <Typography
+              variant="subtitle2"
+              fontWeight="bold"
+              color="#334155"
+              mb={1}
+              ml={0.5}
+            >
               License Key
             </Typography>
             <TextField
@@ -333,12 +367,17 @@ export default function LicensePage() {
               rows={3}
               value={licenseKey}
               onChange={(e) => setLicenseKey(e.target.value)}
-              placeholder="Paste your license key here..."
+              placeholder="Paste your 16-digit license key..."
               variant="outlined"
               disabled={activating || status?.status === "valid" || isBanned}
               sx={{
-                "& .MuiOutlinedInput-root": { borderRadius: 3 },
-                backgroundColor: "grey.50",
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: 3,
+                  bgcolor: "#fff",
+                  "&.Mui-focused fieldset": {
+                    borderColor: themeColors.primary,
+                  },
+                },
               }}
             />
           </Box>
@@ -360,9 +399,14 @@ export default function LicensePage() {
               borderRadius: 3,
               textTransform: "none",
               fontSize: "1rem",
-              fontWeight: 600,
-              boxShadow: "none",
-              "&:hover": { boxShadow: "0 4px 12px rgba(0,0,0,0.15)" },
+              fontWeight: 700,
+              bgcolor: themeColors.primary,
+              boxShadow: "0 4px 14px rgba(17, 94, 89, 0.2)",
+              "&:hover": {
+                bgcolor: "#0f4c4a",
+                boxShadow: "0 6px 20px rgba(17, 94, 89, 0.3)",
+              },
+              "&:disabled": { bgcolor: "#cbd5e1", color: "#94a3b8" },
             }}
           >
             {activating ? (
@@ -372,9 +416,8 @@ export default function LicensePage() {
             )}
           </Button>
 
-          {/* Purchase / Upgrade Section */}
-          <Box mt={3} textAlign="center">
-            <Typography variant="caption" color="text.secondary">
+          <Box mt={4} textAlign="center">
+            <Typography variant="caption" color="#64748b" fontWeight="medium">
               Don't have a license key?
             </Typography>
             <Button
@@ -384,28 +427,23 @@ export default function LicensePage() {
               startIcon={<CreditCard size={18} />}
               onClick={() => navigate("/plans")}
               sx={{
-                mt: 1,
-                py: 1,
+                mt: 1.5,
+                py: 1.2,
                 borderRadius: 3,
                 textTransform: "none",
-                fontWeight: 600,
-                borderColor: "primary.main",
-                color: "primary.main",
+                fontWeight: 700,
+                borderColor: themeColors.slateBorder,
+                color: themeColors.slateText,
+                "&:hover": {
+                  borderColor: themeColors.primary,
+                  color: themeColors.primary,
+                  bgcolor: themeColors.primaryLight,
+                },
               }}
             >
               View Plans & Buy Now
             </Button>
           </Box>
-
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            align="center"
-            display="block"
-            mt={3}
-          >
-            Need help? Contact support at email : support@invistock.com
-          </Typography>
         </CardContent>
       </Card>
     </Box>

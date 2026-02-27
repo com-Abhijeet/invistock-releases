@@ -19,7 +19,9 @@ cav/k9ZgGx3/FGnbEz8WdBUGDAr9AOrbc3s4loM2w8iIHyolxWGNnL2kLsDxTqIE
 iQIDAQAB
 -----END PUBLIC KEY-----`;
 
-const API_URL = "http://localhost:5001/api/v1/security/validate";
+const API_URL = process.env.VITE_API_URL
+  ? `${process.env.VITE_API_URL}/security/validate`
+  : "http://localhost:5001/api/v1/security/validate";
 
 function parseDate(dateStr) {
   const day = parseInt(dateStr.substring(0, 2), 10);
@@ -35,6 +37,7 @@ function validateLocal(licenseKey) {
   try {
     const decoded = Buffer.from(licenseKey, "base64").toString("utf8");
     const [payload, signature] = decoded.split(".");
+    console.log("key payload", payload);
 
     if (!payload || !signature) {
       return { status: "invalid", message: "Invalid license format." };
@@ -82,7 +85,7 @@ function validateLocal(licenseKey) {
 
       if (now < gracePeriodEndDate) {
         const daysLeft = Math.ceil(
-          (gracePeriodEndDate - now) / (1000 * 60 * 60 * 24)
+          (gracePeriodEndDate - now) / (1000 * 60 * 60 * 24),
         );
         return {
           status: "grace_period",
@@ -98,7 +101,7 @@ function validateLocal(licenseKey) {
     return {
       status: "valid",
       message: "License is valid.",
-      data: { startDate, expiryDate, info1, info2 },
+      data: { startDate, expiryDate, info1, info2, offlineMode: true },
     };
   } catch (error) {
     console.error("[license service]-Failed local check", error);
@@ -112,13 +115,11 @@ function validateLocal(licenseKey) {
 async function verifyOnline(licenseKey) {
   try {
     const machineId = machineIdSync();
-
-    // 2. GET METADATA
     const appVersion = app.getVersion();
-    const osInfo = process.platform; // e.g. 'win32', 'darwin'
+    const osInfo = process.platform;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
 
     const response = await fetch(API_URL, {
       method: "POST",
@@ -126,10 +127,9 @@ async function verifyOnline(licenseKey) {
       body: JSON.stringify({
         licenseKey,
         machineId,
-        // 3. SEND METADATA
-        osInfo: osInfo, // Matches backend 'osInfo'
-        appVersion: appVersion, // Matches backend 'appVersion'
-        platform: osInfo, // (Optional) Keep for legacy if your API uses 'platform'
+        osInfo: osInfo,
+        appVersion: appVersion,
+        platform: osInfo,
       }),
       signal: controller.signal,
     });
@@ -137,6 +137,7 @@ async function verifyOnline(licenseKey) {
     clearTimeout(timeoutId);
     const data = await response.json();
 
+    // SUCCESS CASE (Even if subscription is cancelled, license might be valid)
     if (response.ok && data.success) {
       const responsePayload = data.data || {};
 
@@ -145,10 +146,7 @@ async function verifyOnline(licenseKey) {
         responsePayload.latestLicenseKey &&
         responsePayload.latestLicenseKey !== licenseKey
       ) {
-        console.log(
-          "[LICENSE] 🔄 Renewal Detected! Validating and saving to database..."
-        );
-
+        console.log("[LICENSE] 🔄 Renewal Detected! Validating and saving...");
         const checkNewKey = validateLocal(responsePayload.latestLicenseKey);
 
         if (checkNewKey.status === "valid") {
@@ -158,17 +156,18 @@ async function verifyOnline(licenseKey) {
             expiryDate: checkNewKey.data.expiryDate.toISOString(),
           });
           console.log("[LICENSE] ✅ Database updated with renewed license.");
-        } else {
-          console.warn(
-            "[LICENSE] ⚠️ Renewed key failed local validation:",
-            checkNewKey.message
-          );
         }
       }
 
-      return { status: "valid", message: "Online verification successful." };
+      // Return server's exact message and full payload
+      return {
+        status: "valid",
+        message: responsePayload.message || "Online verification successful.",
+        data: responsePayload, // Important: Contains subscriptionStatus
+      };
     }
 
+    // SERVER REJECTED LICENSE (Revoked, Banned, IP Mismatch)
     if (response.status === 403 || response.status === 401) {
       return {
         status: "banned",
@@ -176,15 +175,16 @@ async function verifyOnline(licenseKey) {
       };
     }
 
-    throw new Error("Server Error");
+    throw new Error(data.message || "Server Error");
   } catch (error) {
     console.error(
       "[backend] - [license Service] [ online verification failed ] ",
-      error
+      error.message,
     );
     return { status: "network_error", message: error.message };
   }
 }
+
 /**
  * 3. HYBRID CHECK
  */
@@ -198,9 +198,19 @@ export async function validateLicense(licenseKey) {
     return { status: "invalid", message: onlineResult.message };
   }
 
+  // If online check passes, we accept its payload directly so UI knows about Cancellations
   if (onlineResult.status === "valid") {
     console.log("[LICENSE] Online Check Passed.");
-    return validateLocal(licenseKey);
+
+    // We still validate locally just to be absolutely sure the key math checks out
+    const localCheck = validateLocal(licenseKey);
+    if (localCheck.status === "invalid") return localCheck;
+
+    // Merge local dates with online data
+    return {
+      ...onlineResult,
+      data: { ...localCheck.data, ...onlineResult.data },
+    };
   }
 
   console.warn("[LICENSE] Network Error. Falling back to Local Check...");

@@ -22,24 +22,23 @@ import {
   ExternalLink,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import DashboardHeader from "../components/DashboardHeader"; // Reuse your header
+import DashboardHeader from "../components/DashboardHeader";
 
-// Define the shape of a Plan object based on your API
 interface Plan {
   id: string;
   name: string;
   description?: string;
   monthlyPrice: number;
   yearlyPrice?: number;
-  features: string[]; // Assuming features is an array of strings
+  features: string[];
   recommended?: boolean;
 }
 
-// Access the electron bridge
 const { electron } = window;
 
-// Configuration
-const API_BASE_URL = "http://localhost:5001/api/v1"; // Change to localhost for dev if needed
+const API_BASE_URL = "http://localhost:5001/api/v1";
+
+// Note: You should point this to your actual deployed website later.
 const CHECKOUT_URL = `http://localhost:3000/checkout`;
 
 export default function PlansPage() {
@@ -48,23 +47,26 @@ export default function PlansPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const themeColors = {
+    primary: "#115e59",
+    primaryLight: "#ecfdf5",
+    slateBorder: "#e2e8f0",
+  };
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
       try {
-        // 1. Get Machine ID from Electron
         let mId = "unknown-machine";
         if (electron && electron.getMachineId) {
           mId = await electron.getMachineId();
           setMachineId(mId);
         } else {
-          // Fallback for browser-only dev mode
-          console.warn("Electron Machine ID not available. Using mock ID.");
+          console.warn("Electron Machine ID not available.");
           setMachineId("mock-browser-id");
           mId = "mock-browser-id";
         }
 
-        // 2. Fetch Plans from Web Platform
         const res = await fetch(`${API_BASE_URL}/plan`);
         if (!res.ok) throw new Error("Failed to fetch plans from server.");
 
@@ -76,7 +78,9 @@ export default function PlansPage() {
         }
       } catch (err: any) {
         console.error("Plan fetch error:", err);
-        setError(err.message || "Could not load pricing plans.");
+        setError(
+          "Could not connect to Kosh Pricing Server. Please check your internet.",
+        );
       } finally {
         setLoading(false);
       }
@@ -91,17 +95,14 @@ export default function PlansPage() {
       return;
     }
 
-    // 3. Construct Checkout URL
     const url = `${CHECKOUT_URL}?p=${encodeURIComponent(
-      planId
+      planId,
     )}&m=${encodeURIComponent(machineId)}`;
 
-    // 4. Open in Default Browser
     if (electron && electron.openExternalUrl) {
       electron.openExternalUrl(url);
-      toast.success("Opening checkout in your browser...");
+      toast.success("Opening secure checkout in your browser...");
     } else {
-      // Fallback for web dev
       window.open(url, "_blank");
     }
   };
@@ -114,19 +115,26 @@ export default function PlansPage() {
         alignItems="center"
         height="80vh"
       >
-        <CircularProgress />
+        <CircularProgress sx={{ color: themeColors.primary }} />
       </Box>
     );
   }
 
   if (error) {
     return (
-      <Box p={4} textAlign="center">
-        <Alert severity="error" sx={{ mb: 2, maxWidth: 600, mx: "auto" }}>
+      <Box p={4} textAlign="center" mt={10}>
+        <Alert
+          severity="error"
+          sx={{ mb: 3, maxWidth: 600, mx: "auto", borderRadius: 2 }}
+        >
           {error}
         </Alert>
-        <Button variant="outlined" onClick={() => window.location.reload()}>
-          Retry
+        <Button
+          variant="outlined"
+          onClick={() => window.location.reload()}
+          sx={{ color: themeColors.primary, borderColor: themeColors.primary }}
+        >
+          Retry Connection
         </Button>
       </Box>
     );
@@ -137,7 +145,7 @@ export default function PlansPage() {
       p={2}
       pt={3}
       sx={{
-        backgroundColor: "#fff",
+        backgroundColor: "#f8fafc",
         borderTopLeftRadius: "36px",
         borderBottomLeftRadius: "36px",
         minHeight: "100vh",
@@ -149,30 +157,40 @@ export default function PlansPage() {
         showDateFilters={false}
       />
 
-      <Box maxWidth={1200} mx="auto" mt={4}>
+      <Box maxWidth={1100} mx="auto" mt={6}>
         <Box textAlign="center" mb={6}>
-          <Typography variant="h4" fontWeight="800" gutterBottom>
+          <Typography
+            variant="h4"
+            fontWeight="900"
+            color="#0f172a"
+            gutterBottom
+          >
             Choose the Perfect Plan for Your Business
           </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Unlock advanced features like Cloud Backup, WhatsApp Automation, and
-            Multi-User access.
+          <Typography variant="body1" color="#475569" maxWidth={600} mx="auto">
+            Unlock advanced features like Multi-User LAN access, Cloud Backup,
+            and WhatsApp Auto-Invoicing.
           </Typography>
 
-          {/* Display Machine ID for reference/debug */}
           {machineId && (
             <Chip
-              icon={<Server size={14} />}
+              icon={<Server size={14} color="#64748b" />}
               label={`Machine ID: ${machineId}`}
               size="small"
-              sx={{ mt: 2, fontFamily: "monospace", bgcolor: "grey.100" }}
+              sx={{
+                mt: 3,
+                fontFamily: "monospace",
+                bgcolor: "#e2e8f0",
+                color: "#334155",
+                fontWeight: "bold",
+              }}
             />
           )}
         </Box>
 
         <Grid container spacing={4} justifyContent="center">
           {plans.map((plan) => (
-            <Grid item xs={12} md={4} key={plan.id}>
+            <Grid item xs={12} md={5} key={plan.id}>
               <Card
                 variant="outlined"
                 sx={{
@@ -181,69 +199,92 @@ export default function PlansPage() {
                   flexDirection: "column",
                   borderRadius: 4,
                   position: "relative",
-                  borderColor: plan.recommended ? "primary.main" : "divider",
+                  borderColor: plan.recommended
+                    ? themeColors.primary
+                    : themeColors.slateBorder,
                   boxShadow: plan.recommended
-                    ? "0 8px 24px rgba(25, 118, 210, 0.15)"
+                    ? "0 12px 32px rgba(17, 94, 89, 0.15)"
                     : "none",
                   transform: plan.recommended ? "scale(1.02)" : "none",
-                  transition: "transform 0.2s",
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                  "&:hover": {
+                    boxShadow: "0 12px 32px rgba(0,0,0,0.08)",
+                  },
                 }}
               >
                 {plan.recommended && (
                   <Chip
                     label="Most Popular"
-                    color="primary"
-                    size="small"
                     sx={{
                       position: "absolute",
                       top: 16,
                       right: 16,
-                      fontWeight: "bold",
+                      fontWeight: "900",
+                      bgcolor: themeColors.primary,
+                      color: "white",
+                      letterSpacing: 0.5,
                     }}
                   />
                 )}
 
-                <CardContent sx={{ p: 4, flexGrow: 1 }}>
+                <CardContent sx={{ p: 5, flexGrow: 1 }}>
                   <Typography
                     variant="overline"
-                    color="text.secondary"
-                    fontWeight={700}
-                    letterSpacing={1.2}
+                    color="#64748b"
+                    fontWeight={800}
+                    letterSpacing={1.5}
                   >
                     {plan.name.toUpperCase()}
                   </Typography>
 
                   <Box my={2} display="flex" alignItems="baseline">
-                    <Typography variant="h3" fontWeight="bold">
+                    <Typography variant="h3" fontWeight="900" color="#0f172a">
                       ₹{plan.monthlyPrice}
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" ml={1}>
+                    <Typography
+                      variant="subtitle1"
+                      color="#64748b"
+                      ml={1}
+                      fontWeight="bold"
+                    >
                       / month
                     </Typography>
                   </Box>
 
                   {plan.description && (
-                    <Typography variant="body2" color="text.secondary" mb={3}>
+                    <Typography
+                      variant="body2"
+                      color="#475569"
+                      mb={3}
+                      lineHeight={1.6}
+                    >
                       {plan.description}
                     </Typography>
                   )}
 
-                  <Divider sx={{ my: 3 }} />
+                  <Divider
+                    sx={{ my: 3, borderColor: themeColors.slateBorder }}
+                  />
 
-                  <Stack spacing={2}>
+                  <Stack spacing={2.5}>
                     {plan.features.map((feature, idx) => (
                       <Stack
                         direction="row"
-                        spacing={1.5}
-                        alignItems="center"
+                        spacing={2}
+                        alignItems="flex-start"
                         key={idx}
                       >
                         <CheckCircle2
-                          size={18}
-                          color="#2e7d32"
+                          size={20}
+                          color="#059669"
                           strokeWidth={2.5}
+                          style={{ marginTop: 2 }}
                         />
-                        <Typography variant="body2" fontWeight={500}>
+                        <Typography
+                          variant="body2"
+                          fontWeight={600}
+                          color="#334155"
+                        >
                           {feature}
                         </Typography>
                       </Stack>
@@ -251,7 +292,7 @@ export default function PlansPage() {
                   </Stack>
                 </CardContent>
 
-                <Box p={3} pt={0}>
+                <Box p={4} pt={0}>
                   <Button
                     fullWidth
                     variant={plan.recommended ? "contained" : "outlined"}
@@ -261,22 +302,36 @@ export default function PlansPage() {
                     endIcon={<ExternalLink size={16} />}
                     sx={{
                       py: 1.5,
-                      borderRadius: 2,
+                      borderRadius: 2.5,
                       textTransform: "none",
-                      fontWeight: 700,
+                      fontWeight: 800,
                       fontSize: "1rem",
+                      bgcolor: plan.recommended
+                        ? themeColors.primary
+                        : "transparent",
+                      color: plan.recommended ? "white" : themeColors.primary,
+                      borderColor: plan.recommended
+                        ? "transparent"
+                        : themeColors.primary,
+                      "&:hover": {
+                        bgcolor: plan.recommended
+                          ? "#0f4c4a"
+                          : themeColors.primaryLight,
+                        borderColor: themeColors.primary,
+                      },
                     }}
                   >
-                    Buy Now
+                    Buy License Now
                   </Button>
                   <Typography
                     variant="caption"
                     display="block"
                     textAlign="center"
-                    color="text.disabled"
-                    mt={1.5}
+                    color="#94a3b8"
+                    mt={2}
+                    fontWeight="medium"
                   >
-                    Secure checkout via Web Platform
+                    Checkout opens securely in your web browser
                   </Typography>
                 </Box>
               </Card>
@@ -284,17 +339,17 @@ export default function PlansPage() {
           ))}
         </Grid>
 
-        <Box mt={6} textAlign="center" color="text.secondary">
+        <Box mt={8} textAlign="center" color="#64748b">
           <Stack
             direction="row"
             justifyContent="center"
             alignItems="center"
             spacing={1}
           >
-            <ShieldCheck size={16} />
-            <Typography variant="caption">
-              Payments are processed securely. Licenses are activated
-              immediately for this machine.
+            <ShieldCheck size={18} color={themeColors.primary} />
+            <Typography variant="body2" fontWeight="bold">
+              Payments are 100% secure. License keys are instantly generated and
+              sent to your email.
             </Typography>
           </Stack>
         </Box>

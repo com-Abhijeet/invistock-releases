@@ -25,6 +25,7 @@ import {
   Clipboard,
   ClipboardCheck,
   UsersRound,
+  BookCheck,
 } from "lucide-react";
 
 export const menuSections = [
@@ -36,6 +37,11 @@ export const menuSections = [
         icon: <LayoutDashboard size={20} />,
         path: "/dashboard",
         shortcut: "F1",
+      },
+      {
+        label: "Accounting",
+        icon: <BookCheck size={20} />,
+        path: "/accounting",
       },
     ],
   },

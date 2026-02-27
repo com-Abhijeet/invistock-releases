@@ -16,6 +16,7 @@ const {
   getSupplierLedger,
 } = require("../../backend/repositories/supplierRepository.mjs");
 const { createSupplierLedgerHTML } = require("../supplierLedgerTemplate.js");
+const { processReport } = require("../reports/reportPrintHandler.js");
 
 function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
   ipcMain.handle("print-bulk-labels", async (event, items) => {
@@ -149,6 +150,10 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
       }
     },
   );
+
+  ipcMain.handle("process-report", async (event, type, data, meta, action) => {
+    return await processReport(type, data, meta, action);
+  });
 }
 
 module.exports = { registerPrintHandlers };
