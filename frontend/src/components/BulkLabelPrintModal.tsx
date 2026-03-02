@@ -76,9 +76,20 @@ export default function BulkLabelPrintModal({
             if (i.tracking_type === "serial") defaultMode = "serial";
             else if (i.tracking_type === "batch") defaultMode = "batch";
 
-            // Parse serials string into array
-            const serialList = (i.serial_numbers || "")
-              .split(/[\n,]+/)
+            // Safely parse serial numbers, handling arrays or stringified JSON arrays
+            let rawSerials = i.serial_numbers || "";
+            let serialList: string[] = [];
+
+            if (Array.isArray(rawSerials)) {
+              serialList = rawSerials;
+            } else {
+              // Strip JSON array brackets, double quotes, and single quotes before splitting
+              serialList = String(rawSerials)
+                .replace(/[\[\]"']/g, "")
+                .split(/[\n,]+/);
+            }
+
+            serialList = serialList
               .map((s: string) => s.trim())
               .filter((s: string) => s !== "");
 

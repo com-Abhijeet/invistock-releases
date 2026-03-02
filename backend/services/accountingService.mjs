@@ -1,6 +1,5 @@
 import * as AccountingRepo from "../repositories/accountingRepository.mjs";
 
-// Helper to provide default dates if none are passed (Defaults to current month)
 const getDefaultDateRange = (startDate, endDate) => {
   const today = new Date();
   const defaultStart = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -24,10 +23,8 @@ export function getPnLStatement(startDate, endDate) {
 export function getCustomerLedger(customerId, startDate, endDate) {
   if (!customerId) throw new Error("Customer ID is required");
   const { start, end } = getDefaultDateRange(startDate, endDate);
-
   const data = AccountingRepo.getCustomerLedger(customerId, start, end);
 
-  // Calculate Running Balance
   let runningBalance = data.openingBalance;
   const enrichedLedger = data.ledger.map((row) => {
     runningBalance = runningBalance + row.debit - row.credit;
@@ -46,13 +43,11 @@ export function getCustomerLedger(customerId, startDate, endDate) {
 export function getSupplierLedger(supplierId, startDate, endDate) {
   if (!supplierId) throw new Error("Supplier ID is required");
   const { start, end } = getDefaultDateRange(startDate, endDate);
-
   const data = AccountingRepo.getSupplierLedger(supplierId, start, end);
 
-  // Calculate Running Balance
   let runningBalance = data.openingBalance;
   const enrichedLedger = data.ledger.map((row) => {
-    runningBalance = runningBalance + row.credit - row.debit; // For suppliers, credit increases what we owe
+    runningBalance = runningBalance + row.credit - row.debit;
     return { ...row, balance: runningBalance };
   });
 
@@ -69,10 +64,8 @@ export function getCashBankBook(modeType, startDate, endDate) {
   if (!["cash", "bank"].includes(modeType))
     throw new Error("Mode must be 'cash' or 'bank'");
   const { start, end } = getDefaultDateRange(startDate, endDate);
-
   const data = AccountingRepo.getCashBankBook(modeType, start, end);
 
-  // Calculate Running Balance
   let runningBalance = data.openingBalance;
   const enrichedLedger = data.ledger.map((row) => {
     runningBalance = runningBalance + row.inflow - row.outflow;
@@ -94,10 +87,25 @@ export function getStockValuation() {
 
 export function getStockSummaryReport(startDate, endDate) {
   const { start, end } = getDefaultDateRange(startDate, endDate);
-  const data = AccountingRepo.getStockSummaryReport(start, end);
+  const records = AccountingRepo.getStockSummaryReport(start, end);
+  return { period: { start, end }, records };
+}
 
-  return {
-    period: { start, end },
-    records: data,
-  };
+// --- NEW REPORTS ---
+export function getReceivablesAging() {
+  return AccountingRepo.getReceivablesAging();
+}
+
+export function getCustomerBillByBill(customerId) {
+  if (!customerId) throw new Error("Customer ID is required");
+  return AccountingRepo.getCustomerBillByBill(customerId);
+}
+
+export function getPayablesAging() {
+  return AccountingRepo.getPayablesAging();
+}
+
+export function getSupplierBillByBill(supplierId) {
+  if (!supplierId) throw new Error("Supplier ID is required");
+  return AccountingRepo.getSupplierBillByBill(supplierId);
 }

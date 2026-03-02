@@ -99,6 +99,15 @@ const BRANDING_FOOTER = `
 
 // --- DYNAMIC A4 GENERATOR ---
 function createInvoiceHTML({ sale, shop }) {
+  // Snapshot Variables (New Schema) w/ Legacy Fallbacks
+  const custName = sale.customer_name || "Cash Customer";
+  const custPhone = sale.customer_phone || "";
+  const custAddress = sale.bill_address || sale.customer_address || "";
+  const custCity = sale.customer_city || ""; // City remains joined in current schema
+  const custState = sale.state || sale.customer_state || "";
+  const custPincode = sale.pincode || sale.customer_pincode || "";
+  const custGst = sale.gstin || sale.customer_gst_no || "";
+
   // Shop Preferences
   const gstEnabled = Boolean(shop.gst_enabled);
   const showHSN = Boolean(shop.hsn_required);
@@ -107,15 +116,16 @@ function createInvoiceHTML({ sale, shop }) {
     shop.show_gst_breakup !== undefined ? Boolean(shop.show_gst_breakup) : true;
   const showDiscountCol = Boolean(shop.show_discount_column);
 
-  // Logic: If pricing is inclusive, we hide per-item GST columns as per request
-  const showGstPerItem = gstEnabled && !inclusiveTax;
+  // Column Rules
+  const showGstPctCol = gstEnabled && showGstBreakup;
+  const showGstAmtCol = gstEnabled && showGstBreakup && !inclusiveTax;
 
   // Header State Logic
   const isInterstate =
     gstEnabled &&
     shop.state &&
-    sale.customer_state &&
-    shop.state.toLowerCase() !== sale.customer_state.toLowerCase();
+    custState &&
+    shop.state.toLowerCase() !== custState.toLowerCase();
 
   // Footer Calculations
   let totalTaxableValue = 0,
@@ -124,7 +134,6 @@ function createInvoiceHTML({ sale, shop }) {
     totalSgst = 0,
     totalIgst = 0;
 
-  // Calculate Subtotal and Discount Correctly
   const subTotal = sale.items.reduce((sum, item) => sum + (item.price || 0), 0);
   const discountPercentage = sale.discount || 0;
   const discountAmount = (subTotal * discountPercentage) / 100;
@@ -162,7 +171,7 @@ function createInvoiceHTML({ sale, shop }) {
     }
   });
 
-  // Pagination Logic (Increased ROWS_PER_PAGE to 28 to fill the page better)
+  // Pagination Logic
   const ROWS_PER_PAGE = 24;
   const items = sale.items;
   const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
@@ -176,12 +185,11 @@ function createInvoiceHTML({ sale, shop }) {
     });
   }
 
-  // Determine Column Span for Page Tracker
   let totalColumns = 4; // #, Name, Qty, Rate
   if (showHSN) totalColumns++;
   if (showDiscountCol) totalColumns++;
-  if (showGstPerItem) totalColumns++; // GST %
-  if (showGstPerItem && showGstBreakup) totalColumns++; // GST Amt
+  if (showGstPctCol) totalColumns++; // GST %
+  if (showGstAmtCol) totalColumns++; // GST Amt
   totalColumns++; // Total
 
   const renderPage = ({
@@ -193,7 +201,6 @@ function createInvoiceHTML({ sale, shop }) {
     const itemsHTML = pageItems
       .map((item, index) => {
         const baseVal = item.rate * item.quantity;
-        // let gstAmount = 0; // Unused in display logic for line item, reusing variable if needed
         let gstAmount = 0;
         if (gstEnabled && !inclusiveTax) {
           const valAfterDisc = baseVal * (1 - (item.discount || 0) / 100);
@@ -204,15 +211,16 @@ function createInvoiceHTML({ sale, shop }) {
     <tr class="data-row">
       <td class="text-center">${(pageIndex - 1) * ROWS_PER_PAGE + index + 1}</td>
       <td style="text-align:left;">
-        <div class="item-name">${item.product_name}</div>
+        <div class="item-name">${item.product_name || item.name || "Unknown"}</div>
+        ${item.description ? `<div style="font-size: 8px; font-style: italic; color: #555;">${item.description}</div>` : ""}
         ${getTrackingHtml(item)}
       </td>
       ${showHSN ? `<td class="text-center">${item.hsn || "-"}</td>` : ""}
       <td class="text-center">${item.quantity} ${item.unit || ""}</td>
       <td class="text-right">${formatAmount(item.rate)}</td>
       ${showDiscountCol ? `<td class="text-center">${item.discount || 0}%</td>` : ""}
-      ${showGstPerItem ? `<td class="text-center">${item.gst_rate}%</td>` : ""}
-      ${showGstPerItem && showGstBreakup ? `<td class="text-right">${formatAmount(gstAmount)}</td>` : ""}
+      ${showGstPctCol ? `<td class="text-center">${item.gst_rate || 0}%</td>` : ""}
+      ${showGstAmtCol ? `<td class="text-right">${formatAmount(gstAmount)}</td>` : ""}
       <td class="text-right bold">${formatAmount(item.price)}</td>
     </tr>`;
       })
@@ -226,8 +234,8 @@ function createInvoiceHTML({ sale, shop }) {
             <td style="border-right:1px solid #000;">&nbsp;</td>
             <td style="border-right:1px solid #000;">&nbsp;</td>
             ${showDiscountCol ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
-            ${showGstPerItem ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
-            ${showGstPerItem && showGstBreakup ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
+            ${showGstPctCol ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
+            ${showGstAmtCol ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
             <td style="">&nbsp;</td>
         </tr>`;
 
@@ -253,19 +261,19 @@ function createInvoiceHTML({ sale, shop }) {
           <div class="invoice-meta">
             <div class="flex-between"><span>Inv No:</span> <span class="bold">${sale.reference_no}</span></div>
             <div class="flex-between"><span>Date:</span> <span class="bold">${formatDate(sale.created_at)}</span></div>
-            <div class="flex-between"><span>State:</span> <span>${sale.customer_state || shop.state}</span></div>
+            <div class="flex-between"><span>State:</span> <span>${custState || shop.state || ""}</span></div>
           </div>
         </div>
 
         <div class="customer-row">
           <div class="bill-to">
             <span class="label">Billed To:</span><br>
-            <span class="bold" style="font-size:12px;">${sale.customer_name || "Cash Customer"}</span><br>
-            ${formatAddress(sale.customer_address, sale.customer_city, sale.customer_state, sale.customer_pincode)}
-            ${sale.customer_phone ? `<br>Ph: ${sale.customer_phone}` : ""}
+            <span class="bold" style="font-size:12px;">${custName}</span><br>
+            ${formatAddress(custAddress, custCity, custState, custPincode)}
+            ${custPhone ? `<br>Ph: ${custPhone}` : ""}
           </div>
           <div class="extra-meta">
-             ${gstEnabled ? `<div>Cust GST: ${sale.customer_gst_no || "Unregistered"}</div>` : ""}
+             ${gstEnabled ? `<div>Cust GST: ${custGst || "Unregistered"}</div>` : ""}
              <div style="margin-top:2px;">Mode: ${sale.payment_mode || "Cash"}</div>
           </div>
         </div>
@@ -280,8 +288,8 @@ function createInvoiceHTML({ sale, shop }) {
                   <th width="8%" class="text-center">Qty</th>
                   <th width="12%" class="text-right">Rate</th>
                   ${showDiscountCol ? `<th width="8%" class="text-center">Disc</th>` : ""}
-                  ${showGstPerItem ? `<th width="8%" class="text-center">GST%</th>` : ""}
-                  ${showGstPerItem && showGstBreakup ? `<th width="12%" class="text-right">GST Amt</th>` : ""}
+                  ${showGstPctCol ? `<th width="8%" class="text-center">GST%</th>` : ""}
+                  ${showGstAmtCol ? `<th width="12%" class="text-right">GST Amt</th>` : ""}
                   <th width="15%" class="text-right">Total</th>
                 </tr>
               </thead>

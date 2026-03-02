@@ -14,19 +14,22 @@ import { convertToStockQuantity } from "../services/unitService.mjs"; // Import 
  * @description Creates a new sale record in the database.
  */
 export function createSale(saleData, items) {
-  console.log(items);
   try {
     const runTransaction = db.transaction(() => {
-      // Create the sale record
+      // Create the sale record with snapshot fields included
       const saleStmt = db.prepare(`
         INSERT INTO sales (
-          customer_id, reference_no, payment_mode, paid_amount, total_amount,
-          note, status, discount, is_reverse_charge, is_ecommerce_sale, is_quote, employee_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          customer_id, customer_name, bill_address, state, pincode, reference_no, payment_mode, paid_amount, total_amount,
+          note, status, discount, is_reverse_charge, is_ecommerce_sale, is_quote, employee_id, round_off, gstin
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const {
         customer_id,
+        customer_name,
+        bill_address,
+        state,
+        pincode,
         reference_no,
         paid_amount,
         payment_mode,
@@ -38,6 +41,8 @@ export function createSale(saleData, items) {
         is_ecommerce_sale,
         is_quote,
         employee_id,
+        round_off,
+        gstin,
       } = saleData;
 
       const {
@@ -48,7 +53,12 @@ export function createSale(saleData, items) {
 
       const saleResult = saleStmt.run(
         customer_id,
+        customer_name || null,
+        bill_address || null,
+        state || null,
+        pincode || null,
         reference_no,
+
         payment_mode,
         paid_amount,
         total_amount,
@@ -59,29 +69,37 @@ export function createSale(saleData, items) {
         normalised_is_ecommerce_sale,
         normalised_is_quote,
         employee_id,
+        round_off || 0,
+        gstin,
       );
       const saleId = saleResult.lastInsertRowid;
 
       // Check for items and create them
       if (items && items.length > 0) {
-        // UPDATED: Added 'unit' to INSERT
+        // Updated to include snapshot fields (product_name, description, barcode, hsn)
         const itemStmt = db.prepare(`
           INSERT INTO sales_items (
-            sale_id, product_id, sr_no, rate, quantity, gst_rate, discount, price, unit
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            sale_id, product_id, product_name, description, barcode, hsn, sr_no, rate, quantity, gst_rate, discount, price, unit, batch_id, serial_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         items.forEach((item) => {
           itemStmt.run(
             saleId,
             item.product_id,
+            item.product_name,
+            item.description || null,
+            item.barcode || null,
+            item.hsn || null,
             item.sr_no,
             item.rate,
             item.quantity,
             item.gst_rate,
             item.discount,
             item.price,
-            item.unit || null, // Store unit
+            item.unit || null,
+            item.batch_id || null,
+            item.serial_id || null,
           );
         });
       }
@@ -149,9 +167,6 @@ export function processSalesReturn(payload) {
       }
 
       // --- UNIT CONVERSION ---
-      // We must return stock in the BASE UNIT.
-      // The item.quantity is usually in the same unit as sold (e.g., returned 1 Box).
-      // If soldUnit exists, use it. Otherwise assume base unit.
       const qtyToReturn = convertToStockQuantity(
         item.quantity,
         soldUnit || item.unit,
@@ -161,23 +176,16 @@ export function processSalesReturn(payload) {
       // D. Inventory & Status Updates
       if (item.returnToStock) {
         // --- Option 1: Good condition -> Back to shelf ---
-
-        // 1. Update Master Product Quantity
         const newQty = currentProduct.quantity + qtyToReturn;
         ProductRepo.updateProductQuantity(item.product_id, newQty);
 
-        // 2. Update Batch Quantity
         if (batchId) {
           BatchRepo.updateBatchQuantity(batchId, qtyToReturn);
         }
-
-        // 3. Update Serial Status
         if (serialId) {
-          // Mark as available so it can be sold again
           BatchRepo.updateSerialStatus(serialId, "available");
         }
 
-        // 4. Log Adjustment
         AdjustmentRepo.createAdjustmentLog({
           product_id: item.product_id,
           category: "Sales Return",
@@ -191,19 +199,10 @@ export function processSalesReturn(payload) {
         });
       } else {
         // --- Option 2: Damaged/Scrap ---
-
-        // 1. Master Quantity: No Change (Item is not sellable)
-
-        // 2. Batch Quantity: No Change (Item is not in sellable batch stock)
-
-        // 3. Serial Status: Mark as 'returned' or 'defective'
-        // This ensures it doesn't show up in "Available Serials" lists
         if (serialId) {
           BatchRepo.updateSerialStatus(serialId, "returned");
         }
 
-        // 4. Log Adjustment
-        // We log it so there is a record, even though net stock didn't change
         AdjustmentRepo.createAdjustmentLog({
           product_id: item.product_id,
           category: "Sales Return (Damaged)",
@@ -239,8 +238,6 @@ export function processSalesReturn(payload) {
       note || `Refund for Sale #${sale.reference_no}`,
     );
 
-    // 4. Update Sale Status
-    // Ideally check if fully returned, but for now mark as returned
     db.prepare("UPDATE sales SET status = 'returned' WHERE id = ?").run(saleId);
 
     return { success: true, refundAmount: totalRefundAmount };
@@ -248,10 +245,6 @@ export function processSalesReturn(payload) {
 
   return transaction();
 }
-
-/* -------------------------------------------------------------------------- */
-/* SALE REPOSITORY FUNCTIONS                                                  */
-/* -------------------------------------------------------------------------- */
 
 /**
  * @description Retrieves a sale and its associated items by ID, reconciling payment status with transactions.
@@ -261,12 +254,12 @@ export function getSaleWithItemsById(saleId) {
     const saleStmt = db.prepare(`
       SELECT
         s.*,
-        c.name AS customer_name,
+        COALESCE(s.customer_name, c.name) AS customer_name,
         c.phone AS customer_phone,
-        c.address AS customer_address,
+        COALESCE(s.bill_address, c.address) AS customer_address,
         c.city as customer_city,
-        c.state as customer_state,
-        c.pincode as customer_pincode,
+        COALESCE(s.state, c.state) as customer_state,
+        COALESCE(s.pincode, c.pincode) as customer_pincode,
         c.gst_no AS customer_gst_no,
         es.employee_id
       FROM sales s
@@ -278,10 +271,14 @@ export function getSaleWithItemsById(saleId) {
 
     if (!sale) return null;
 
-    // UPDATED: Fetch 'unit'
+    // Updated to use the new product snapshot fields implicitly (si.*)
     const itemsStmt = db.prepare(`
       SELECT
-        si.*, p.name AS product_name, p.product_code, p.hsn, p.base_unit,
+        si.*, 
+        COALESCE(si.product_name, p.name) AS product_name, 
+        COALESCE(si.barcode, p.product_code) AS product_code, 
+        COALESCE(si.hsn, p.hsn) AS hsn, 
+        p.base_unit,
         pb.batch_number, ps.serial_number
       FROM sales_items si
       LEFT JOIN products p ON si.product_id = p.id
@@ -292,11 +289,6 @@ export function getSaleWithItemsById(saleId) {
     `);
     const items = itemsStmt.all(saleId);
 
-    /**
-     * FINANCIAL RECONCILIATION LOGIC
-     * total_paid: (Inflows) - (Outflows/Refunds)
-     * total_credit_notes: Reductions in bill value (Returns)
-     */
     const transactionStmt = db.prepare(`
       SELECT 
         COALESCE(SUM(CASE 
@@ -312,15 +304,9 @@ export function getSaleWithItemsById(saleId) {
     const transactionResult = transactionStmt.get(saleId);
 
     const reconciledPaid = transactionResult?.total_paid || 0;
-    const creditNotes = transactionResult?.total_credit_notes || 0; // Stored as positive in DB, but reduces payable
-
-    // Net Payable = Original Total - Returns/Credit Notes
-    // Note: If you store credit notes as positive amounts in your transaction table,
-    // you should subtract them here.
+    const creditNotes = transactionResult?.total_credit_notes || 0;
     const netPayable = (sale.total_amount || 0) - Math.abs(creditNotes);
     const balance = netPayable - reconciledPaid;
-
-    // Standard accounting tolerance (0.9) to handle tiny rounding issues
     const isPaid = balance <= 0.9;
     const isPartial = !isPaid && reconciledPaid > 0;
 
@@ -334,7 +320,6 @@ export function getSaleWithItemsById(saleId) {
         balance: balance > 0 ? balance : 0,
         status: isPaid ? "paid" : isPartial ? "partial" : "pending",
       },
-      // Root properties updated for UI consistency
       paid_amount: reconciledPaid,
       status: isPaid ? "paid" : isPartial ? "partial" : "pending",
     };
@@ -346,21 +331,18 @@ export function getSaleWithItemsById(saleId) {
 
 /**
  * @description Fetches all sales within a date range, including their items and customer details, structured for PDF export.
- * @param {object} filters - Contains startDate and endDate.
- * @returns {Array} An array of complete sale objects, each with a nested 'items' array.
  */
 export function getSalesForPDFExport(filters) {
-  // 1. Fetch the main sale and customer data for the given period
   const sales = db
     .prepare(
       `
     SELECT
       s.*,
-      COALESCE(c.name, 'Walk-in Customer') as customer_name,
-      c.address as customer_address,
+      COALESCE(s.customer_name, c.name, 'Walk-in Customer') as customer_name,
+      COALESCE(s.bill_address, c.address) as customer_address,
       c.city as customer_city,
-      c.state as customer_state,
-      c.pincode as customer_pincode,
+      COALESCE(s.state, c.state) as customer_state,
+      COALESCE(s.pincode, c.pincode) as customer_pincode,
       c.phone as customer_phone,
       c.gst_no as customer_gst_no
     FROM sales s
@@ -375,15 +357,14 @@ export function getSalesForPDFExport(filters) {
     return [];
   }
 
-  // 2. Fetch all related sales items in a single query for efficiency
   const saleIds = sales.map((s) => s.id);
   const items = db
     .prepare(
       `
     SELECT
       si.*,
-      p.name as product_name,
-      p.hsn
+      COALESCE(si.product_name, p.name) as product_name,
+      COALESCE(si.hsn, p.hsn) as hsn
     FROM sales_items si
     JOIN products p ON si.product_id = p.id
     WHERE si.sale_id IN (${saleIds.map(() => "?").join(",")})
@@ -391,7 +372,6 @@ export function getSalesForPDFExport(filters) {
     )
     .all(...saleIds);
 
-  // 3. Map the items back to their parent sales
   return sales.map((sale) => ({
     ...sale,
     items: items.filter((item) => item.sale_id === sale.id),
@@ -404,6 +384,11 @@ export function getSalesForPDFExport(filters) {
 export function updateSaleHeader(id, saleData) {
   const {
     customer_id,
+    customer_name,
+    bill_address,
+    state,
+    pincode,
+    gstin,
     reference_no,
     payment_mode,
     paid_amount,
@@ -415,6 +400,7 @@ export function updateSaleHeader(id, saleData) {
     is_ecommerce_sale,
     is_quote,
     employee_id,
+    round_off,
   } = saleData;
 
   const {
@@ -425,15 +411,19 @@ export function updateSaleHeader(id, saleData) {
 
   const stmt = db.prepare(`
     UPDATE sales SET 
-      customer_id = ?, reference_no = ?, payment_mode = ?, paid_amount = ?, 
-      total_amount = ?, note = ?, status = ?, discount = ?, 
-      is_reverse_charge = ?, is_ecommerce_sale = ?, is_quote = ?, employee_id = ?,
-      updated_at = datetime('now', 'localtime')
+      customer_id = ?, customer_name = ?, bill_address = ?, state = ?, pincode = ?, 
+      reference_no = ?, payment_mode = ?, paid_amount = ?, total_amount = ?, note = ?, 
+      status = ?, discount = ?, is_reverse_charge = ?, is_ecommerce_sale = ?, 
+      is_quote = ?, employee_id = ?, round_off = ?, gstin = ?, updated_at = datetime('now', 'localtime')
     WHERE id = ?
   `);
 
   return stmt.run(
     customer_id,
+    customer_name || null,
+    bill_address || null,
+    state || null,
+    pincode || null,
     reference_no,
     payment_mode,
     paid_amount,
@@ -445,6 +435,8 @@ export function updateSaleHeader(id, saleData) {
     normalised_is_ecommerce_sale,
     normalised_is_quote,
     employee_id || null,
+    round_off || 0,
+    gstin,
     id,
   );
 }
@@ -456,17 +448,21 @@ export function replaceSaleItems(saleId, items) {
   const deleteStmt = db.prepare("DELETE FROM sales_items WHERE sale_id = ?");
   deleteStmt.run(saleId);
 
-  // UPDATED: Insert with 'unit'
+  // Updated to include snapshot fields
   const insertStmt = db.prepare(`
     INSERT INTO sales_items (
-      sale_id, product_id, sr_no, rate, quantity, gst_rate, discount, price, batch_id, serial_id, unit
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sale_id, product_id, product_name, description, barcode, hsn, sr_no, rate, quantity, gst_rate, discount, price, batch_id, serial_id, unit
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const item of items) {
     insertStmt.run(
       saleId,
       item.product_id,
+      item.product_name,
+      item.description || null,
+      item.barcode || null,
+      item.hsn || null,
       item.sr_no,
       item.rate,
       item.quantity,
@@ -482,30 +478,18 @@ export function replaceSaleItems(saleId, items) {
 
 /**
  * @description Updates specific fields of a sale record.
- * @param {number} id - The ID of the sale to update.
- * @param {object} updates - Key-value pairs of fields to update (e.g., { status: 'paid', paid_amount: 500 }).
- * @returns {object} Result of the update operation (changes count).
  */
 export function updateSale(id, updates) {
   try {
     const keys = Object.keys(updates);
-
-    // If no fields to update, return early
-    if (keys.length === 0) {
-      return { changes: 0 };
-    }
-
-    // specific field validation/sanitization can go here if needed
-    // e.g. prevent updating 'id' or 'created_at' if passed in updates
+    if (keys.length === 0) return { changes: 0 };
 
     const setClause = keys.map((key) => `${key} = ?`).join(", ");
     const values = Object.values(updates);
-
-    // Add id to the end of values array for the WHERE clause
     values.push(id);
 
     const stmt = db.prepare(
-      `UPDATE sales SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE sales SET ${setClause}, updated_at = datetime('now', 'localtime') WHERE id = ?`,
     );
 
     const result = stmt.run(...values);
@@ -516,9 +500,6 @@ export function updateSale(id, updates) {
   }
 }
 
-/* -------------------------- Update Sale BY ID
-    Currently Not implemented . Updates for sale are bound for scrutiny
-  -------------------------- */
 export async function updateSaleById(id, saleData) {
   const {
     reference_no,
@@ -528,13 +509,19 @@ export async function updateSaleById(id, saleData) {
     total_amount,
     status,
     customer_id,
+    customer_name,
+    bill_address,
+    state,
+    pincode,
+    round_off,
   } = saleData;
 
   // Update main sale record
   await db.run(
     `
       UPDATE sales
-      SET reference_no = ?, payment_mode = ?, note = ?, paid_amount = ?, total_amount = ?, status = ?, customer_id = ?
+      SET reference_no = ?, payment_mode = ?, note = ?, paid_amount = ?, total_amount = ?, status = ?, customer_id = ?,
+          customer_name = ?, bill_address = ?, state = ?, pincode = ?, round_off = ?,gstin = ?, updated_at = datetime('now', 'localtime')
       WHERE id = ?
       `,
     [
@@ -545,23 +532,33 @@ export async function updateSaleById(id, saleData) {
       total_amount,
       status,
       customer_id,
+      customer_name,
+      bill_address,
+      state,
+      pincode,
+      round_off,
+      gstin,
       id,
     ],
   );
 
   // Remove old sale items and re-insert new ones
-  await db.run(`DELETE FROM sale_items WHERE sale_id = ?`, [id]);
+  await db.run(`DELETE FROM sales_items WHERE sale_id = ?`, [id]);
 
   if (saleData.items && saleData.items.length > 0) {
     for (const item of saleData.items) {
       await db.run(
         `
-          INSERT INTO sale_items (sale_id, product_id, rate, quantity, gst_rate, discount, price, unit)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO sales_items (sale_id, product_id, product_name, description, barcode, hsn, rate, quantity, gst_rate, discount, price, unit)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         [
           id,
           item.product_id,
+          item.product_name,
+          item.description || null,
+          item.barcode || null,
+          item.hsn || null,
           item.rate,
           item.quantity,
           item.gst_rate,
@@ -573,20 +570,9 @@ export async function updateSaleById(id, saleData) {
     }
   }
 
-  return getSaleById(id); // Re-fetch updated sale
+  return getSaleById(id);
 }
 
-/* -------------------------------------------------------------------------- */
-/* SALE REPOSITORY FUNCTIONS                                                  */
-/* -------------------------------------------------------------------------- */
-
-/**
- * @description Retrieves a paginated list of sales for a data table.
- * @param {number} page - The current page number (1-based).
- * @param {number} limit - The number of records to return per page.
- * @returns {Array<object>} An array of sales records.
- * @throws {Error} If fetching sales fails.
- */
 export function getPaginatedSales(page, limit) {
   try {
     const offset = (page - 1) * limit;
@@ -597,7 +583,6 @@ export function getPaginatedSales(page, limit) {
       LIMIT ? OFFSET ?
     `);
 
-    // The .all() method is synchronous, so no async/await is needed.
     return stmt.all(limit, offset);
   } catch (error) {
     console.error("Error in getPaginatedSales:", error.message);
@@ -605,12 +590,6 @@ export function getPaginatedSales(page, limit) {
   }
 }
 
-/**
- * Updates the status of a sale in the database.
- * @param {number} id - The ID of the sale to update.
- * @param {string} status - The new status for the sale (e.g., 'paid', 'pending', 'refunded').
- * @returns {object} An object containing information about the changes.
- */
 export async function updateSaleStatus(id, status) {
   try {
     const stmt = db.prepare("UPDATE sales SET status = ? WHERE id = ?");
@@ -622,47 +601,104 @@ export async function updateSaleStatus(id, status) {
     throw error;
   }
 }
-
-// In saleRepository.mjs
+/**
+ * @description Fetches highly detailed sales data for Excel export.
+ * Supports both Header-level (Sales Register) and Item-level (Product Analysis) exports.
+ * @param {object} filters - Contains startDate, endDate, and exportType ('header' | 'item')
+ */
 export function getExportableSalesData(filters) {
-  const stmt = db.prepare(`
-    SELECT
+  const { startDate, endDate, exportType = "item" } = filters;
+
+  if (exportType === "header") {
+    // APPROACH 2: 1 Row per Invoice (Best for Accounting & GST)
+    const stmt = db.prepare(`
+      SELECT
         s.reference_no,
-        date(s.created_at) as invoice_date,
-        COALESCE(c.name, 'Walk-in Customer') as customer_name,
-        p.name as product_name,
-        p.hsn as hsn,
+        datetime(s.created_at) as invoice_date,
+        COALESCE(s.customer_name, c.name, 'Walk-in Customer') as customer_name,
+        c.phone as customer_phone,
+        COALESCE(s.bill_address, c.address) as customer_address,
+        c.city as customer_city,
+        COALESCE(s.state, c.state) as customer_state,
+        COALESCE(s.pincode, c.pincode) as customer_pincode,
+        c.gst_no as customer_gst_no,
+        s.payment_mode,
+        (SELECT SUM(price) FROM sales_items WHERE sale_id = s.id) as subtotal,
+        s.discount as bill_discount_percentage,
+        s.round_off as bill_round_off,
+        s.total_amount as bill_grand_total,
+        s.paid_amount,
+        s.status,
+        s.note,
+        s.employee_id
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE date(s.created_at) BETWEEN @startDate AND @endDate
+        AND s.is_quote = 0
+      ORDER BY s.created_at DESC
+    `);
+
+    // We calculate the exact discount amount in JS so the Excel sheet is complete
+    const records = stmt.all({ startDate, endDate });
+    return records.map((record) => ({
+      ...record,
+      bill_discount_amount: Number(
+        (
+          ((record.subtotal || 0) * (record.bill_discount_percentage || 0)) /
+          100
+        ).toFixed(2),
+      ),
+    }));
+  } else {
+    // APPROACH 1: 1 Row per Item (Best for Inventory Analysis - with appended bill totals)
+    const stmt = db.prepare(`
+      SELECT
+        s.reference_no,
+        datetime(s.created_at) as invoice_date,
+        COALESCE(s.customer_name, c.name, 'Walk-in Customer') as customer_name,
+        c.phone as customer_phone,
+        COALESCE(s.bill_address, c.address) as customer_address,
+        c.city as customer_city,
+        COALESCE(s.state, c.state) as customer_state,
+        COALESCE(s.pincode, c.pincode) as customer_pincode,
+        c.gst_no as customer_gst_no,
+        
+        -- Snapshot & Fallback Item Data
+        COALESCE(si.product_name, p.name) as product_name,
+        si.description as item_description,
+        COALESCE(si.barcode, p.barcode, p.product_code) as barcode,
+        COALESCE(si.hsn, p.hsn) as hsn,
         si.quantity,
+        si.unit,
         si.rate,
-        si.price,
         si.gst_rate,
-        si.discount,
-        si.unit
-    FROM sales_items si
-    JOIN sales s ON si.sale_id = s.id
-    JOIN products p ON si.product_id = p.id
-    LEFT JOIN customers c ON s.customer_id = c.id
-    WHERE date(s.created_at) BETWEEN @startDate AND @endDate
-      AND s.is_quote = 0
-    ORDER BY s.created_at DESC
-  `);
-  return stmt.all(filters);
+        si.discount as item_discount_percentage,
+        si.price as item_total,
+        
+        -- Appended Bill-level context (so the user sees the final bill amount on every row)
+        s.discount as bill_discount_percentage,
+        s.round_off as bill_round_off,
+        s.total_amount as bill_grand_total,
+        s.payment_mode,
+        s.status
+      FROM sales_items si
+      JOIN sales s ON si.sale_id = s.id
+      JOIN products p ON si.product_id = p.id
+      LEFT JOIN customers c ON s.customer_id = c.id
+      WHERE date(s.created_at) BETWEEN @startDate AND @endDate
+        AND s.is_quote = 0
+      ORDER BY s.created_at DESC, si.id ASC
+    `);
+    return stmt.all({ startDate, endDate });
+  }
 }
 
-/**
- * @description Retrieves sales for a customer, with date filters, search, and pagination.
- * @param {number} customerId - The ID of the customer.
- * @param {object} filters - An object containing filter, date, search, and pagination options.
- * @returns {object} An object containing the paginated sales and the total count.
- * @throws {Error} If fetching customer sales fails.
- */
 export function getSalesForCustomer(customerId, filters = {}) {
   try {
     if (!customerId) {
       throw new Error("Customer ID is required.");
     }
 
-    // ✅ Destructure 'all' along with other parameters
     const {
       page = 1,
       limit = 10,
@@ -670,38 +706,32 @@ export function getSalesForCustomer(customerId, filters = {}) {
       filter,
       startDate,
       endDate,
-      all, // boolean: if true, ignore date filtering
+      all,
     } = filters;
 
     const offset = (page - 1) * limit;
 
-    // ✅ Get the date filtering clause from the utility function
     const { where: dateWhere, params: dateParams } = getDateFilter({
       filter,
       from: startDate,
       to: endDate,
-      alias: "s", // Use 's' as the alias for the sales table
+      alias: "s",
     });
 
-    // --- Build dynamic WHERE clauses and parameters ---
     const whereClauses = ["s.customer_id = ?"];
     const params = [customerId];
 
-    // ✅ UPDATED: Only add date filter if 'all' is FALSE and the filter is not default
     if (!all && dateWhere !== "1=1") {
       whereClauses.push(dateWhere);
       params.push(...dateParams);
     }
 
-    // Add search query filter if a query is provided
     if (query) {
       whereClauses.push(`s.reference_no LIKE ?`);
       params.push(`%${query}%`);
     }
 
     const finalWhereClause = whereClauses.join(" AND ");
-
-    // --- Construct the final SQL queries ---
 
     const salesQuery = `
       SELECT
@@ -711,7 +741,7 @@ export function getSalesForCustomer(customerId, filters = {}) {
         s.total_amount,
         s.paid_amount,
         s.status,
-        GROUP_CONCAT(p.name || ' (' || si.quantity || ' ' || COALESCE(si.unit, '') || ')', '; ') AS items_summary
+        GROUP_CONCAT(COALESCE(si.product_name, p.name) || ' (' || si.quantity || ' ' || COALESCE(si.unit, '') || ')', '; ') AS items_summary
       FROM sales s
       JOIN sales_items si ON s.id = si.sale_id
       JOIN products p ON si.product_id = p.id
@@ -730,7 +760,6 @@ export function getSalesForCustomer(customerId, filters = {}) {
     const salesStmt = db.prepare(salesQuery);
     const totalCountStmt = db.prepare(totalCountQuery);
 
-    // Execute queries with the correct parameters
     const sales = salesStmt.all(...params, limit, offset);
     const { total_count } = totalCountStmt.get(...params);
 
@@ -741,12 +770,6 @@ export function getSalesForCustomer(customerId, filters = {}) {
   }
 }
 
-/**
- * @description Retrieves a sale by ID, excluding soft-deleted sales.
- * @param {number} saleId - The ID of the sale to retrieve.
- * @returns {object|null} The sale object or null if not found or deleted.
- * @throws {Error} If fetching the sale fails.
- */
 export function getSaleById(saleId) {
   try {
     const stmt = db.prepare(
@@ -759,14 +782,6 @@ export function getSaleById(saleId) {
   }
 }
 
-// --------------------------------------------------------------------------
-
-/**
- * @description Soft-deletes a sale by updating its status to 'deleted'.
- * @param {number} saleId - The ID of the sale to soft-delete.
- * @returns {object} The result of the database operation.
- * @throws {Error} If the soft-delete operation fails.
- */
 export function deleteSale(saleId) {
   try {
     const stmt = db.prepare(`UPDATE sales SET status = 'deleted' WHERE id = ?`);
@@ -777,14 +792,6 @@ export function deleteSale(saleId) {
   }
 }
 
-/**
- * @description Retrieves a summary of sales (total count and amount) within a date range,
- * considering only 'paid' and 'pending' sales.
- * @param {string} start - The start date in 'YYYY-MM-DD' format.
- * @param {string} end - The end date in 'YYYY-MM-DD' format.
- * @returns {object} An object with total sales count and total amount, or a default object if no records are found.
- * @throws {Error} If fetching the sales summary fails.
- */
 export function getSalesSummary(start, end) {
   try {
     const stmt = db.prepare(`
@@ -801,12 +808,6 @@ export function getSalesSummary(start, end) {
   }
 }
 
-/**
- * @description Searches for sales by a case-insensitive reference number.
- * @param {string} query - The search query for the reference number.
- * @returns {Array<object>} An array of matching sales records.
- * @throws {Error} If the search fails.
- */
 export function searchSalesByReference(query) {
   try {
     const stmt = db.prepare(`
@@ -822,14 +823,6 @@ export function searchSalesByReference(query) {
   }
 }
 
-// --------------------------------------------------------------------------
-
-/**
- * @description Deletes all sales items linked to a specific sale_id.
- * @param {number} saleId - The ID of the sale.
- * @returns {object} The result of the database operation.
- * @throws {Error} If deletion fails.
- */
 export function deleteItemsBySaleId(saleId) {
   try {
     const stmt = db.prepare(`DELETE FROM sales_items WHERE sale_id = ?`);

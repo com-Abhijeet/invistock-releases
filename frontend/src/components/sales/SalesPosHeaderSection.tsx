@@ -6,14 +6,12 @@ import {
   Typography,
   CircularProgress,
   Autocomplete,
-  InputAdornment,
   MenuItem,
   Stack,
   useTheme,
   Button,
   Collapse,
-  Divider,
-  Tooltip,
+  alpha,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect, useRef } from "react";
@@ -23,17 +21,15 @@ import {
   User,
   Phone,
   MapPin,
-  Hash,
   Calendar,
-  ChevronDown,
   ChevronUp,
+  Briefcase,
   FileText,
-  Briefcase, // Icon for Salesperson
+  ScanLine,
 } from "lucide-react";
 import { indianStates } from "../../lib/constants/statesList";
 import BooleanToggle from "../BooleanToggle";
 
-// Minimal Employee Type for Props
 interface EmployeeOption {
   id: number;
   name: string;
@@ -43,7 +39,7 @@ interface EmployeeOption {
 interface Props {
   sale: SalePayload;
   options: CustomerType[];
-  employees: EmployeeOption[]; // ✅ ADDED: List of employees
+  employees: EmployeeOption[];
   loading: boolean;
   mode: "new" | "view";
   customerId: number;
@@ -96,201 +92,129 @@ export default function SalesPosHeaderSection({
   const theme = useTheme();
   const [showMore, setShowMore] = useState(false);
 
-  // Refs for focusing
   const customerInputRef = useRef<HTMLInputElement>(null);
   const employeeInputRef = useRef<HTMLInputElement>(null);
 
-  // console.log("Sale in sales header", sale);
-
-  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl + B: Focus Customer Search (Bill To)
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.code === "KeyB" || e.key.toLowerCase() === "b")
-      ) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
         customerInputRef.current?.focus();
       }
-
-      // Alt + E: Focus Employee Select
-      if (e.altKey && (e.code === "KeyE" || e.key.toLowerCase() === "e")) {
+      if (e.altKey && e.key.toLowerCase() === "e") {
         e.preventDefault();
         employeeInputRef.current?.focus();
       }
-
-      // Ctrl + D: Toggle Address Details
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.code === "KeyD" || e.key.toLowerCase() === "d")
-      ) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
         e.preventDefault();
         setShowMore((prev) => !prev);
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Reusable label style
-  const labelStyle = {
-    variant: "caption" as const,
-    fontWeight: 700,
-    color: "text.secondary",
-    display: "block",
-    mb: 0.5,
-    sx: { textTransform: "uppercase", letterSpacing: 0.5 },
+  const containerSx = {
+    display: "flex",
+    alignItems: "center",
+    gap: 1,
+    px: 1,
+    py: 0.5,
+    borderRadius: "8px",
+    bgcolor: alpha(theme.palette.action.hover, 0.03),
+    border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    "&:focus-within": {
+      bgcolor: "#fff",
+      borderColor: theme.palette.primary.main,
+      boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.1)}`,
+    },
   };
+
+  const labelSx = {
+    fontSize: "0.65rem",
+    fontWeight: 800,
+    color: "text.disabled",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    whiteSpace: "nowrap",
+  };
+
+  const inputSx = {
+    "& .MuiInputBase-root": {
+      fontSize: "0.875rem",
+      fontWeight: 600,
+      padding: 0,
+    },
+    "& .MuiInput-underline:before, & .MuiInput-underline:after": {
+      display: "none",
+    },
+  };
+
+  const isPartyMissing = !customerName && mode !== "view";
+  const isPhoneMissing = !selectedPhone && mode !== "view";
 
   return (
     <Box
       sx={{
+        bgcolor: theme.palette.background.paper,
         borderBottom: `1px solid ${theme.palette.divider}`,
-        overflow: "hidden",
+        border: `1px solid #ccc`,
       }}
     >
-      {/* --- Section 1: Meta Data (Ref, Date, Type, Salesperson) --- */}
-      <Box sx={{ p: 3, pb: 2 }}>
-        <Stack
-          direction={{ xs: "column", md: "row" }}
-          justifyContent="space-between"
-          alignItems={{ xs: "flex-start", md: "center" }}
-          spacing={3}
+      <Stack spacing={0}>
+        {/* Main Toolbar Container */}
+        <Box
+          sx={{
+            p: 1.5,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 1.5,
+            alignItems: "center",
+          }}
         >
-          {/* Left Block: Document Settings */}
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={4}
-            alignItems={{ xs: "stretch", sm: "center" }}
-            width={{ xs: "100%", md: "auto" }}
+          {/* 1. Pill Doc Type Toggle */}
+          <Box sx={{ minWidth: 100 }}>
+            <BooleanToggle
+              value={sale.is_quote || false}
+              onChange={(newValue) => handleFieldChange("is_quote", newValue)}
+              trueLabel="QUO"
+              falseLabel="TAX"
+              disabled={mode === "view"}
+            />
+          </Box>
+
+          {/* 2. Party Selection Command Bar - Required */}
+          <Box
+            sx={{
+              ...containerSx,
+              flexGrow: 2,
+              minWidth: 250,
+              borderColor: isPartyMissing
+                ? alpha(theme.palette.error.main, 0.4)
+                : alpha(theme.palette.divider, 0.8),
+            }}
           >
-            {/* 1. Document Type */}
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box
-                sx={{
-                  p: 1,
-                  bgcolor: theme.palette.action.hover,
-                  borderRadius: 1,
-                  color: theme.palette.primary.main,
-                }}
-              >
-                <FileText size={20} />
-              </Box>
-              <Box>
-                <Typography {...labelStyle}>DOCUMENT TYPE</Typography>
-                <BooleanToggle
-                  value={sale.is_quote || false}
-                  onChange={(newValue) =>
-                    handleFieldChange("is_quote", newValue)
-                  }
-                  trueLabel="Quotation"
-                  falseLabel="Tax Invoice"
-                  disabled={mode === "view"}
-                />
-              </Box>
-            </Stack>
-
-            {/* 2. Salesperson Selector (New) */}
-            <Box sx={{ minWidth: 200 }}>
-              <Tooltip title="Shortcut: Alt + E" placement="top-start">
-                <Typography {...labelStyle}>SALESPERSON</Typography>
-              </Tooltip>
-              <Autocomplete
-                options={employees}
-                getOptionLabel={(option) => option.name}
-                value={employees.find((e) => e.id === sale.employee_id) || null}
-                onChange={(_, newValue) => {
-                  handleFieldChange(
-                    "employee_id",
-                    newValue ? newValue.id : null,
-                  );
-                }}
-                disabled={mode === "view"}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    inputRef={employeeInputRef}
-                    variant="standard"
-                    placeholder="Select Staff"
-                    InputProps={{
-                      ...params.InputProps,
-                      disableUnderline: true,
-                      sx: { fontWeight: 600, fontSize: "0.95rem" },
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Briefcase
-                            size={16}
-                            color={theme.palette.text.disabled}
-                          />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                )}
-              />
-            </Box>
-          </Stack>
-
-          {/* Right Block: Ref & Date */}
-          <Stack
-            direction="row"
-            spacing={4}
-            divider={
-              <Divider
-                orientation="vertical"
-                flexItem
-                sx={{ height: 20, alignSelf: "center" }}
-              />
-            }
-          >
-            <Box>
-              <Typography {...labelStyle}>REF NO</Typography>
-              <TextField
-                variant="standard"
-                value={sale.reference_no || ""}
-                onChange={(e) =>
-                  handleFieldChange("reference_no", e.target.value)
-                }
-                placeholder="Auto Generated"
-                InputProps={{
-                  disableUnderline: true,
-                  sx: { fontWeight: 700, fontSize: "0.9rem" },
-                }}
-                disabled={mode === "view"}
-              />
-            </Box>
-
-            <Box>
-              <Typography {...labelStyle}>DATE</Typography>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Calendar size={14} color={theme.palette.text.secondary} />
-                <Typography variant="body2" fontWeight={600}>
-                  {new Date().toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </Typography>
-              </Stack>
-            </Box>
-          </Stack>
-        </Stack>
-      </Box>
-
-      <Divider sx={{ borderStyle: "dashed" }} />
-
-      {/* --- Section 2: Customer Details (Bill To) --- */}
-      <Box sx={{ p: 3 }}>
-        <Grid container spacing={4}>
-          {/* Customer Name */}
-          <Grid item xs={12} md={5}>
-            <Tooltip title="Shortcut: Ctrl + B" placement="top-start">
-              <Typography {...labelStyle}>BILL TO (CUSTOMER)</Typography>
-            </Tooltip>
+            <User
+              size={14}
+              color={
+                isPartyMissing
+                  ? theme.palette.error.main
+                  : theme.palette.primary.main
+              }
+            />
+            <Typography
+              sx={{
+                ...labelSx,
+                color: isPartyMissing ? "error.main" : "text.disabled",
+              }}
+            >
+              PARTY *
+            </Typography>
             <Autocomplete
               freeSolo
+              fullWidth
+              size="small"
               options={options}
               loading={loading}
               disabled={mode === "view"}
@@ -314,206 +238,283 @@ export default function SalesPosHeaderSection({
                   handleSelect(val);
                 }
               }}
-              renderOption={(props, option) => (
-                <li {...props} key={option.id}>
-                  <Box>
-                    <Typography variant="body2" fontWeight={600}>
-                      {option.name}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {option.phone}
-                    </Typography>
-                  </Box>
-                </li>
-              )}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   inputRef={customerInputRef}
                   variant="standard"
-                  placeholder="Search or enter name (Ctrl+B)"
+                  placeholder="Required * (Ctrl+B)"
+                  sx={inputSx}
                   InputProps={{
                     ...params.InputProps,
-                    disableUnderline: true,
-                    sx: {
-                      fontSize: "1.1rem",
-                      fontWeight: 600,
-                      color: "text.primary",
-                      "& input::placeholder": {
-                        fontSize: "1rem",
-                        fontWeight: 400,
-                      },
-                    },
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <User size={18} color={theme.palette.text.disabled} />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <>
-                        {loading ? <CircularProgress size={16} /> : null}
-                        {params.InputProps.endAdornment}
-                      </>
+                    endAdornment: loading ? (
+                      <CircularProgress size={12} />
+                    ) : (
+                      params.InputProps.endAdornment
                     ),
                   }}
                 />
               )}
             />
-          </Grid>
+          </Box>
 
-          {/* Phone Number */}
-          <Grid item xs={12} md={3}>
-            <Typography {...labelStyle}>CONTACT</Typography>
+          {/* 3. Phone Input - Required beside Name (Reduced Width) */}
+          <Box
+            sx={{
+              ...containerSx,
+              flexGrow: 0.8,
+              minWidth: 130,
+              width: 150,
+              borderColor: isPhoneMissing
+                ? alpha(theme.palette.error.main, 0.4)
+                : alpha(theme.palette.divider, 0.8),
+            }}
+          >
+            <Phone
+              size={14}
+              color={
+                isPhoneMissing
+                  ? theme.palette.error.main
+                  : theme.palette.text.disabled
+              }
+            />
+            <Typography
+              sx={{
+                ...labelSx,
+                color: isPhoneMissing ? "error.main" : "text.disabled",
+              }}
+            >
+              MOBILE *
+            </Typography>
             <TextField
               fullWidth
               variant="standard"
               disabled={mode === "view"}
               value={selectedPhone}
               onChange={(e) => setSelectedPhone(e.target.value)}
-              placeholder="Mobile Number"
-              InputProps={{
-                disableUnderline: true,
-                sx: { fontSize: "0.95rem", fontWeight: 500 },
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Phone size={16} color={theme.palette.text.disabled} />
-                  </InputAdornment>
-                ),
+              placeholder="99..."
+              sx={inputSx}
+            />
+          </Box>
+
+          {/* 4. Personnel Selection (Extra Width) */}
+          <Box sx={{ ...containerSx, flexGrow: 1.5, minWidth: 200 }}>
+            <Briefcase size={14} color={theme.palette.text.disabled} />
+            <Typography sx={labelSx}>STAFF</Typography>
+            <Autocomplete
+              fullWidth
+              size="small"
+              options={employees}
+              getOptionLabel={(option) => option.name}
+              value={employees.find((e) => e.id === sale.employee_id) || null}
+              onChange={(_, newValue) =>
+                handleFieldChange("employee_id", newValue ? newValue.id : null)
+              }
+              disabled={mode === "view"}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  inputRef={employeeInputRef}
+                  variant="standard"
+                  placeholder="Billed By..."
+                  sx={inputSx}
+                />
+              )}
+            />
+          </Box>
+
+          {/* 5. Reference Badge (Reduced Width) */}
+          <Box
+            sx={{
+              ...containerSx,
+              bgcolor: alpha(theme.palette.primary.main, 0.05),
+              borderColor: alpha(theme.palette.primary.main, 0.2),
+              flexGrow: 0.8,
+              minWidth: 130,
+            }}
+          >
+            <ScanLine size={14} color={theme.palette.primary.main} />
+            <Typography sx={{ ...labelSx, color: "primary.main" }}>
+              REF
+            </Typography>
+            <TextField
+              fullWidth
+              variant="standard"
+              value={sale.reference_no || "AUTO GENERATED"}
+              onChange={(e) =>
+                handleFieldChange("reference_no", e.target.value)
+              }
+              disabled={mode === "view"}
+              sx={{
+                ...inputSx,
+                "& .MuiInputBase-root": {
+                  color: sale.reference_no
+                    ? "inherit"
+                    : theme.palette.primary.main,
+                  fontFamily: "monospace",
+                  fontWeight: 800,
+                  fontSize: "0.8rem",
+                },
               }}
             />
-          </Grid>
+          </Box>
 
-          {/* Address Toggle Trigger */}
-          <Grid
-            item
-            xs={12}
-            md={4}
-            display="flex"
-            alignItems="center"
-            justifyContent="flex-end"
+          {/* 6. Date Badge */}
+          <Box
+            sx={{
+              ...containerSx,
+              border: "none",
+              bgcolor: "transparent",
+              minWidth: "fit-content",
+            }}
           >
-            <Tooltip title="Shortcut: Ctrl + D">
-              <Button
-                onClick={() => setShowMore(!showMore)}
-                endIcon={
-                  showMore ? <ChevronUp size={16} /> : <ChevronDown size={16} />
-                }
+            <Calendar size={14} color={theme.palette.text.disabled} />
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 800,
+                letterSpacing: -0.5,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {new Date().toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              })}
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Info Strip: Neutral Billing Summary Bar */}
+        <Box
+          sx={{
+            px: 2,
+            py: 0.6,
+            bgcolor: alpha(theme.palette.action.hover, 0.08),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderTop: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Stack direction="row" spacing={3} alignItems="center">
+            <Stack direction="row" spacing={1} alignItems="center">
+              <MapPin size={11} color={theme.palette.text.disabled} />
+              <Typography
+                variant="caption"
+                sx={{ fontWeight: 600, color: "text.secondary" }}
+              >
+                {address ? `${address}, ${city}` : "Address Pending"}
+              </Typography>
+            </Stack>
+            {customerGstNo && (
+              <Box
                 sx={{
-                  textTransform: "none",
-                  fontWeight: 600,
-                  color: "text.secondary",
+                  px: 1,
+                  py: 0.2,
+                  borderRadius: "4px",
+                  bgcolor: "text.secondary",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
                 }}
               >
-                {showMore ? (
-                  "Hide Billing Details"
-                ) : (
-                  <>
-                    A<span style={{ textDecoration: "underline" }}>d</span>d
-                    Address & GSTIN
-                  </>
-                )}
-              </Button>
-            </Tooltip>
-          </Grid>
-        </Grid>
+                <Typography sx={{ fontSize: "0.6rem", fontWeight: 900 }}>
+                  GST: {customerGstNo}
+                </Typography>
+              </Box>
+            )}
+          </Stack>
 
-        {/* Collapsible Section for Address & GST */}
+          <Button
+            size="small"
+            onClick={() => setShowMore(!showMore)}
+            startIcon={
+              showMore ? <ChevronUp size={14} /> : <FileText size={14} />
+            }
+            sx={{
+              fontSize: "0.65rem",
+              fontWeight: 800,
+              textTransform: "none",
+              color: "text.primary",
+              py: 0,
+            }}
+          >
+            {showMore ? "Collapse Details" : "Full Billing Profile (Ctrl+D)"}
+          </Button>
+        </Box>
+
+        {/* Collapsible Expansion */}
         <Collapse in={showMore}>
-          <Box mt={2} pt={2} borderTop={`1px dashed ${theme.palette.divider}`}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={4}>
-                <Typography {...labelStyle}>GSTIN</Typography>
-                <TextField
-                  fullWidth
-                  variant="standard"
-                  disabled={mode === "view"}
-                  value={customerGstNo}
-                  onChange={(e) => setCustomerGstNo(e.target.value)}
-                  placeholder="Enter GST Number"
-                  InputProps={{
-                    disableUnderline: true,
-                    sx: { fontSize: "0.9rem" },
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Hash size={15} color={theme.palette.text.disabled} />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} md={8}>
-                <Typography {...labelStyle}>ADDRESS</Typography>
-                <TextField
-                  fullWidth
-                  variant="standard"
-                  disabled={mode === "view"}
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Street Address, Area"
-                  InputProps={{
-                    disableUnderline: true,
-                    sx: { fontSize: "0.9rem" },
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <MapPin size={15} color={theme.palette.text.disabled} />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={4} md={4}>
-                <TextField
-                  fullWidth
-                  variant="standard"
-                  disabled={mode === "view"}
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="City"
-                  InputProps={{
-                    disableUnderline: true,
-                    sx: { fontSize: "0.9rem" },
-                  }}
-                />
-              </Grid>
-              <Grid item xs={4} md={4}>
-                <TextField
-                  select
-                  fullWidth
-                  variant="standard"
-                  disabled={mode === "view"}
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  label="State"
-                  InputProps={{
-                    disableUnderline: true,
-                    sx: { fontSize: "0.9rem" },
-                  }}
-                >
-                  {indianStates.map((s) => (
-                    <MenuItem key={s} value={s}>
-                      {s}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-              <Grid item xs={4} md={4}>
-                <TextField
-                  fullWidth
-                  variant="standard"
-                  disabled={mode === "view"}
-                  value={pincode}
-                  onChange={(e) => setPincode(e.target.value)}
-                  placeholder="Pincode"
-                  InputProps={{
-                    disableUnderline: true,
-                    sx: { fontSize: "0.9rem" },
-                  }}
-                />
-              </Grid>
+          <Box sx={{ p: 2, bgcolor: alpha(theme.palette.action.hover, 0.02) }}>
+            <Grid container spacing={2}>
+              {[
+                {
+                  label: "GSTIN (Bill Override)",
+                  value: customerGstNo,
+                  setter: setCustomerGstNo,
+                  size: 3,
+                },
+                {
+                  label: "Billing Address Line",
+                  value: address,
+                  setter: setAddress,
+                  size: 9,
+                },
+                { label: "City", value: city, setter: setCity, size: 3 },
+                {
+                  label: "Billing State",
+                  value: state,
+                  setter: setState,
+                  isSelect: true,
+                  size: 3,
+                },
+                {
+                  label: "Billing Pincode",
+                  value: pincode,
+                  setter: setPincode,
+                  size: 2,
+                },
+              ].map((f, i) => (
+                <Grid item xs={12} sm={f.size} key={i}>
+                  <Box sx={{ ...containerSx, bgcolor: "#fff" }}>
+                    <Typography sx={labelSx}>{f.label}</Typography>
+                    {f.isSelect ? (
+                      <TextField
+                        select
+                        fullWidth
+                        variant="standard"
+                        value={f.value}
+                        onChange={(e) => f.setter(e.target.value)}
+                        sx={inputSx}
+                      >
+                        {indianStates.map((s) => (
+                          <MenuItem
+                            key={s}
+                            value={s}
+                            sx={{ fontSize: "0.8rem" }}
+                          >
+                            {s}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    ) : (
+                      <TextField
+                        fullWidth
+                        variant="standard"
+                        value={f.value}
+                        onChange={(e) => f.setter(e.target.value)}
+                        sx={inputSx}
+                      />
+                    )}
+                  </Box>
+                </Grid>
+              ))}
             </Grid>
           </Box>
         </Collapse>
-      </Box>
+      </Stack>
     </Box>
   );
 }

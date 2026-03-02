@@ -13,23 +13,24 @@ import {
   Typography,
   Dialog,
   DialogContent,
-  DialogActions,
   DialogTitle,
   IconButton,
   TableContainer,
-  Tooltip,
   Stack,
   CircularProgress,
   useTheme,
   MenuItem,
   List,
-  ListItem,
-  ListItemText,
   ListItemButton,
+  ListItemText,
   Chip,
   Menu,
+  alpha,
+  Switch,
+  FormControlLabel,
+  Divider,
 } from "@mui/material";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, Fragment } from "react";
 import { getAllProducts } from "../../lib/api/productService";
 import { getProductBatches, scanBarcodeItem } from "../../lib/api/batchService";
 import type { Product } from "../../lib/types/product";
@@ -37,18 +38,14 @@ import type { SaleItemPayload } from "../../lib/types/salesTypes";
 import { getShopData } from "../../lib/api/shopService";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
 import {
-  Eye,
   Plus,
   Trash2,
-  Package,
   ScanBarcode,
-  Settings2,
   Check,
-  ListFilter,
-  QrCode,
+  MessageSquareText,
+  ChevronDown,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { UNIT_FAMILIES } from "../../lib/services/unitService";
 
 // --- Types ---
 type PriceType = "mrp" | "mop" | "mfw";
@@ -59,7 +56,6 @@ type SaleItemRow = SaleItemPayload & {
   serial_id?: number;
   batch_number?: string;
   serial_number?: string;
-  barcode?: string;
 
   // Pricing snapshots
   batch_mrp?: number;
@@ -70,11 +66,11 @@ type SaleItemRow = SaleItemPayload & {
   price_type?: string;
   pricing_strategy?: string;
 
-  // Unit
-  unit?: string;
+  // Joined fields from Product Master (fallback for UI display)
+  base_unit?: string | null;
 };
 
-// Conversion Factors for standard units (Base: kg, l, m, pcs)
+// --- Conversion Factors & Families ---
 const STANDARD_FACTORS: Record<string, number> = {
   kg: 1,
   g: 0.001,
@@ -93,9 +89,17 @@ const STANDARD_FACTORS: Record<string, number> = {
   gross: 144,
 };
 
+const UNIT_GROUPS = [
+  ["kg", "g", "mg", "quintal", "tonne"],
+  ["l", "ml"],
+  ["m", "cm", "mm", "ft", "in"],
+  ["pcs", "doz", "gross"],
+];
+
 const defaultItem = (): SaleItemRow => ({
   sr_no: "",
   product_id: 0,
+  product_name: "",
   rate: 0,
   quantity: 1,
   gst_rate: 0,
@@ -107,6 +111,7 @@ const defaultItem = (): SaleItemRow => ({
   pricing_strategy: "batch_pricing",
   unit: "pcs",
   barcode: "",
+  description: "",
 });
 
 interface SaleItemSectionProps {
@@ -122,41 +127,46 @@ export default function SaleItemSection({
   items,
   onItemsChange,
   mode,
-  onOpenOverview,
-  isOverviewOpen,
-  onCloseOverview,
 }: SaleItemSectionProps) {
   const theme = useTheme();
   const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [barcodeSearchResults, setBarcodeSearchResults] = useState<Product[]>(
+    [],
+  );
   const [loading, setLoading] = useState(false);
+  const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
+  const [barcodeInputValue, setBarcodeInputValue] = useState("");
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
-  const [error, setError] = useState<string | null>(null);
   const [shop, setShop] = useState<ShopSetupForm>();
-  const [_hoveredRowIndex, setHoveredRowIndex] = useState<number | null>(null);
-  const [editingRowIndex, setEditingRowIndex] = useState<number | null>(0);
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0);
   const [productCache, setProductCache] = useState<{ [id: number]: Product }>(
     {},
   );
-
   const [globalPriceType, setGlobalPriceType] = useState<PriceType>("mrp");
   const [headerMenuAnchor, setHeaderMenuAnchor] = useState<null | HTMLElement>(
     null,
   );
-
-  const [rowMenuAnchor, setRowMenuAnchor] = useState<{
-    idx: number;
-    el: HTMLElement;
-  } | null>(null);
-
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [availableBatches, setAvailableBatches] = useState<any[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
-
   const [scanningRowIndex, setScanningRowIndex] = useState<number | null>(null);
+
+  const prevItemsLength = useRef(items.length);
+
+  // Caching for Description Visibility
+  const [showDescriptionRow, setShowDescriptionRow] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("kosh_pos_show_desc") === "true";
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("kosh_pos_show_desc", showDescriptionRow.toString());
+  }, [showDescriptionRow]);
 
   const focusInput = (rowIdx: number, field: string) => {
     const key = `${rowIdx}-${field}`;
@@ -167,6 +177,50 @@ export default function SaleItemSection({
     }
   };
 
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (mode === "view") return;
+
+      // Ctrl + A: Add Row
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        const lastItem = items[items.length - 1];
+        if (!lastItem || lastItem.product_id !== 0) {
+          onItemsChange([
+            ...items,
+            { ...defaultItem(), price_type: globalPriceType },
+          ]);
+          toast.success("New line added");
+        } else {
+          toast.error("Complete the current row first");
+          focusInput(items.length - 1, "product");
+        }
+      }
+
+      // Ctrl + Backspace: Delete Active Row
+      if ((e.ctrlKey || e.metaKey) && e.key === "Backspace") {
+        if (activeRowIndex !== null && items[activeRowIndex]) {
+          e.preventDefault();
+          const newItems = [...items];
+          newItems.splice(activeRowIndex, 1);
+          onItemsChange(newItems);
+
+          if (newItems.length > 0) {
+            setActiveRowIndex(Math.max(0, activeRowIndex - 1));
+          } else {
+            setActiveRowIndex(null);
+          }
+          toast.success("Row removed");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [items, activeRowIndex, mode, globalPriceType, onItemsChange]);
+
+  // Effect for Product Name Search
   useEffect(() => {
     if (inputValue.trim() === "") {
       setSearchResults([]);
@@ -188,38 +242,68 @@ export default function SaleItemSection({
     return () => clearTimeout(timer);
   }, [inputValue]);
 
+  // Effect for Barcode Search List
   useEffect(() => {
-    if (items.length > 0 && mode !== "view") {
-      const lastIndex = items.length - 1;
-      setEditingRowIndex(lastIndex);
-      setActiveRowIndex(lastIndex);
-      setTimeout(() => focusInput(lastIndex, "product"), 100);
+    if (barcodeInputValue.trim() === "") {
+      setBarcodeSearchResults([]);
+      return;
     }
-  }, [items.length, mode]);
+    setBarcodeLoading(true);
+    const timer = setTimeout(() => {
+      getAllProducts({
+        query: barcodeInputValue,
+        isActive: 1,
+        limit: 10,
+        page: 1,
+        all: false,
+      }).then((data) => {
+        setBarcodeSearchResults(data.records || []);
+        setBarcodeLoading(false);
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [barcodeInputValue]);
 
-  // Enhanced Cache Hydration
+  // Auto-focus logic when a new row is added
+  useEffect(() => {
+    if (mode === "view") return;
+
+    if (items.length > 0) {
+      const lastIndex = items.length - 1;
+
+      if (items.length > prevItemsLength.current) {
+        setActiveRowIndex(lastIndex);
+
+        // Only trigger auto-focus if it's a completely newly generated blank row
+        if (items[lastIndex].product_id === 0) {
+          setTimeout(() => {
+            focusInput(lastIndex, "product");
+          }, 100); // slight delay to allow the new row to render in DOM
+        }
+      }
+    }
+    prevItemsLength.current = items.length;
+  }, [items.length, mode, items]);
+
+  // Fallback cache logic
   useEffect(() => {
     setProductCache((prev) => {
       const next = { ...prev };
       let modified = false;
       items.forEach((item) => {
-        // If product is missing in cache, OR if it's present but lacks unit info (incomplete hydration)
         const existing = next[item.product_id];
-        const isMissingInfo = existing && !existing.base_unit;
-
-        if (
-          item.product_id &&
-          (!existing || isMissingInfo) &&
-          item.product_name
-        ) {
+        if (item.product_id && !existing?.id) {
           next[item.product_id] = {
-            ...existing, // Keep existing fields if any
+            ...existing,
             id: item.product_id,
-            name: item.product_name,
-            hsn: item.hsn,
-            // Fallback: If we don't have the full product, assume the item's unit is the base unit
-            // This ensures the unit dropdown defaults correctly for saved items
-            base_unit: existing?.base_unit || item.unit,
+            name:
+              item.product_name ||
+              existing?.name ||
+              `Product #${item.product_id}`,
+            hsn: item.hsn || existing?.hsn || "",
+            barcode: item.barcode || existing?.barcode || "",
+            base_unit:
+              existing?.base_unit || item.unit || item.base_unit || "pcs",
           } as Product;
           modified = true;
         }
@@ -232,84 +316,6 @@ export default function SaleItemSection({
     getShopData().then((res) => setShop(res!));
   }, []);
 
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey && (e.code === "KeyP" || e.key.toLowerCase() === "p")) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (isOverviewOpen && onCloseOverview) {
-          onCloseOverview();
-          return;
-        }
-        if (!isOverviewOpen) {
-          const targetIndex =
-            editingRowIndex !== null ? editingRowIndex : items.length - 1;
-          if (targetIndex >= 0 && items[targetIndex]) {
-            const currentItem = items[targetIndex];
-            if (currentItem.product_id) {
-              onOpenOverview(currentItem.product_id.toString());
-            } else {
-              toast.error("Please select a product first");
-            }
-          }
-        }
-      }
-
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.code === "KeyA" || e.key.toLowerCase() === "a")
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (items.length === 0 || items[items.length - 1].product_id !== 0) {
-          const newItem = { ...defaultItem(), price_type: globalPriceType };
-          onItemsChange([...items, newItem]);
-        } else {
-          toast.error("Complete the empty row first");
-        }
-      }
-
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.code === "Delete" || e.code === "Backspace")
-      ) {
-        if (
-          activeRowIndex !== null &&
-          items[activeRowIndex] &&
-          mode !== "view"
-        ) {
-          e.preventDefault();
-          e.stopPropagation();
-          const newItems = [...items];
-          newItems.splice(activeRowIndex, 1);
-          newItems.forEach((item, index) => {
-            item.sr_no = (index + 1).toString();
-          });
-          onItemsChange(newItems);
-          if (newItems.length > 0) {
-            setActiveRowIndex(Math.min(activeRowIndex, newItems.length - 1));
-          } else {
-            setActiveRowIndex(null);
-          }
-          toast.success("Row removed");
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [
-    items,
-    editingRowIndex,
-    activeRowIndex,
-    isOverviewOpen,
-    onCloseOverview,
-    onOpenOverview,
-    globalPriceType,
-    onItemsChange,
-    mode,
-  ]);
-
   const calculateItemPrice = (item: SaleItemRow) => {
     if (!shop) return 0;
     const rate = Number(item.rate) || 0;
@@ -321,111 +327,11 @@ export default function SaleItemSection({
     const amountAfterDiscount = baseAmount - discountAmount;
     let finalPrice = amountAfterDiscount;
     if (shop.gst_enabled) {
-      if (shop.inclusive_tax_pricing) {
-        finalPrice = amountAfterDiscount;
-      } else {
-        const gstAmount = (amountAfterDiscount * gstRate) / 100;
-        finalPrice = amountAfterDiscount + gstAmount;
-      }
+      finalPrice = shop.inclusive_tax_pricing
+        ? amountAfterDiscount
+        : amountAfterDiscount + (amountAfterDiscount * gstRate) / 100;
     }
     return parseFloat(finalPrice.toFixed(2));
-  };
-
-  const getProductPrice = (product: Product, type: PriceType) => {
-    const p = product as any;
-    let val = Number(p[type]);
-    if ((!val || val === 0) && type === "mfw") val = Number(p.mfw_price);
-    if ((!val || val === 0) && type === "mop") val = Number(p.mop_price);
-    if (val && val > 0) return val;
-    return Number(p.mrp) || 0;
-  };
-
-  const calculateConvertedRate = (
-    product: Product,
-    targetUnit: string,
-    baseRate: number,
-  ) => {
-    const baseUnit = product.base_unit || (product as any).unit || "pcs";
-
-    if (targetUnit === baseUnit) return baseRate;
-
-    if (product.secondary_unit && targetUnit === product.secondary_unit) {
-      return baseRate * (product.conversion_factor || 1);
-    }
-
-    const targetFactor = STANDARD_FACTORS[targetUnit];
-    const baseFactor = STANDARD_FACTORS[baseUnit];
-
-    if (targetFactor !== undefined && baseFactor !== undefined) {
-      return baseRate * (targetFactor / baseFactor);
-    }
-
-    return baseRate;
-  };
-
-  const handleGlobalTypeSelect = (type: PriceType) => {
-    setGlobalPriceType(type);
-    setHeaderMenuAnchor(null);
-    const updatedItems = items.map((item) => {
-      if (!item.product_id || item.product_id === 0) {
-        return { ...item, price_type: type };
-      }
-      return { ...item, price_type: type };
-    });
-    onItemsChange(updatedItems);
-    toast.success(`Default Rate set to: ${type.toUpperCase()}`);
-  };
-
-  const handleRowSettingChange = (
-    index: number,
-    setting: "type" | "strategy",
-    value: string,
-  ) => {
-    const updatedItems = [...items];
-    const item = updatedItems[index];
-    const product = productCache[item.product_id];
-    if (setting === "type") item.price_type = value;
-    if (setting === "strategy") item.pricing_strategy = value;
-
-    if (product) {
-      let baseRate = 0;
-      const strategy = item.pricing_strategy || "batch_pricing";
-      const pType = (item.price_type as PriceType) || "mrp";
-
-      if (
-        strategy === "batch_pricing" &&
-        (item.tracking_type === "batch" || item.tracking_type === "serial")
-      ) {
-        if (pType === "mrp" && item.batch_mrp) baseRate = item.batch_mrp;
-        else if (pType === "mop" && item.batch_mop) baseRate = item.batch_mop;
-        else if (pType === "mfw" && item.batch_mfw) baseRate = item.batch_mfw;
-      }
-      if (!baseRate) baseRate = getProductPrice(product, pType);
-
-      item.rate = calculateConvertedRate(
-        product,
-        item.unit || product.base_unit || "pcs",
-        baseRate,
-      );
-
-      item.price = calculateItemPrice(item);
-    }
-    onItemsChange(updatedItems);
-    setRowMenuAnchor(null);
-    toast.success("Updated item pricing");
-  };
-
-  const handleAddRow = (currentItems: SaleItemRow[]) => {
-    if (
-      currentItems.length === 0 ||
-      currentItems[currentItems.length - 1].product_id !== 0
-    ) {
-      return [
-        ...currentItems,
-        { ...defaultItem(), price_type: globalPriceType },
-      ];
-    }
-    return currentItems;
   };
 
   const handleProductSelect = async (
@@ -468,11 +374,9 @@ export default function SaleItemSection({
           ...prev,
           [result.product.id]: result.product,
         }));
-
         let batchInfo = null;
-        if (result.type === "batch") {
-          batchInfo = result.batch;
-        } else if (result.type === "serial" && result.serial) {
+        if (result.type === "batch") batchInfo = result.batch;
+        else if (result.type === "serial" && result.serial) {
           batchInfo = {
             ...result.batch,
             id: result.serial.id,
@@ -480,7 +384,6 @@ export default function SaleItemSection({
             serial_number: result.serial.serial_number,
           };
         }
-
         addItemToTable(index, result.product, batchInfo, code);
         toast.success(`Found: ${result.product.name}`);
       }
@@ -505,33 +408,33 @@ export default function SaleItemSection({
     const bMop = batchInfo?.mop ? Number(batchInfo.mop) : undefined;
     const bMfw = batchInfo?.mfw_price ? Number(batchInfo.mfw_price) : undefined;
 
-    // 1. Get Base Rate
     let baseRate = 0;
     if (strategy === "batch_pricing") {
       if (pType === "mrp" && bMrp) baseRate = bMrp;
       else if (pType === "mop" && bMop) baseRate = bMop;
       else if (pType === "mfw" && bMfw) baseRate = bMfw;
     }
-    if (!baseRate) baseRate = getProductPrice(product, pType);
+    if (!baseRate)
+      baseRate =
+        Number((product as any)[pType]) || Number((product as any).mrp) || 0;
 
-    // 2. Convert to Unit Rate
-    // Robust fallback: Check base_unit, then unit, then uom, then pcs
-    const defaultUnit =
+    const defaultUnit = (
       product.base_unit ||
       (product as any).unit ||
-      (product as any).uom ||
-      "pcs";
-    const finalRate = calculateConvertedRate(product, defaultUnit, baseRate);
+      "pcs"
+    ).toLowerCase();
 
     const newItem: SaleItemRow = {
       ...currentItem,
       product_id: product.id!,
       product_name: product.name,
       hsn: product.hsn || currentItem.hsn || "",
-      rate: finalRate,
+      barcode: scannedBarcode || product.barcode || currentItem.barcode || "",
+      description: currentItem.description || product.description || "",
+      rate: baseRate,
       gst_rate: product.gst_rate ?? 0,
       quantity: 1,
-      unit: defaultUnit, // Uses robust unit detection
+      unit: defaultUnit,
       tracking_type: product.tracking_type,
       batch_id: batchInfo?.id,
       batch_number: batchInfo?.batch_number,
@@ -541,7 +444,6 @@ export default function SaleItemSection({
       batch_mfw: bMfw,
       price_type: pType,
       pricing_strategy: strategy,
-      barcode: scannedBarcode || currentItem.barcode || "",
     };
 
     if (product.tracking_type === "serial" && batchInfo) {
@@ -551,21 +453,19 @@ export default function SaleItemSection({
       newItem.batch_id = batchInfo.id;
     }
 
-    const price = calculateItemPrice(newItem);
-    const finalItem = { ...newItem, price };
+    newItem.price = calculateItemPrice(newItem);
     const updatedItems = [...items];
-    updatedItems[index] = finalItem;
+    updatedItems[index] = newItem;
     onItemsChange(updatedItems);
     setInputValue("");
+    setBarcodeInputValue("");
     setBatchModalOpen(false);
-
     setTimeout(() => focusInput(index, "quantity"), 50);
   };
 
   const handleBatchSelect = (batch: any) => {
-    if (pendingItemIndex !== null && pendingProduct) {
+    if (pendingItemIndex !== null && pendingProduct)
       addItemToTable(pendingItemIndex, pendingProduct, batch);
-    }
   };
 
   const handleFieldChange = (
@@ -574,41 +474,84 @@ export default function SaleItemSection({
     value: any,
   ) => {
     const updated = [...items];
-    const item = updated[index];
-    (item as any)[field] = value;
+    const currentItem = updated[index];
 
+    // --- UNIT CONVERSION LOGIC ---
     if (field === "unit") {
-      const product = productCache[item.product_id];
-      if (product) {
-        let baseRate = 0;
-        const strategy = item.pricing_strategy || "batch_pricing";
-        const pType = (item.price_type as PriceType) || "mrp";
+      const product = productCache[currentItem.product_id];
+      const oldUnit = (
+        currentItem.unit ||
+        product?.base_unit ||
+        "pcs"
+      ).toLowerCase();
+      const newUnit = (value as string).toLowerCase();
 
-        if (
-          strategy === "batch_pricing" &&
-          (item.tracking_type === "batch" || item.tracking_type === "serial")
-        ) {
-          if (pType === "mrp" && item.batch_mrp) baseRate = item.batch_mrp;
-          else if (pType === "mop" && item.batch_mop) baseRate = item.batch_mop;
-          else if (pType === "mfw" && item.batch_mfw) baseRate = item.batch_mfw;
-        }
-        if (!baseRate) baseRate = getProductPrice(product, pType);
+      const oldFactor = STANDARD_FACTORS[oldUnit] || 1;
+      const newFactor = STANDARD_FACTORS[newUnit] || 1;
 
-        item.rate = calculateConvertedRate(product, value, baseRate);
+      // Example: rate is ₹100/kg. factor kg=1, g=0.001.
+      // user selects 'g', newRate = 100 * (0.001 / 1) = ₹0.1/g
+      if (oldFactor !== newFactor) {
+        const newRate = currentItem.rate * (newFactor / oldFactor);
+        currentItem.rate = Number(newRate.toFixed(4)); // Preserve precision internally
       }
     }
 
-    item.price = calculateItemPrice(item);
+    (currentItem as any)[field] = value;
+    currentItem.price = calculateItemPrice(currentItem);
     onItemsChange(updated);
   };
 
   const handleRemoveRow = (idx: number) => {
+    if (mode === "view") return;
     const newItems = [...items];
     newItems.splice(idx, 1);
-    newItems.forEach((item, index) => {
-      item.sr_no = (index + 1).toString();
-    });
     onItemsChange(newItems);
+  };
+
+  const handleGlobalTypeSelect = (type: PriceType) => {
+    if (mode === "view") return;
+    setGlobalPriceType(type);
+    setHeaderMenuAnchor(null);
+    const updatedItems = items.map((item) => {
+      const updatedItem = { ...item, price_type: type };
+      const product = productCache[item.product_id];
+      if (product) {
+        let baseRate = 0;
+        if (type === "mrp")
+          baseRate = item.batch_mrp || (product as any).mrp || 0;
+        else if (type === "mop")
+          baseRate =
+            item.batch_mop || (product as any).mop || (product as any).mrp || 0;
+        else if (type === "mfw")
+          baseRate =
+            item.batch_mfw ||
+            (product as any).mfw_price ||
+            (product as any).mrp ||
+            0;
+
+        // Adjust for current unit factor
+        const currentUnit = (
+          item.unit ||
+          product.base_unit ||
+          "pcs"
+        ).toLowerCase();
+        const baseUnit = (product.base_unit || "pcs").toLowerCase();
+
+        const oldFactor = STANDARD_FACTORS[baseUnit] || 1;
+        const newFactor = STANDARD_FACTORS[currentUnit] || 1;
+
+        if (oldFactor !== newFactor) {
+          baseRate = baseRate * (newFactor / oldFactor);
+        }
+
+        updatedItem.rate = Number(baseRate.toFixed(2));
+        updatedItem.price = calculateItemPrice(updatedItem);
+      }
+      return updatedItem;
+    });
+    onItemsChange(updatedItems);
+    toast.success(`Pricing set to: ${type.toUpperCase()}`);
   };
 
   const handleGridKeyDown = (
@@ -616,7 +559,8 @@ export default function SaleItemSection({
     idx: number,
     field: string,
   ) => {
-    const fields = [
+    if (mode === "view") return;
+    const baseFields = [
       "product",
       "barcode",
       "quantity",
@@ -624,140 +568,228 @@ export default function SaleItemSection({
       "rate",
       "discount",
     ];
-    const activeFields = shop?.show_discount_column
-      ? fields
-      : fields.filter((f) => f !== "discount");
-    const currentIdx = activeFields.indexOf(field);
-    const isLastField = currentIdx === activeFields.length - 1;
+    const fields = showDescriptionRow
+      ? [...baseFields, "description"]
+      : baseFields;
 
+    const currentIdx = fields.indexOf(field);
     if (e.key === "Enter") {
       e.preventDefault();
-      if (field === "barcode" && (e.target as HTMLInputElement).value) {
-        return;
-      }
-
-      if (isLastField) {
-        if (idx === items.length - 1) {
-          if (items[idx].product_id !== 0) {
-            onItemsChange(handleAddRow(items));
-          }
-        } else {
+      if (currentIdx < fields.length - 1) {
+        focusInput(idx, fields[currentIdx + 1]);
+      } else {
+        if (idx === items.length - 1 && items[idx].product_id !== 0) {
+          onItemsChange([
+            ...items,
+            { ...defaultItem(), price_type: globalPriceType },
+          ]);
+        } else if (idx < items.length - 1) {
           focusInput(idx + 1, "product");
         }
-      } else {
-        if (field !== "product") {
-          focusInput(idx, activeFields[currentIdx + 1]);
-        }
       }
-    } else if (e.key === "ArrowRight") {
-      if (!isLastField) {
-        e.preventDefault();
-        focusInput(idx, activeFields[currentIdx + 1]);
-      }
-    } else if (e.key === "ArrowLeft") {
-      if (currentIdx > 0) {
-        e.preventDefault();
-        focusInput(idx, activeFields[currentIdx - 1]);
-      }
-    } else if (e.key === "ArrowDown") {
-      if (idx < items.length - 1) {
-        e.preventDefault();
-        focusInput(idx + 1, field);
-      }
-    } else if (e.key === "ArrowUp") {
-      if (idx > 0) {
-        e.preventDefault();
-        focusInput(idx - 1, field);
-      }
+    } else if (e.key === "ArrowDown" && idx < items.length - 1) {
+      e.preventDefault();
+      focusInput(idx + 1, field);
+    } else if (e.key === "ArrowUp" && idx > 0) {
+      e.preventDefault();
+      focusInput(idx - 1, field);
     }
   };
 
+  // --- UNIT SELECTION LOGIC ---
   const getUnitsForProduct = (product: Product | undefined) => {
-    if (!product) return [];
-    const units = new Set<string>();
-    // Check multiple potential fields for base unit
-    const base =
-      product.base_unit || (product as any).unit || (product as any).uom;
+    if (!product) return ["pcs"];
+    const base = (
+      product.base_unit ||
+      (product as any).unit ||
+      "pcs"
+    ).toLowerCase();
 
-    if (base) units.add(base);
-    if (product.secondary_unit) units.add(product.secondary_unit);
-
-    const baseFamily = Object.values(UNIT_FAMILIES).find((family) =>
-      family.units.some((u) => u.value === base),
-    );
-    if (baseFamily) {
-      baseFamily.units.forEach((u) => units.add(u.value));
+    // Find matching family
+    for (const group of UNIT_GROUPS) {
+      if (group.includes(base)) {
+        const units = new Set(group);
+        if (product.secondary_unit)
+          units.add(product.secondary_unit.toLowerCase());
+        return Array.from(units);
+      }
     }
-    if (units.size === 0) units.add("pcs");
+
+    // Fallback if untracked family
+    const units = new Set([base]);
+    if (product.secondary_unit) units.add(product.secondary_unit.toLowerCase());
     return Array.from(units);
   };
 
+  // --- Styles ---
   const headerSx = {
-    fontWeight: 700,
-    color: "text.secondary",
-    fontSize: "0.75rem",
+    fontWeight: 800,
+    color: "text.disabled",
+    fontSize: "0.625rem",
     textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
-    borderBottom: `2px solid ${theme.palette.divider}`,
+    letterSpacing: 1.2,
     py: 1.5,
+    borderBottom: `1px solid ${theme.palette.divider}`,
+  };
+
+  const fieldBoxSx = (isActive: boolean) => ({
+    bgcolor: isActive
+      ? alpha(theme.palette.primary.main, 0.04)
+      : alpha(theme.palette.action.hover, 0.03),
+    border: `1px solid ${isActive ? theme.palette.primary.main : alpha(theme.palette.divider, 0.6)}`,
+    borderRadius: "4px",
+    px: 1,
+    py: 0.5,
+    minHeight: 34,
+    display: "flex",
+    alignItems: "center",
+    transition: "all 0.2s",
+    "&:hover": { bgcolor: alpha(theme.palette.action.hover, 0.06) },
+    "&:focus-within": {
+      borderColor: theme.palette.primary.main,
+      bgcolor: "#fff",
+    },
+  });
+
+  const inputSx = {
+    "& .MuiInputBase-root": {
+      fontSize: "0.875rem",
+      fontWeight: 600,
+      padding: 0,
+    },
+    "& .MuiInput-underline:before, & .MuiInput-underline:after": {
+      display: "none",
+    },
   };
 
   return (
-    <Box overflow="hidden">
+    <Box
+      sx={{
+        bgcolor: theme.palette.background.paper,
+        borderTop: `1px solid ${theme.palette.divider}`,
+        border: `1px solid #ccc`,
+      }}
+    >
+      {/* --- TOP CONFIGURATION BAR --- */}
+      <Box
+        sx={{
+          px: 2,
+          py: 1,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          bgcolor: alpha(theme.palette.action.hover, 0.02),
+        }}
+      >
+        <Stack direction="row" spacing={3} alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 800,
+                color: "text.disabled",
+                textTransform: "uppercase",
+              }}
+            >
+              Price Strategy
+            </Typography>
+            <Button
+              size="small"
+              onClick={(e) =>
+                mode !== "view" && setHeaderMenuAnchor(e.currentTarget)
+              }
+              disabled={mode === "view"}
+              endIcon={<ChevronDown size={14} />}
+              sx={{
+                fontWeight: 800,
+                fontSize: "0.75rem",
+                color: "primary.main",
+                bgcolor: alpha(theme.palette.primary.main, 0.05),
+                "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.1) },
+              }}
+            >
+              {globalPriceType === "mrp"
+                ? "Retail (MRP)"
+                : globalPriceType === "mop"
+                  ? "Offer (MOP)"
+                  : "Wholesale (MFW)"}
+            </Button>
+          </Stack>
+
+          <Divider
+            orientation="vertical"
+            flexItem
+            sx={{ height: 16, alignSelf: "center" }}
+          />
+
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={showDescriptionRow}
+                onChange={(e) => setShowDescriptionRow(e.target.checked)}
+              />
+            }
+            label={
+              <Typography
+                sx={{
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                  color: "text.secondary",
+                }}
+              >
+                Item Descriptions
+              </Typography>
+            }
+          />
+        </Stack>
+
+        <Typography
+          variant="caption"
+          sx={{ color: "text.disabled", fontWeight: 700 }}
+        >
+          {items.length} LINE ITEMS
+        </Typography>
+      </Box>
+
       <TableContainer>
-        <Table size="small">
+        <Table
+          size="small"
+          sx={{ borderCollapse: "separate", borderSpacing: "0 4px" }}
+        >
           <TableHead>
             <TableRow>
-              <TableCell sx={{ ...headerSx, width: "4%" }} align="center">
+              <TableCell
+                sx={{ ...headerSx, width: "4%", pl: 2 }}
+                align="center"
+              >
                 #
               </TableCell>
               {shop?.hsn_required && (
-                <TableCell sx={{ ...headerSx, width: "7%" }}>HSN</TableCell>
+                <TableCell sx={{ ...headerSx, width: "8%" }}>HSN</TableCell>
               )}
-              <TableCell sx={{ ...headerSx, width: "22%" }}>PRODUCT</TableCell>
+              <TableCell sx={{ ...headerSx, width: "22%" }}>
+                PRODUCT SEARCH
+              </TableCell>
               <TableCell sx={{ ...headerSx, width: "12%" }}>BARCODE</TableCell>
-              <TableCell sx={{ ...headerSx, width: "7%" }}>QTY</TableCell>
-              <TableCell sx={{ ...headerSx, width: "9%" }}>UNIT</TableCell>
-              <TableCell sx={{ ...headerSx, width: "11%", p: 0.5 }}>
-                <Stack direction="row" alignItems="center" spacing={0.5}>
-                  <Typography
-                    variant="inherit"
-                    sx={{ fontSize: "inherit", fontWeight: "inherit" }}
-                  >
-                    {shop?.inclusive_tax_pricing ? "RATE (Inc.)" : "RATE"}
-                  </Typography>
-                  {mode !== "view" && (
-                    <Tooltip
-                      title={`Default: ${globalPriceType.toUpperCase()}`}
-                    >
-                      <IconButton
-                        size="small"
-                        onClick={(e) => setHeaderMenuAnchor(e.currentTarget)}
-                        sx={{
-                          p: 0.5,
-                          color:
-                            globalPriceType === "mrp"
-                              ? "text.disabled"
-                              : "primary.main",
-                        }}
-                      >
-                        <ListFilter size={14} />
-                      </IconButton>
-                    </Tooltip>
-                  )}
-                </Stack>
+              <TableCell sx={{ ...headerSx, width: "6%" }}>QTY</TableCell>
+              <TableCell sx={{ ...headerSx, width: "8%" }}>UNIT</TableCell>
+              <TableCell sx={{ ...headerSx, width: "12%" }}>
+                {shop?.inclusive_tax_pricing ? "RATE (INC.)" : "RATE"}
               </TableCell>
               {shop?.gst_enabled && (
                 <TableCell sx={headerSx} align="center">
                   GST
                 </TableCell>
               )}
-              {shop?.show_discount_column && (
-                <TableCell sx={headerSx} align="center">
-                  DISC%
-                </TableCell>
-              )}
-              <TableCell sx={{ ...headerSx, width: "11%" }} align="right">
+              <TableCell sx={headerSx} align="center">
+                DISC%
+              </TableCell>
+              <TableCell
+                sx={{ ...headerSx, width: "12%", pr: 2 }}
+                align="right"
+              >
                 AMOUNT
               </TableCell>
               <TableCell sx={{ ...headerSx, width: "4%" }}></TableCell>
@@ -766,368 +798,415 @@ export default function SaleItemSection({
           <TableBody>
             {items.map((item, idx) => {
               const product = productCache[item.product_id];
-              const isSerial = item.tracking_type === "serial";
-
+              const isActive = activeRowIndex === idx;
               const allowedUnits = getUnitsForProduct(product);
-              if (item.unit && !allowedUnits.includes(item.unit)) {
-                allowedUnits.push(item.unit);
-              }
 
               return (
-                <TableRow
-                  key={idx}
-                  hover
-                  selected={activeRowIndex === idx}
-                  onMouseEnter={() => setHoveredRowIndex(idx)}
-                  onMouseLeave={() => setHoveredRowIndex(null)}
-                  onClick={() => setActiveRowIndex(idx)}
-                  sx={{
-                    "&.Mui-selected": {
-                      backgroundColor: "rgba(25, 118, 210, 0.04)",
-                    },
-                    "&.Mui-selected:hover": {
-                      backgroundColor: "rgba(25, 118, 210, 0.08)",
-                    },
-                  }}
-                >
-                  <TableCell
-                    align="center"
+                <Fragment key={idx}>
+                  <TableRow
+                    selected={isActive}
+                    onClick={() => setActiveRowIndex(idx)}
                     sx={{
-                      borderBottom: "1px dashed #eee",
-                      color: "text.secondary",
+                      "& > td": { border: 0, py: 0.5 },
+                      bgcolor: isActive
+                        ? alpha(theme.palette.primary.main, 0.01)
+                        : "transparent",
                     }}
                   >
-                    {idx + 1}
-                  </TableCell>
-                  {shop?.hsn_required && (
                     <TableCell
+                      align="center"
                       sx={{
-                        borderBottom: "1px dashed #eee",
-                        fontSize: "0.85rem",
-                        color: "text.secondary",
+                        color: "text.disabled",
+                        fontWeight: 800,
+                        fontSize: "0.7rem",
                       }}
                     >
-                      {product?.hsn || item.hsn || "—"}
+                      {idx + 1}
                     </TableCell>
-                  )}
-
-                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
-                    {editingRowIndex === idx && mode !== "view" ? (
-                      <Autocomplete
-                        options={searchResults}
-                        getOptionLabel={(opt) =>
-                          typeof opt === "string"
-                            ? opt
-                            : `${opt.name} (${opt.barcode || ""})`
-                        }
-                        value={product || null}
-                        inputValue={editingRowIndex === idx ? inputValue : ""}
-                        loading={loading}
-                        filterOptions={(x) => x}
-                        onChange={(_, v) =>
-                          handleProductSelect(idx, v as Product)
-                        }
-                        onInputChange={(_, newValue) => setInputValue(newValue)}
-                        onKeyDown={(e) => handleGridKeyDown(e, idx, "product")}
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            inputRef={(el) =>
-                              (gridRefs.current[`${idx}-product`] = el)
-                            }
-                            placeholder="Search Name..."
-                            variant="standard"
-                            onFocus={() => setActiveRowIndex(idx)}
-                            InputProps={{
-                              ...params.InputProps,
-                              disableUnderline: true,
-                              sx: { fontSize: "0.95rem" },
-                              endAdornment: (
-                                <>
-                                  {loading ? (
-                                    <CircularProgress size={16} />
-                                  ) : null}
-                                  {params.InputProps.endAdornment}
-                                </>
-                              ),
-                            }}
-                          />
-                        )}
-                      />
-                    ) : (
-                      <Box
-                        onClick={() => {
-                          setEditingRowIndex(idx);
-                          setActiveRowIndex(idx);
+                    {shop?.hsn_required && (
+                      <TableCell
+                        sx={{
+                          fontSize: "0.8rem",
+                          fontWeight: 600,
+                          color: "text.secondary",
                         }}
-                        sx={{ cursor: "pointer" }}
                       >
-                        <Typography variant="body2" fontWeight={500}>
-                          {item.product_name || "Select Product"}
-                        </Typography>
-                        {(item.batch_number || item.serial_number) && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 0.5,
-                            }}
-                          >
-                            {isSerial ? (
-                              <ScanBarcode size={12} />
-                            ) : (
-                              <Package size={12} />
-                            )}
-                            {isSerial
-                              ? `SN: ${item.serial_number}`
-                              : `Batch: ${item.batch_number}`}
-                          </Typography>
-                        )}
-                      </Box>
+                        {item.hsn || product?.hsn || "—"}
+                      </TableCell>
                     )}
-                  </TableCell>
 
-                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
-                    <TextField
-                      variant="standard"
-                      fullWidth
-                      disabled={mode === "view"}
-                      value={item.barcode || ""}
-                      placeholder="Scan..."
-                      inputRef={(el) =>
-                        (gridRefs.current[`${idx}-barcode`] = el)
-                      }
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        focusInput(idx, "barcode");
-                      }}
-                      onChange={(e) =>
-                        handleFieldChange(idx, "barcode", e.target.value)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleBarcodeScan(idx, item.barcode || "");
-                        } else {
-                          handleGridKeyDown(e, idx, "barcode");
-                        }
-                      }}
-                      InputProps={{
-                        disableUnderline: true,
-                        sx: { fontSize: "0.9rem", fontFamily: "monospace" },
-                        endAdornment:
-                          scanningRowIndex === idx ? (
-                            <CircularProgress size={14} color="inherit" />
-                          ) : (
-                            mode !== "view" && (
-                              <QrCode
-                                size={14}
-                                color={theme.palette.text.disabled}
-                              />
+                    {/* Product Selection */}
+                    <TableCell>
+                      <Box sx={fieldBoxSx(isActive)}>
+                        <Autocomplete
+                          fullWidth
+                          freeSolo
+                          size="small"
+                          options={searchResults}
+                          disabled={mode === "view"}
+                          getOptionLabel={(opt) =>
+                            typeof opt === "string"
+                              ? opt
+                              : `${opt.name} (${opt.barcode || "No Barcode"})`
+                          }
+                          value={product || null}
+                          loading={loading}
+                          onChange={(_, v) =>
+                            handleProductSelect(idx, v as Product)
+                          }
+                          onInputChange={(_, nv) => setInputValue(nv)}
+                          onKeyDown={(e) =>
+                            handleGridKeyDown(e, idx, "product")
+                          }
+                          renderOption={(props, option) => (
+                            <li {...props}>
+                              <Stack>
+                                <Typography variant="body2" fontWeight={700}>
+                                  {option.name}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {option.barcode}
+                                </Typography>
+                              </Stack>
+                            </li>
+                          )}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              inputRef={(el) =>
+                                (gridRefs.current[`${idx}-product`] = el)
+                              }
+                              placeholder="Type name or code..."
+                              variant="standard"
+                              sx={inputSx}
+                            />
+                          )}
+                        />
+                      </Box>
+                    </TableCell>
+
+                    {/* Barcode Search/Scan */}
+                    <TableCell>
+                      <Box sx={fieldBoxSx(isActive)}>
+                        <Autocomplete
+                          fullWidth
+                          freeSolo
+                          size="small"
+                          options={barcodeSearchResults}
+                          disabled={mode === "view"}
+                          getOptionLabel={(opt) =>
+                            typeof opt === "string" ? opt : opt.barcode || ""
+                          }
+                          value={item.barcode || product?.barcode || ""}
+                          loading={barcodeLoading}
+                          onInputChange={(_, nv) => {
+                            setBarcodeInputValue(nv);
+                            handleFieldChange(idx, "barcode", nv);
+                          }}
+                          onChange={(_, v) =>
+                            handleProductSelect(idx, v as Product)
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleBarcodeScan(idx, item.barcode || "");
+                            } else {
+                              handleGridKeyDown(e, idx, "barcode");
+                            }
+                          }}
+                          renderOption={(props, option) => (
+                            <li {...props}>
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                                justifyContent="space-between"
+                                width="100%"
+                              >
+                                <Typography
+                                  variant="caption"
+                                  fontWeight={700}
+                                  sx={{ fontFamily: "monospace" }}
+                                >
+                                  {option.barcode}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {option.name}
+                                </Typography>
+                              </Stack>
+                            </li>
+                          )}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              inputRef={(el) =>
+                                (gridRefs.current[`${idx}-barcode`] = el)
+                              }
+                              placeholder="Scan..."
+                              variant="standard"
+                              sx={{
+                                ...inputSx,
+                                "& input": {
+                                  fontFamily: '"JetBrains Mono", monospace',
+                                  fontSize: "0.8rem",
+                                },
+                              }}
+                              InputProps={{
+                                ...params.InputProps,
+                                endAdornment: (
+                                  <Stack direction="row" alignItems="center">
+                                    {barcodeLoading ||
+                                    scanningRowIndex === idx ? (
+                                      <CircularProgress size={12} />
+                                    ) : (
+                                      <ScanBarcode
+                                        size={14}
+                                        color={theme.palette.text.disabled}
+                                      />
+                                    )}
+                                    {params.InputProps.endAdornment}
+                                  </Stack>
+                                ),
+                              }}
+                            />
+                          )}
+                        />
+                      </Box>
+                    </TableCell>
+
+                    <TableCell>
+                      <Box sx={fieldBoxSx(isActive)}>
+                        <TextField
+                          type="number"
+                          fullWidth
+                          variant="standard"
+                          disabled={mode === "view"}
+                          value={item.quantity || ""}
+                          sx={{
+                            ...inputSx,
+                            "& input": { textAlign: "center" },
+                          }}
+                          inputRef={(el) =>
+                            (gridRefs.current[`${idx}-quantity`] = el)
+                          }
+                          onChange={(e) =>
+                            handleFieldChange(
+                              idx,
+                              "quantity",
+                              Number(e.target.value),
                             )
-                          ),
-                      }}
-                    />
-                  </TableCell>
+                          }
+                          onKeyDown={(e) =>
+                            handleGridKeyDown(e, idx, "quantity")
+                          }
+                        />
+                      </Box>
+                    </TableCell>
 
-                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
-                    <TextField
-                      type="number"
-                      variant="standard"
-                      fullWidth
-                      disabled={mode === "view" || isSerial}
-                      value={item.quantity ?? ""}
-                      inputRef={(el) =>
-                        (gridRefs.current[`${idx}-quantity`] = el)
-                      }
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        focusInput(idx, "quantity");
-                      }}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "quantity")}
-                      onChange={(e) =>
-                        handleFieldChange(
-                          idx,
-                          "quantity",
-                          Number(e.target.value),
-                        )
-                      }
-                      InputProps={{
-                        disableUnderline: true,
-                        style: { fontWeight: "bold", fontSize: "0.95rem" },
-                      }}
-                    />
-                  </TableCell>
-
-                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
-                    <TextField
-                      select
-                      variant="standard"
-                      fullWidth
-                      value={item.unit || ""}
-                      disabled={mode === "view" || !product}
-                      inputRef={(el) => (gridRefs.current[`${idx}-unit`] = el)}
-                      onChange={(e) =>
-                        handleFieldChange(idx, "unit", e.target.value)
-                      }
-                      onFocus={() => setActiveRowIndex(idx)}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "unit")}
-                      InputProps={{
-                        disableUnderline: true,
-                        sx: { fontSize: "0.9rem" },
-                      }}
-                      SelectProps={{ displayEmpty: true }}
-                    >
-                      {allowedUnits.map((u) => (
-                        <MenuItem key={u} value={u} dense>
-                          {u}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </TableCell>
-
-                  <TableCell sx={{ p: 1, borderBottom: "1px dashed #eee" }}>
-                    <TextField
-                      type="number"
-                      variant="standard"
-                      fullWidth
-                      disabled={mode === "view"}
-                      value={item.rate ?? ""}
-                      inputRef={(el) => (gridRefs.current[`${idx}-rate`] = el)}
-                      onFocus={() => {
-                        setActiveRowIndex(idx);
-                        focusInput(idx, "rate");
-                      }}
-                      onKeyDown={(e) => handleGridKeyDown(e, idx, "rate")}
-                      onChange={(e) =>
-                        handleFieldChange(idx, "rate", Number(e.target.value))
-                      }
-                      InputProps={{
-                        disableUnderline: true,
-                        sx: { fontSize: "0.95rem" },
-                        startAdornment: mode !== "view" &&
-                          item.product_id > 0 && (
-                            <Tooltip
-                              title={`${(item.price_type || "MRP").toUpperCase()} | ${item.pricing_strategy === "batch_pricing" ? "Batch" : "Default"}`}
+                    {/* DYNAMIC UNIT SELECTOR */}
+                    <TableCell>
+                      <Box sx={fieldBoxSx(isActive)}>
+                        <TextField
+                          select
+                          fullWidth
+                          variant="standard"
+                          disabled={mode === "view" || !product}
+                          value={(item.unit || allowedUnits[0]).toLowerCase()}
+                          sx={inputSx}
+                          inputRef={(el) =>
+                            (gridRefs.current[`${idx}-unit`] = el)
+                          }
+                          onChange={(e) =>
+                            handleFieldChange(idx, "unit", e.target.value)
+                          }
+                        >
+                          {allowedUnits.map((u) => (
+                            <MenuItem
+                              key={u}
+                              value={u.toLowerCase()}
+                              sx={{ fontSize: "0.8rem" }}
                             >
-                              <IconButton
-                                size="small"
-                                onClick={(e) =>
-                                  setRowMenuAnchor({ idx, el: e.currentTarget })
-                                }
+                              {u}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Box>
+                    </TableCell>
+
+                    <TableCell>
+                      <Box sx={fieldBoxSx(isActive)}>
+                        <TextField
+                          type="number"
+                          fullWidth
+                          variant="standard"
+                          disabled={mode === "view"}
+                          value={item.rate || ""}
+                          sx={inputSx}
+                          inputRef={(el) =>
+                            (gridRefs.current[`${idx}-rate`] = el)
+                          }
+                          onChange={(e) =>
+                            handleFieldChange(
+                              idx,
+                              "rate",
+                              Number(e.target.value),
+                            )
+                          }
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "rate")}
+                          InputProps={{
+                            startAdornment: (
+                              <Typography
+                                variant="caption"
                                 sx={{
                                   mr: 0.5,
-                                  p: 0.5,
-                                  color:
-                                    item.pricing_strategy === "batch_pricing"
-                                      ? "primary.main"
-                                      : "action.active",
+                                  color: "text.disabled",
+                                  fontWeight: 800,
                                 }}
                               >
-                                <Settings2 size={14} />
-                              </IconButton>
-                            </Tooltip>
-                          ),
-                      }}
-                    />
-                  </TableCell>
+                                ₹
+                              </Typography>
+                            ),
+                          }}
+                        />
+                      </Box>
+                    </TableCell>
 
-                  {shop?.gst_enabled && (
-                    <TableCell
-                      align="center"
-                      sx={{ borderBottom: "1px dashed #eee" }}
-                    >
-                      <Typography variant="caption" fontWeight={600}>
-                        {item.gst_rate || 0} %
+                    {shop?.gst_enabled && (
+                      <TableCell align="center">
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontWeight: 800,
+                            color: "primary.main",
+                            bgcolor: alpha(theme.palette.primary.main, 0.05),
+                            px: 0.8,
+                            py: 0.2,
+                            borderRadius: 1,
+                          }}
+                        >
+                          {item.gst_rate}%
+                        </Typography>
+                      </TableCell>
+                    )}
+
+                    <TableCell align="center">
+                      <Box sx={{ ...fieldBoxSx(isActive), minWidth: 50 }}>
+                        <TextField
+                          type="number"
+                          fullWidth
+                          variant="standard"
+                          disabled={mode === "view"}
+                          value={item.discount || ""}
+                          placeholder="0"
+                          sx={{
+                            ...inputSx,
+                            "& input": { textAlign: "center" },
+                          }}
+                          inputRef={(el) =>
+                            (gridRefs.current[`${idx}-discount`] = el)
+                          }
+                          onChange={(e) =>
+                            handleFieldChange(
+                              idx,
+                              "discount",
+                              Number(e.target.value),
+                            )
+                          }
+                          onKeyDown={(e) =>
+                            handleGridKeyDown(e, idx, "discount")
+                          }
+                        />
+                      </Box>
+                    </TableCell>
+
+                    <TableCell align="right" sx={{ pr: 2 }}>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 800,
+                          color: "text.primary",
+                          fontFamily: '"JetBrains Mono", monospace',
+                        }}
+                      >
+                        {item.price.toFixed(2)}
                       </Typography>
                     </TableCell>
-                  )}
 
-                  {shop?.show_discount_column && (
-                    <TableCell
-                      sx={{ p: 1, borderBottom: "1px dashed #eee" }}
-                      align="center"
-                    >
-                      <TextField
-                        type="number"
-                        variant="standard"
-                        fullWidth
+                    <TableCell align="center">
+                      <IconButton
+                        size="small"
                         disabled={mode === "view"}
-                        value={item.discount ?? ""}
-                        inputRef={(el) =>
-                          (gridRefs.current[`${idx}-discount`] = el)
-                        }
-                        onFocus={() => {
-                          setActiveRowIndex(idx);
-                          focusInput(idx, "discount");
-                        }}
-                        onKeyDown={(e) => handleGridKeyDown(e, idx, "discount")}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            idx,
-                            "discount",
-                            Number(e.target.value),
-                          )
-                        }
-                        inputProps={{ style: { textAlign: "center" } }}
-                        InputProps={{
-                          disableUnderline: true,
-                          sx: { fontSize: "0.95rem" },
-                        }}
-                      />
+                        onClick={() => handleRemoveRow(idx)}
+                        sx={{ color: theme.palette.error.light }}
+                      >
+                        <Trash2 size={14} />
+                      </IconButton>
                     </TableCell>
-                  )}
+                  </TableRow>
 
-                  <TableCell
-                    align="right"
-                    sx={{ borderBottom: "1px dashed #eee" }}
-                  >
-                    <Typography
-                      fontWeight={700}
-                      color="text.primary"
-                      fontSize="0.95rem"
-                    >
-                      {item.price.toLocaleString("en-IN", {
-                        style: "currency",
-                        currency: "INR",
-                      })}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell
-                    align="center"
-                    sx={{ borderBottom: "1px dashed #eee" }}
-                  >
-                    <Stack direction="row" spacing={0} justifyContent="center">
-                      {product && (
-                        <Tooltip title="Details (Alt + P)">
-                          <IconButton
+                  {showDescriptionRow && (
+                    <TableRow sx={{ "& > td": { pt: 0, pb: 1, border: 0 } }}>
+                      <TableCell />
+                      {shop?.hsn_required && <TableCell />}
+                      <TableCell colSpan={8}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1.5,
+                            px: 1.5,
+                            py: 0.5,
+                            ml: 0.5,
+                            borderRadius: "0 0 6px 6px",
+                            borderLeft: `2px solid ${isActive ? theme.palette.primary.main : alpha(theme.palette.divider, 0.4)}`,
+                            bgcolor: alpha(theme.palette.action.hover, 0.01),
+                          }}
+                        >
+                          <MessageSquareText
+                            size={12}
+                            color={theme.palette.text.disabled}
+                          />
+                          <TextField
+                            fullWidth
                             size="small"
-                            onClick={() =>
-                              onOpenOverview(product.id?.toString() ?? "0")
+                            variant="standard"
+                            disabled={mode === "view"}
+                            placeholder="Add serial numbers, warranty notes, or product description..."
+                            value={item.description || ""}
+                            sx={{
+                              ...inputSx,
+                              "& .MuiInputBase-root": {
+                                fontSize: "0.75rem",
+                                fontWeight: 500,
+                                fontStyle: "italic",
+                                color: "text.secondary",
+                              },
+                            }}
+                            inputRef={(el) =>
+                              (gridRefs.current[`${idx}-description`] = el)
                             }
-                            sx={{ color: theme.palette.action.active }}
-                          >
-                            <Eye size={16} />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      {mode !== "view" && (
-                        <Tooltip title="Remove Row (Ctrl + Del)">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleRemoveRow(idx)}
-                            sx={{ color: theme.palette.error.main }}
-                          >
-                            <Trash2 size={16} />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                    </Stack>
-                  </TableCell>
-                </TableRow>
+                            onChange={(e) =>
+                              handleFieldChange(
+                                idx,
+                                "description",
+                                e.target.value,
+                              )
+                            }
+                            onKeyDown={(e) =>
+                              handleGridKeyDown(e, idx, "description")
+                            }
+                          />
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
               );
             })}
           </TableBody>
@@ -1135,119 +1214,89 @@ export default function SaleItemSection({
       </TableContainer>
 
       {mode !== "view" && (
-        <Box sx={{ p: 1, borderTop: `1px solid ${theme.palette.divider}` }}>
+        <Box
+          sx={{
+            p: 1.5,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            borderTop: `1px solid ${theme.palette.divider}`,
+          }}
+        >
           <Button
-            onClick={() => onItemsChange(handleAddRow(items))}
             size="small"
-            variant="text"
             startIcon={<Plus size={16} />}
-            sx={{ color: "text.secondary", fontWeight: 600 }}
+            onClick={() =>
+              onItemsChange([
+                ...items,
+                { ...defaultItem(), price_type: globalPriceType },
+              ])
+            }
+            sx={{
+              fontWeight: 800,
+              textTransform: "none",
+              color: "primary.main",
+              borderRadius: "6px",
+            }}
           >
-            <span style={{ textDecoration: "underline" }}>A</span>dd Another
-            Item
+            Add Line Item (Ctrl + A)
           </Button>
+          <Typography
+            variant="caption"
+            sx={{ color: "text.disabled", fontWeight: 700, letterSpacing: 0.5 }}
+          >
+            USE ENTER TO NAVIGATE • ARROWS TO MOVE
+          </Typography>
         </Box>
       )}
-
-      {/* --- MODALS & MENUS (Unchanged) --- */}
-      <Dialog
-        open={batchModalOpen}
-        onClose={() => setBatchModalOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle sx={{ fontWeight: 600 }}>
-          Select{" "}
-          {pendingProduct?.tracking_type === "serial"
-            ? "Serial Number"
-            : "Batch"}
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 0 }}>
-          {loadingBatches ? (
-            <Box p={3} textAlign="center">
-              <CircularProgress />
-            </Box>
-          ) : availableBatches.length === 0 ? (
-            <Box p={3} textAlign="center">
-              <Typography color="error">No stock available.</Typography>
-            </Box>
-          ) : (
-            <List>
-              {availableBatches.map((b: any) => (
-                <ListItem key={b.id} disablePadding divider>
-                  <ListItemButton onClick={() => handleBatchSelect(b)}>
-                    <ListItemText
-                      primary={
-                        <Stack direction="row" justifyContent="space-between">
-                          <Typography fontWeight={600}>
-                            {pendingProduct?.tracking_type === "serial"
-                              ? b.serial_number
-                              : b.batch_number}
-                          </Typography>
-                          <Chip
-                            label={
-                              pendingProduct?.tracking_type === "serial"
-                                ? "1 Qty"
-                                : `${b.quantity} Qty`
-                            }
-                            size="small"
-                            color={b.quantity < 5 ? "warning" : "success"}
-                            variant="outlined"
-                          />
-                        </Stack>
-                      }
-                      secondary={
-                        pendingProduct?.tracking_type === "batch"
-                          ? `Exp: ${b.expiry_date || "N/A"} | MRP: ₹${b.mrp}`
-                          : `Batch: ${b.batch_number} | Status: Available`
-                      }
-                    />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setBatchModalOpen(false)}>Cancel</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={!!error} onClose={() => setError(null)}>
-        <DialogTitle>Error</DialogTitle>
-        <DialogContent>{error}</DialogContent>
-        <DialogActions>
-          <Button onClick={() => setError(null)}>OK</Button>
-        </DialogActions>
-      </Dialog>
 
       <Menu
         anchorEl={headerMenuAnchor}
         open={Boolean(headerMenuAnchor)}
         onClose={() => setHeaderMenuAnchor(null)}
-        PaperProps={{ sx: { minWidth: 200 } }}
+        PaperProps={{
+          sx: {
+            minWidth: 200,
+            borderRadius: "8px",
+            boxShadow: theme.shadows[10],
+          },
+        }}
       >
-        <Box sx={{ px: 2, py: 1, borderBottom: "1px solid #eee" }}>
-          <Typography variant="caption" fontWeight={700} color="text.secondary">
-            SET DEFAULT RATE
+        <Box
+          sx={{
+            px: 2,
+            py: 1,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Typography variant="caption" fontWeight={800} color="text.disabled">
+            SELECT RATE STRATEGY
           </Typography>
         </Box>
-        {["mrp", "mop", "mfw"].map((type) => (
+        {[
+          { id: "mrp", label: "Retail (MRP)" },
+          { id: "mop", label: "Offer (MOP)" },
+          { id: "mfw", label: "Wholesale (MFW)" },
+        ].map((type) => (
           <MenuItem
-            key={type}
-            dense
-            selected={globalPriceType === type}
-            onClick={() => handleGlobalTypeSelect(type as PriceType)}
+            key={type.id}
+            selected={globalPriceType === type.id}
+            onClick={() => handleGlobalTypeSelect(type.id as PriceType)}
+            sx={{ py: 1 }}
           >
-            <Stack direction="row" width="100%" justifyContent="space-between">
-              <Typography variant="body2">
-                {type === "mrp"
-                  ? "Retail (MRP)"
-                  : type === "mop"
-                    ? "Offer (MOP)"
-                    : "Wholesale"}
+            <Stack
+              direction="row"
+              width="100%"
+              justifyContent="space-between"
+              alignItems="center"
+            >
+              <Typography
+                variant="body2"
+                fontWeight={globalPriceType === type.id ? 700 : 500}
+              >
+                {type.label}
               </Typography>
-              {globalPriceType === type && (
+              {globalPriceType === type.id && (
                 <Check size={14} color={theme.palette.primary.main} />
               )}
             </Stack>
@@ -1255,97 +1304,57 @@ export default function SaleItemSection({
         ))}
       </Menu>
 
-      <Menu
-        anchorEl={rowMenuAnchor?.el}
-        open={Boolean(rowMenuAnchor)}
-        onClose={() => setRowMenuAnchor(null)}
-        PaperProps={{ sx: { minWidth: 200 } }}
+      <Dialog
+        open={batchModalOpen}
+        onClose={() => setBatchModalOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: "12px", boxShadow: theme.shadows[10] },
+        }}
       >
-        <Box sx={{ px: 2, py: 1, borderBottom: "1px solid #eee" }}>
-          <Typography variant="caption" fontWeight={700} color="text.secondary">
-            PRICE TYPE
-          </Typography>
-        </Box>
-        {["mrp", "mop", "mfw"].map((type) => (
-          <MenuItem
-            key={type}
-            dense
-            selected={items[rowMenuAnchor?.idx || 0]?.price_type === type}
-            onClick={() =>
-              handleRowSettingChange(rowMenuAnchor!.idx, "type", type)
-            }
-          >
-            <Stack direction="row" width="100%" justifyContent="space-between">
-              <Typography variant="body2">
-                {type === "mrp"
-                  ? "Retail (MRP)"
-                  : type === "mop"
-                    ? "Offer (MOP)"
-                    : "Wholesale"}
-              </Typography>
-              {items[rowMenuAnchor?.idx || 0]?.price_type === type && (
-                <Check size={14} color={theme.palette.primary.main} />
-              )}
-            </Stack>
-          </MenuItem>
-        ))}
-        <Box
-          sx={{
-            px: 2,
-            py: 1,
-            borderBottom: "1px solid #eee",
-            mt: 1,
-            borderTop: "1px solid #eee",
-          }}
+        <DialogTitle
+          sx={{ fontWeight: 800, fontSize: "0.9rem", color: "text.secondary" }}
         >
-          <Typography variant="caption" fontWeight={700} color="text.secondary">
-            PRICING STRATEGY
-          </Typography>
-        </Box>
-        <MenuItem
-          dense
-          selected={
-            items[rowMenuAnchor?.idx || 0]?.pricing_strategy === "batch_pricing"
-          }
-          onClick={() =>
-            handleRowSettingChange(
-              rowMenuAnchor!.idx,
-              "strategy",
-              "batch_pricing",
-            )
-          }
-        >
-          <Stack direction="row" width="100%" justifyContent="space-between">
-            <Typography variant="body2">Batch Priority</Typography>
-            {items[rowMenuAnchor?.idx || 0]?.pricing_strategy ===
-              "batch_pricing" && (
-              <Check size={14} color={theme.palette.primary.main} />
-            )}
-          </Stack>
-        </MenuItem>
-        <MenuItem
-          dense
-          selected={
-            items[rowMenuAnchor?.idx || 0]?.pricing_strategy ===
-            "product_default"
-          }
-          onClick={() =>
-            handleRowSettingChange(
-              rowMenuAnchor!.idx,
-              "strategy",
-              "product_default",
-            )
-          }
-        >
-          <Stack direction="row" width="100%" justifyContent="space-between">
-            <Typography variant="body2">Product Default</Typography>
-            {items[rowMenuAnchor?.idx || 0]?.pricing_strategy ===
-              "product_default" && (
-              <Check size={14} color={theme.palette.primary.main} />
-            )}
-          </Stack>
-        </MenuItem>
-      </Menu>
+          SELECT BATCH / SERIAL
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {loadingBatches ? (
+            <Box p={4} textAlign="center">
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <List dense>
+              {availableBatches.map((b: any) => (
+                <ListItemButton
+                  key={b.id}
+                  onClick={() => handleBatchSelect(b)}
+                  sx={{ py: 1.5 }}
+                >
+                  <ListItemText
+                    primary={b.batch_number || b.serial_number}
+                    secondary={`Stock: ${b.quantity} | MRP: ₹${b.mrp}`}
+                    primaryTypographyProps={{
+                      fontWeight: 800,
+                      fontSize: "0.875rem",
+                    }}
+                    secondaryTypographyProps={{
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                    }}
+                  />
+                  <Chip
+                    label="Select"
+                    size="small"
+                    variant="outlined"
+                    sx={{ fontWeight: 800, fontSize: "0.65rem" }}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }

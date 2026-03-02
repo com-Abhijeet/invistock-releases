@@ -24,7 +24,6 @@ export async function getGstr1ReportData({ periodType, year, month, quarter }) {
     }
 
     // Default to exclusive if the flag isn't set.
-    // Ensure your shop repository returns 'is_inclusive' (boolean) or 'print_type' === 'inclusive'
     const isInclusive =
       shop.is_inclusive || shop.print_type === "inclusive" || false;
 
@@ -36,6 +35,7 @@ export async function getGstr1ReportData({ periodType, year, month, quarter }) {
     });
 
     // --- 1. Fetch all sale items within the calculated date range ---
+    // UPDATED: Now strongly prefers snapshot data (s.gstin, s.state, si.hsn, si.product_name)
     const taxableSalesQuery = db.prepare(`
     SELECT
       s.id as sale_id,
@@ -43,14 +43,14 @@ export async function getGstr1ReportData({ periodType, year, month, quarter }) {
       s.created_at as invoice_date,
       s.total_amount as invoice_value,
       s.is_reverse_charge,
-      c.gst_no as customer_gstin,
-      c.state as customer_state,
-      p.hsn,
-      p.name as product_description,
+      COALESCE(s.gstin, c.gst_no) as customer_gstin,
+      COALESCE(s.state, c.state) as customer_state,
+      COALESCE(si.hsn, p.hsn) as hsn,
+      COALESCE(si.product_name, p.name) as product_description,
       si.quantity,
       si.rate,
       si.discount,
-      si.gst_rate
+      COALESCE(si.gst_rate, p.gst_rate, 0) as gst_rate
     FROM sales s
     JOIN sales_items si ON s.id = si.sale_id
     LEFT JOIN customers c ON s.customer_id = c.id
@@ -64,14 +64,12 @@ export async function getGstr1ReportData({ periodType, year, month, quarter }) {
 
     const salesGroupedById = _groupSaleItems(allTaxableSaleItems);
 
-    // Pass isInclusive flag to processing functions
     const { b2b, b2cl, b2cs } = _processTaxableSales(
       salesGroupedById,
       shop,
       isInclusive,
     );
 
-    // We now pass raw items to HSN helper to ensure math matches B2B exactly
     const hsn = _processHsnSummary(allTaxableSaleItems, shop, isInclusive);
 
     const { cdnr, cdnur } = _fetchAndProcessNotes(shop, startDate, endDate);
@@ -91,7 +89,7 @@ function _groupSaleItems(allSaleItems) {
       acc[item.sale_id] = {
         invoice_no: item.reference_no,
         invoice_date: item.invoice_date,
-        invoice_value: item.invoice_value,
+        invoice_value: item.invoice_value, // Retaining gross invoice value for B2CL threshold check
         is_reverse_charge: item.is_reverse_charge,
         customer_gstin: item.customer_gstin,
         customer_state: item.customer_state,
@@ -110,27 +108,24 @@ function _calculateItemTax(item, isInclusive) {
   const discount = parseFloat(item.discount) || 0;
   const gstRate = parseFloat(item.gst_rate) || 0;
 
-  // Total value of the line item after discount
-  // This is what the customer theoretically "pays" for this line
+  // Note: Only the ITEM LEVEL discount is considered here for GSTR-1 compliance.
   const baseValue = rate * quantity * (1 - discount / 100.0);
 
   let taxableValue = 0;
   let taxAmount = 0;
 
   if (isInclusive) {
-    // Formula: Taxable = InclusiveAmount / (1 + GST%)
     taxableValue = baseValue / (1 + gstRate / 100.0);
     taxAmount = baseValue - taxableValue;
   } else {
-    // Formula: Taxable = Rate * Qty
     taxableValue = baseValue;
     taxAmount = taxableValue * (gstRate / 100.0);
   }
 
   return {
-    taxableValue, // The pure value of goods
-    taxAmount, // The total tax component
-    totalValue: taxableValue + taxAmount, // Should equal baseValue for Inclusive, baseValue + Tax for Exclusive
+    taxableValue,
+    taxAmount,
+    totalValue: taxableValue + taxAmount,
   };
 }
 
@@ -143,26 +138,21 @@ function _processTaxableSales(salesGroupedById, shop, isInclusive) {
   for (const saleId in salesGroupedById) {
     const sale = salesGroupedById[saleId];
 
-    // FIX: Treat null/empty customer state as the Shop's state (Intra-state)
     const customerState = sale.customer_state || shop.state;
-
     const isInterstate =
       shop.state.toLowerCase() !== customerState.toLowerCase();
 
-    // Create the base JSON object for the invoice
     const invoiceJson = {
       inum: sale.invoice_no,
       idt: new Date(sale.invoice_date)
         .toLocaleDateString("en-GB")
         .replace(/\//g, "-"),
       val: parseFloat(sale.invoice_value.toFixed(2)),
-      // FIX: Use the normalized customerState for POS lookup
       pos: STATE_CODE_MAP[customerState] || STATE_CODE_MAP[shop.state],
       rchrg: sale.is_reverse_charge ? "Y" : "N",
       itms: [],
     };
 
-    // Process each item in the sale
     for (const item of sale.items) {
       const { taxableValue, taxAmount } = _calculateItemTax(item, isInclusive);
 
@@ -183,7 +173,6 @@ function _processTaxableSales(salesGroupedById, shop, isInclusive) {
       });
     }
 
-    // Categorize the processed invoice
     if (sale.customer_gstin) {
       // B2B
       if (!b2bMap.has(sale.customer_gstin)) {
@@ -196,7 +185,7 @@ function _processTaxableSales(salesGroupedById, shop, isInclusive) {
         // B2C Large
         b2cl.push(invoiceJson);
       } else {
-        // B2C Small (Aggregated by POS + Rate)
+        // B2C Small
         for (const itemJson of invoiceJson.itms) {
           const pos = invoiceJson.pos;
           const rate = itemJson.itm_det.rt;
@@ -229,26 +218,23 @@ function _processTaxableSales(salesGroupedById, shop, isInclusive) {
 }
 
 // ✅ ---------------- HELPER: Fetch and process HSN summary ----------------
-// Updated to use JS aggregation for consistent Tax Logic
 function _processHsnSummary(allTaxableItems, shop, isInclusive) {
   const hsnMap = new Map();
 
   for (const item of allTaxableItems) {
-    // Skip items with no tax for HSN summary in GSTR-1 usually,
-    // but good to keep if they have HSN. Usually filtering gst_rate > 0 is preferred.
     if (item.gst_rate <= 0) continue;
 
     const hsnCode = item.hsn || "UNKNOWN";
-    const key = `${hsnCode}-${item.product_description}`; // Group by HSN + Desc
+    const key = `${hsnCode}-${item.product_description}`;
 
     if (!hsnMap.has(key)) {
       hsnMap.set(key, {
         hsn_sc: hsnCode,
         desc: item.product_description,
-        uqc: "NOS", // Default unit
+        uqc: "NOS",
         qty: 0,
-        val: 0, // Total Value (Taxable + Tax)
-        txval: 0, // Taxable Value
+        val: 0,
+        txval: 0,
         iamt: 0,
         camt: 0,
         samt: 0,
@@ -258,24 +244,17 @@ function _processHsnSummary(allTaxableItems, shop, isInclusive) {
 
     const entry = hsnMap.get(key);
 
-    // Use the shared tax calculation helper
     const { taxableValue, taxAmount, totalValue } = _calculateItemTax(
       item,
       isInclusive,
     );
 
-    // FIX: Determine Place of Supply logic for this item
     const customerState = item.customer_state || shop.state;
     const isInterstate =
       shop.state.toLowerCase() !== customerState.toLowerCase();
 
-    // Accumulate
     entry.qty += item.quantity;
     entry.txval += taxableValue;
-
-    // "val" in HSN table is the Total Value (Taxable + Taxes)
-    // If inclusive, this is just baseValue. If exclusive, it's taxable + tax.
-    // The helper returns `totalValue` which handles this.
     entry.val += totalValue;
 
     if (isInterstate) {
@@ -286,7 +265,6 @@ function _processHsnSummary(allTaxableItems, shop, isInclusive) {
     }
   }
 
-  // Convert map to array and format numbers
   const hsnData = Array.from(hsnMap.values()).map((item, index) => ({
     num: index + 1,
     hsn_sc: item.hsn_sc,
@@ -307,13 +285,9 @@ function _processHsnSummary(allTaxableItems, shop, isInclusive) {
 /**
  * @private
  * @description Fetches and processes Credit/Debit Notes for a GSTR-1 report.
- * @param {object} shop - The shop details object.
- * @param {string} startDate - The start date of the period (YYYY-MM-DD).
- * @param {string} endDate - The end date of the period (YYYY-MM-DD).
- * @returns {{cdnr: Array<any>, cdnur: Array<any>}} The formatted CDNR and CDNUR data.
  */
 function _fetchAndProcessNotes(shop, startDate, endDate) {
-  // --- Fetch all Credit/Debit Notes for the Period ---
+  // UPDATED: Now maps to the sale's internal state/gstin snapshot where possible
   const notesQuery = db.prepare(`
     SELECT
         t.reference_no as note_no,
@@ -321,8 +295,8 @@ function _fetchAndProcessNotes(shop, startDate, endDate) {
         t.type as note_type,
         t.amount as note_value,
         t.gst_amount,
-        c.gst_no as customer_gstin,
-        c.state as customer_state,
+        COALESCE(s.gstin, c.gst_no) as customer_gstin,
+        COALESCE(s.state, c.state) as customer_state,
         s.reference_no as original_invoice_no,
         s.created_at as original_invoice_date
     FROM transactions t
@@ -333,21 +307,16 @@ function _fetchAndProcessNotes(shop, startDate, endDate) {
   `);
   const allNotes = notesQuery.all(startDate, endDate);
 
-  // --- Process and Categorize Notes ---
   const cdnrMap = new Map();
   const cdnur = [];
 
   for (const note of allNotes) {
-    // Robust Taxable Calculation for Notes
-    // If gst_amount is present, use it. Otherwise, assume some default (bad practice but safe fallback)
     const gstAmt = note.gst_amount || 0;
     const taxable_value = note.note_value - gstAmt;
 
-    // Back-calculate rate for display purposes only
     const calculated_rate =
       taxable_value > 0 ? (gstAmt / taxable_value) * 100 : 0;
 
-    // FIX: Treat null/empty customer state as the Shop's state (Intra-state)
     const customerState = note.customer_state || shop.state;
     const isInterstate =
       shop.state.toLowerCase() !== customerState.toLowerCase();
@@ -362,7 +331,7 @@ function _fetchAndProcessNotes(shop, startDate, endDate) {
         .toLocaleDateString("en-GB")
         .replace(/\//g, "-"),
       ntty: note.note_type === "credit_note" ? "C" : "D",
-      p_gst: "N", // Assuming all original invoices are post-GST
+      p_gst: "N",
       rchrg: "N",
       val: parseFloat(note.note_value.toFixed(2)),
       itms: [
@@ -381,14 +350,12 @@ function _fetchAndProcessNotes(shop, startDate, endDate) {
     };
 
     if (note.customer_gstin) {
-      // CDNR: Registered Customer
       if (!cdnrMap.has(note.customer_gstin)) {
         cdnrMap.set(note.customer_gstin, { ctin: note.customer_gstin, nt: [] });
       }
       cdnrMap.get(note.customer_gstin).nt.push(noteJson);
     } else {
-      // CDNUR: Unregistered Customer
-      cdnur.push({ ...noteJson, typ: "B2CS" }); // Defaulting type to B2CS
+      cdnur.push({ ...noteJson, typ: "B2CS" });
     }
   }
 
@@ -399,26 +366,22 @@ function _fetchAndProcessNotes(shop, startDate, endDate) {
 /**
  * @private
  * @description Fetches and aggregates Nil-Rated, Exempt, and Non-GST supplies for GSTR-1.
- * @param {object} shop - The shop details object, must contain the shop's state.
- * @param {string} startDate - The start date of the period (YYYY-MM-DD).
- * @param {string} endDate - The end date of the period (YYYY-MM-DD).
- * @returns {object} The formatted 'nil' object for the GSTR-1 report.
  */
 function _fetchNilRatedSummary(shop, startDate, endDate) {
+  // UPDATED: Resolves the customer state from the sale snapshot first, looks for 0 rate inside the sales_items table directly.
   const nilRatedQuery = db.prepare(`
     SELECT
-      -- Determine if the supply is INTERstate or INTRAstate
       CASE
-        WHEN c.state IS NOT NULL AND LOWER(c.state) != LOWER(?) THEN 'INTER'
+        WHEN COALESCE(s.state, c.state) IS NOT NULL AND LOWER(COALESCE(s.state, c.state)) != LOWER(?) THEN 'INTER'
         ELSE 'INTRA'
       END as supply_type,
       SUM(si.quantity * si.rate * (1 - si.discount/100.0)) as total_nil_rated_value
     FROM sales s
     JOIN sales_items si ON s.id = si.sale_id
-    JOIN products p ON si.product_id = p.id
+    LEFT JOIN products p ON si.product_id = p.id
     LEFT JOIN customers c ON s.customer_id = c.id
     WHERE date(s.created_at) BETWEEN ? AND ?
-      AND p.gst_rate = 0
+      AND COALESCE(si.gst_rate, p.gst_rate, 0) = 0
     GROUP BY supply_type
   `);
 
@@ -428,13 +391,12 @@ function _fetchNilRatedSummary(shop, startDate, endDate) {
     endDate,
   );
 
-  // Format the data for the final JSON structure (Table 8)
   return {
     inv: nilRatedSummary.map((row) => ({
       sply_ty: row.supply_type,
-      nil_amt: row.total_nil_rated_value, // All 0% items are grouped here
-      expt_amt: 0, // Can be implemented later if you add an 'Exempt' flag to products
-      ngsup_amt: 0, // Can be implemented later for Non-GST items
+      nil_amt: row.total_nil_rated_value,
+      expt_amt: 0,
+      ngsup_amt: 0,
     })),
   };
 }

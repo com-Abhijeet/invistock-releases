@@ -538,6 +538,11 @@ export function initializeDatabase(dbPath) {
     CREATE TABLE IF NOT EXISTS sales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
+      customer_name TEXT,
+      bill_address TEXT,
+      state TEXT,
+      pincode TEXT,
+      gstin TEXT,
       employee_id INTEGER,
       reference_no TEXT NOT NULL UNIQUE,
       payment_mode TEXT NOT NULL DEFAULT 'Cash',
@@ -549,6 +554,7 @@ export function initializeDatabase(dbPath) {
       is_reverse_charge INTEGER DEFAULT 0,
       is_ecommerce_sale INTEGER DEFAULT 0,
       is_quote INTEGER DEFAULT 0,
+      round_off REAL DEFAULT 0,
       created_at DATETIME DEFAULT (datetime('now', 'localtime')),
       updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (customer_id) REFERENCES customers(id)
@@ -562,6 +568,10 @@ export function initializeDatabase(dbPath) {
       sale_id INTEGER NOT NULL,
       sr_no TEXT NOT NULL,
       product_id INTEGER NOT NULL,
+      product_name TEXT NOT NULL,
+      description TEXT,
+      barcode TEXT,
+      hsn TEXT,
       rate REAL NOT NULL,
       quantity REAL NOT NULL,
       unit TEXT, -- UPDATED: New column
@@ -725,55 +735,25 @@ export function initializeDatabase(dbPath) {
     );
   `);
 
-  // 5. SAFE MIGRATE MAIN DB (Ensure columns exist before restore)
-  safeMigrate(
-    db,
-    "products",
-    "tracking_type",
-    "TEXT CHECK(tracking_type IN ('none', 'batch', 'serial')) DEFAULT 'none'",
-  );
-  // Universal Units Migration
-  safeMigrate(db, "products", "base_unit", "TEXT DEFAULT 'pcs'");
-  safeMigrate(db, "products", "secondary_unit", "TEXT");
-  safeMigrate(db, "products", "conversion_factor", "REAL DEFAULT 1");
-  safeMigrate(db, "sales_items", "unit", "TEXT");
-  safeMigrate(db, "sales_order_items", "unit", "TEXT");
-  safeMigrate(db, "purchase_items", "unit", "TEXT");
-
-  // Batch specific migrations
-  safeMigrate(db, "product_batches", "batch_uid", "TEXT UNIQUE");
-  safeMigrate(db, "product_batches", "barcode", "TEXT");
-  safeMigrate(db, "product_batches", "margin", "REAL DEFAULT 0");
-
-  safeMigrate(
-    db,
-    "product_batches",
-    "purchase_id",
-    "INTEGER REFERENCES purchases(id) ON DELETE SET NULL",
-  );
-  safeMigrate(db, "purchase_items", "batch_uid", "TEXT");
-  safeMigrate(db, "purchase_items", "batch_number", "TEXT");
-  safeMigrate(db, "purchase_items", "serial_numbers", "TEXT");
-  safeMigrate(db, "purchase_items", "expiry_date", "TEXT");
-  safeMigrate(db, "purchase_items", "mfg_date", "TEXT");
-  safeMigrate(db, "purchase_items", "barcode", "TEXT");
-  safeMigrate(db, "purchase_items", "margin", "REAL DEFAULT 0");
-
-  safeMigrate(
-    db,
-    "sales_items",
-    "batch_id",
-    "INTEGER REFERENCES product_batches(id)",
-  );
-  safeMigrate(
-    db,
-    "sales_items",
-    "serial_id",
-    "INTEGER REFERENCES product_serials(id)",
-  );
-  safeMigrate(db, "stock_adjustments", "batch_id", "INTEGER");
-  safeMigrate(db, "stock_adjustments", "serial_id", "INTEGER");
+  /*
+  customer_name TEXT,
+  bill_address TEXT,
+  state TEXT,
+  pincode TEXT,
+  gstin TEXT, 
+  */
   safeMigrate(db, "sales", "employee_id", "INTEGER");
+  safeMigrate(db, "sales", "customer_name", "TEXT");
+  safeMigrate(db, "sales", "bill_address", "TEXT");
+  safeMigrate(db, "sales", "state", "TEXT");
+  safeMigrate(db, "sales", "pincode", "TEXT");
+  safeMigrate(db, "sales", "round_off", "REAL");
+  safeMigrate(db, "sales", "gstin", "TEXT");
+
+  safeMigrate(db, "sales_items", "product_name", "TEXT");
+  safeMigrate(db, "sales_items", "description", "TEXT");
+  safeMigrate(db, "sales_items", "barcode", "TEXT");
+  safeMigrate(db, "sales_items", "hsn", "TEXT");
 
   // 6. EXECUTE NON-GST SCHEMA (Standard Default)
   nonGstDb.exec(`

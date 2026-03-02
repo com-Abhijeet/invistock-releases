@@ -78,6 +78,7 @@ import SupplierLedgerPage from "./pages/SupplierLedgerPage";
 import EmployeeListPage from "./pages/EmployeeListPage";
 import EmployeeDetailPage from "./pages/EmployeeDetailPage";
 import AccountingDashboard from "./pages/AccountingDashboard";
+import ExpiryReportPage from "./pages/ExpiryReportPage";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -357,6 +358,14 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="product-abc-page">
                         <ProductABCPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/expiry-report"
+                    element={
+                      <PermissionGuard requiredPermission="expiry-report">
+                        <ExpiryReportPage />
                       </PermissionGuard>
                     }
                   />
