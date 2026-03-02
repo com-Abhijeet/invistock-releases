@@ -4,6 +4,8 @@ export interface PnLData {
   totalRevenue: number;
   totalCogs: number;
   grossProfit: number;
+  stockGain: number;
+  stockLoss: number;
   expenses: { category: string; total: number }[];
   totalExpenses: number;
   netProfit: number;
@@ -42,6 +44,41 @@ export interface StockSummaryRecord {
 export interface StockSummaryData {
   period: { start: string; end: string };
   records: StockSummaryRecord[];
+}
+
+// --- NEW TYPES FOR AGING REPORTS ---
+export interface ARAgingRecord {
+  customer_id: number;
+  customer_name: string;
+  customer_phone: string;
+  total_outstanding: number;
+  days_0_30: number;
+  days_31_60: number;
+  days_61_90: number;
+  days_90_plus: number;
+}
+
+export interface APAgingRecord {
+  supplier_id: number;
+  supplier_name: string;
+  supplier_phone: string;
+  total_outstanding: number;
+  days_0_30: number;
+  days_31_60: number;
+  days_61_90: number;
+  days_90_plus: number;
+}
+
+export interface BillByBillRecord {
+  sale_id?: number;
+  purchase_id?: number;
+  reference_no?: string;
+  internal_ref_no?: string;
+  date: string;
+  invoice_amount: number;
+  paid_amount: number;
+  pending_amount: number;
+  age_days: number;
 }
 
 export const getPnLStatement = async (
@@ -99,5 +136,31 @@ export const getCashBankBook = async (
   const response = await api.get(`/api/accounting/book/${modeType}`, {
     params: { startDate, endDate },
   });
+  return response.data.data;
+};
+
+// --- NEW API CALLS FOR AGING REPORTS ---
+export const getReceivablesAging = async (): Promise<ARAgingRecord[]> => {
+  const response = await api.get("/api/accounting/aging/receivables");
+  console.log(response.data.data);
+  return response.data.data;
+};
+
+export const getCustomerBillByBill = async (
+  id: number,
+): Promise<BillByBillRecord[]> => {
+  const response = await api.get(`/api/accounting/outstanding/customer/${id}`);
+  return response.data.data;
+};
+
+export const getPayablesAging = async (): Promise<APAgingRecord[]> => {
+  const response = await api.get("/api/accounting/aging/payables");
+  return response.data.data;
+};
+
+export const getSupplierBillByBill = async (
+  id: number,
+): Promise<BillByBillRecord[]> => {
+  const response = await api.get(`/api/accounting/outstanding/supplier/${id}`);
   return response.data.data;
 };

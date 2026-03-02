@@ -14,33 +14,119 @@ const { createInvoiceHTML } = require("../invoiceTemplate.js");
 function registerExportHandlers(ipcMain, { mainWindow } = {}) {
   ipcMain.handle(
     "export-sales-to-excel",
-    async (event, { startDate, endDate }) => {
+    async (event, { startDate, endDate, exportType = "item" }) => {
       try {
+        const typeLabel = exportType === "header" ? "Register" : "Items";
         const { canceled, filePath } = await dialog.showSaveDialog({
-          title: "Save Sales Report",
-          defaultPath: `Sales-Report-${startDate}-to-${endDate}.xlsx`,
+          title: `Save Sales ${typeLabel} Report`,
+          defaultPath: `Sales-${typeLabel}-${startDate}-to-${endDate}.xlsx`,
           filters: [{ name: "Excel Files", extensions: ["xlsx"] }],
         });
 
         if (canceled || !filePath)
           return { success: false, message: "Export cancelled." };
 
-        const salesData = getExportableSalesData({ startDate, endDate });
+        // 1. Fix the ".xlsx.xlsx" double extension issue
+        // The dialog adds .xlsx, but generateExcelReport likely adds it again internally.
+        let finalPath = filePath;
+        if (finalPath.toLowerCase().endsWith(".xlsx")) {
+          finalPath = finalPath.slice(0, -5); // Strip the extension before passing
+        }
 
-        // Updated mapping to include all columns from the repository
-        const result = await generateExcelReport(salesData, filePath, {
-          reference_no: "Invoice No",
-          invoice_date: "Date",
-          customer_name: "Customer",
-          product_name: "Product",
-          hsn: "HSN",
-          quantity: "Qty",
-          rate: "Rate",
-          price: "Total Price",
-          gst_rate: "GST %",
-          discount: "Discount",
+        // 2. Fetch data
+        const rawSalesData = getExportableSalesData({
+          startDate,
+          endDate,
+          exportType,
         });
 
+        if (!rawSalesData || rawSalesData.length === 0) {
+          return {
+            success: false,
+            error: "No sales found in the selected period.",
+          };
+        }
+
+        // 3. Data Sanitization (Fixes "Repair Broken File" in Excel)
+        // Excel strictly rejects nulls, NaNs, and certain XML control characters.
+        const salesData = rawSalesData.map((row) => {
+          const cleanRow = {};
+          for (const key in row) {
+            let val = row[key];
+            if (val === null || val === undefined) {
+              cleanRow[key] = ""; // Convert nulls to empty strings
+            } else if (typeof val === "string") {
+              // Strip invalid XML control characters (often found in notes/descriptions)
+              cleanRow[key] = val.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F]/g, "");
+            } else if (typeof val === "number" && isNaN(val)) {
+              cleanRow[key] = 0; // Prevent NaN crashes
+            } else {
+              cleanRow[key] = val;
+            }
+          }
+          return cleanRow;
+        });
+
+        let columnMap = {};
+
+        if (exportType === "header") {
+          // Approach 2: Header Export (Sales Register for Accounting)
+          columnMap = {
+            reference_no: "Invoice No",
+            invoice_date: "Date",
+            customer_name: "Customer Name",
+            customer_phone: "Phone",
+            bill_address: "Billing Address",
+            city: "City",
+            state: "State",
+            pincode: "Pincode",
+            gstin: "GSTIN",
+            subtotal: "Subtotal",
+            bill_discount_percentage: "Bill Discount (%)",
+            bill_discount_amount: "Bill Discount (Amt)",
+            bill_round_off: "Round Off",
+            bill_grand_total: "Grand Total",
+            paid_amount: "Paid Amount",
+            payment_mode: "Payment Mode",
+            status: "Status",
+            note: "Note",
+            employee_id: "Staff ID",
+          };
+        } else {
+          // Approach 1: Item Export (Inventory/Product Analysis)
+          columnMap = {
+            reference_no: "Invoice No",
+            invoice_date: "Date",
+            customer_name: "Customer",
+            customer_phone: "Phone",
+            bill_address: "Billing Address",
+            city: "City",
+            state: "State",
+            pincode: "Pincode",
+            gstin: "GSTIN",
+            product_name: "Product",
+            item_description: "Item Description",
+            barcode: "Barcode",
+            hsn: "HSN",
+            quantity: "Qty",
+            unit: "Unit",
+            rate: "Rate",
+            gst_rate: "GST %",
+            item_discount_percentage: "Item Disc %",
+            item_total: "Item Total",
+            bill_discount_percentage: "Bill Disc %",
+            bill_round_off: "Bill Round Off",
+            bill_grand_total: "Bill Grand Total",
+            payment_mode: "Payment Mode",
+            status: "Status",
+          };
+        }
+
+        const result = await generateExcelReport(
+          salesData,
+          finalPath,
+          columnMap,
+        );
         return result;
       } catch (error) {
         console.error("Excel export failed:", error);
@@ -100,7 +186,6 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
       }
     },
   );
-
   ipcMain.handle("export-main-categories", async () => {
     try {
       const categoriesData = await getAllCategories();

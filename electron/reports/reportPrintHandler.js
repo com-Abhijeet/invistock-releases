@@ -50,6 +50,9 @@ function buildHtmlFromData(type, data, meta) {
         period,
         shopName,
       );
+    case "receivables_aging":
+    case "payables_aging":
+      return templates.generateAgingTemplate(data, type, shopName);
     default:
       return "<h1>Unknown Report Type</h1>";
   }

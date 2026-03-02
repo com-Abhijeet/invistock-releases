@@ -1,5 +1,5 @@
 import * as BatchRepo from "../repositories/batchRepository.mjs";
-import { generateBatchUid } from "../utils/batchUtils.mjs";
+import { generateBatchUid, calculateDaysLeft } from "../utils/batchUtils.mjs";
 import db from "../db/db.mjs";
 
 // ... existing createNewBatch, processSaleItemStockDeduction ...
@@ -640,3 +640,70 @@ export function getBatchAnalyticsForProduct(productId) {
     salesVelocity,
   };
 }
+
+/**
+ * Returns items expired or expiring in exactly <= 7 days.
+ * Useful for immediate dashboard notifications or alerts.
+ */
+export const getImmediateNotifications = async () => {
+  const rawBatches = await BatchRepo.getBatchesExpiringWithin(7);
+
+  const processedBatches = rawBatches.map((batch) => {
+    const daysLeft = calculateDaysLeft(batch.expiry_date);
+    return {
+      ...batch,
+      days_left: daysLeft,
+      status: daysLeft < 0 ? "Expired" : "Expiring Soon",
+    };
+  });
+
+  return processedBatches;
+};
+
+/**
+ * Returns a fully categorized report of all active batches.
+ */
+export const getCategorizedExpiryReport = async () => {
+  const rawBatches = await BatchRepo.getAllBatchesWithExpiry();
+
+  const report = {
+    expired: [],
+    expiring_in_7_days: [],
+    expiring_in_14_days: [],
+    expiring_in_1_month: [], // ~30 days
+    expiring_in_3_months: [], // ~90 days
+    safe: [], // > 90 days
+  };
+
+  let totalTracked = 0;
+
+  rawBatches.forEach((batch) => {
+    const daysLeft = calculateDaysLeft(batch.expiry_date);
+    const item = { ...batch, days_left: daysLeft };
+
+    totalTracked++;
+
+    if (daysLeft < 0) {
+      report.expired.push(item);
+    } else if (daysLeft <= 7) {
+      report.expiring_in_7_days.push(item);
+    } else if (daysLeft <= 14) {
+      report.expiring_in_14_days.push(item);
+    } else if (daysLeft <= 30) {
+      report.expiring_in_1_month.push(item);
+    } else if (daysLeft <= 90) {
+      report.expiring_in_3_months.push(item);
+    } else {
+      report.safe.push(item);
+    }
+  });
+
+  return {
+    summary: {
+      total_tracked_batches: totalTracked,
+      expired_count: report.expired.length,
+      critical_count: report.expiring_in_7_days.length,
+    },
+    data: report,
+  };
+};

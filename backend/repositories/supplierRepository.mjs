@@ -4,22 +4,11 @@ import { getDateFilter } from "../utils/dateFilter.mjs";
 /**
  * @description Inserts a new supplier record into the database.
  * @param {object} supplierData An object containing the supplier's details.
- * @param {string} supplierData.name The supplier's name.
- * @param {string} [supplierData.contact_person] The contact person's name.
- * @param {string} [supplierData.phone] The supplier's phone number.
- * @param {string} [supplierData.email] The supplier's email address.
- * @param {string} [supplierData.address] The supplier's street address.
- * @param {string} [supplierData.city] The supplier's city.
- * @param {string} [supplierData.state] The supplier's state.
- * @param {string} [supplierData.pincode] The supplier's pincode.
- * @param {string} [supplierData.gst_number] The supplier's GSTIN.
- * // ... other properties
  * @returns {object} The newly created supplier object, including its new ID.
  * @throws {Error} Throws an error if the database insertion fails.
  */
 export function createSupplier(supplierData) {
   try {
-    // ✅ Destructure all fields, including the new address fields, for clarity
     const {
       name,
       contact_person = null,
@@ -37,7 +26,6 @@ export function createSupplier(supplierData) {
       notes = null,
     } = supplierData;
 
-    // ✅ Update the INSERT statement with the new address columns
     const stmt = db.prepare(`
       INSERT INTO suppliers (
         name, contact_person, phone, email, address, city, state, pincode,
@@ -47,7 +35,6 @@ export function createSupplier(supplierData) {
       )
     `);
 
-    // ✅ Pass the new address variables to the run command
     const info = stmt.run(
       name,
       contact_person,
@@ -65,11 +52,9 @@ export function createSupplier(supplierData) {
       notes,
     );
 
-    // ✅ Return the complete new supplier object with the generated ID
     return { id: info.lastInsertRowid, ...supplierData };
   } catch (error) {
     console.error("Error in createSupplier repository:", error.message);
-    // ✅ Throw the error so the service layer can handle it
     throw new Error(
       `Database error: Could not create supplier. ${error.message}`,
     );
@@ -85,11 +70,13 @@ export function getSupplierById(id) {
 }
 
 export function updateSupplier(id, data) {
+  // ✅ Removed deprecated total_supplied_amount and total_paid_amount
+  // ✅ Added city, state, pincode correctly mapped
   const stmt = db.prepare(`
     UPDATE suppliers SET
       name = ?, contact_person = ?, phone = ?, email = ?, address = ?,
-      gst_number = ?, supplier_type = ?, bank_account = ?, ifsc_code = ?, upi_id = ?,
-      total_supplied_amount = ?, total_paid_amount = ?, notes = ?, updated_at = datetime('now')
+      city = ?, state = ?, pincode = ?, gst_number = ?, supplier_type = ?, 
+      bank_account = ?, ifsc_code = ?, upi_id = ?, notes = ?, updated_at = datetime('now', 'localtime')
     WHERE id = ?
   `);
 
@@ -99,13 +86,14 @@ export function updateSupplier(id, data) {
     data.phone,
     data.email,
     data.address,
+    data.city,
+    data.state,
+    data.pincode,
     data.gst_number,
     data.supplier_type,
     data.bank_account,
     data.ifsc_code,
     data.upi_id,
-    data.total_supplied_amount,
-    data.total_paid_amount,
     data.notes,
     id,
   );
@@ -131,29 +119,30 @@ export function getSupplierLedger(supplierId, filters) {
   if (!supplier) throw new Error("Supplier not found");
 
   // 2. Build date filter for purchases table
-  // Assuming 'purchases' table exists and has 'bill_date' or 'created_at'
   const { where: dateWhere, params: dateParams } = getDateFilter({
     from: filters.startDate,
     to: filters.endDate,
     alias: "p",
   });
 
-  // 3. Fetch all purchases
-  // Note: Adjust 'bill_date' / 'reference_no' column names if your schema differs
+  // Ensure the generic date filter maps to the correct schema column 'date'
+  const safeDateWhere = dateWhere.replace(/created_at/g, "date");
+
+  // 3. Fetch all purchases using exact schema logic
   const allPurchases = db
     .prepare(
       `
     SELECT
       id,
-      created_at AS bill_date,
+      date AS bill_date,
       reference_no,
       total_amount,
       paid_amount,
       (total_amount - paid_amount) AS amount_pending,
       'purchase' AS bill_type
     FROM purchases p
-    WHERE supplier_id = ? AND status != 'cancelled' AND ${dateWhere}
-    ORDER BY created_at DESC
+    WHERE supplier_id = ? AND status != 'cancelled' AND ${safeDateWhere}
+    ORDER BY date DESC
   `,
     )
     .all(supplierId, ...dateParams);

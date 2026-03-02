@@ -24,15 +24,21 @@ import { generateReference } from "../repositories/referenceRepository.mjs";
 import * as salesStatsRepository from "../repositories/salesStatsRepository.mjs";
 import * as batchService from "../services/batchService.mjs";
 import * as EmployeeSalesService from "../services/employeeSalesService.mjs";
-import { convertToStockQuantity } from "../services/unitService.mjs"; // Import unit service
+import { convertToStockQuantity } from "../services/unitService.mjs";
 
 export function createSaleWithItems(saleData) {
   const {
     customer_id,
+    customer_name,
+    bill_address,
+    state,
+    pincode,
+    gstin,
     paid_amount,
     payment_mode,
     note,
     total_amount,
+    round_off,
     items,
     status,
     discount,
@@ -40,7 +46,7 @@ export function createSaleWithItems(saleData) {
     is_ecommerce_sale = false,
     is_quote = false,
     employee_id,
-    reference_no, // ✅ Destructure potential manual reference
+    reference_no,
   } = saleData;
 
   if (!items || items.length === 0) {
@@ -50,8 +56,6 @@ export function createSaleWithItems(saleData) {
   const transaction = db.transaction(() => {
     let finalReferenceNo = reference_no;
 
-    // 1. Determine Reference Number
-    console.log("reference_no", reference_no);
     if (
       !finalReferenceNo ||
       finalReferenceNo === "Auto Generated On Submit" ||
@@ -61,7 +65,6 @@ export function createSaleWithItems(saleData) {
         ? `QUO-${Date.now()}`
         : generateReference("S");
     } else {
-      // ✅ Manual Reference Check
       const check = db
         .prepare("SELECT id FROM sales WHERE reference_no = ?")
         .get(finalReferenceNo);
@@ -74,7 +77,12 @@ export function createSaleWithItems(saleData) {
     const saleId = createSale(
       {
         customer_id: customer_id || null,
-        reference_no: finalReferenceNo, // Use the resolved reference
+        customer_name,
+        bill_address,
+        state,
+        pincode,
+        reference_no: finalReferenceNo,
+        gstin,
         paid_amount,
         payment_mode,
         note,
@@ -85,8 +93,9 @@ export function createSaleWithItems(saleData) {
         is_ecommerce_sale,
         is_quote,
         employee_id: employee_id || null,
+        round_off: round_off || 0,
       },
-      items, // Pass items to repo to handle DB insertion with unit
+      items,
     );
 
     if (!saleId) {
@@ -97,11 +106,6 @@ export function createSaleWithItems(saleData) {
 
     // 3. Process Items (Stock Deduction)
     items.forEach((item) => {
-      // NOTE: Repo createSale now handles INSERT into sales_items.
-      // We don't need createSaleItem here unless createSale implementation changed back.
-      // Looking at `salesRepository.mjs` `createSale`, it DOES insert items.
-      // So removing `createSaleItem` call here to avoid duplication.
-
       if (!is_quote) {
         const product = getProductById(item.product_id);
         if (!product)
@@ -117,13 +121,11 @@ export function createSaleWithItems(saleData) {
         // Deduct Stock
         updateProductQuantity(item.product_id, product.quantity - deductionQty);
 
-        // Deduct Batch/Serial Stock
-        // Batch deduction logic usually handles base unit if batch stock is in base unit
         if (item.batch_id || item.serial_id) {
           batchService.processSaleItemStockDeduction({
             batchId: item.batch_id,
             serialId: item.serial_id,
-            quantity: deductionQty, // Use converted qty for batches
+            quantity: deductionQty,
           });
         }
       }
@@ -169,9 +171,6 @@ export function createSaleWithItems(saleData) {
   }
 }
 
-/**
- * @description Updates an existing sale, handling inventory rollbacks and financial deltas.
- */
 export async function updateSaleWithItemsService(saleId, newData) {
   const oldSale = getSaleWithItemsById(saleId);
   console.log("new sale data", newData);
@@ -182,7 +181,6 @@ export async function updateSaleWithItemsService(saleId, newData) {
     for (const item of oldSale.items) {
       const product = getProductById(item.product_id);
       if (product) {
-        // Old items have 'unit' property from DB now (via updated repo)
         const addBackQty = convertToStockQuantity(
           item.quantity,
           item.unit,
@@ -191,7 +189,7 @@ export async function updateSaleWithItemsService(saleId, newData) {
 
         updateProductQuantity(item.product_id, product.quantity + addBackQty);
         if (item.batch_id || item.serial_id) {
-          batchService.processSaleItemStockReturn({
+          batchService.processSaleReturnStockAddition({
             batchId: item.batch_id,
             serialId: item.serial_id,
             quantity: addBackQty,
@@ -226,9 +224,7 @@ export async function updateSaleWithItemsService(saleId, newData) {
     replaceSaleItems(saleId, newData.items);
 
     // 4. Handle Commission Changes
-    // If employee changed or amount changed, we re-record/update commission
     if (!newData.is_quote) {
-      // Clear old commission if exists
       db.prepare("DELETE FROM employee_sales WHERE sale_id = ?").run(saleId);
       if (newData.employee_id) {
         EmployeeSalesService.recordCommission(
@@ -240,7 +236,6 @@ export async function updateSaleWithItemsService(saleId, newData) {
     }
 
     // 5. Handle Payment Delta
-    // For simplicity, if paid_amount changed, we create a delta transaction
     const deltaPaid = newData.paid_amount - oldSale.paid_amount;
     if (deltaPaid !== 0 && !newData.is_quote) {
       createTransaction({

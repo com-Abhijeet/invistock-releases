@@ -1,6 +1,7 @@
 const {
   formatDate,
   formatAmount,
+  formatAddress,
   numberToWords,
 } = require("../../invoiceTemplate.js");
 const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
@@ -8,6 +9,15 @@ const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
 const a4Modern = (data) => {
   const { sale, shop } = data;
   const isInclusive = shop.is_inclusive || false;
+
+  // Snapshot Variables (New Schema) w/ Legacy Fallbacks
+  const custName = sale.customer_name || "Valued Customer";
+  const custPhone = sale.customer_phone || "";
+  const custAddress = sale.bill_address || sale.customer_address || "";
+  const custCity = sale.customer_city || "";
+  const custState = sale.state || sale.customer_state || "";
+  const custPincode = sale.pincode || sale.customer_pincode || "";
+  const custGst = sale.gstin || sale.customer_gst_no || "";
 
   // --- MULTI-PAGE LOGIC ---
   const ROWS_PER_PAGE = 20; // A4 Modern has larger margins/fonts
@@ -65,12 +75,11 @@ const a4Modern = (data) => {
         <!-- CUSTOMER INFO -->
         <div class="customer-box">
           <div class="meta-label">Billed To</div>
-          <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">${
-            sale.customer_name || "Valued Customer"
-          }</div>
+          <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px;">${custName}</div>
           <div style="font-size: 13px; color: #4b5563;">
-            ${sale.customer_phone ? `Ph: ${sale.customer_phone}<br>` : ""}
-            ${sale.customer_address || ""}
+            ${custPhone ? `Ph: ${custPhone}<br>` : ""}
+            ${formatAddress(custAddress, custCity, custState, custPincode)}
+            ${custGst ? `<br>GSTIN: ${custGst}` : ""}
           </div>
         </div>
 
@@ -91,7 +100,8 @@ const a4Modern = (data) => {
                   (item) => `
                 <tr>
                   <td>
-                    <div style="font-weight:600;">${item.product_name}</div>
+                    <div style="font-weight:600;">${item.product_name || item.name || "Unknown"}</div>
+                    ${item.description ? `<div style="font-size: 10px; font-style: italic; color: #6b7280; margin-top:2px;">${item.description}</div>` : ""}
                     ${getTrackingHtml(item)}
                     ${
                       item.hsn

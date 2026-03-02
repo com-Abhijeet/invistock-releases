@@ -16,16 +16,23 @@ import {
   useTheme,
   Tooltip,
   MenuItem,
-
   Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  Collapse,
 } from "@mui/material";
 import {
   Trash2,
-
   ScanBarcode,
   Settings,
   Layers,
   Keyboard,
+  AlertCircle,
+  ListOrdered,
+  Wand2,
 } from "lucide-react";
 import { getAllProducts } from "../../lib/api/productService";
 import { getShopData } from "../../lib/api/shopService";
@@ -51,9 +58,20 @@ const PurchaseItemSection = ({
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0);
 
-  // New Modal State
+  // Modal State
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+
+  // Bulk Serial Modal State
+  const [serialModalOpen, setSerialModalOpen] = useState(false);
+  const [serialRowIndex, setSerialRowIndex] = useState<number | null>(null);
+  const [serialInputText, setSerialInputText] = useState("");
+
+  // Auto-Generate State
+  const [showAutoGenerate, setShowAutoGenerate] = useState(false);
+  const [genPrefix, setGenPrefix] = useState("");
+  const [genStartNum, setGenStartNum] = useState<number | "">(1);
+  const [genCount, setGenCount] = useState<number | "">(10);
 
   // --- FOCUS MANAGEMENT ---
   const focusInput = (rowIdx: number, field: string) => {
@@ -123,14 +141,11 @@ const PurchaseItemSection = ({
         break;
       case "Enter":
         e.preventDefault();
-        // Move to next logical field
-        // Order: qty -> unit -> rate -> margin -> mrp -> (next row qty)
         const fields = ["quantity", "unit", "rate", "margin", "mrp"];
         const currentIdx = fields.indexOf(field);
         if (currentIdx < fields.length - 1) {
           focusInput(rowIndex, fields[currentIdx + 1]);
         } else if (rowIndex < items.length - 1) {
-          // Move to next row start
           setActiveRowIndex(rowIndex + 1);
           focusInput(rowIndex + 1, "quantity");
         }
@@ -174,7 +189,6 @@ const PurchaseItemSection = ({
 
   const handleModalAddItems = (newItems: ExtendedPurchaseItem[]) => {
     if (editingItemIndex !== null) {
-      // Edit Mode
       const updated = [...items];
       const editedItem = newItems[0];
       updated[editingItemIndex] = {
@@ -184,7 +198,6 @@ const PurchaseItemSection = ({
       };
       onItemsChange(updated);
     } else {
-      // Bulk Add Mode
       const formattedItems = newItems.map((item, i) => ({
         ...item,
         sr_no: items.length + i + 1,
@@ -201,7 +214,6 @@ const PurchaseItemSection = ({
       item.sr_no = index + 1;
     });
     onItemsChange(updated);
-    // Adjust active index
     if (updated.length === 0) setActiveRowIndex(null);
     else if (idx >= updated.length) setActiveRowIndex(updated.length - 1);
   };
@@ -216,6 +228,67 @@ const PurchaseItemSection = ({
     (updated[index] as any)[field] = value;
     updated[index].price = calculatePrice(updated[index]);
     onItemsChange(updated);
+  };
+
+  // --- BULK SERIAL MODAL HANDLERS ---
+  const handleOpenSerialModal = (idx: number) => {
+    const item = items[idx];
+    const product = products.find((p) => p.id === item.product_id);
+
+    setSerialRowIndex(idx);
+    const currentSerials = item.serial_numbers || [];
+    setSerialInputText(currentSerials.join("\n"));
+
+    // Set smart defaults for auto-gen
+    setGenPrefix(product?.product_code ? `${product.product_code}-` : "SN-");
+    setGenCount(item.quantity > 0 ? item.quantity : 10);
+    setGenStartNum(1);
+    setShowAutoGenerate(false);
+
+    setSerialModalOpen(true);
+  };
+
+  const handleSaveSerials = () => {
+    if (serialRowIndex === null) return;
+
+    // Parse using newline or comma, remove empty spaces
+    const serialsArray = serialInputText
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    // Deduplicate array (prevents duplicate scans)
+    const uniqueSerials = Array.from(new Set(serialsArray));
+
+    const updated = [...items];
+    updated[serialRowIndex].serial_numbers = uniqueSerials;
+
+    // Auto-sync quantity to exact amount of serials
+    updated[serialRowIndex].quantity = uniqueSerials.length;
+    updated[serialRowIndex].price = calculatePrice(updated[serialRowIndex]);
+
+    onItemsChange(updated);
+    setSerialModalOpen(false);
+    setSerialRowIndex(null);
+  };
+
+  const handleAutoGenerateSerials = () => {
+    const count = Number(genCount) || 0;
+    const start = Number(genStartNum) || 1;
+    if (count <= 0) return;
+
+    const newSerials: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const numStr = String(start + i).padStart(4, "0");
+      newSerials.push(`${genPrefix}${numStr}`);
+    }
+
+    setSerialInputText((prev) => {
+      const existing = prev.trim() ? prev.trim() + "\n" : "";
+      return existing + newSerials.join("\n");
+    });
+
+    setShowAutoGenerate(false); // hide panel after generation
   };
 
   const getUnitsForProduct = (product: Product | undefined) => {
@@ -242,6 +315,12 @@ const PurchaseItemSection = ({
     borderBottom: `2px solid ${theme.palette.divider}`,
     py: 1.5,
   };
+
+  // Get current detected count for the modal preview
+  const currentModalSerialCount = serialInputText
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean).length;
 
   return (
     <Box overflow="hidden">
@@ -313,6 +392,12 @@ const PurchaseItemSection = ({
               const product = products.find((p) => p.id === item.product_id);
               const allowedUnits = getUnitsForProduct(product);
 
+              const isSerialTracked = product?.tracking_type === "serial";
+              const serialCount = item.serial_numbers?.length || 0;
+              const needsSerials = isSerialTracked && serialCount === 0;
+              const quantityMismatch =
+                isSerialTracked && serialCount !== item.quantity;
+
               return (
                 <TableRow
                   key={idx}
@@ -328,30 +413,75 @@ const PurchaseItemSection = ({
                     <Typography variant="body2" fontWeight={600}>
                       {product?.name || "Unknown Product"}
                     </Typography>
-                    {item.tracking_type !== "none" && (
-                      <Typography
-                        variant="caption"
-                        color="primary"
-                        display="flex"
-                        alignItems="center"
-                        gap={0.5}
-                      >
-                        <ScanBarcode size={10} /> {item.barcode}
-                      </Typography>
-                    )}
+                    <Box display="flex" gap={1} alignItems="center" mt={0.5}>
+                      {item.tracking_type !== "none" && (
+                        <Typography
+                          variant="caption"
+                          color="primary"
+                          display="flex"
+                          alignItems="center"
+                          gap={0.5}
+                        >
+                          <ScanBarcode size={10} /> {item.barcode}
+                        </Typography>
+                      )}
+                      {isSerialTracked && (
+                        <Tooltip
+                          title={
+                            needsSerials
+                              ? "No serials added!"
+                              : quantityMismatch
+                                ? `Quantity mismatch: ${item.quantity} vs ${serialCount} serials`
+                                : "Serial tracked"
+                          }
+                        >
+                          <AlertCircle
+                            size={14}
+                            color={
+                              needsSerials || quantityMismatch ? "red" : "gray"
+                            }
+                          />
+                        </Tooltip>
+                      )}
+                    </Box>
                   </TableCell>
 
                   <TableCell sx={{ p: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="inherit"
-                      onClick={() => handleEditItemBatch(idx)}
-                      startIcon={<Settings size={14} />}
-                      sx={{ fontSize: "0.7rem", py: 0.5 }}
-                    >
-                      {item.batch_number || "Details"}
-                    </Button>
+                    <Box display="flex" flexDirection="column" gap={1}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="inherit"
+                        onClick={() => handleEditItemBatch(idx)}
+                        startIcon={<Settings size={14} />}
+                        sx={{ fontSize: "0.7rem", py: 0.5 }}
+                      >
+                        {item.batch_number || "Details"}
+                      </Button>
+
+                      {isSerialTracked && (
+                        <Button
+                          size="small"
+                          variant={
+                            needsSerials || quantityMismatch
+                              ? "contained"
+                              : "outlined"
+                          }
+                          color={
+                            needsSerials || quantityMismatch
+                              ? "error"
+                              : "success"
+                          }
+                          onClick={() => handleOpenSerialModal(idx)}
+                          startIcon={<ListOrdered size={14} />}
+                          sx={{ fontSize: "0.7rem", py: 0.5 }}
+                        >
+                          {serialCount > 0
+                            ? `${serialCount} Serials`
+                            : "Add Serials"}
+                        </Button>
+                      )}
+                    </Box>
                   </TableCell>
 
                   <TableCell sx={{ p: 1 }}>
@@ -372,7 +502,11 @@ const PurchaseItemSection = ({
                           Number(e.target.value),
                         )
                       }
-                      InputProps={{ disableUnderline: true, readOnly }}
+                      // Make readonly if serial tracked so users use the modal to dictate quantity
+                      InputProps={{
+                        disableUnderline: true,
+                        readOnly: readOnly || isSerialTracked,
+                      }}
                       inputProps={{ min: 1, style: { fontWeight: "bold" } }}
                     />
                   </TableCell>
@@ -500,6 +634,138 @@ const PurchaseItemSection = ({
         onAddItems={handleModalAddItems}
         editItem={editingItemIndex !== null ? items[editingItemIndex] : null}
       />
+
+      {/* BULK SERIAL ENTRY MODAL */}
+      <Dialog
+        open={serialModalOpen}
+        onClose={() => setSerialModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: "bold",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>Bulk Serial Entry</span>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<Wand2 size={16} />}
+            onClick={() => setShowAutoGenerate(!showAutoGenerate)}
+            color={showAutoGenerate ? "primary" : "inherit"}
+          >
+            Auto-Generate
+          </Button>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Collapse in={showAutoGenerate}>
+            <Box
+              sx={{
+                p: 2,
+                mb: 2,
+                bgcolor: "action.hover",
+                borderRadius: 1,
+                border: "1px dashed",
+                borderColor: "divider",
+              }}
+            >
+              <Typography variant="subtitle2" gutterBottom>
+                Generate Sequential Serials
+              </Typography>
+              <Typography variant="caption" color="text.secondary" paragraph>
+                Useful if manufacturer doesn't provide barcodes. Generate them
+                here, print barcode labels later, and scan them at checkout.
+              </Typography>
+              <Box display="flex" gap={2} alignItems="center">
+                <TextField
+                  label="Prefix"
+                  size="small"
+                  value={genPrefix}
+                  onChange={(e) => setGenPrefix(e.target.value)}
+                  sx={{ width: 120 }}
+                />
+                <TextField
+                  label="Start Num"
+                  size="small"
+                  type="number"
+                  value={genStartNum}
+                  onChange={(e) => setGenStartNum(Number(e.target.value) || "")}
+                  sx={{ width: 100 }}
+                />
+                <TextField
+                  label="Quantity"
+                  size="small"
+                  type="number"
+                  value={genCount}
+                  onChange={(e) => setGenCount(Number(e.target.value) || "")}
+                  sx={{ width: 100 }}
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleAutoGenerateSerials}
+                  disabled={!genCount || genCount <= 0}
+                >
+                  Generate
+                </Button>
+              </Box>
+            </Box>
+          </Collapse>
+
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Paste scanned serials below (separated by <strong>newlines</strong>{" "}
+            or <strong>commas</strong>).
+          </Alert>
+
+          <TextField
+            multiline
+            rows={10}
+            fullWidth
+            variant="outlined"
+            placeholder="e.g. SN-001&#10;SN-002&#10;SN-003"
+            value={serialInputText}
+            onChange={(e) => setSerialInputText(e.target.value)}
+            InputProps={{
+              sx: { fontFamily: "monospace", fontSize: "0.85rem" },
+            }}
+          />
+
+          <Box
+            mt={2}
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+          >
+            <Typography variant="body2" color="text.secondary">
+              Duplicate serials will be automatically ignored.
+            </Typography>
+            <Chip
+              label={`${currentModalSerialCount} Serials Detected`}
+              color={currentModalSerialCount > 0 ? "success" : "default"}
+              sx={{ fontWeight: "bold" }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setSerialModalOpen(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveSerials}
+            disabled={
+              currentModalSerialCount === 0 &&
+              items[serialRowIndex!]?.quantity > 0
+            }
+          >
+            Save & Sync Quantity
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

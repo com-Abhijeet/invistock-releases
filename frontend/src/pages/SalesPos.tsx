@@ -14,10 +14,6 @@ import {
   Typography,
   Chip,
   Tooltip,
-  SpeedDial,
-  SpeedDialIcon,
-  SpeedDialAction,
-  Backdrop,
 } from "@mui/material";
 import {
   Save as SaveIcon,
@@ -26,7 +22,6 @@ import {
   Restore as RestoreIcon,
   History as HistoryIcon,
   Close as CloseIcon,
-  Drafts as DraftsIcon,
   Keyboard as KeyboardIcon,
 } from "@mui/icons-material";
 import Grid from "@mui/material/GridLegacy";
@@ -45,20 +40,27 @@ import theme from "../../theme";
 import toast from "react-hot-toast";
 import { api } from "../lib/api/api";
 
-const defaultSalePayload: SalePayload = {
+const defaultSalePayload = {
   reference_no: "",
-  payment_mode: "cash",
+  payment_mode: "cash" as const,
   note: "",
   paid_amount: 0,
   total_amount: 0,
-  status: "pending",
+  round_off: 0,
+  status: "pending" as const,
   items: [],
-  customer_id: 0,
+  customer_id: null,
+  customer_name: "",
+  bill_address: "",
+  state: "",
+  pincode: "",
+  customer_gst_no: "",
+  gstin: "", // Included based on schema update
   is_ecommerce_sale: false,
   is_quote: false,
   is_reverse_charge: false,
   employee_id: null,
-};
+} as SalePayload;
 
 interface CustomerDetails {
   id: number;
@@ -134,7 +136,6 @@ export default function SalesPos() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [draftsModalOpen, setDraftsModalOpen] = useState(false);
   const [drafts, setDrafts] = useState<SavedDraft[]>([]);
-  const [dialOpen, setDialOpen] = useState(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
 
   useEffect(() => {
@@ -192,11 +193,11 @@ export default function SalesPos() {
             setCustomerId(data.customer_id || 0);
             setCustomerName(data.customer_name || "");
             setCustomerPhone(data.customer_phone || "");
-            setCustomerGstNo(data.customer_gst_no || "");
-            setAddress(data.customer_address || "");
+            setCustomerGstNo(data.customer_gst_no || data.gstin || "");
+            setAddress(data.customer_address || data.bill_address || "");
             setCity(data.customer_city || "");
-            setState(data.customer_state || "");
-            setPincode(data.customer_pincode || "");
+            setState(data.customer_state || data.state || "");
+            setPincode(data.customer_pincode || data.pincode || "");
           } else {
             toast.error("Sale not found");
             navigate("/billing");
@@ -228,7 +229,9 @@ export default function SalesPos() {
             );
             setSale({
               ...defaultSalePayload,
-              customer_id: order.customer_id || 0,
+              customer_id: order.customer_id || null,
+              customer_name: order.customer_name || "",
+              bill_address: order.customer_address || "",
               items: mappedItems,
               total_amount: order.total_amount || 0,
               note:
@@ -282,11 +285,52 @@ export default function SalesPos() {
     return () => clearTimeout(timeout);
   }, [query]);
 
+  // --- Snapshot Wrappers: Keeping UI and Payload in Sync ---
+  const handleCustomerNameChange = (val: string) => {
+    setCustomerName(val);
+    setSale((prev) => ({ ...prev, customer_name: val }));
+  };
+
+  const handleAddressChange = (val: string) => {
+    setAddress(val);
+    setSale((prev) => ({ ...prev, bill_address: val }));
+  };
+
+  const handleStateChange = (val: string) => {
+    setState(val);
+    setSale((prev) => ({ ...prev, state: val }));
+  };
+
+  const handlePincodeChange = (val: string) => {
+    setPincode(val);
+    setSale((prev) => ({ ...prev, pincode: val }));
+  };
+
+  const handleGstChange = (val: string) => {
+    setCustomerGstNo(val);
+    setSale((prev: any) => ({ ...prev, customer_gst_no: val, gstin: val }));
+  };
+
   const handleSelect = (customer: CustomerType | null) => {
     if (!customer) {
       setCustomerId(0);
       setCustomerName("");
       setCustomerPhone("");
+      setCustomerGstNo("");
+      setAddress("");
+      setCity("");
+      setState("");
+      setPincode("");
+      setSale((prev: any) => ({
+        ...prev,
+        customer_id: null,
+        customer_name: "",
+        bill_address: "",
+        state: "",
+        pincode: "",
+        customer_gst_no: "",
+        gstin: "",
+      }));
       return;
     }
     const id = customer.id!;
@@ -298,7 +342,18 @@ export default function SalesPos() {
     setCity(customer.city || "");
     setState(customer.state || "");
     setPincode(customer.pincode || "");
-    setSale((prev) => ({ ...prev, customer_id: id }));
+
+    // Auto-update payload snapshot for selected customer
+    setSale((prev: any) => ({
+      ...prev,
+      customer_id: id,
+      customer_name: customer.name || "",
+      bill_address: customer.address || "",
+      state: customer.state || "",
+      pincode: customer.pincode || "",
+      customer_gst_no: customer.gst_no || "",
+      gstin: customer.gst_no || "",
+    }));
   };
 
   useEffect(() => {
@@ -344,7 +399,13 @@ export default function SalesPos() {
         state,
         pincode,
       },
-      salePayload: sale,
+      salePayload: {
+        ...sale,
+        customer_name: customerName,
+        bill_address: address,
+        state: state,
+        pincode: pincode,
+      },
     };
     const updatedDrafts = [newDraft, ...drafts];
     setDrafts(updatedDrafts);
@@ -375,24 +436,6 @@ export default function SalesPos() {
     );
   };
 
-  const actions = [
-    {
-      icon: <KeyboardIcon />,
-      name: "Shortcuts",
-      onClick: () => setShortcutHelpOpen(true),
-    },
-    ...(mode === "new"
-      ? [
-          { icon: <SaveIcon />, name: "Save Draft", onClick: saveDraft },
-          {
-            icon: <FolderIcon />,
-            name: "View Drafts",
-            onClick: () => setDraftsModalOpen(true),
-          },
-        ]
-      : []),
-  ];
-
   return (
     <Box
       sx={{
@@ -404,7 +447,76 @@ export default function SalesPos() {
         position: "relative",
       }}
     >
-      <Box sx={{ p: 2, pb: 1, flexShrink: 0, zIndex: 10 }}>
+      {/* Compact Top Action Bar */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          m: 0,
+          p: 0,
+          bgcolor: theme.palette.background.paper,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          zIndex: 10,
+        }}
+      >
+        {mode === "new" && (
+          <>
+            <Button
+              variant="text"
+              color="primary"
+              onClick={saveDraft}
+              startIcon={<SaveIcon sx={{ fontSize: "0.9rem !important" }} />}
+              sx={{
+                fontSize: "0.65rem",
+                textTransform: "none",
+                py: 0.5,
+                px: 1.5,
+                minWidth: "auto",
+                borderRadius: 0,
+                borderRight: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+              Save Draft
+            </Button>
+            <Button
+              variant="text"
+              color="primary"
+              onClick={() => setDraftsModalOpen(true)}
+              startIcon={<FolderIcon sx={{ fontSize: "0.9rem !important" }} />}
+              sx={{
+                fontSize: "0.65rem",
+                textTransform: "none",
+                py: 0.5,
+                px: 1.5,
+                minWidth: "auto",
+                borderRadius: 0,
+                borderRight: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+              View Drafts
+            </Button>
+          </>
+        )}
+        <Button
+          variant="text"
+          color="info"
+          onClick={() => setShortcutHelpOpen(true)}
+          startIcon={<KeyboardIcon sx={{ fontSize: "0.9rem !important" }} />}
+          sx={{
+            fontSize: "0.65rem",
+            textTransform: "none",
+            py: 0.5,
+            px: 1.5,
+            minWidth: "auto",
+            borderRadius: 0,
+          }}
+        >
+          Shortcuts
+        </Button>
+      </Box>
+
+      <Box sx={{ p: 2, pt: 1, flexShrink: 0, zIndex: 10 }}>
         <SalesPosHeaderSection
           sale={sale}
           options={options}
@@ -420,21 +532,25 @@ export default function SalesPos() {
           city={city}
           state={state}
           pincode={pincode}
-          setCustomerName={setCustomerName}
+          setCustomerName={handleCustomerNameChange} // Wrapped to sync payload
           setQuery={setQuery}
           setCustomerId={setCustomerId}
           handleSelect={handleSelect}
           setSelectedPhone={setCustomerPhone}
-          setCustomerGstNo={setCustomerGstNo}
-          setAddress={setAddress}
+          setCustomerGstNo={handleGstChange} // Wrapped to sync payload
+          setAddress={handleAddressChange} // Wrapped to sync payload
           setCity={setCity}
-          setState={setState}
-          setPincode={setPincode}
+          setState={handleStateChange} // Wrapped to sync payload
+          setPincode={handlePincodeChange} // Wrapped to sync payload
         />
       </Box>
       <Box sx={{ flexGrow: 1, overflowY: "auto", px: 2, pb: 2 }}>
         <SaleItemSection
-          items={sale.items}
+          items={sale.items.map(item => ({
+            ...item,
+            batch_id: item.batch_id ?? undefined,
+            serial_id: item.serial_id ?? undefined,
+          }))}
           onItemsChange={handleItemsChange}
           mode={mode === "edit" ? "new" : mode}
           onOpenOverview={handleOpenOverview}
@@ -471,42 +587,6 @@ export default function SalesPos() {
         onClose={() => setOverviewModalOpen(false)}
         productId={selectedProductId || ""}
       />
-      {/* Backdrop for better focus when menu is open */}
-      <Backdrop
-        open={dialOpen}
-        sx={{
-          zIndex: 20,
-          bgcolor: "rgba(255,255,255,0.3)",
-          backdropFilter: "blur(2px)",
-        }}
-      />
-
-      <SpeedDial
-        ariaLabel="Sales Actions"
-        sx={{ position: "absolute", bottom: 100, right: 24, zIndex: 30 }}
-        icon={<SpeedDialIcon icon={<DraftsIcon />} openIcon={<CloseIcon />} />}
-        onClose={() => setDialOpen(false)}
-        onOpen={() => setDialOpen(true)}
-        open={dialOpen}
-        direction="up"
-        FabProps={{
-          color: "secondary",
-          size: "medium",
-          sx: { boxShadow: theme.shadows[4] },
-        }}
-      >
-        {actions.map((action) => (
-          <SpeedDialAction
-            key={action.name}
-            icon={action.icon}
-            tooltipTitle={action.name}
-            onClick={() => {
-              action.onClick();
-              setDialOpen(false);
-            }}
-          />
-        ))}
-      </SpeedDial>
 
       {/* --- KEYBOARD SHORTCUTS MODAL --- */}
       <Dialog

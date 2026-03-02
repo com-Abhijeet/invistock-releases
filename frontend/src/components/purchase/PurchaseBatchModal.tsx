@@ -19,6 +19,7 @@ import {
   IconButton,
   Tooltip,
   createFilterOptions,
+  Checkbox,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -28,6 +29,8 @@ import {
   CheckCircle,
   AlertCircle,
   ArrowDown,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import type { Product } from "../../lib/types/product";
 import type { PurchaseItem } from "../../lib/types/purchaseTypes";
@@ -87,6 +90,7 @@ export default function PurchaseBatchModal({
   });
 
   const [distributeQty, setDistributeQty] = useState(false);
+  const [mrpGap, setMrpGap] = useState<number | "">(0);
   const [loading, setLoading] = useState(false);
   const [barcodeStatus, setBarcodeStatus] = useState<
     "idle" | "checking" | "available" | "duplicate"
@@ -124,6 +128,7 @@ export default function PurchaseBatchModal({
           barcode: editItem.barcode || "",
           gst_rate: editItem.gst_rate || 0,
         });
+        setMrpGap(0);
         if (editItem.barcode) checkBarcode(editItem.barcode, true);
       } else {
         // Bulk Mode
@@ -143,6 +148,7 @@ export default function PurchaseBatchModal({
           barcode: "",
           gst_rate: 0,
         });
+        setMrpGap(0);
         setBarcodeStatus("idle");
       }
       setTimeout(() => {
@@ -234,7 +240,7 @@ export default function PurchaseBatchModal({
 
     setLoading(true);
     try {
-      const itemPromises = selectedProducts.map(async (prod) => {
+      const itemPromises = selectedProducts.map(async (prod, index) => {
         let qty = formData.quantity;
         if (distributeQty && selectedProducts.length > 0) {
           qty = parseFloat(
@@ -248,6 +254,18 @@ export default function PurchaseBatchModal({
             itemBarcode = prod.barcode || "";
           } else {
             itemBarcode = await generateBarcode();
+          }
+        }
+
+        // Apply MRP Increment Gap logic
+        const currentMrp =
+          (Number(formData.mrp) || 0) + index * (Number(mrpGap) || 0);
+        const currentRate = Number(formData.rate) || 0;
+
+        let currentMargin = formData.margin;
+        if (!editItem && Number(mrpGap) > 0) {
+          if (currentRate > 0 && currentMrp > 0) {
+            currentMargin = ((currentMrp - currentRate) / currentRate) * 100;
           }
         }
 
@@ -270,12 +288,12 @@ export default function PurchaseBatchModal({
           expiry_date: formData.expiry_date,
           mfg_date: formData.mfg_date,
           location: formData.location,
-          mrp: formData.mrp,
-          margin: formData.margin,
+          mrp: parseFloat(currentMrp.toFixed(2)),
+          margin: parseFloat(currentMargin.toFixed(2)),
           mop: formData.mop,
           mfw_price: formData.mfw_price,
           barcode: itemBarcode,
-          serial_numbers: [],
+          serial_numbers: editItem?.serial_numbers || [],
         } as ExtendedPurchaseItem;
       });
 
@@ -294,6 +312,7 @@ export default function PurchaseBatchModal({
           quantity: 1,
           barcode: "",
         }));
+        setMrpGap(0);
         setBarcodeStatus("idle");
         setTimeout(() => {
           productInputRef.current?.focus();
@@ -329,8 +348,6 @@ export default function PurchaseBatchModal({
 
     // 1. Shift + ArrowDown: Select the *Next* item (Expand Selection Downwards)
     if (e.shiftKey && e.key === "ArrowDown") {
-      // Don't prevent default, let MUI highlight move visually
-      // Logic: If highlighted item is index N, add item at index N+1 to selection
       const currentIndex = visibleOptionsRef.current.findIndex(
         (p) => p.id === highlightedOption?.id,
       );
@@ -341,7 +358,6 @@ export default function PurchaseBatchModal({
       ) {
         const nextItem = visibleOptionsRef.current[currentIndex + 1];
 
-        // Add to selection if not present
         if (nextItem && !selectedProducts.some((p) => p.id === nextItem.id)) {
           setSelectedProducts((prev) => [...prev, nextItem]);
         }
@@ -351,7 +367,6 @@ export default function PurchaseBatchModal({
 
     // 2. Shift + ArrowUp: Deselect the *Current* highlighted item (Contract Selection)
     if (e.shiftKey && e.key === "ArrowUp") {
-      // Logic: Deselect the currently highlighted item before moving up
       if (highlightedOption) {
         setSelectedProducts((prev) =>
           prev.filter((p) => p.id !== highlightedOption.id),
@@ -364,13 +379,11 @@ export default function PurchaseBatchModal({
     if (e.key === "Enter") {
       const val = (e.target as HTMLInputElement).value;
 
-      // If selection exists and input is empty, Enter confirms and moves focus
       if (selectedProducts.length > 0 && val === "") {
         e.preventDefault();
         e.stopPropagation();
         rateInputRef.current?.focus();
       }
-      // If input has text, default MUI behavior applies (selects highlighted item and clears input)
     }
   };
 
@@ -430,12 +443,12 @@ export default function PurchaseBatchModal({
               options={products}
               autoHighlight
               disableCloseOnSelect={!editItem}
-              getOptionLabel={(option) => `${option.name}`}
+              getOptionLabel={(option) =>
+                `${option.name} (${option.product_code})`
+              }
               value={editItem ? selectedProducts[0] || null : selectedProducts}
               inputValue={inputValue}
               onInputChange={(_, newInputValue) => {
-                // Prevent clearing text when selecting via mouse/keyboard if unwanted
-                // Standard behavior is OK, but for Shift+Down we keep text via logic below
                 setInputValue(newInputValue);
               }}
               onChange={(_, newValue) => {
@@ -445,17 +458,34 @@ export default function PurchaseBatchModal({
                   setSelectedProducts((newValue as Product[]) || []);
                 }
               }}
-              // Track Highlighted Option for Explorer-style Logic
               onHighlightChange={(_e, option) => {
                 setHighlightedOption(option);
               }}
-              // Capture visible options for keyboard navigation context
               filterOptions={(options, params) => {
                 const filtered = filter(options, params);
                 visibleOptionsRef.current = filtered;
                 return filtered;
               }}
               disabled={!!editItem || loading}
+              renderOption={(props, option, { selected }) => (
+                <li {...props}>
+                  {!editItem && (
+                    <Checkbox
+                      icon={<Square size={18} />}
+                      checkedIcon={<CheckSquare size={18} />}
+                      style={{ marginRight: 8, padding: 0 }}
+                      checked={selected}
+                    />
+                  )}
+                  <Box>
+                    <Typography variant="body2">{option.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {option.product_code}{" "}
+                      {option.barcode ? `| ${option.barcode}` : ""}
+                    </Typography>
+                  </Box>
+                </li>
+              )}
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -502,7 +532,7 @@ export default function PurchaseBatchModal({
           </Grid>
           <Grid item xs={12} sm={4}>
             <TextField
-              label="MRP (Calculated)"
+              label={!editItem ? "Base MRP (Item 1)" : "MRP (Calculated)"}
               type="number"
               fullWidth
               value={formData.mrp}
@@ -514,6 +544,30 @@ export default function PurchaseBatchModal({
               }}
             />
           </Grid>
+
+          {/* The Incremental MRP Gap feature */}
+          {!editItem && (
+            <Grid item xs={12}>
+              <Box display="flex" alignItems="center" gap={2}>
+                <TextField
+                  label="MRP Increment Gap (Rs.)"
+                  type="number"
+                  size="small"
+                  sx={{ width: 250 }}
+                  value={mrpGap}
+                  onChange={(e) => setMrpGap(Number(e.target.value))}
+                  helperText="Added to MRP for each subsequent item"
+                />
+                {Number(mrpGap) > 0 && selectedProducts.length > 1 && (
+                  <Typography variant="caption" color="primary">
+                    Preview: Item 1 (₹{Number(formData.mrp)}), Item 2 (₹
+                    {Number(formData.mrp) + Number(mrpGap)}), Item 3 (₹
+                    {Number(formData.mrp) + Number(mrpGap) * 2})...
+                  </Typography>
+                )}
+              </Box>
+            </Grid>
+          )}
 
           {/* Secondary Prices */}
           <Grid item xs={6} sm={3}>

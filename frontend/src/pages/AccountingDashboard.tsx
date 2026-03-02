@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import {
   Box,
   Card,
@@ -19,6 +19,8 @@ import {
   CircularProgress,
   useTheme,
   Button,
+  Collapse,
+  IconButton,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -34,6 +36,8 @@ import {
   CreditCard,
   Activity,
   FileText,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -44,9 +48,16 @@ import {
   getCustomerLedger,
   getSupplierLedger,
   getCashBankBook,
+  getReceivablesAging,
+  getPayablesAging,
+  getCustomerBillByBill,
+  getSupplierBillByBill,
   PnLData,
   LedgerData,
   StockSummaryData,
+  ARAgingRecord,
+  APAgingRecord,
+  BillByBillRecord,
 } from "../lib/api/accountingService";
 import { getCustomers } from "../lib/api/customerService";
 import { getSuppliers } from "../lib/api/supplierService";
@@ -67,7 +78,9 @@ type ReportType =
   | "customer_ledger"
   | "supplier_ledger"
   | "cash_book"
-  | "bank_book";
+  | "bank_book"
+  | "receivables_aging"
+  | "payables_aging";
 
 export default function AccountingDashboard() {
   const theme = useTheme();
@@ -83,7 +96,7 @@ export default function AccountingDashboard() {
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierType[]>([]);
   const [selectedEntityId, setSelectedEntityId] = useState<number | "">("");
-  const [shopName, setShopName] = useState("");
+  const [shopName, setShopName] = useState("Kosh Business");
 
   // Data State
   const [loading, setLoading] = useState(false);
@@ -92,6 +105,16 @@ export default function AccountingDashboard() {
   const [stockData, setStockData] = useState<any>(null);
   const [stockSummaryData, setStockSummaryData] =
     useState<StockSummaryData | null>(null);
+
+  // Aging & Bill-by-Bill State
+  const [agingData, setAgingData] = useState<
+    ARAgingRecord[] | APAgingRecord[] | null
+  >(null);
+  const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+  const [billByBillData, setBillByBillData] = useState<
+    BillByBillRecord[] | null
+  >(null);
+  const [loadingBills, setLoadingBills] = useState(false);
 
   useEffect(() => {
     getCustomers({})
@@ -103,7 +126,6 @@ export default function AccountingDashboard() {
     getShopData()
       .then((res) => {
         if (res?.shop_name) setShopName(res.shop_name);
-        console.log("Shop name fetched:", res?.shop_name);
       })
       .catch(() => {});
   }, []);
@@ -117,6 +139,9 @@ export default function AccountingDashboard() {
     setLedgerData(null);
     setStockData(null);
     setStockSummaryData(null);
+    setAgingData(null);
+    setExpandedRowId(null);
+    setBillByBillData(null);
 
     const startDate = filters.from || "";
     const endDate = filters.to || "";
@@ -151,6 +176,12 @@ export default function AccountingDashboard() {
       } else if (reportType === "bank_book") {
         const data = await getCashBankBook("bank", startDate, endDate);
         setLedgerData(data);
+      } else if (reportType === "receivables_aging") {
+        const data = await getReceivablesAging();
+        setAgingData(data);
+      } else if (reportType === "payables_aging") {
+        const data = await getPayablesAging();
+        setAgingData(data);
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to fetch report");
@@ -170,15 +201,13 @@ export default function AccountingDashboard() {
     });
   };
 
-  // ----------------------------------------------------------------------
-  // HANDLERS FOR ELECTRON PRINT / PDF / EXCEL
-  // ----------------------------------------------------------------------
-
   const getActiveReportData = () => {
     if (reportType === "pnl") return pnlData;
     if (reportType === "stock") return stockData;
     if (reportType === "stock_summary") return stockSummaryData;
-    return ledgerData; // For all ledgers & books
+    if (reportType === "receivables_aging" || reportType === "payables_aging")
+      return agingData;
+    return ledgerData;
   };
 
   const getEntityName = () => {
@@ -192,12 +221,33 @@ export default function AccountingDashboard() {
   const handleElectronAction = async (action: "pdf" | "print") => {
     if (!ipcRenderer)
       return toast.error("Desktop app required for this feature.");
-    const data = getActiveReportData();
+    let data = getActiveReportData();
     if (!data) return toast.error("No data available to print.");
 
     toast.loading(
       action === "pdf" ? "Generating PDF..." : "Sending to Printer...",
     );
+
+    // --- DETAILED AGING REPORT LOGIC ---
+    // If it's an aging report, we fetch the bill-by-bill breakdown for ALL entities
+    // and attach it to the payload so the PDF generator can loop through it.
+    if (reportType === "receivables_aging" || reportType === "payables_aging") {
+      try {
+        const isReceivable = reportType === "receivables_aging";
+        const detailedData = await Promise.all(
+          (data as any[]).map(async (row: any) => {
+            const bills = isReceivable
+              ? await getCustomerBillByBill(row.customer_id)
+              : await getSupplierBillByBill(row.supplier_id);
+            return { ...row, bills }; // Attach nested bills
+          }),
+        );
+        data = detailedData; // Override payload with detailed data
+      } catch (err) {
+        toast.dismiss();
+        return toast.error("Failed to fetch detailed bills for report.");
+      }
+    }
 
     const meta = {
       shopName,
@@ -205,8 +255,6 @@ export default function AccountingDashboard() {
       period: { start: filters.from, end: filters.to },
       fileName: `${reportType.toUpperCase()}_${new Date().toISOString().slice(0, 10)}`,
     };
-
-    console.log("META", meta);
 
     try {
       const res = await ipcRenderer.invoke(
@@ -228,20 +276,33 @@ export default function AccountingDashboard() {
 
   const handleExportExcel = async () => {
     if (!ipcRenderer) return toast.error("Desktop app required.");
-    // ... [existing excel logic remains unchanged] ...
     let dataToExport: any[] = [];
     if (reportType === "pnl" && pnlData) {
       dataToExport = [
         { Item: "Total Revenue", Amount: pnlData.totalRevenue },
         { Item: "Cost of Goods Sold (COGS)", Amount: pnlData.totalCogs },
         { Item: "Gross Profit", Amount: pnlData.grossProfit },
-        ...pnlData.expenses.map((e) => ({
-          Item: `Expense: ${e.category}`,
-          Amount: e.total,
-        })),
-        { Item: "Total Expenses", Amount: pnlData.totalExpenses },
-        { Item: "NET PROFIT", Amount: pnlData.netProfit },
       ];
+      if (pnlData.stockGain > 0)
+        dataToExport.push({
+          Item: "Other Income: Inventory Gain",
+          Amount: pnlData.stockGain,
+        });
+      pnlData.expenses.forEach((e) =>
+        dataToExport.push({ Item: `Expense: ${e.category}`, Amount: e.total }),
+      );
+      if (pnlData.stockLoss > 0)
+        dataToExport.push({
+          Item: "Expense: Inventory Loss (Adj.)",
+          Amount: pnlData.stockLoss,
+        });
+      dataToExport.push(
+        {
+          Item: "Total Expenses (Inc. Stock Loss)",
+          Amount: pnlData.totalExpenses + pnlData.stockLoss,
+        },
+        { Item: "NET PROFIT", Amount: pnlData.netProfit },
+      );
     } else if (
       ["customer_ledger", "supplier_ledger", "cash_book", "bank_book"].includes(
         reportType,
@@ -272,12 +333,26 @@ export default function AccountingDashboard() {
         "Net Change": r.net_change,
         "Closing Qty": r.closing_qty,
       }));
+    } else if (
+      (reportType === "receivables_aging" || reportType === "payables_aging") &&
+      agingData
+    ) {
+      const isReceivable = reportType === "receivables_aging";
+      dataToExport = agingData.map((r: any) => ({
+        "Party Name": isReceivable ? r.customer_name : r.supplier_name,
+        Phone: isReceivable ? r.customer_phone : r.supplier_phone,
+        "0 - 30 Days": r.days_0_30,
+        "31 - 60 Days": r.days_31_60,
+        "61 - 90 Days": r.days_61_90,
+        "Over 90 Days": r.days_90_plus,
+        "Total Outstanding": r.total_outstanding,
+      }));
     }
 
     if (dataToExport.length === 0) return toast.error("No data to export");
     toast.loading("Exporting...");
     try {
-      const res = await ipcRenderer.invoke("generate-excel-report", {
+      const res = await ipcRenderer.invoke("export-excel", {
         data: dataToExport,
         fileName: `${reportType}_${Date.now()}`,
       });
@@ -285,6 +360,31 @@ export default function AccountingDashboard() {
       if (res.success) toast.success("Excel saved!");
     } catch (e) {
       toast.dismiss();
+    }
+  };
+
+  const handleExpandRow = async (id: number) => {
+    if (expandedRowId === id) {
+      setExpandedRowId(null);
+      setBillByBillData(null);
+      return;
+    }
+
+    setExpandedRowId(id);
+    setLoadingBills(true);
+    setBillByBillData(null);
+    try {
+      if (reportType === "receivables_aging") {
+        const data = await getCustomerBillByBill(id);
+        setBillByBillData(data);
+      } else {
+        const data = await getSupplierBillByBill(id);
+        setBillByBillData(data);
+      }
+    } catch (err) {
+      toast.error("Failed to load bill breakdown");
+    } finally {
+      setLoadingBills(false);
     }
   };
 
@@ -324,7 +424,7 @@ export default function AccountingDashboard() {
             <StatCard
               title="Net Profit / (Loss)"
               value={formatCurrency(pnlData.netProfit)}
-              subtext="After Operating Expenses"
+              subtext="Final Profit"
               icon={
                 pnlData.netProfit >= 0 ? (
                   <TrendingUp size={20} />
@@ -340,12 +440,13 @@ export default function AccountingDashboard() {
             />
           </Grid>
         </Grid>
+
         <Typography
           variant="subtitle2"
           color="text.secondary"
           sx={{ mb: 1, textTransform: "uppercase" }}
         >
-          Operating Expenses Breakdown
+          Income & Expenses Breakdown
         </Typography>
         <TableContainer
           component={Paper}
@@ -356,27 +457,43 @@ export default function AccountingDashboard() {
           <Table size="small">
             <TableHead sx={{ bgcolor: theme.palette.action.hover }}>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Expense Category</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 600 }}>
                   Amount
                 </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {pnlData.expenses.length === 0 && (
+              {/* Other Income */}
+              {pnlData.stockGain > 0 && (
+                <TableRow sx={{ bgcolor: theme.palette.success.light + "20" }}>
+                  <TableCell>
+                    <b>Other Income: Inventory Gain (Adjustments)</b>
+                  </TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{ color: "success.main", fontWeight: "bold" }}
+                  >
+                    {formatCurrency(pnlData.stockGain)}
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {/* Operating Expenses */}
+              {pnlData.expenses.length === 0 && pnlData.stockLoss === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={2}
                     align="center"
                     sx={{ py: 3, color: "text.secondary" }}
                   >
-                    No expenses recorded in this period.
+                    No expenses or losses recorded.
                   </TableCell>
                 </TableRow>
               )}
               {pnlData.expenses.map((exp, i) => (
                 <TableRow key={i}>
-                  <TableCell>{exp.category}</TableCell>
+                  <TableCell>Expense: {exp.category}</TableCell>
                   <TableCell
                     align="right"
                     sx={{ color: "error.main", fontWeight: 500 }}
@@ -385,12 +502,28 @@ export default function AccountingDashboard() {
                   </TableCell>
                 </TableRow>
               ))}
+
+              {/* Inventory Loss */}
+              {pnlData.stockLoss > 0 && (
+                <TableRow>
+                  <TableCell>Expense: Inventory Loss (Adjustments)</TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{ color: "error.main", fontWeight: 500 }}
+                  >
+                    {formatCurrency(pnlData.stockLoss)}
+                  </TableCell>
+                </TableRow>
+              )}
+
               <TableRow sx={{ bgcolor: theme.palette.action.selected }}>
                 <TableCell>
-                  <b>Total Operating Expenses</b>
+                  <b>Total Outflows (Expenses + Stock Loss)</b>
                 </TableCell>
                 <TableCell align="right">
-                  <b>{formatCurrency(pnlData.totalExpenses)}</b>
+                  <b>
+                    {formatCurrency(pnlData.totalExpenses + pnlData.stockLoss)}
+                  </b>
                 </TableCell>
               </TableRow>
             </TableBody>
@@ -689,20 +822,303 @@ export default function AccountingDashboard() {
     );
   };
 
+  const renderAgingReport = () => {
+    if (!agingData) return null;
+    const isReceivable = reportType === "receivables_aging";
+
+    return (
+      <Box>
+        <Typography
+          variant="subtitle2"
+          color="text.secondary"
+          sx={{ mb: 1, textTransform: "uppercase" }}
+        >
+          {isReceivable
+            ? "Accounts Receivable (A/R) Aging"
+            : "Accounts Payable (A/P) Aging"}{" "}
+          Overview
+        </Typography>
+        <TableContainer
+          component={Paper}
+          variant="outlined"
+          elevation={0}
+          sx={{ borderRadius: 2 }}
+        >
+          <Table size="small">
+            <TableHead sx={{ bgcolor: theme.palette.action.hover }}>
+              <TableRow>
+                <TableCell width={50}></TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>
+                  {isReceivable ? "Customer" : "Supplier"} Name
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>
+                  0 - 30 Days
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>
+                  31 - 60 Days
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>
+                  61 - 90 Days
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>
+                  Over 90 Days
+                </TableCell>
+                <TableCell
+                  align="right"
+                  sx={{
+                    fontWeight: 600,
+                    color: isReceivable ? "success.main" : "error.main",
+                  }}
+                >
+                  Total Outstanding
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {agingData.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={7}
+                    align="center"
+                    sx={{ py: 3, color: "text.secondary" }}
+                  >
+                    No outstanding balances found.
+                  </TableCell>
+                </TableRow>
+              )}
+              {agingData.map((row: any) => {
+                const entityId = isReceivable
+                  ? row.customer_id
+                  : row.supplier_id;
+                const isExpanded = expandedRowId === entityId;
+
+                return (
+                  <Fragment key={entityId}>
+                    <TableRow hover sx={{ "& > *": { borderBottom: "unset" } }}>
+                      <TableCell>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleExpandRow(entityId)}
+                        >
+                          {isExpanded ? (
+                            <ChevronUp size={18} />
+                          ) : (
+                            <ChevronDown size={18} />
+                          )}
+                        </IconButton>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight="600">
+                          {isReceivable ? row.customer_name : row.supplier_name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {isReceivable
+                            ? row.customer_phone
+                            : row.supplier_phone}
+                        </Typography>
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color:
+                            row.days_0_30 > 0
+                              ? "text.primary"
+                              : "text.disabled",
+                        }}
+                      >
+                        {formatCurrency(row.days_0_30)}
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color:
+                            row.days_31_60 > 0
+                              ? "warning.main"
+                              : "text.disabled",
+                        }}
+                      >
+                        {formatCurrency(row.days_31_60)}
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color:
+                            row.days_61_90 > 0
+                              ? "error.light"
+                              : "text.disabled",
+                        }}
+                      >
+                        {formatCurrency(row.days_61_90)}
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color:
+                            row.days_90_plus > 0
+                              ? "error.main"
+                              : "text.disabled",
+                          fontWeight: row.days_90_plus > 0 ? "bold" : "normal",
+                        }}
+                      >
+                        {formatCurrency(row.days_90_plus)}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography
+                          variant="body2"
+                          fontWeight="bold"
+                          color={isReceivable ? "success.main" : "error.main"}
+                        >
+                          {formatCurrency(row.total_outstanding)}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+
+                    <TableRow sx={{ bgcolor: theme.palette.action.hover }}>
+                      <TableCell
+                        style={{ paddingBottom: 0, paddingTop: 0 }}
+                        colSpan={7}
+                      >
+                        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                          <Box
+                            sx={{
+                              m: 2,
+                              p: 2,
+                              bgcolor: "background.paper",
+                              borderRadius: 2,
+                              border: `1px solid ${theme.palette.divider}`,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              fontWeight="bold"
+                              color="text.secondary"
+                              gutterBottom
+                              sx={{ display: "block", mb: 1 }}
+                            >
+                              UNPAID BILLS BREAKDOWN
+                            </Typography>
+                            {loadingBills ? (
+                              <Box p={2} textAlign="center">
+                                <CircularProgress size={24} />
+                              </Box>
+                            ) : billByBillData && billByBillData.length > 0 ? (
+                              <Table size="small">
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell sx={{ fontSize: "0.75rem" }}>
+                                      Date
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: "0.75rem" }}>
+                                      Invoice / Ref No
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: "0.75rem" }}>
+                                      Age
+                                    </TableCell>
+                                    <TableCell
+                                      align="right"
+                                      sx={{ fontSize: "0.75rem" }}
+                                    >
+                                      Invoice Total
+                                    </TableCell>
+                                    <TableCell
+                                      align="right"
+                                      sx={{ fontSize: "0.75rem" }}
+                                    >
+                                      Paid
+                                    </TableCell>
+                                    <TableCell
+                                      align="right"
+                                      sx={{
+                                        fontSize: "0.75rem",
+                                        fontWeight: "bold",
+                                      }}
+                                    >
+                                      Pending
+                                    </TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {billByBillData.map((bill, j) => (
+                                    <TableRow key={j}>
+                                      <TableCell>
+                                        {new Date(
+                                          bill.date,
+                                        ).toLocaleDateString()}
+                                      </TableCell>
+                                      <TableCell sx={{ fontWeight: 500 }}>
+                                        {bill.reference_no ||
+                                          bill.internal_ref_no}
+                                      </TableCell>
+                                      <TableCell
+                                        sx={{
+                                          color:
+                                            bill.age_days > 30
+                                              ? "error.main"
+                                              : "inherit",
+                                        }}
+                                      >
+                                        {bill.age_days} Days
+                                      </TableCell>
+                                      <TableCell align="right">
+                                        {formatCurrency(bill.invoice_amount)}
+                                      </TableCell>
+                                      <TableCell
+                                        align="right"
+                                        sx={{ color: "text.secondary" }}
+                                      >
+                                        {formatCurrency(bill.paid_amount)}
+                                      </TableCell>
+                                      <TableCell
+                                        align="right"
+                                        sx={{ fontWeight: "bold" }}
+                                      >
+                                        {formatCurrency(bill.pending_amount)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                p={1}
+                              >
+                                No pending bills details found.
+                              </Typography>
+                            )}
+                          </Box>
+                        </Collapse>
+                      </TableCell>
+                    </TableRow>
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    );
+  };
+
+  const isAgingReport =
+    reportType === "receivables_aging" || reportType === "payables_aging";
+  const hideDateFilter = reportType !== "stock" || isAgingReport;
+  const hideEntityFilter = isAgingReport;
+
   return (
     <Box
       p={2}
       pt={3}
       sx={{ bgcolor: theme.palette.background.default, minHeight: "100vh" }}
     >
-      {/* Unified Dashboard Header */}
       <DashboardHeader
         title="Accounting & Financials"
         showSearch={false}
         onFilterChange={setFilters}
         onRefresh={handleFetchReport}
         initialFilter="month"
-        showDateFilters={reportType !== "stock"}
+        showDateFilters={hideDateFilter}
         actions={
           <Stack direction="row" spacing={1}>
             <Button
@@ -738,7 +1154,6 @@ export default function AccountingDashboard() {
         }
       />
 
-      {/* Control Panel (Entity & Report Selection) */}
       <Card
         elevation={0}
         sx={{
@@ -771,6 +1186,12 @@ export default function AccountingDashboard() {
                 <MenuItem value="supplier_ledger">
                   Supplier Ledger (A/P)
                 </MenuItem>
+                <MenuItem value="receivables_aging">
+                  A/R Outstanding Aging
+                </MenuItem>
+                <MenuItem value="payables_aging">
+                  A/P Outstanding Aging
+                </MenuItem>
                 <MenuItem value="cash_book">Cash Book</MenuItem>
                 <MenuItem value="bank_book">Bank Book</MenuItem>
                 <MenuItem value="stock">Stock Valuation Report</MenuItem>
@@ -780,7 +1201,7 @@ export default function AccountingDashboard() {
               </TextField>
             </Grid>
 
-            {reportType === "customer_ledger" && (
+            {reportType === "customer_ledger" && !hideEntityFilter && (
               <Grid item xs={12} md={4}>
                 <TextField
                   select
@@ -801,7 +1222,7 @@ export default function AccountingDashboard() {
               </Grid>
             )}
 
-            {reportType === "supplier_ledger" && (
+            {reportType === "supplier_ledger" && !hideEntityFilter && (
               <Grid item xs={12} md={4}>
                 <TextField
                   select
@@ -825,7 +1246,6 @@ export default function AccountingDashboard() {
         </CardContent>
       </Card>
 
-      {/* Main Content Area */}
       <Box id="printable-report">
         {loading ? (
           <Box
@@ -838,21 +1258,26 @@ export default function AccountingDashboard() {
           </Box>
         ) : (
           <>
-            {!pnlData && !ledgerData && !stockData && !stockSummaryData && (
-              <Box py={10} textAlign="center" color="text.secondary">
-                <CreditCard
-                  size={48}
-                  opacity={0.3}
-                  style={{ marginBottom: 16 }}
-                />
-                <Typography variant="h6">
-                  Select parameters to view financials.
-                </Typography>
-              </Box>
-            )}
+            {!pnlData &&
+              !ledgerData &&
+              !stockData &&
+              !stockSummaryData &&
+              !agingData && (
+                <Box py={10} textAlign="center" color="text.secondary">
+                  <CreditCard
+                    size={48}
+                    opacity={0.3}
+                    style={{ marginBottom: 16 }}
+                  />
+                  <Typography variant="h6">
+                    Select parameters to view financials.
+                  </Typography>
+                </Box>
+              )}
             {reportType === "pnl" && renderPnL()}
             {reportType === "stock" && renderStockValuation()}
             {reportType === "stock_summary" && renderStockSummary()}
+            {isAgingReport && renderAgingReport()}
             {[
               "customer_ledger",
               "supplier_ledger",

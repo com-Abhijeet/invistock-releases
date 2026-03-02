@@ -9,6 +9,15 @@ const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
 const a5Portrait = (data) => {
   const { sale, shop } = data;
 
+  // Snapshot Variables (New Schema) w/ Legacy Fallbacks
+  const custName = sale.customer_name || "Cash Customer";
+  const custPhone = sale.customer_phone || "";
+  const custAddress = sale.bill_address || sale.customer_address || "";
+  const custCity = sale.customer_city || "";
+  const custState = sale.state || sale.customer_state || "";
+  const custPincode = sale.pincode || sale.customer_pincode || "";
+  const custGst = sale.gstin || sale.customer_gst_no || "";
+
   // 1. Preferences & Dynamic UI
   const gstEnabled = Boolean(shop.gst_enabled);
   const showHSN = Boolean(shop.hsn_required);
@@ -17,18 +26,19 @@ const a5Portrait = (data) => {
     shop.show_gst_breakup !== undefined ? Boolean(shop.show_gst_breakup) : true;
   const showDiscountCol = Boolean(shop.show_discount_column);
 
-  // Logic: If inclusive, hide per-item GST columns
-  const showGstPerItem = gstEnabled && !inclusiveTax;
+  // Logic: If inclusive, hide per-item GST Amount columns, preserve % column
+  const showGstPctCol = gstEnabled && showGstBreakup;
+  const showGstAmtCol = gstEnabled && showGstBreakup && !inclusiveTax;
 
   // Header State Logic
   const isInterstate =
     gstEnabled &&
     shop.state &&
-    sale.customer_state &&
-    shop.state.toLowerCase() !== sale.customer_state.toLowerCase();
+    custState &&
+    shop.state.toLowerCase() !== custState.toLowerCase();
 
   // 2. Pagination & Row Counting
-  // A5 Portrait (210mm height) fits roughly 20 rows comfortably
+  // A5 Portrait (210mm height) fits roughly 18 rows comfortably
   const ROWS_PER_PAGE = 18;
   const items = sale.items;
   const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
@@ -40,7 +50,6 @@ const a5Portrait = (data) => {
     totalSgst = 0,
     totalIgst = 0;
 
-  // Calculate Subtotal and Discount Correctly
   const subTotal = sale.items.reduce((sum, item) => sum + (item.price || 0), 0);
   const discountPercentage = sale.discount || 0;
   const discountAmount = (subTotal * discountPercentage) / 100;
@@ -81,8 +90,8 @@ const a5Portrait = (data) => {
   let totalColumns = 4; // #, Name, Qty, Rate
   if (showHSN) totalColumns++;
   if (showDiscountCol) totalColumns++;
-  if (showGstPerItem) totalColumns++;
-  if (showGstPerItem && showGstBreakup) totalColumns++;
+  if (showGstPctCol) totalColumns++;
+  if (showGstAmtCol) totalColumns++;
   totalColumns++; // Total
 
   const renderPage = (pageData) => {
@@ -101,15 +110,16 @@ const a5Portrait = (data) => {
         <tr class="data-row">
             <td class="text-center">${(pageIndex - 1) * ROWS_PER_PAGE + i + 1}</td>
             <td style="text-align:left;">
-                <div class="item-name">${item.product_name}</div>
+                <div class="item-name">${item.product_name || item.name || "Unknown"}</div>
+                ${item.description ? `<div style="font-size: 8px; font-style: italic; color: #555;">${item.description}</div>` : ""}
                 ${getTrackingHtml(item)}
             </td>
             ${showHSN ? `<td class="text-center">${item.hsn || "-"}</td>` : ""}
             <td class="text-center">${item.quantity} ${item.unit || ""}</td>
             <td class="text-right">${formatAmount(item.rate)}</td>
             ${showDiscountCol ? `<td class="text-center">${item.discount || 0}%</td>` : ""}
-            ${showGstPerItem ? `<td class="text-center">${item.gst_rate}%</td>` : ""}
-            ${showGstPerItem && showGstBreakup ? `<td class="text-right">${formatAmount(gstAmount)}</td>` : ""}
+            ${showGstPctCol ? `<td class="text-center">${item.gst_rate || 0}%</td>` : ""}
+            ${showGstAmtCol ? `<td class="text-right">${formatAmount(gstAmount)}</td>` : ""}
             <td class="text-right bold">${formatAmount(item.price)}</td>
         </tr>`;
       })
@@ -124,8 +134,8 @@ const a5Portrait = (data) => {
             <td style="border-right:1px solid #000;">&nbsp;</td>
             <td style="border-right:1px solid #000;">&nbsp;</td>
             ${showDiscountCol ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
-            ${showGstPerItem ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
-            ${showGstPerItem && showGstBreakup ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
+            ${showGstPctCol ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
+            ${showGstAmtCol ? `<td style="border-right:1px solid #000;">&nbsp;</td>` : ""}
             <td style="">&nbsp;</td>
         </tr>`;
 
@@ -151,7 +161,7 @@ const a5Portrait = (data) => {
           <div class="invoice-meta">
             <div class="flex-between"><span>Inv No:</span> <span class="bold">${sale.reference_no}</span></div>
             <div class="flex-between"><span>Date:</span> <span class="bold">${formatDate(sale.created_at)}</span></div>
-            <div class="flex-between"><span>State:</span> <span>${sale.customer_state || shop.state}</span></div>
+            <div class="flex-between"><span>State:</span> <span>${custState || shop.state || ""}</span></div>
           </div>
         </div>
 
@@ -159,11 +169,11 @@ const a5Portrait = (data) => {
         <div class="customer-row">
           <div class="bill-to">
             <span class="label">BILLED TO:</span><br>
-            <span class="bold" style="font-size:12px;">${sale.customer_name || "Cash Customer"}</span><br>
-            <span style="font-size:9px;">${sale.customer_address || ""} ${sale.customer_phone ? `(Ph: ${sale.customer_phone})` : ""}</span>
+            <span class="bold" style="font-size:12px;">${custName}</span><br>
+            <span style="font-size:9px;">${formatAddress(custAddress, custCity, custState, custPincode)} ${custPhone ? `(Ph: ${custPhone})` : ""}</span>
           </div>
           <div class="extra-meta">
-             ${gstEnabled ? `<div>Cust GST: ${sale.customer_gst_no || "Unregistered"}</div>` : ""}
+             ${gstEnabled ? `<div>Cust GST: ${custGst || "Unregistered"}</div>` : ""}
              <div style="margin-top:2px;">Mode: ${sale.payment_mode || "Cash"}</div>
           </div>
         </div>
@@ -179,8 +189,8 @@ const a5Portrait = (data) => {
                 <th width="8%" class="text-center">Qty</th>
                 <th width="12%" class="text-right">Rate</th>
                 ${showDiscountCol ? `<th width="8%" class="text-center">Disc</th>` : ""}
-                ${showGstPerItem ? `<th width="8%" class="text-center">GST%</th>` : ""}
-                ${showGstPerItem && showGstBreakup ? `<th width="12%" class="text-right">GST Amt</th>` : ""}
+                ${showGstPctCol ? `<th width="8%" class="text-center">GST%</th>` : ""}
+                ${showGstAmtCol ? `<th width="12%" class="text-right">GST Amt</th>` : ""}
                 <th width="15%" class="text-right">Total</th>
               </tr>
             </thead>

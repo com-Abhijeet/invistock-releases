@@ -7,7 +7,6 @@ import {
   TextField,
   Typography,
   Dialog,
-  InputAdornment,
   Stack,
   DialogActions,
   DialogContent,
@@ -19,9 +18,10 @@ import {
   Divider,
   Select,
   FormControl,
-  InputLabel,
   OutlinedInput,
   ListItemText,
+  alpha,
+  IconButton,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect, useRef } from "react";
@@ -31,8 +31,8 @@ import { updateSalesOrder } from "../../lib/api/salesOrderService";
 import { handlePrint } from "../../lib/handleInvoicePrint";
 import { createCustomer } from "../../lib/api/customerService";
 import type { CustomerType } from "../../lib/types/customerTypes";
-import { numberToWords } from "../../utils/numberToWords";
-import { Printer, MessageCircle, Percent, Settings } from "lucide-react";
+// import { numberToWords } from "../../utils/numberToWords";
+import { Settings, Save, X, Receipt } from "lucide-react";
 import toast from "react-hot-toast";
 import { getShopData } from "../../lib/api/shopService";
 
@@ -63,67 +63,85 @@ const SaleSummarySection = ({
   const [doPrint, setDoPrint] = useState(true);
   const [doWhatsApp, setDoWhatsApp] = useState(true);
 
-  // Refs for keyboard navigation
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // --- DERIVED CALCULATIONS ---
-  // 1. Subtotal (Sum of Items)
+  // --- COMPLIANT DERIVED CALCULATIONS ---
+  // Subtotal is the sum of item.price (which already includes item-level GST and item-level discounts)
   const subtotal = sale.items.reduce(
     (sum, item) => sum + (Number(item.price) || 0),
     0,
   );
-
-  // 2. Discount Amount
   const discountPct = Number(sale.discount) || 0;
+  // Sale-level discount acts as a Post-Tax Cash Waiver
   const discountAmount = (subtotal * discountPct) / 100;
 
-  // 3. Expected Total (Before Round Off)
-  const netBeforeRound = Math.max(0, subtotal - discountAmount);
+  // Base calculated total before any manual round-off adjustments
+  const netBeforeRound =
+    Math.round(
+      (Math.max(0, subtotal - discountAmount) + Number.EPSILON) * 100,
+    ) / 100;
 
-  // 4. Current Round Off (Difference between stored Total and Expected Total)
-  const currentRoundOff =
+  // Legacy Fallback: Calculate what the round off mathematically MUST have been
+  const implicitRoundOff =
     Math.round((sale.total_amount - netBeforeRound + Number.EPSILON) * 100) /
     100;
 
-  // Local state for Round Off input to allow typing "-" freely without instant re-calc blocking it
-  const [roundOffInput, setRoundOffInput] = useState<string>("");
+  // In view mode, if there's no explicitly saved round_off but there is a mathematical gap, use the gap.
+  const displayRoundOff =
+    mode === "view" && !sale.round_off && Math.abs(implicitRoundOff) > 0.005
+      ? implicitRoundOff
+      : Number(sale.round_off) || 0;
 
-  // Sync local input when external round-off changes (e.g. items added reset total)
+  const [roundOffInput, setRoundOffInput] = useState<string>(
+    sale.round_off?.toString() || "0",
+  );
+  const [discountInput, setDiscountInput] = useState<string>(
+    sale.discount?.toString() || "0",
+  );
+
+  // Sync Input String States (Prevents decimal typing bugs in React)
+  useEffect(() => {
+    if (parseFloat(discountInput) !== sale.discount) {
+      setDiscountInput(sale.discount?.toString() || "0");
+    }
+  }, [sale.discount]);
+
   useEffect(() => {
     const parsed = parseFloat(roundOffInput);
-    // Only update local input if the actual data value is significantly different
-    // (This prevents overwriting user input like "-." or "-0" while typing)
-    // Also update if roundOffInput is empty/invalid but currentRoundOff has a value (e.g. loaded from DB)
-    const inputValue = isNaN(parsed) ? 0 : parsed;
-
-    if (Math.abs(inputValue - currentRoundOff) > 0.05) {
-      setRoundOffInput(currentRoundOff === 0 ? "" : currentRoundOff.toString());
+    if (
+      parsed !== sale.round_off &&
+      roundOffInput !== "-" &&
+      !roundOffInput.endsWith(".")
+    ) {
+      setRoundOffInput(sale.round_off?.toString() || "0");
     }
-  }, [currentRoundOff]);
+  }, [sale.round_off]);
 
-  // --- AUTOMATIC TOTAL RE-CALCULATION ---
+  // Automatic Total Synchronization (Respecting Manual Round Off strictly)
   useEffect(() => {
     if (mode === "view") return;
 
-    const reCalcTotal =
-      Math.round((netBeforeRound + Number.EPSILON) * 100) / 100;
+    const manualRoundOff = Number(sale.round_off) || 0;
+    const expectedTotal = netBeforeRound + manualRoundOff;
 
-    const isTotalZero = sale.total_amount === 0;
-    const hasItems = sale.items.length > 0;
-
-    if (
-      Math.abs(sale.total_amount - reCalcTotal) > 0.5 ||
-      (isTotalZero && hasItems)
-    ) {
-      onSaleChange({ ...sale, total_amount: reCalcTotal });
+    // Only update if the total differs from expected by a meaningful fraction
+    if (Math.abs(sale.total_amount - expectedTotal) > 0.001) {
+      onSaleChange({
+        ...sale,
+        total_amount: Math.round((expectedTotal + Number.EPSILON) * 100) / 100,
+      });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subtotal, sale.discount]);
+  }, [
+    netBeforeRound,
+    sale.round_off,
+    sale.total_amount,
+    mode,
+    onSaleChange,
+    sale,
+  ]);
 
-  // Keyboard Navigation: Enter to Next Field
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Global shortcuts
       if ((mode !== "new" && mode !== "edit") || isSubmitting) return;
       if ((e.ctrlKey || e.metaKey) && e.code === "KeyS") {
         e.preventDefault();
@@ -142,10 +160,8 @@ const SaleSummarySection = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mode, isSubmitting, sale]);
 
-  // Handle Enter key for form navigation
   const handleContainerKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
-      // Find all focusable elements within the container
       const focusable = containerRef.current?.querySelectorAll(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       );
@@ -162,7 +178,10 @@ const SaleSummarySection = ({
 
   const paymentSummary = (sale as any).payment_summary || {
     total_paid: sale.paid_amount || 0,
-    balance: sale.total_amount - (sale.paid_amount || 0),
+    balance:
+      Math.round(
+        (sale.total_amount - (sale.paid_amount || 0) + Number.EPSILON) * 100,
+      ) / 100,
     status: sale.status || "pending",
   };
 
@@ -179,46 +198,52 @@ const SaleSummarySection = ({
     onSaleChange({ ...sale, [field]: value });
   };
 
+  const handleDiscountInputChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const valStr = e.target.value;
+    setDiscountInput(valStr);
+    const val = parseFloat(valStr);
+    if (!isNaN(val)) {
+      handleFieldChange("discount", Math.max(0, val));
+    } else if (valStr === "") {
+      handleFieldChange("discount", 0);
+    }
+  };
+
   const handleManualRoundOffChange = (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const valStr = e.target.value;
     setRoundOffInput(valStr);
 
-    // Only update calculation if it's a valid number
-    // This allows typing "-" or "." without resetting
+    // Check for intermediate typing states
+    if (valStr === "" || valStr === "-") {
+      onSaleChange({ ...sale, round_off: 0 });
+      return;
+    }
+
     const val = parseFloat(valStr);
     if (!isNaN(val)) {
-      const newTotal = netBeforeRound + val;
-      const roundedTotal = Math.round((newTotal + Number.EPSILON) * 100) / 100;
-      onSaleChange({ ...sale, total_amount: roundedTotal });
-    } else if (valStr === "" || valStr === "-") {
-      // If empty or just minus sign, we don't update the total yet,
-      // or we could reset to netBeforeRound if empty?
-      // Let's reset to base total if completely empty
-      if (valStr === "") {
-        const roundedTotal =
-          Math.round((netBeforeRound + Number.EPSILON) * 100) / 100;
-        onSaleChange({ ...sale, total_amount: roundedTotal });
-      }
+      onSaleChange({
+        ...sale,
+        round_off: val,
+      });
     }
   };
 
   const handlePaidInFull = () => {
     onSaleChange({ ...sale, paid_amount: sale.total_amount, status: "paid" });
   };
-
   const handleCancel = () => {
     resetForm();
     toast("Operation canceled.");
   };
 
-  // Helper for options multi-select
   const saleOptions = [
     { label: "Reverse Charge", value: "is_reverse_charge" },
     { label: "E-Commerce", value: "is_ecommerce_sale" },
   ];
-
   const selectedOptions = [
     ...(sale.is_reverse_charge ? ["is_reverse_charge"] : []),
     ...(sale.is_ecommerce_sale ? ["is_ecommerce_sale"] : []),
@@ -229,7 +254,6 @@ const SaleSummarySection = ({
       target: { value },
     } = event;
     const values = typeof value === "string" ? value.split(",") : value;
-
     onSaleChange({
       ...sale,
       is_reverse_charge: values.includes("is_reverse_charge"),
@@ -245,7 +269,9 @@ const SaleSummarySection = ({
       }
     }
 
-    if (sale.status === "paid" && sale.paid_amount < sale.total_amount) {
+    // Check for paid status with small tolerance (0.01) to handle floating point issues
+    const isActuallyPaid = sale.paid_amount + 0.01 >= sale.total_amount;
+    if (sale.status === "paid" && !isActuallyPaid) {
       setWarningOpen(true);
       return;
     }
@@ -253,9 +279,8 @@ const SaleSummarySection = ({
     setIsSubmitting(true);
     try {
       let saleDataWithCustomer = { ...sale };
-
       if (!sale.customer_id || sale.customer_id === 0) {
-        const customerData = {
+        const customerRes = await createCustomer({
           name: customer?.name!,
           phone: customer?.phone!,
           address: customer?.address,
@@ -263,33 +288,26 @@ const SaleSummarySection = ({
           state: customer?.state,
           pincode: customer?.pincode,
           gst_no: customer?.gst_no,
+        });
+        saleDataWithCustomer = {
+          ...saleDataWithCustomer,
+          customer_id: customerRes.id,
         };
-        try {
-          const customerRes = await createCustomer(customerData);
-          saleDataWithCustomer = {
-            ...saleDataWithCustomer,
-            customer_id: customerRes.id,
-          };
-        } catch (err) {
-          toast.error("Failed to create customer. Please check details.");
-          setIsSubmitting(false);
-          return;
-        }
       }
 
-      const payload = {
+      // Explicitly construct the final payload verifying all fields
+      const payload: SalePayload = {
         ...saleDataWithCustomer,
+        round_off: Number(sale.round_off) || 0, // Enforce newly added snapshot field
         items: saleDataWithCustomer.items.filter((item) => item.product_id > 0),
       };
 
       let savedSale;
       if (mode === "edit" && sale.id) {
-        const response = await updateSale(Number(sale.id), payload);
-        savedSale = response.data;
+        savedSale = (await updateSale(Number(sale.id), payload)).data;
       } else {
-        const response = await createSale(payload);
-        savedSale = response.data;
-        if (salesOrderId) {
+        savedSale = (await createSale(payload)).data;
+        if (salesOrderId)
           await updateSalesOrder(salesOrderId, {
             status: "completed",
             fulfilled_invoice_id: savedSale.id,
@@ -297,54 +315,27 @@ const SaleSummarySection = ({
             items: [],
             customer_id: sale.customer_id || null,
           });
-        }
       }
-
       setSuccess(true);
       toast.success(mode === "edit" ? "Sale Updated!" : "Sale Saved!");
       if (doPrint) handlePrint(savedSale);
-
       if (doWhatsApp && customer?.phone) {
         const nl = "\n";
-
         const itemsList = savedSale.items
           .map(
             (item: any, index: number) =>
-              `${index + 1}. ${item.product_name} x ${item.quantity} = ₹${(
-                item.quantity * item.rate
-              ).toLocaleString("en-IN")}`,
+              `${index + 1}. ${item.product_name} x ${item.quantity} = ₹${(item.quantity * item.rate).toLocaleString("en-IN")}`,
           )
           .join(nl);
-
         const shopName = shop?.shop_name || "Our Shop";
-        const message =
-          `*${shopName}*${nl}` +
-          `Invoice Summary${nl}` +
-          `———————————————${nl}${nl}` +
-          `Hello ${customer?.name || "Customer"},${nl}${nl}` +
-          `🧾 *Bill No:* ${savedSale.reference_no}${nl}` +
-          `📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}` +
-          `*Items Purchased:*${nl}` +
-          `${itemsList}${nl}${nl}` +
-          `———————————————${nl}` +
-          `*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}` +
-          `———————————————${nl}${nl}` +
-          `Thank you for shopping with us 🙏${nl}` +
-          `Please find your invoice PDF attached.`;
-        if (window.electron && window.electron.sendWhatsAppMessage) {
+        const message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}${nl}Hello ${customer?.name || "Customer"},${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}*Items Purchased:*${nl}${itemsList}${nl}${nl}———————————————${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}${nl}Thank you for shopping with us 🙏${nl}Please find your invoice PDF attached.`;
+        if (window.electron?.sendWhatsAppMessage)
           window.electron.sendWhatsAppMessage(customer.phone, message);
-        }
-        const pdfRes = await window.electron.sendWhatsAppInvoicePdf({
+        await window.electron?.sendWhatsAppInvoicePdf({
           sale: sale,
           shop: shop,
           customerPhone: customer?.phone,
         });
-
-        if (pdfRes.success) {
-          toast.success("Invoice sent successfully!");
-        } else {
-          toast.error("Failed to send PDF.");
-        }
       }
       resetForm();
     } catch (err: any) {
@@ -356,258 +347,284 @@ const SaleSummarySection = ({
 
   const isViewMode = mode === "view";
 
+  // --- STYLING (ERP THEME) ---
+  const labelStyle = {
+    variant: "caption" as const,
+    sx: {
+      fontSize: "0.625rem",
+      fontWeight: 800,
+      color: "text.disabled",
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      mb: 0.2,
+      display: "block",
+    },
+  };
+
+  const fieldBoxSx = {
+    bgcolor: alpha(theme.palette.action.hover, 0.03),
+    border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+    borderRadius: "4px",
+    px: 1,
+    py: 0.25,
+    transition: "all 0.2s",
+    "&:focus-within": {
+      borderColor: theme.palette.primary.main,
+      bgcolor: "#fff",
+    },
+  };
+
+  const inputSx = {
+    "& .MuiInputBase-root": {
+      fontSize: "0.85rem",
+      fontWeight: 700,
+      padding: 0,
+    },
+    "& .MuiInput-underline:before, & .MuiInput-underline:after": {
+      display: "none",
+    },
+  };
+
   return (
     <Box
-      sx={{ bgcolor: theme.palette.background.default }}
+      sx={{
+        bgcolor: theme.palette.background.paper,
+        borderTop: `1px solid ${theme.palette.divider}`,
+      }}
       ref={containerRef}
       onKeyDown={handleContainerKeyDown}
     >
-      <Box px={3} py={1}>
-        <TextField
-          fullWidth
-          size="small"
-          multiline
-          minRows={1}
-          maxRows={3}
-          value={sale.note}
-          onChange={(e) => handleFieldChange("note", e.target.value)}
-          placeholder="Add notes..."
-          variant="standard"
-          disabled={isViewMode}
-          InputProps={{
-            disableUnderline: true,
-            sx: { fontSize: "0.9rem", color: "text.secondary" },
-          }}
-        />
-        <Divider sx={{ mt: 1 }} />
+      {/* 1. Slim Internal Notes Strip */}
+      <Box
+        sx={{
+          px: 2,
+          py: 0.5,
+          bgcolor: alpha(theme.palette.action.hover, 0.02),
+          borderBottom: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+        }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Receipt size={12} color={theme.palette.text.disabled} />
+          <TextField
+            fullWidth
+            size="small"
+            value={sale.note || ""}
+            onChange={(e) => handleFieldChange("note", e.target.value)}
+            placeholder="Click to add billing notes..."
+            variant="standard"
+            disabled={isViewMode}
+            sx={{
+              "& .MuiInputBase-root": {
+                fontSize: "0.75rem",
+                fontWeight: 500,
+                color: "text.secondary",
+              },
+            }}
+            InputProps={{ disableUnderline: true }}
+          />
+        </Stack>
       </Box>
 
-      <Box sx={{ px: 3, py: 2 }}>
-        <Stack
-          direction={{ xs: "column", lg: "row" }}
-          justifyContent="space-between"
-          alignItems="flex-start"
-          spacing={3}
-        >
-          {/* SECTION 1: Totals & Breakdown (Left) */}
-          <Stack spacing={1} flex={1} maxWidth={{ lg: "30%" }}>
-            <Stack direction="row" alignItems="baseline" spacing={2}>
-              <Typography variant="h4" fontWeight={800} color="text.primary">
-                {sale.total_amount.toLocaleString("en-IN", {
-                  style: "currency",
-                  currency: "INR",
-                })}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Net Payable
-              </Typography>
-            </Stack>
-
-            <Typography
-              variant="body2"
-              fontStyle="italic"
-              color="text.secondary"
-            >
-              {numberToWords(sale.total_amount)}
-            </Typography>
-
-            <Divider sx={{ width: "100%", my: 1 }} />
-
-            <Stack spacing={0} sx={{ opacity: 0.8 }}>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="body2" color="text.secondary">
-                  Subtotal:
-                </Typography>
-                <Typography variant="body2" fontWeight={600}>
-                  {subtotal.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
+      <Box sx={{ px: 2, py: 1.5 }}>
+        <Grid container spacing={2} alignItems="center">
+          {/* LEFT: Prominent Totals */}
+          <Grid item xs={12} md={3.5}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box>
+                <Typography {...labelStyle}>Net Payable</Typography>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight: 900,
+                    color: theme.palette.primary.dark,
+                    fontFamily: '"JetBrains Mono", monospace',
+                    letterSpacing: -0.5,
+                  }}
+                >
+                  {sale.total_amount.toLocaleString("en-IN", {
+                    style: "currency",
+                    currency: "INR",
                   })}
                 </Typography>
-              </Stack>
-              {discountPct > 0 && (
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  color="error.main"
-                >
-                  <Typography variant="body2">
-                    Discount ({discountPct}%):
+              </Box>
+              <Divider
+                orientation="vertical"
+                flexItem
+                sx={{ height: 32, alignSelf: "center" }}
+              />
+              <Box>
+                <Typography {...labelStyle}>Breakdown</Typography>
+                <Stack direction="row" spacing={1.5}>
+                  <Typography
+                    sx={{
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                      color: "text.secondary",
+                    }}
+                  >
+                    Sub: {subtotal.toFixed(2)}
                   </Typography>
-                  <Typography variant="body2" fontWeight={600}>
-                    -{" "}
-                    {discountAmount.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                  {discountPct > 0 && (
+                    <Typography
+                      sx={{
+                        fontSize: "0.7rem",
+                        fontWeight: 700,
+                        color: "error.main",
+                      }}
+                    >
+                      Off: {discountAmount.toFixed(2)}
+                    </Typography>
+                  )}
+                  <Typography
+                    sx={{
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                      color:
+                        Math.abs(displayRoundOff) > 0.01
+                          ? "primary.main"
+                          : "text.disabled",
+                    }}
+                  >
+                    Round: {displayRoundOff.toFixed(2)}
                   </Typography>
                 </Stack>
-              )}
-              {/* Round Off Display (Read-Only on Left) */}
-              <Stack
-                direction="row"
-                justifyContent="space-between"
-                alignItems="center"
-              >
-                <Typography variant="body2" color="text.secondary">
-                  Round Off:
-                </Typography>
-                <Typography
-                  variant="body2"
-                  fontWeight={600}
-                  color={
-                    currentRoundOff !== 0 ? "text.primary" : "text.secondary"
-                  }
-                >
-                  {currentRoundOff > 0 ? "+" : ""}
-                  {currentRoundOff.toFixed(2)}
-                </Typography>
-              </Stack>
+              </Box>
             </Stack>
-          </Stack>
+          </Grid>
 
-          {/* SECTION 2: Center Grid (Inputs) */}
-          <Box flex={2} width="100%">
+          {/* CENTER: Compact Inputs */}
+          <Grid item xs={12} md={6}>
             {!isViewMode ? (
-              <Grid container spacing={2}>
-                {/* Row 1: Discount, Round Off, Paid Amount */}
-                <Grid item xs={12} sm={3}>
-                  <TextField
-                    label="Disc %"
-                    size="small"
-                    fullWidth
-                    type="number"
-                    variant="outlined"
-                    value={sale.discount || ""}
-                    onChange={(e) =>
-                      handleFieldChange(
-                        "discount",
-                        Math.max(0, parseFloat(e.target.value) || 0),
-                      )
-                    }
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <Percent size={14} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
+              <Grid container spacing={1}>
+                <Grid item xs={2}>
+                  <Typography {...labelStyle}>Disc %</Typography>
+                  <Box sx={fieldBoxSx}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      variant="standard"
+                      value={discountInput}
+                      onChange={handleDiscountInputChange}
+                      sx={inputSx}
+                    />
+                  </Box>
                 </Grid>
-                <Grid item xs={12} sm={3}>
-                  <TextField
-                    label="Round Off"
-                    size="small"
-                    fullWidth
-                    type="number"
-                    variant="outlined"
-                    value={roundOffInput}
-                    onChange={handleManualRoundOffChange}
-                    placeholder="0.00"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">₹</InputAdornment>
-                      ),
-                    }}
-                  />
+                <Grid item xs={2.5}>
+                  <Typography {...labelStyle}>Round Off</Typography>
+                  <Box sx={fieldBoxSx}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      variant="standard"
+                      value={roundOffInput}
+                      onChange={handleManualRoundOffChange}
+                      placeholder="0.00"
+                      sx={inputSx}
+                    />
+                  </Box>
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="Paid Amount"
-                    size="small"
-                    fullWidth
-                    type="number"
-                    variant="outlined"
-                    value={sale.paid_amount}
-                    onChange={(e) =>
-                      handleFieldChange(
-                        "paid_amount",
-                        parseFloat(e.target.value) || 0,
-                      )
-                    }
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">₹</InputAdornment>
-                      ),
-                      endAdornment: (
-                        <InputAdornment position="end">
+                <Grid item xs={3.5}>
+                  <Typography {...labelStyle}>
+                    Paid (Ctrl+U for Full)
+                  </Typography>
+                  <Box
+                    sx={{
+                      ...fieldBoxSx,
+                      borderColor: alpha(theme.palette.success.main, 0.3),
+                    }}
+                  >
+                    <TextField
+                      fullWidth
+                      type="number"
+                      variant="standard"
+                      value={sale.paid_amount ?? ""}
+                      onChange={(e) =>
+                        handleFieldChange(
+                          "paid_amount",
+                          parseFloat(e.target.value) || 0,
+                        )
+                      }
+                      sx={{
+                        ...inputSx,
+                        "& input": { color: theme.palette.success.dark },
+                      }}
+                      InputProps={{
+                        endAdornment: (
                           <Button
                             size="small"
                             onClick={handlePaidInFull}
                             disabled={sale.paid_amount >= sale.total_amount}
                             sx={{
-                              minWidth: "auto",
-                              p: 0.5,
-                              fontSize: "0.75rem",
+                              fontSize: "0.6rem",
+                              fontWeight: 900,
+                              minWidth: 0,
+                              p: 0,
                             }}
                           >
                             FULL
                           </Button>
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
+                        ),
+                      }}
+                    />
+                  </Box>
                 </Grid>
-
-                {/* Row 2: Mode, Status, Options */}
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    select
-                    label="Mode"
-                    size="small"
-                    fullWidth
-                    variant="outlined"
-                    value={sale.payment_mode}
-                    onChange={(e) =>
-                      handleFieldChange("payment_mode", e.target.value)
-                    }
-                  >
-                    <MenuItem value="cash">Cash</MenuItem>
-                    <MenuItem value="upi">UPI</MenuItem>
-                    <MenuItem value="card">Card</MenuItem>
-                    <MenuItem value="credit">Credit</MenuItem>
-                  </TextField>
+                <Grid item xs={2}>
+                  <Typography {...labelStyle}>Mode</Typography>
+                  <Box sx={fieldBoxSx}>
+                    <TextField
+                      select
+                      fullWidth
+                      variant="standard"
+                      value={sale.payment_mode || "cash"}
+                      onChange={(e) =>
+                        handleFieldChange("payment_mode", e.target.value)
+                      }
+                      sx={inputSx}
+                    >
+                      {["cash", "upi", "card", "credit"].map((m) => (
+                        <MenuItem
+                          key={m}
+                          value={m}
+                          sx={{ fontSize: "0.75rem", fontWeight: 700 }}
+                        >
+                          {m.toUpperCase()}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Box>
                 </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    select
-                    label="Status"
-                    size="small"
-                    fullWidth
-                    variant="outlined"
-                    value={sale.status}
-                    onChange={(e) =>
-                      handleFieldChange("status", e.target.value)
-                    }
-                  >
-                    <MenuItem value="paid">Paid</MenuItem>
-                    <MenuItem value="pending">Pending</MenuItem>
-                  </TextField>
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <FormControl size="small" fullWidth variant="outlined">
-                    <InputLabel>Options</InputLabel>
+                <Grid item xs={2}>
+                  <Typography {...labelStyle}>Options</Typography>
+                  <FormControl size="small" fullWidth>
                     <Select
                       multiple
                       value={selectedOptions}
                       onChange={handleOptionsChange}
-                      input={<OutlinedInput label="Options" />}
-                      renderValue={(selected) => (
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Settings size={14} />
-                          <Typography variant="caption">
-                            {selected.length} selected
-                          </Typography>
-                        </Stack>
-                      )}
+                      input={
+                        <OutlinedInput
+                          sx={{
+                            height: 32,
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            borderRadius: "4px",
+                          }}
+                        />
+                      }
+                      renderValue={(_selected) => <Settings size={14} />}
                     >
-                      {saleOptions.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
+                      {saleOptions.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value} dense>
                           <Checkbox
-                            checked={selectedOptions.indexOf(option.value) > -1}
+                            checked={selectedOptions.indexOf(opt.value) > -1}
                             size="small"
                           />
-                          <ListItemText primary={option.label} />
+                          <ListItemText
+                            primary={opt.label}
+                            primaryTypographyProps={{
+                              fontWeight: 600,
+                              fontSize: "0.8rem",
+                            }}
+                          />
                         </MenuItem>
                       ))}
                     </Select>
@@ -615,136 +632,146 @@ const SaleSummarySection = ({
                 </Grid>
               </Grid>
             ) : (
-              /* VIEW MODE SUMMARY */
+              /* VIEW MODE */
               <Stack
                 direction="row"
                 spacing={3}
-                alignItems="center"
-                justifyContent="center"
                 sx={{
-                  height: "100%",
-                  p: 2,
-                  bgcolor: "action.hover",
-                  borderRadius: 2,
-                  border: "1px solid",
-                  borderColor: "divider",
+                  py: 0.5,
+                  px: 2,
+                  borderLeft: `2px solid ${theme.palette.divider}`,
                 }}
               >
                 <Box>
-                  <Typography variant="caption">Status</Typography>
+                  <Typography {...labelStyle}>Status</Typography>
                   <Typography
-                    variant="subtitle2"
-                    fontWeight={700}
-                    color={
-                      paymentSummary.status === "paid"
-                        ? "success.main"
-                        : "error.main"
-                    }
+                    sx={{
+                      fontWeight: 900,
+                      fontSize: "0.8rem",
+                      color:
+                        paymentSummary.status === "paid"
+                          ? "success.main"
+                          : "warning.main",
+                    }}
                   >
-                    {paymentSummary.status}
+                    {paymentSummary.status.toUpperCase()}
                   </Typography>
                 </Box>
-                <Divider orientation="vertical" flexItem />
                 <Box>
-                  <Typography variant="caption">Paid</Typography>
-                  <Typography variant="body2" fontWeight={600}>
-                    {paymentSummary.total_paid?.toLocaleString("en-IN", {
-                      style: "currency",
-                      currency: "INR",
-                    })}
+                  <Typography {...labelStyle}>Paid</Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: "0.8rem" }}>
+                    ₹{paymentSummary.total_paid.toLocaleString()}
                   </Typography>
                 </Box>
-                <Divider orientation="vertical" flexItem />
                 <Box>
-                  <Typography variant="caption">Balance</Typography>
-                  <Typography variant="body2" fontWeight={600}>
-                    {paymentSummary.balance?.toLocaleString("en-IN", {
-                      style: "currency",
-                      currency: "INR",
-                    })}
+                  <Typography {...labelStyle}>Balance</Typography>
+                  <Typography
+                    sx={{
+                      fontWeight: 900,
+                      fontSize: "0.8rem",
+                      color: "error.main",
+                    }}
+                  >
+                    ₹{paymentSummary.balance.toLocaleString()}
                   </Typography>
                 </Box>
               </Stack>
             )}
-          </Box>
+          </Grid>
 
-          {/* SECTION 3: Actions (Right) */}
+          {/* RIGHT: High-Speed Actions */}
           {!isViewMode && (
-            <Stack spacing={2} alignItems="flex-end" minWidth={200}>
-              {/* Checkboxes Row */}
-              <Stack direction="row" spacing={2} justifyContent="flex-end">
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={doPrint}
-                      onChange={(e) => setDoPrint(e.target.checked)}
-                    />
-                  }
-                  label={
-                    <Stack direction="row" spacing={0.5} alignItems="center">
-                      <Printer size={14} />
-                      <Typography variant="caption">Print</Typography>
-                    </Stack>
-                  }
-                />
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={doWhatsApp}
-                      onChange={(e) => setDoWhatsApp(e.target.checked)}
-                    />
-                  }
-                  label={
-                    <Stack direction="row" spacing={0.5} alignItems="center">
-                      <MessageCircle size={14} />
-                      <Typography variant="caption">WhatsApp</Typography>
-                    </Stack>
-                  }
-                />
-              </Stack>
-
-              {/* Buttons Row */}
-              <Stack direction="row" spacing={1} width="100%">
-                <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={handleCancel}
-                  disabled={isSubmitting}
-                  fullWidth
-                  sx={{ flex: 1 }}
-                >
-                  CANCEL
-                </Button>
+            <Grid item xs={12} md={2.5}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Stack spacing={0}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={doPrint}
+                        onChange={(e) => setDoPrint(e.target.checked)}
+                        sx={{ p: 0.5 }}
+                      />
+                    }
+                    label={
+                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 700 }}>
+                        Print
+                      </Typography>
+                    }
+                    sx={{ m: 0 }}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={doWhatsApp}
+                        onChange={(e) => setDoWhatsApp(e.target.checked)}
+                        sx={{ p: 0.5 }}
+                      />
+                    }
+                    label={
+                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 700 }}>
+                        WA
+                      </Typography>
+                    }
+                    sx={{ m: 0 }}
+                  />
+                </Stack>
                 <Button
                   variant="contained"
-                  color="primary"
+                  fullWidth
                   onClick={handleSubmit}
                   disabled={isSubmitting}
-                  fullWidth
-                  sx={{ flex: 1.5, minHeight: 44, fontWeight: "bold" }}
                   startIcon={
-                    isSubmitting && (
-                      <CircularProgress size={20} color="inherit" />
+                    isSubmitting ? (
+                      <CircularProgress size={16} color="inherit" />
+                    ) : (
+                      <Save size={16} />
                     )
                   }
+                  sx={{
+                    height: 38,
+                    fontWeight: 900,
+                    borderRadius: "6px",
+                    fontSize: "0.8rem",
+                  }}
                 >
-                  {isSubmitting ? "..." : mode === "edit" ? "UPDATE" : "SAVE"}
+                  {isSubmitting ? "..." : "SAVE"}
                 </Button>
+                <IconButton onClick={handleCancel} color="error" size="small">
+                  <X size={18} />
+                </IconButton>
               </Stack>
-            </Stack>
+            </Grid>
           )}
-        </Stack>
+        </Grid>
       </Box>
 
-      <Dialog open={warningOpen} onClose={() => setWarningOpen(false)}>
-        <DialogTitle>Partial Payment Warning</DialogTitle>
-        <DialogContent>
-          Paid amount is less than total. Mark as <b>Partial Payment</b>?
+      {/* Warning Dialog */}
+      <Dialog
+        open={warningOpen}
+        onClose={() => setWarningOpen(false)}
+        PaperProps={{ sx: { borderRadius: "8px" } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, fontSize: "1rem" }}>
+          Partial Payment?
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" fontWeight={600}>
+            Saving ₹{sale.paid_amount} against ₹{sale.total_amount}. Proceed?
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setWarningOpen(false)}>OK</Button>
+          <Button onClick={() => setWarningOpen(false)}>Edit</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setWarningOpen(false);
+              handleSubmit();
+            }}
+          >
+            Save
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

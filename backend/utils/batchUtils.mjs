@@ -24,3 +24,14 @@ export function generateBatchUid(productId, sequenceNumber) {
 export function isBatchUid(code) {
   return code && code.startsWith("BAT-");
 }
+
+export const calculateDaysLeft = (expiryDateStr) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Normalize to midnight
+
+  const expiry = new Date(expiryDateStr);
+  expiry.setHours(0, 0, 0, 0);
+
+  const diffTime = expiry.getTime() - today.getTime();
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};

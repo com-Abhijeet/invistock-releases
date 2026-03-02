@@ -28,6 +28,10 @@ export const saleItemSchema = z.object({
   sale_id: z.string().optional(),
   sr_no: z.string().optional(), // Made optional as it might be generated or just a UI index
   product_id: z.number().int().min(1, "Product is required"),
+  product_name: z.string().min(1, "Product name is required"),
+  description: z.string().optional().nullable(),
+  barcode: z.string().optional().nullable(),
+  hsn: z.string().optional().nullable(),
   rate: z.number().nonnegative("Rate cannot be negative"),
   quantity: z.number().positive("Quantity must be greater than 0"),
   gst_rate: z.number().nonnegative().default(0).optional(),
@@ -45,13 +49,19 @@ export const saleItemSchema = z.object({
 // Schema for full sale
 export const saleSchema = z.object({
   id: z.string().optional(),
-  customer_id: z.number().int().optional(),
+  customer_id: z.number().int().optional().nullable(),
+  customer_name: z.string().optional().nullable(),
+  bill_address: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  pincode: z.string().optional().nullable(),
+  gstin: z.string().optional().nullable(),
   employee_id: z.number().int().optional().nullable(),
   reference_no: z.string().optional().nullable(),
   payment_mode: paymentModeEnum,
   note: z.string().optional().nullable(), // Allow null/undefined
   paid_amount: z.number().nonnegative("Paid amount cannot be negative"),
   total_amount: z.number().nonnegative("Total amount cannot be negative"),
+  round_off: z.number().optional().default(0),
   status: saleStatusEnum,
   items: z.array(saleItemSchema).min(1, "At least one sale item is required"),
   createdAt: z.string().optional(),

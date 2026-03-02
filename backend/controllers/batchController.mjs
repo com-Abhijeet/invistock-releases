@@ -143,6 +143,43 @@ export function getBatchAnalytics(req, res) {
 }
 
 /**
+ * GET /api/expiry/notifications
+ * Used for the top-bar notification bell (7 days or expired)
+ */
+export const getNotifications = async (req, res) => {
+  try {
+    const notifications = await BatchService.getImmediateNotifications();
+
+    res.status(200).json({
+      success: true,
+      count: notifications.length,
+      data: notifications,
+    });
+  } catch (error) {
+    console.error("Error fetching expiry notifications:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+/**
+ * GET /api/expiry/report
+ * Used for the dedicated Expiry Tracking Dashboard
+ */
+export const getFullReport = async (req, res) => {
+  try {
+    const report = await BatchService.getCategorizedExpiryReport();
+
+    res.status(200).json({
+      success: true,
+      ...report,
+    });
+  } catch (error) {
+    console.error("Error fetching expiry report:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+/**
  * GET /api/batches/check-barcode/:code
  * Checks if a barcode is unique.
  */

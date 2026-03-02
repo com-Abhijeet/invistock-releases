@@ -15,19 +15,24 @@ import {
   MenuItem,
   Button,
   CircularProgress,
+  Card,
+  CardContent,
+  Typography,
+  alpha,
 } from "@mui/material";
 import {
   FileText,
   PieChart,
   FileSpreadsheet,
-  CalendarDays,
   Play,
+  FileSearch,
 } from "lucide-react";
 
 import DashboardHeader from "../components/DashboardHeader";
 import Gstr1ReportComponent from "../components/gstr/Gstr1ReportComponent";
+import Gstr2ReportComponent from "../components/gstr/Gstr2ReportComponent";
+import Gstr3bReportComponent from "../components/gstr/Gstr3bReportComponent";
 
-// Define a type for the report parameters
 type ReportParams = {
   periodType: "month" | "quarter" | "year";
   year: number;
@@ -46,24 +51,23 @@ export default function GstrReportsPage() {
 
   // Filter State
   const [periodType, setPeriodType] = useState<"month" | "quarter" | "year">(
-    "month"
+    "month",
   );
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [quarter, setQuarter] = useState(
-    Math.floor((new Date().getMonth() + 3) / 3)
+    Math.floor((new Date().getMonth() + 3) / 3),
   );
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [submittedParams, setSubmittedParams] = useState<ReportParams | null>(
-    null
+    null,
   );
 
   // --- Handlers ---
-
   const handleTabChange = (_event: React.SyntheticEvent, newValue: any) => {
     setActiveReport(newValue);
-    setSubmittedParams(null);
+    setSubmittedParams(null); // Reset report view when switching tabs
   };
 
   const handleGenerateReport = () => {
@@ -74,18 +78,15 @@ export default function GstrReportsPage() {
 
     setSubmittedParams(params);
 
-    // Simulate loading delay
-    setTimeout(() => setIsGenerating(false), 800);
+    // Simulate loading delay for smooth UX transition
+    setTimeout(() => setIsGenerating(false), 600);
   };
 
   return (
     <Box
-      p={2}
-      pt={3}
+      p={{ xs: 1.5, sm: 3 }}
       sx={{
-        backgroundColor: "#fff",
-        borderTopLeftRadius: "36px",
-        borderBottomLeftRadius: "36px",
+        backgroundColor: theme.palette.background.default,
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
@@ -98,16 +99,14 @@ export default function GstrReportsPage() {
         showDateFilters={false}
       />
 
-      {/* 2. TABS */}
+      {/* 2. MAIN TABS */}
       <Paper
-        variant="outlined"
+        elevation={0}
         sx={{
           mb: 3,
-          borderRadius: 2,
-          borderBottomLeftRadius: 0,
-          borderBottomRightRadius: 0,
-          borderBottom: "none",
-          backgroundColor: "background.paper",
+          borderRadius: 3,
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundColor: theme.palette.background.paper,
           overflow: "hidden",
         }}
       >
@@ -122,13 +121,17 @@ export default function GstrReportsPage() {
             "& .MuiTab-root": {
               minHeight: 64,
               textTransform: "none",
-              fontWeight: 600,
+              fontWeight: 700,
               fontSize: "0.95rem",
               gap: 1.5,
               color: "text.secondary",
+              transition: "all 0.2s",
               "&.Mui-selected": {
                 color: "primary.main",
-                backgroundColor: (theme) => theme.palette.primary.light + "15",
+                backgroundColor: alpha(theme.palette.primary.main, 0.04),
+              },
+              "&:hover": {
+                backgroundColor: alpha(theme.palette.primary.main, 0.02),
               },
             },
           }}
@@ -144,175 +147,284 @@ export default function GstrReportsPage() {
             iconPosition="start"
             label="GSTR-3B (Summary)"
             value="gstr3b"
-            disabled
           />
           <Tab
             icon={<FileSpreadsheet size={20} />}
             iconPosition="start"
-            label="GSTR-2A (Purchase)"
+            label="GSTR-2 (Purchase)"
             value="gstr2"
-            disabled
           />
         </Tabs>
-        <Divider />
       </Paper>
 
-      {/* 3. FILTERS & CONTENT */}
+      {/* 3. FILTERS & CONTENT AREA */}
       <Box sx={{ flexGrow: 1, pb: 4 }}>
-        {/* ✅ UNIFIED CONTROL BAR (Matches DashboardHeader style) */}
-        <Paper
-          variant="outlined"
+        {/* Modern Control Panel Card */}
+        <Card
+          elevation={0}
           sx={{
-            p: 1,
-            pl: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            borderRadius: "16px",
+            mb: 4,
+            borderRadius: 3,
             border: `1px solid ${theme.palette.divider}`,
-            backgroundColor: "#fff",
-            height: 64,
-            mb: 3,
-            flexWrap: "wrap",
-            gap: 2,
+            bgcolor: alpha(theme.palette.primary.main, 0.02),
+            overflow: "visible",
           }}
         >
-          {/* Left: Filter Type Chips */}
-          <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Box color="text.secondary" display="flex" alignItems="center">
-              <CalendarDays size={20} />
-            </Box>
-            {["month", "quarter", "year"].map((type) => (
-              <Chip
-                key={type}
-                label={type.charAt(0).toUpperCase() + type.slice(1)}
-                color={periodType === type ? "primary" : "default"}
-                onClick={() => setPeriodType(type as any)}
-                sx={{
-                  borderRadius: "16px",
-                  cursor: "pointer",
-                  fontWeight: 500,
-                }}
+          <CardContent
+            component={Stack}
+            direction={{ xs: "column", md: "row" }}
+            spacing={3}
+            alignItems={{ xs: "stretch", md: "center" }}
+            justifyContent="space-between"
+            sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}
+          >
+            {/* Left Side: Parameters */}
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={3}
+              alignItems={{ xs: "flex-start", sm: "center" }}
+            >
+              {/* Period Type Segmented Control */}
+              <Box>
+                <Typography
+                  variant="caption"
+                  fontWeight={700}
+                  color="text.secondary"
+                  textTransform="uppercase"
+                  letterSpacing={0.5}
+                  mb={1}
+                  display="block"
+                >
+                  Report Frequency
+                </Typography>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{
+                    bgcolor: "background.paper",
+                    p: 0.5,
+                    borderRadius: 2,
+                    border: `1px solid ${theme.palette.divider}`,
+                  }}
+                >
+                  {["month", "quarter", "year"].map((type) => {
+                    const isSelected = periodType === type;
+                    return (
+                      <Chip
+                        key={type}
+                        label={type.charAt(0).toUpperCase() + type.slice(1)}
+                        onClick={() => setPeriodType(type as any)}
+                        sx={{
+                          borderRadius: 1.5,
+                          cursor: "pointer",
+                          fontWeight: 700,
+                          px: 1,
+                          bgcolor: isSelected ? "primary.main" : "transparent",
+                          color: isSelected
+                            ? "primary.contrastText"
+                            : "text.primary",
+                          "&:hover": {
+                            bgcolor: isSelected
+                              ? "primary.dark"
+                              : alpha(theme.palette.primary.main, 0.08),
+                          },
+                        }}
+                      />
+                    );
+                  })}
+                </Stack>
+              </Box>
+
+              <Divider
+                orientation="vertical"
+                flexItem
+                sx={{ display: { xs: "none", sm: "block" } }}
               />
-            ))}
-          </Stack>
 
-          <Divider
-            orientation="vertical"
-            flexItem
-            sx={{ display: { xs: "none", md: "block" } }}
-          />
+              {/* Dynamic Selectors */}
+              <Box>
+                <Typography
+                  variant="caption"
+                  fontWeight={700}
+                  color="text.secondary"
+                  textTransform="uppercase"
+                  letterSpacing={0.5}
+                  mb={1}
+                  display="block"
+                >
+                  Select Period
+                </Typography>
+                <Stack direction="row" spacing={1.5}>
+                  <TextField
+                    select
+                    size="small"
+                    value={year}
+                    onChange={(e) => setYear(Number(e.target.value))}
+                    sx={{
+                      minWidth: 110,
+                      "& .MuiOutlinedInput-root": {
+                        borderRadius: 2,
+                        bgcolor: "background.paper",
+                        fontWeight: 600,
+                      },
+                    }}
+                  >
+                    {Array.from(
+                      { length: 5 },
+                      (_, i) => new Date().getFullYear() - i,
+                    ).map((y) => (
+                      <MenuItem key={y} value={y} sx={{ fontWeight: 600 }}>
+                        {y}
+                      </MenuItem>
+                    ))}
+                  </TextField>
 
-          {/* Center: Dynamic Selectors */}
-          <Stack direction="row" alignItems="center" spacing={2}>
-            {/* Year Selector (Always visible) */}
-            <TextField
-              select
-              size="small"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
+                  {periodType === "month" && (
+                    <TextField
+                      select
+                      size="small"
+                      value={month}
+                      onChange={(e) => setMonth(Number(e.target.value))}
+                      sx={{
+                        minWidth: 150,
+                        "& .MuiOutlinedInput-root": {
+                          borderRadius: 2,
+                          bgcolor: "background.paper",
+                          fontWeight: 600,
+                        },
+                      }}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                        <MenuItem key={m} value={m} sx={{ fontWeight: 500 }}>
+                          {new Date(0, m - 1).toLocaleString("default", {
+                            month: "long",
+                          })}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  )}
+
+                  {periodType === "quarter" && (
+                    <TextField
+                      select
+                      size="small"
+                      value={quarter}
+                      onChange={(e) => setQuarter(Number(e.target.value))}
+                      sx={{
+                        minWidth: 150,
+                        "& .MuiOutlinedInput-root": {
+                          borderRadius: 2,
+                          bgcolor: "background.paper",
+                          fontWeight: 600,
+                        },
+                      }}
+                    >
+                      <MenuItem value={1} sx={{ fontWeight: 500 }}>
+                        Apr - Jun (Q1)
+                      </MenuItem>
+                      <MenuItem value={2} sx={{ fontWeight: 500 }}>
+                        Jul - Sep (Q2)
+                      </MenuItem>
+                      <MenuItem value={3} sx={{ fontWeight: 500 }}>
+                        Oct - Dec (Q3)
+                      </MenuItem>
+                      <MenuItem value={4} sx={{ fontWeight: 500 }}>
+                        Jan - Mar (Q4)
+                      </MenuItem>
+                    </TextField>
+                  )}
+                </Stack>
+              </Box>
+            </Stack>
+
+            {/* Right Side: Generate Action */}
+            <Button
+              variant="contained"
+              color="primary"
+              size="large"
+              onClick={handleGenerateReport}
+              disabled={isGenerating}
+              startIcon={
+                isGenerating ? (
+                  <CircularProgress size={20} color="inherit" />
+                ) : (
+                  <Play size={20} />
+                )
+              }
               sx={{
-                minWidth: 100,
-                "& .MuiOutlinedInput-root": { borderRadius: "12px" },
+                borderRadius: 2.5,
+                px: 4,
+                py: 1.5,
+                fontWeight: 800,
+                textTransform: "none",
+                fontSize: "1rem",
+                boxShadow: theme.shadows[4],
+                "&:hover": { boxShadow: theme.shadows[6] },
               }}
             >
-              {Array.from(
-                { length: 5 },
-                (_, i) => new Date().getFullYear() - i
-              ).map((y) => (
-                <MenuItem key={y} value={y}>
-                  {y}
-                </MenuItem>
-              ))}
-            </TextField>
+              {isGenerating ? "Compiling..." : "Generate Report"}
+            </Button>
+          </CardContent>
+        </Card>
 
-            {/* Month Selector */}
-            {periodType === "month" && (
-              <TextField
-                select
-                size="small"
-                value={month}
-                onChange={(e) => setMonth(Number(e.target.value))}
-                sx={{
-                  minWidth: 140,
-                  "& .MuiOutlinedInput-root": { borderRadius: "12px" },
-                }}
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                  <MenuItem key={m} value={m}>
-                    {new Date(0, m - 1).toLocaleString("default", {
-                      month: "long",
-                    })}
-                  </MenuItem>
-                ))}
-              </TextField>
+        {/* Report Content Container */}
+        {submittedParams ? (
+          <Box sx={{ animation: "fadeIn 0.5s ease-in-out" }}>
+            {activeReport === "gstr1" && (
+              <Gstr1ReportComponent {...submittedParams} />
             )}
-
-            {/* Quarter Selector */}
-            {periodType === "quarter" && (
-              <TextField
-                select
-                size="small"
-                value={quarter}
-                onChange={(e) => setQuarter(Number(e.target.value))}
-                sx={{
-                  minWidth: 120,
-                  "& .MuiOutlinedInput-root": { borderRadius: "12px" },
-                }}
-              >
-                <MenuItem value={1}>Apr - Jun (Q1)</MenuItem>
-                <MenuItem value={2}>Jul - Sep (Q2)</MenuItem>
-                <MenuItem value={3}>Oct - Dec (Q3)</MenuItem>
-                <MenuItem value={4}>Jan - Mar (Q4)</MenuItem>
-              </TextField>
+            {activeReport === "gstr2" && (
+              <Gstr2ReportComponent {...submittedParams} />
             )}
-          </Stack>
-
-          <Box sx={{ flexGrow: 1 }} />
-
-          {/* Right: Generate Action */}
-          <Button
-            variant="contained"
-            onClick={handleGenerateReport}
-            disabled={isGenerating}
-            startIcon={
-              isGenerating ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <Play size={18} />
-              )
-            }
-            sx={{ borderRadius: "12px", px: 3, fontWeight: 600 }}
+            {activeReport === "gstr3b" && (
+              <Gstr3bReportComponent {...submittedParams} />
+            )}
+          </Box>
+        ) : (
+          <Card
+            elevation={0}
+            sx={{
+              border: `2px dashed ${theme.palette.divider}`,
+              borderRadius: 4,
+              bgcolor: alpha(theme.palette.action.hover, 0.02),
+            }}
           >
-            {isGenerating ? "Generating..." : "Generate Report"}
-          </Button>
-        </Paper>
-
-        {/* Report Content */}
-        {activeReport === "gstr1" &&
-          (submittedParams ? (
-            <Gstr1ReportComponent {...submittedParams} />
-          ) : (
             <Box
               display="flex"
+              flexDirection="column"
               justifyContent="center"
               alignItems="center"
-              height="300px"
+              minHeight="400px"
               color="text.secondary"
-              sx={{
-                border: "2px dashed #eee",
-                borderRadius: 4,
-                bgcolor: "grey.50",
-              }}
+              p={4}
+              textAlign="center"
             >
-              Select a period and click "Generate Report" to view data.
+              <Box
+                sx={{
+                  p: 3,
+                  bgcolor: "background.paper",
+                  borderRadius: "50%",
+                  mb: 2,
+                  boxShadow: theme.shadows[1],
+                }}
+              >
+                <FileSearch size={48} color={theme.palette.primary.light} />
+              </Box>
+              <Typography
+                variant="h6"
+                fontWeight="bold"
+                color="text.primary"
+                gutterBottom
+              >
+                No Report Generated Yet
+              </Typography>
+              <Typography variant="body2" maxWidth="400px">
+                Select a tab, configure your filing frequency in the control
+                panel above, and click <b>Generate Report</b> to compile your
+                GST data.
+              </Typography>
             </Box>
-          ))}
-
-        {activeReport === "gstr3b" && (
-          <Box p={4} textAlign="center" color="text.secondary">
-            GSTR-3B reporting module coming soon.
-          </Box>
+          </Card>
         )}
       </Box>
     </Box>

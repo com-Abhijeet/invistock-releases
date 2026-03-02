@@ -78,7 +78,7 @@ export function getActiveBatchesByProductId(productId) {
     SELECT * FROM product_batches 
     WHERE product_id = ? AND is_active = 1 AND quantity > 0
     ORDER BY expiry_date ASC
-  `
+  `,
     )
     .all(productId);
 }
@@ -95,7 +95,7 @@ export function getAvailableSerialsByProductId(productId) {
     FROM product_serials s
     JOIN product_batches b ON s.batch_id = b.id
     WHERE s.product_id = ? AND s.status = 'available'
-  `
+  `,
     )
     .all(productId);
 }
@@ -117,7 +117,7 @@ export function findSerialHistory(serialNumber) {
     LEFT JOIN purchases pur ON pb.purchase_id = pur.id
     LEFT JOIN suppliers sup ON pur.supplier_id = sup.id
     WHERE ps.serial_number = ?
-  `
+  `,
     )
     .get(serialNumber);
 
@@ -135,7 +135,7 @@ export function findSerialHistory(serialNumber) {
     JOIN sales s ON si.sale_id = s.id
     LEFT JOIN customers c ON s.customer_id = c.id
     WHERE si.serial_id = ?
-  `
+  `,
     )
     .get(serialInfo.serial_id);
 
@@ -157,7 +157,7 @@ export function findBatchDetails(batchNumber) {
     LEFT JOIN purchases pur ON pb.purchase_id = pur.id
     LEFT JOIN suppliers sup ON pur.supplier_id = sup.id
     WHERE pb.batch_number = ?
-  `
+  `,
     )
     .get(batchNumber);
 
@@ -165,7 +165,7 @@ export function findBatchDetails(batchNumber) {
 
   const serials = db
     .prepare(
-      `SELECT serial_number, status FROM product_serials WHERE batch_id = ?`
+      `SELECT serial_number, status FROM product_serials WHERE batch_id = ?`,
     )
     .all(batch.batch_id);
 
@@ -201,7 +201,7 @@ export function getAllSerialsInBatch(batchId) {
 export function findProductByBarcode(code) {
   return db
     .prepare(
-      "SELECT * FROM products WHERE barcode = ? OR product_code = ? OR id = ?"
+      "SELECT * FROM products WHERE barcode = ? OR product_code = ? OR id = ?",
     )
     .get(code, code, code);
 }
@@ -220,7 +220,7 @@ export function findSerialByExactMatch(serialNumber) {
         FROM product_serials ps
         JOIN product_batches pb ON ps.batch_id = pb.id
         WHERE ps.serial_number = ?
-    `
+    `,
     )
     .get(serialNumber);
 }
@@ -233,8 +233,52 @@ export function findSerialByCompositeKey(productId, batchUid, serialNumber) {
     FROM product_serials ps
     JOIN product_batches pb ON ps.batch_id = pb.id
     WHERE ps.product_id = ? AND pb.batch_uid = ? AND ps.serial_number = ?
-  `
+  `,
     )
     .get(productId, batchUid, serialNumber);
 }
 
+/**
+ * Fetches batches expiring within a specific number of days, including already expired ones.
+ */
+export const getBatchesExpiringWithin = async (days) => {
+  const query = `
+    SELECT 
+      b.id, b.product_id, p.name AS product_name, b.batch_number, 
+      b.expiry_date, b.quantity, b.location
+    FROM product_batches b
+    JOIN products p ON b.product_id = p.id
+    WHERE b.quantity > 0 
+      AND b.is_active = 1
+      AND b.expiry_date IS NOT NULL 
+      AND b.expiry_date != ''
+      AND date(b.expiry_date) <= date('now', '+' || ? || ' days')
+    ORDER BY date(b.expiry_date) ASC
+  `;
+
+  // better-sqlite3 execution (all() returns multiple rows, get() returns only one)
+  const stmt = db.prepare(query);
+  return stmt.all(days);
+};
+
+/**
+ * Fetches ALL active batches that have an expiry date for the broader report.
+ */
+export const getAllBatchesWithExpiry = async () => {
+  const query = `
+    SELECT 
+      b.id, b.product_id, p.name AS product_name, b.batch_number, 
+      b.expiry_date, b.quantity, b.location
+    FROM product_batches b
+    JOIN products p ON b.product_id = p.id
+    WHERE b.quantity > 0 
+      AND b.is_active = 1
+      AND b.expiry_date IS NOT NULL 
+      AND b.expiry_date != ''
+    ORDER BY date(b.expiry_date) ASC
+  `;
+
+  // better-sqlite3 execution
+  const stmt = db.prepare(query);
+  return stmt.all();
+};

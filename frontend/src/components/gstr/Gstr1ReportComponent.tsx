@@ -1,4 +1,3 @@
-// /components/Gstr1ReportComponent.tsx (or your file path)
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -10,11 +9,27 @@ import {
   Tabs,
   Tab,
   Alert,
+  Card,
+  CardContent,
+  Stack,
+  alpha,
+  useTheme,
 } from "@mui/material";
-import DataTable from "../DataTable"; // Assuming this is your DataTable component
+import Grid from "@mui/material/GridLegacy";
+import DataTable from "../DataTable";
 import { getGstr1Report } from "../../lib/api/gstrService";
 import type { Gstr1ReportData } from "../../lib/types/gstrTypes";
-import { FileOutput } from "lucide-react";
+import {
+  Download,
+  Building2,
+  Users,
+  FileSpreadsheet,
+  FileMinus,
+  FileX,
+  Receipt,
+  ShieldAlert,
+  TrendingUp,
+} from "lucide-react";
 import toast from "react-hot-toast";
 
 // Prop types for the component
@@ -50,7 +65,7 @@ const TabPanel = (props: {
       {...other}
     >
       {value === index && (
-        <Box sx={{ pt: 2.5, backgroundColor: "transparent" }}>{children}</Box>
+        <Box sx={{ pt: 2, backgroundColor: "transparent" }}>{children}</Box>
       )}
     </div>
   );
@@ -62,18 +77,29 @@ export default function Gstr1ReportComponent({
   month,
   quarter,
 }: Gstr1ReportComponentProps) {
+  const theme = useTheme();
+
+  // Guard check: Read shop details from local storage to verify GSTIN existence
+  const shopStr =
+    typeof window !== "undefined" ? localStorage.getItem("shop") : null;
+  const shop = shopStr ? JSON.parse(shopStr) : {};
+  const hasGstin = Boolean(shop.gstin || shop.gst_no);
+
   const [reportData, setReportData] = useState<Gstr1ReportData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
 
   // Fetch data whenever the props (date parameters) change
   useEffect(() => {
+    // Prevent fetching if GSTIN is completely missing
+    if (!hasGstin) return;
+
     const fetchReport = async () => {
       setLoading(true);
       setError(null);
-      setReportData(null); // Clear previous data
-      setActiveTab(0); // Reset tab on new report
+      setReportData(null);
+      setActiveTab(0);
 
       const params = {
         periodType,
@@ -85,11 +111,10 @@ export default function Gstr1ReportComponent({
       try {
         const data = await getGstr1Report(params);
         setReportData(data);
-        console.log(data);
       } catch (err: any) {
-        toast(err);
+        toast.error(err.message || "Failed to fetch GSTR-1 data");
         setError(
-          err.message || "An unknown error occurred while fetching the report."
+          err.message || "An unknown error occurred while fetching the report.",
         );
       } finally {
         setLoading(false);
@@ -97,7 +122,7 @@ export default function Gstr1ReportComponent({
     };
 
     fetchReport();
-  }, [periodType, year, month, quarter]); // Dependency array ensures this runs on prop change
+  }, [periodType, year, month, quarter, hasGstin]);
 
   // Memoized data processing for B2B invoices
   const b2bInvoices = useMemo(() => {
@@ -106,15 +131,53 @@ export default function Gstr1ReportComponent({
       customer.inv.map((invoice) => ({
         ...invoice,
         ctin: customer.ctin,
-      }))
+      })),
     );
+  }, [reportData]);
+
+  // Flatten CDNR data for the DataTable
+  const cdnrNotes = useMemo(() => {
+    if (!reportData?.cdnr) return [];
+    return reportData.cdnr.flatMap((customer) =>
+      customer.nt.map((note) => ({
+        ...note,
+        ctin: customer.ctin,
+      })),
+    );
+  }, [reportData]);
+
+  // Calculate top-level summary metrics
+  const summaryMetrics = useMemo(() => {
+    if (!reportData) return { b2bVal: 0, b2cVal: 0, taxVal: 0 };
+    let b2bVal = 0,
+      b2cVal = 0,
+      taxVal = 0;
+
+    reportData.b2b?.forEach((c) => {
+      c.inv.forEach((i) => {
+        i.itms.forEach((it) => {
+          b2bVal += it.itm_det.txval || 0;
+          taxVal +=
+            (it.itm_det.iamt || 0) +
+            (it.itm_det.camt || 0) +
+            (it.itm_det.samt || 0);
+        });
+      });
+    });
+
+    reportData.b2cs?.forEach((c) => {
+      b2cVal += c.txval || 0;
+      taxVal += (c.iamt || 0) + (c.camt || 0) + (c.samt || 0);
+    });
+
+    return { b2bVal, b2cVal, taxVal };
   }, [reportData]);
 
   // Handler to export data as JSON
   const handleExportJson = () => {
     if (!reportData) return;
     const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-      JSON.stringify(reportData, null, 2)
+      JSON.stringify(reportData, null, 2),
     )}`;
     const link = document.createElement("a");
     link.href = jsonString;
@@ -124,18 +187,7 @@ export default function Gstr1ReportComponent({
     link.click();
   };
 
-  // ✅ Flatten CDNR data for the DataTable
-  const cdnrNotes = useMemo(() => {
-    if (!reportData?.cdnr) return [];
-    return reportData.cdnr.flatMap((customer) =>
-      customer.nt.map((note) => ({
-        ...note,
-        ctin: customer.ctin, // Add the customer GSTIN to each note row
-      }))
-    );
-  }, [reportData]);
-
-  // Column definitions remain inside this component as they are tied to the data
+  // --- Column Definitions ---
   const b2bColumns = [
     { key: "ctin", label: "Customer GSTIN" },
     { key: "inum", label: "Invoice No." },
@@ -192,79 +244,236 @@ export default function Gstr1ReportComponent({
     {
       key: "sply_ty",
       label: "Supply Type",
-      // Format for better readability
       format: (val: "INTER" | "INTRA") =>
         val === "INTER" ? "Interstate" : "Intrastate",
     },
-    {
-      key: "nil_amt",
-      label: "Nil Rated Amount",
-      format: formatCurrency,
-    },
-    {
-      key: "expt_amt",
-      label: "Exempted Amount",
-      format: formatCurrency,
-    },
-    {
-      key: "ngsup_amt",
-      label: "Non-GST Amount",
-      format: formatCurrency,
-    },
+    { key: "nil_amt", label: "Nil Rated Amount", format: formatCurrency },
+    { key: "expt_amt", label: "Exempted Amount", format: formatCurrency },
+    { key: "ngsup_amt", label: "Non-GST Amount", format: formatCurrency },
   ];
 
-  if (loading) {
+  // 1. Render Guard for Missing GSTIN
+  if (!hasGstin) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        my={5}
-        minHeight="300px"
-      >
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Fetching GSTR-1 data...</Typography>
+      <Box sx={{ mt: 3 }}>
+        <Alert
+          severity="error"
+          icon={<ShieldAlert size={28} />}
+          sx={{ "& .MuiAlert-message": { width: "100%" }, borderRadius: 2 }}
+        >
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+            Missing Shop GSTIN
+          </Typography>
+          <Typography variant="body2">
+            Your shop GSTIN is not configured. Please update your shop settings
+            with a valid GSTIN and State to generate the legally compliant
+            GSTR-1 Report.
+          </Typography>
+        </Alert>
       </Box>
     );
   }
 
+  // 2. Render Loading State
+  if (loading) {
+    return (
+      <Box
+        display="flex"
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        my={8}
+        minHeight="250px"
+      >
+        <CircularProgress size={40} thickness={4} />
+        <Typography sx={{ mt: 2, fontWeight: 600, color: "text.secondary" }}>
+          Compiling GSTR-1 Data...
+        </Typography>
+      </Box>
+    );
+  }
+
+  // 3. Render API Errors
   if (error) {
-    return <Alert severity="error">{error}</Alert>;
+    return (
+      <Box sx={{ mt: 3 }}>
+        <Alert severity="error" sx={{ borderRadius: 2 }}>
+          {error}
+        </Alert>
+      </Box>
+    );
   }
 
   if (!reportData) {
     return (
-      <Alert severity="info">No data found for the selected period.</Alert>
+      <Alert severity="info" sx={{ mt: 3, borderRadius: 2 }}>
+        No data found for the selected period.
+      </Alert>
     );
   }
 
+  // 4. Render Main Dashboard
   return (
-    <Box>
+    <Box sx={{ mt: 1 }}>
+      {/* Action Header */}
       <Box
         sx={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          mb: 2,
+          mb: 3,
         }}
       >
-        <Typography variant="h6">Report Preview</Typography>
+        <Typography variant="h6" fontWeight="bold" color="text.primary">
+          GSTR-1 JSON Preview
+        </Typography>
         <Button
           variant="contained"
-          color="secondary"
+          color="primary"
           onClick={handleExportJson}
-          startIcon={<FileOutput size={18} />}
+          startIcon={<Download size={18} />}
+          sx={{ textTransform: "none", fontWeight: 700, borderRadius: 2 }}
         >
-          Export JSON
+          Download JSON
         </Button>
       </Box>
 
-      {/* A modern, contained look for the report without using Paper elevation */}
+      {/* Summary Metrics Row */}
+      <Grid container spacing={3} mb={3}>
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              borderRadius: 3,
+              bgcolor: alpha(theme.palette.primary.main, 0.04),
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+              boxShadow: "none",
+            }}
+          >
+            <CardContent>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <Box>
+                  <Typography
+                    variant="caption"
+                    fontWeight="bold"
+                    color="text.secondary"
+                    textTransform="uppercase"
+                  >
+                    B2B Taxable Value
+                  </Typography>
+                  <Typography
+                    variant="h5"
+                    fontWeight="900"
+                    mt={0.5}
+                    color="primary.dark"
+                  >
+                    {formatCurrency(summaryMetrics.b2bVal)}
+                  </Typography>
+                </Box>
+                <Building2
+                  size={32}
+                  color={theme.palette.primary.main}
+                  opacity={0.5}
+                />
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              borderRadius: 3,
+              bgcolor: alpha(theme.palette.success.main, 0.04),
+              border: `1px solid ${alpha(theme.palette.success.main, 0.1)}`,
+              boxShadow: "none",
+            }}
+          >
+            <CardContent>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <Box>
+                  <Typography
+                    variant="caption"
+                    fontWeight="bold"
+                    color="text.secondary"
+                    textTransform="uppercase"
+                  >
+                    B2C Taxable Value
+                  </Typography>
+                  <Typography
+                    variant="h5"
+                    fontWeight="900"
+                    mt={0.5}
+                    color="success.dark"
+                  >
+                    {formatCurrency(summaryMetrics.b2cVal)}
+                  </Typography>
+                </Box>
+                <Users
+                  size={32}
+                  color={theme.palette.success.main}
+                  opacity={0.5}
+                />
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card
+            sx={{
+              borderRadius: 3,
+              bgcolor: alpha(theme.palette.warning.main, 0.04),
+              border: `1px solid ${alpha(theme.palette.warning.main, 0.1)}`,
+              boxShadow: "none",
+            }}
+          >
+            <CardContent>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <Box>
+                  <Typography
+                    variant="caption"
+                    fontWeight="bold"
+                    color="text.secondary"
+                    textTransform="uppercase"
+                  >
+                    Total Tax Accumulated
+                  </Typography>
+                  <Typography
+                    variant="h5"
+                    fontWeight="900"
+                    mt={0.5}
+                    color="warning.dark"
+                  >
+                    {formatCurrency(summaryMetrics.taxVal)}
+                  </Typography>
+                </Box>
+                <TrendingUp
+                  size={32}
+                  color={theme.palette.warning.main}
+                  opacity={0.5}
+                />
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Tabs & Data Section */}
       <Box
         sx={{
-          border: 1,
-          borderColor: "divider",
-          borderRadius: 2,
+          border: `1px solid ${theme.palette.divider}`,
+          borderRadius: 3,
+          backgroundColor: theme.palette.background.paper,
           overflow: "hidden",
         }}
       >
@@ -272,7 +481,7 @@ export default function Gstr1ReportComponent({
           sx={{
             borderBottom: 1,
             borderColor: "divider",
-            backgroundColor: "action.hover",
+            backgroundColor: alpha(theme.palette.action.hover, 0.05),
           }}
         >
           <Tabs
@@ -281,124 +490,122 @@ export default function Gstr1ReportComponent({
             aria-label="GSTR-1 report sections"
             variant="scrollable"
             scrollButtons="auto"
+            sx={{
+              "& .MuiTab-root": {
+                minHeight: 60,
+                fontWeight: 600,
+                textTransform: "none",
+                fontSize: "0.9rem",
+              },
+            }}
           >
-            <Tab label={`B2B (${b2bInvoices.length})`} id="gstr1-tab-0" />
             <Tab
+              icon={<Building2 size={16} />}
+              iconPosition="start"
+              label={`B2B (${b2bInvoices.length})`}
+            />
+            <Tab
+              icon={<Users size={16} />}
+              iconPosition="start"
               label={`B2C Small (${reportData.b2cs?.length ?? 0})`}
-              id="gstr1-tab-1"
             />
             <Tab
+              icon={<FileSpreadsheet size={16} />}
+              iconPosition="start"
               label={`HSN Summary (${reportData.hsn?.data?.length ?? 0})`}
-              id="gstr1-tab-2"
             />
-            <Tab label={`CDNR (${cdnrNotes.length})`} id="gstr1-tab-3" />
             <Tab
+              icon={<FileMinus size={16} />}
+              iconPosition="start"
+              label={`CDNR (${cdnrNotes.length})`}
+            />
+            <Tab
+              icon={<FileX size={16} />}
+              iconPosition="start"
               label={`CDNUR (${reportData.cdnur?.length ?? 0})`}
-              id="gstr1-tab-4"
             />
             <Tab
+              icon={<Receipt size={16} />}
+              iconPosition="start"
               label={`Nil/Exempt (${reportData.nil?.inv.length ?? 0})`}
-              id="gstr1-tab-5"
             />
           </Tabs>
         </Box>
 
-        <TabPanel value={activeTab} index={0}>
-          <DataTable
-            columns={b2bColumns}
-            rows={b2bInvoices}
-            loading={false}
-            total={0}
-            page={0}
-            rowsPerPage={0}
-            onPageChange={function (_newPage: number): void {
-              throw new Error("Function not implemented.");
-            }}
-            onRowsPerPageChange={function (_newLimit: number): void {
-              throw new Error("Function not implemented.");
-            }}
-          />
-        </TabPanel>
-        <TabPanel value={activeTab} index={1}>
-          <DataTable
-            columns={b2csColumns}
-            rows={reportData.b2cs ?? []}
-            loading={false}
-            total={0}
-            page={0}
-            rowsPerPage={0}
-            onPageChange={function (_newPage: number): void {
-              throw new Error("Function not implemented.");
-            }}
-            onRowsPerPageChange={function (_newLimit: number): void {
-              throw new Error("Function not implemented.");
-            }}
-          />
-        </TabPanel>
-        <TabPanel value={activeTab} index={2}>
-          <DataTable
-            columns={hsnColumns}
-            rows={reportData.hsn?.data ?? []}
-            loading={false}
-            total={0}
-            page={0}
-            rowsPerPage={0}
-            onPageChange={function (_newPage: number): void {
-              throw new Error("Function not implemented.");
-            }}
-            onRowsPerPageChange={function (_newLimit: number): void {
-              throw new Error("Function not implemented.");
-            }}
-          />
-        </TabPanel>
-        <TabPanel value={activeTab} index={3}>
-          <DataTable
-            columns={cdnrColumns}
-            rows={cdnrNotes}
-            loading={false}
-            total={0}
-            page={0}
-            rowsPerPage={0}
-            onPageChange={function (_newPage: number): void {
-              throw new Error("Function not implemented.");
-            }}
-            onRowsPerPageChange={function (_newLimit: number): void {
-              throw new Error("Function not implemented.");
-            }}
-          />
-        </TabPanel>
-        <TabPanel value={activeTab} index={4}>
-          <DataTable
-            columns={cdnurColumns}
-            rows={reportData.cdnur ?? []}
-            loading={false}
-            total={0}
-            page={0}
-            rowsPerPage={0}
-            onPageChange={function (_newPage: number): void {
-              throw new Error("Function not implemented.");
-            }}
-            onRowsPerPageChange={function (_newLimit: number): void {
-              throw new Error("Function not implemented.");
-            }}
-          />
-        </TabPanel>
-        <TabPanel value={activeTab} index={5}>
-          <DataTable
-            columns={nilRatedColumns}
-            rows={reportData.nil?.inv ?? []}
-            loading={false}
-            total={0}
-            page={0}
-            rowsPerPage={0}
-            onPageChange={function (_newPage: number): void {
-              throw new Error("Function not implemented.");
-            }}
-            onRowsPerPageChange={function (_newLimit: number): void {
-              throw new Error("Function not implemented.");
-            }}
-          />
-        </TabPanel>
+        <Box sx={{ p: 1 }}>
+          <TabPanel value={activeTab} index={0}>
+            <DataTable
+              columns={b2bColumns}
+              rows={b2bInvoices}
+              loading={false}
+              total={0}
+              page={0}
+              rowsPerPage={0}
+              onPageChange={() => {}}
+              onRowsPerPageChange={() => {}}
+            />
+          </TabPanel>
+          <TabPanel value={activeTab} index={1}>
+            <DataTable
+              columns={b2csColumns}
+              rows={reportData.b2cs ?? []}
+              loading={false}
+              total={0}
+              page={0}
+              rowsPerPage={0}
+              onPageChange={() => {}}
+              onRowsPerPageChange={() => {}}
+            />
+          </TabPanel>
+          <TabPanel value={activeTab} index={2}>
+            <DataTable
+              columns={hsnColumns}
+              rows={reportData.hsn?.data ?? []}
+              loading={false}
+              total={0}
+              page={0}
+              rowsPerPage={0}
+              onPageChange={() => {}}
+              onRowsPerPageChange={() => {}}
+            />
+          </TabPanel>
+          <TabPanel value={activeTab} index={3}>
+            <DataTable
+              columns={cdnrColumns}
+              rows={cdnrNotes}
+              loading={false}
+              total={0}
+              page={0}
+              rowsPerPage={0}
+              onPageChange={() => {}}
+              onRowsPerPageChange={() => {}}
+            />
+          </TabPanel>
+          <TabPanel value={activeTab} index={4}>
+            <DataTable
+              columns={cdnurColumns}
+              rows={reportData.cdnur ?? []}
+              loading={false}
+              total={0}
+              page={0}
+              rowsPerPage={0}
+              onPageChange={() => {}}
+              onRowsPerPageChange={() => {}}
+            />
+          </TabPanel>
+          <TabPanel value={activeTab} index={5}>
+            <DataTable
+              columns={nilRatedColumns}
+              rows={reportData.nil?.inv ?? []}
+              loading={false}
+              total={0}
+              page={0}
+              rowsPerPage={0}
+              onPageChange={() => {}}
+              onRowsPerPageChange={() => {}}
+            />
+          </TabPanel>
+        </Box>
       </Box>
     </Box>
   );

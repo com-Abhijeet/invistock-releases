@@ -23,6 +23,7 @@ import {
   TableHead,
   TableRow,
   Divider,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -33,9 +34,12 @@ import {
   Calendar,
   AlertCircle,
   Hash,
-  IndianRupee,
   PackageOpen,
   Plus,
+  MapPin,
+  Barcode,
+  Factory,
+  ShieldAlert,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -43,24 +47,31 @@ import { fetchProductHistory } from "../lib/api/productService";
 import { getProductBatches } from "../lib/api/batchService";
 import DashboardHeader from "../components/DashboardHeader";
 import LabelPrintDialog from "../components/LabelPrintModal";
-import AssignBatchModal from "../components/batch/AssignBatchModal"; // Imported new component
+import AssignBatchModal from "../components/batch/AssignBatchModal";
 import { Product } from "../lib/types/product";
 
-// Types for our local state
+// Types mapping to SQL Schema
 interface BatchGroup {
   batch_id: number;
-  batch_number: string;
   batch_uid?: string;
+  batch_number: string;
+  barcode?: string;
   expiry_date?: string;
+  mfg_date?: string;
   mrp?: number;
+  margin?: number;
+  mop?: number;
+  mfw_price?: string;
   quantity: number;
+  location?: string;
+  is_active?: number | boolean;
   serials: SerialEntry[];
 }
 
 interface SerialEntry {
   id: number;
   serial_number: string;
-  status: string;
+  status: string; // 'available', 'sold', 'returned', 'defective', 'in_repair', 'adjusted_out'
 }
 
 export default function ProductBatchesPage() {
@@ -97,7 +108,7 @@ export default function ProductBatchesPage() {
       // 2. Fetch Stock Data
       const rawData = await getProductBatches(
         Number(id),
-        prod.tracking_type as "batch" | "serial"
+        prod.tracking_type as "batch" | "serial",
       );
 
       // 3. Process Data into Groups
@@ -110,9 +121,17 @@ export default function ProductBatchesPage() {
           if (!groups[bId]) {
             groups[bId] = {
               batch_id: bId,
+              batch_uid: item.batch_uid,
               batch_number: item.batch_number || "Unknown Batch",
+              barcode: item.barcode,
               expiry_date: item.expiry_date,
+              mfg_date: item.mfg_date,
               mrp: item.mrp,
+              margin: item.margin,
+              mop: item.mop,
+              mfw_price: item.mfw_price,
+              location: item.location,
+              is_active: item.is_active,
               quantity: 0,
               serials: [],
             };
@@ -134,10 +153,17 @@ export default function ProductBatchesPage() {
         rawData.forEach((item: any) => {
           groups[item.id] = {
             batch_id: item.id,
-            batch_number: item.batch_number,
             batch_uid: item.batch_uid,
+            batch_number: item.batch_number,
+            barcode: item.barcode,
             expiry_date: item.expiry_date,
+            mfg_date: item.mfg_date,
             mrp: item.mrp,
+            margin: item.margin,
+            mop: item.mop,
+            mfw_price: item.mfw_price,
+            location: item.location,
+            is_active: item.is_active,
             quantity: item.quantity,
             serials: [],
           };
@@ -160,6 +186,26 @@ export default function ProductBatchesPage() {
   };
 
   const untrackedQuantity = (product?.quantity || 0) - totalTracked;
+
+  // Helper for Serial Status Colors
+  const getSerialStatusColor = (status: string) => {
+    switch (status) {
+      case "available":
+        return "success";
+      case "sold":
+        return "default";
+      case "returned":
+        return "warning";
+      case "defective":
+        return "error";
+      case "in_repair":
+        return "info";
+      case "adjusted_out":
+        return "error";
+      default:
+        return "default";
+    }
+  };
 
   if (loading) {
     return (
@@ -204,12 +250,14 @@ export default function ProductBatchesPage() {
           >
             {product.name}
           </Link>
-          <Typography color="text.primary">Batches</Typography>
+          <Typography color="text.primary" fontWeight={600}>
+            Batches & Serials
+          </Typography>
         </Breadcrumbs>
       </Stack>
 
       <DashboardHeader
-        title={`Batch Management: ${product.name}`}
+        title={`Inventory: ${product.name}`}
         showDateFilters={false}
         actions={
           <Button
@@ -311,10 +359,13 @@ export default function ProductBatchesPage() {
                       variant="caption"
                       color="error"
                       fontWeight={600}
-                      display="block"
+                      display="flex"
+                      alignItems="center"
+                      gap={0.5}
                       mt={1}
                     >
-                      Warning: Tracked stock exceeds master inventory count.
+                      <ShieldAlert size={14} /> Warning: Tracked stock exceeds
+                      master inventory count.
                     </Typography>
                   )}
                 </CardContent>
@@ -339,11 +390,15 @@ export default function ProductBatchesPage() {
                   sx={{
                     borderRadius: 3,
                     borderColor: "divider",
-                    transition: "box-shadow 0.2s",
-                    "&:hover": { boxShadow: 4 },
+                    transition: "box-shadow 0.2s, transform 0.2s",
+                    "&:hover": { boxShadow: 4, transform: "translateY(-2px)" },
+                    display: "flex",
+                    flexDirection: "column",
+                    height: "100%",
                   }}
                 >
-                  <CardContent sx={{ pb: 1 }}>
+                  <CardContent sx={{ pb: 1, flexGrow: 1 }}>
+                    {/* Header: Batch Number & Status */}
                     <Stack
                       direction="row"
                       justifyContent="space-between"
@@ -359,29 +414,70 @@ export default function ProductBatchesPage() {
                             display: "flex",
                             alignItems: "center",
                             gap: 0.5,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
                           }}
                         >
-                          <Hash size={12} /> BATCH NUMBER
+                          <Hash size={12} /> BATCH
                         </Typography>
-                        <Typography variant="h6" fontWeight={700}>
+                        <Typography variant="h6" fontWeight={800}>
                           {batch.batch_number}
                         </Typography>
+                        {batch.batch_uid && (
+                          <Typography
+                            variant="caption"
+                            color="text.disabled"
+                            sx={{ fontFamily: "monospace" }}
+                          >
+                            UID: {batch.batch_uid}
+                          </Typography>
+                        )}
                       </Box>
-                      <Chip
-                        label={
-                          product.tracking_type === "serial"
-                            ? `${batch.quantity} Available`
-                            : `${batch.quantity} Units`
-                        }
-                        color={batch.quantity > 0 ? "success" : "warning"}
-                        size="small"
-                        sx={{ fontWeight: 600 }}
-                      />
+                      <Stack alignItems="flex-end" spacing={1}>
+                        <Chip
+                          label={
+                            product.tracking_type === "serial"
+                              ? `${batch.quantity} Available`
+                              : `${batch.quantity} Units`
+                          }
+                          color={batch.quantity > 0 ? "success" : "default"}
+                          size="small"
+                          sx={{ fontWeight: 700 }}
+                        />
+                        {batch.is_active === 0 || batch.is_active === false ? (
+                          <Chip
+                            label="Inactive"
+                            size="small"
+                            color="error"
+                            variant="outlined"
+                            sx={{ height: 20, fontSize: "0.7rem" }}
+                          />
+                        ) : null}
+                      </Stack>
                     </Stack>
 
                     <Divider sx={{ my: 1.5 }} />
 
-                    <Grid container spacing={2}>
+                    {/* Dates & Location info */}
+                    <Grid container spacing={2} sx={{ mb: 2 }}>
+                      <Grid item xs={6}>
+                        <Stack spacing={0.5}>
+                          <Box
+                            display="flex"
+                            alignItems="center"
+                            gap={1}
+                            color="text.secondary"
+                          >
+                            <Factory size={14} />
+                            <Typography variant="caption">Mfg Date</Typography>
+                          </Box>
+                          <Typography variant="body2" fontWeight={600}>
+                            {batch.mfg_date
+                              ? new Date(batch.mfg_date).toLocaleDateString()
+                              : "--"}
+                          </Typography>
+                        </Stack>
+                      </Grid>
                       <Grid item xs={6}>
                         <Stack spacing={0.5}>
                           <Box
@@ -391,14 +487,29 @@ export default function ProductBatchesPage() {
                             color="text.secondary"
                           >
                             <Calendar size={14} />
-                            <Typography variant="caption">
-                              Expiry Date
-                            </Typography>
+                            <Typography variant="caption">Expiry</Typography>
                           </Box>
-                          <Typography variant="body2" fontWeight={500}>
+                          <Typography variant="body2" fontWeight={600}>
                             {batch.expiry_date
                               ? new Date(batch.expiry_date).toLocaleDateString()
-                              : "N/A"}
+                              : "--"}
+                          </Typography>
+                        </Stack>
+                      </Grid>
+
+                      <Grid item xs={6}>
+                        <Stack spacing={0.5}>
+                          <Box
+                            display="flex"
+                            alignItems="center"
+                            gap={1}
+                            color="text.secondary"
+                          >
+                            <MapPin size={14} />
+                            <Typography variant="caption">Location</Typography>
+                          </Box>
+                          <Typography variant="body2" fontWeight={600}>
+                            {batch.location || "--"}
                           </Typography>
                         </Stack>
                       </Grid>
@@ -410,22 +521,87 @@ export default function ProductBatchesPage() {
                             gap={1}
                             color="text.secondary"
                           >
-                            <IndianRupee size={14} />
-                            <Typography variant="caption">MRP</Typography>
+                            <Barcode size={14} />
+                            <Typography variant="caption">Barcode</Typography>
                           </Box>
-                          <Typography variant="body2" fontWeight={500}>
-                            ₹{batch.mrp || 0}
+                          <Typography
+                            variant="body2"
+                            fontWeight={600}
+                            sx={{
+                              fontFamily: batch.barcode
+                                ? "monospace"
+                                : "inherit",
+                            }}
+                          >
+                            {batch.barcode || "--"}
                           </Typography>
                         </Stack>
                       </Grid>
                     </Grid>
+
+                    {/* Pricing Block */}
+                    <Box
+                      sx={{
+                        bgcolor: "grey.50",
+                        p: 1.5,
+                        borderRadius: 2,
+                        border: "1px solid",
+                        borderColor: "grey.200",
+                      }}
+                    >
+                      <Grid container spacing={1}>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            MRP
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            fontWeight={700}
+                            color="primary.main"
+                          >
+                            ₹{batch.mrp?.toFixed(2) || "0.00"}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            MOP
+                          </Typography>
+                          <Typography variant="body2" fontWeight={600}>
+                            ₹{batch.mop?.toFixed(2) || "0.00"}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            display="flex"
+                            alignItems="center"
+                            gap={0.5}
+                          >
+                            Margin
+                          </Typography>
+                          <Typography variant="body2" fontWeight={600}>
+                            {batch.margin}%
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            MFW Price
+                          </Typography>
+                          <Typography variant="body2" fontWeight={600}>
+                            {batch.mfw_price ? `₹${batch.mfw_price}` : "--"}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </Box>
                   </CardContent>
 
+                  {/* Actions & Expansion */}
                   <CardActions
                     sx={{
                       px: 2,
                       pb: 2,
-                      pt: 0,
+                      pt: 1,
                       justifyContent: "space-between",
                       alignItems: "center",
                     }}
@@ -441,23 +617,35 @@ export default function ProductBatchesPage() {
                             <ChevronDown size={16} />
                           )
                         }
-                        sx={{ textTransform: "none", color: "text.secondary" }}
+                        sx={{
+                          textTransform: "none",
+                          color: "text.primary",
+                          fontWeight: 600,
+                        }}
                       >
                         {expandedBatch === batch.batch_id ? "Hide" : "View"}{" "}
                         {batch.serials.length} Serials
                       </Button>
                     ) : (
-                      <Box />
+                      <Box /> // Spacer
                     )}
 
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => setPrintModalOpen(true)}
-                      title="Print Labels for this Batch"
-                    >
-                      <Printer size={18} />
-                    </IconButton>
+                    <Tooltip title="Print Labels for this Batch">
+                      <IconButton
+                        size="small"
+                        sx={{
+                          color: "primary.main",
+                          bgcolor: "primary.lighter",
+                          "&:hover": {
+                            bgcolor: "primary.light",
+                            color: "#fff",
+                          },
+                        }}
+                        onClick={() => setPrintModalOpen(true)}
+                      >
+                        <Printer size={18} />
+                      </IconButton>
+                    </Tooltip>
                   </CardActions>
 
                   <Collapse
@@ -468,58 +656,87 @@ export default function ProductBatchesPage() {
                     <Box
                       sx={{
                         bgcolor: "grey.50",
-                        borderTop: "1px solid #eee",
-                        p: 0,
+                        borderTop: "1px solid",
+                        borderColor: "divider",
+                        maxHeight: "250px",
+                        overflowY: "auto",
                       }}
                     >
-                      <Table size="small">
+                      <Table stickyHeader size="small">
                         <TableHead>
                           <TableRow>
                             <TableCell
                               sx={{
                                 color: "text.secondary",
                                 fontSize: "0.75rem",
+                                fontWeight: 700,
+                                bgcolor: "grey.100",
                               }}
                             >
-                              Serial Number
+                              SERIAL NUMBER
                             </TableCell>
                             <TableCell
                               align="right"
                               sx={{
                                 color: "text.secondary",
                                 fontSize: "0.75rem",
+                                fontWeight: 700,
+                                bgcolor: "grey.100",
                               }}
                             >
-                              Status
+                              STATUS
                             </TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {batch.serials.map((sn) => (
-                            <TableRow key={sn.id}>
-                              <TableCell
+                          {batch.serials.length > 0 ? (
+                            batch.serials.map((sn) => (
+                              <TableRow
+                                key={sn.id}
+                                hover
                                 sx={{
-                                  fontFamily: "monospace",
-                                  fontSize: "0.85rem",
+                                  "&:last-child td, &:last-child th": {
+                                    border: 0,
+                                  },
                                 }}
                               >
-                                {sn.serial_number}
-                              </TableCell>
-                              <TableCell align="right">
-                                <Chip
-                                  label={sn.status}
-                                  size="small"
-                                  variant="outlined"
-                                  color={
-                                    sn.status === "available"
-                                      ? "success"
-                                      : "default"
-                                  }
-                                  sx={{ height: 20, fontSize: "0.7rem" }}
-                                />
+                                <TableCell
+                                  sx={{
+                                    fontFamily: "monospace",
+                                    fontSize: "0.85rem",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {sn.serial_number}
+                                </TableCell>
+                                <TableCell align="right">
+                                  <Chip
+                                    label={sn.status.replace("_", " ")}
+                                    size="small"
+                                    color={
+                                      getSerialStatusColor(sn.status) as any
+                                    }
+                                    sx={{
+                                      height: 22,
+                                      fontSize: "0.7rem",
+                                      fontWeight: 600,
+                                      textTransform: "capitalize",
+                                    }}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell
+                                colSpan={2}
+                                align="center"
+                                sx={{ py: 3, color: "text.secondary" }}
+                              >
+                                No serials found for this batch.
                               </TableCell>
                             </TableRow>
-                          ))}
+                          )}
                         </TableBody>
                       </Table>
                     </Box>

@@ -28,6 +28,26 @@ export function getPnLData(startDate, endDate) {
     .get(startDate, endDate);
   const totalCogs = cogsRow.total_cogs || 0;
 
+  const adjustmentsRow = db
+    .prepare(
+      `
+    SELECT 
+      SUM(CASE WHEN (sa.new_quantity - sa.old_quantity) > 0 
+               THEN (sa.new_quantity - sa.old_quantity) * COALESCE(p.average_purchase_price, p.mop, 0) 
+               ELSE 0 END) as total_gain,
+      SUM(CASE WHEN (sa.new_quantity - sa.old_quantity) < 0 
+               THEN ABS(sa.new_quantity - sa.old_quantity) * COALESCE(p.average_purchase_price, p.mop, 0) 
+               ELSE 0 END) as total_loss
+    FROM stock_adjustments sa
+    JOIN products p ON sa.product_id = p.id
+    WHERE date(sa.created_at) BETWEEN date(?) AND date(?)
+  `,
+    )
+    .get(startDate, endDate);
+
+  const stockGain = adjustmentsRow.total_gain || 0;
+  const stockLoss = adjustmentsRow.total_loss || 0;
+
   const expenses = db
     .prepare(
       `
@@ -45,9 +65,11 @@ export function getPnLData(startDate, endDate) {
     totalRevenue,
     totalCogs,
     grossProfit: totalRevenue - totalCogs,
+    stockGain,
+    stockLoss,
     expenses,
     totalExpenses,
-    netProfit: totalRevenue - totalCogs - totalExpenses,
+    netProfit: totalRevenue - totalCogs + stockGain - totalExpenses - stockLoss,
   };
 }
 
@@ -251,10 +273,6 @@ export function getStockValuation() {
   return { masterValuation, batchValuation };
 }
 
-/**
- * Stock Summary Report
- * UPDATED: Uses EXACT schema for stock_adjustments (new_quantity - old_quantity)
- */
 export function getStockSummaryReport(startDate, endDate) {
   const query = `
     WITH PurchaseAgg AS (
@@ -277,7 +295,6 @@ export function getStockSummaryReport(startDate, endDate) {
     ),
     AdjAgg AS (
         SELECT product_id,
-               -- Bulletproof logic: (new_quantity - old_quantity) gives the exact mathematical effect
                SUM(CASE WHEN date(created_at) BETWEEN date(@start) AND date(@end) THEN (new_quantity - old_quantity) ELSE 0 END) as period_qty,
                SUM(CASE WHEN date(created_at) >= date(@start) THEN (new_quantity - old_quantity) ELSE 0 END) as since_start_qty
         FROM stock_adjustments
@@ -303,17 +320,14 @@ export function getStockSummaryReport(startDate, endDate) {
   const records = db.prepare(query).all({ start: startDate, end: endDate });
 
   return records.map((row) => {
-    // 1. Calculate Opening Quantity by rolling backward from today
     const openingQty =
       row.current_quantity -
       row.purchases_since_start +
       row.sales_since_start -
       row.adjustments_since_start;
 
-    // 2. Net change for the selected period
     const netChange = row.purchased_qty - row.sold_qty + row.adjusted_qty;
 
-    // 3. Closing Quantity
     const closingQty = openingQty + netChange;
 
     return {
@@ -327,4 +341,148 @@ export function getStockSummaryReport(startDate, endDate) {
       closing_qty: closingQty,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// FIXED: AGING & OUTSTANDING REPORTS (A/R & A/P)
+// ---------------------------------------------------------------------------
+
+/**
+ * 1. Accounts Receivable (A/R) Aging Summary
+ * Added robust LOWER() checks and included 'sale' in type array
+ */
+export function getReceivablesAging() {
+  const query = `
+    WITH SalePayments AS (
+        SELECT bill_id, SUM(amount) as paid_amount
+        FROM transactions
+        WHERE LOWER(bill_type) = 'sale' 
+          AND LOWER(type) IN ('payment_in', 'credit_note', 'sale') 
+          AND LOWER(status) != 'deleted'
+        GROUP BY bill_id
+    ),
+    UnpaidSales AS (
+        SELECT 
+            s.id as sale_id,
+            s.customer_id,
+            (s.total_amount - COALESCE(sp.paid_amount, 0)) as pending_amount,
+            CAST(julianday('now', 'localtime') - julianday(s.created_at, 'localtime') AS INTEGER) as age_days
+        FROM sales s
+        LEFT JOIN SalePayments sp ON s.id = sp.bill_id
+        WHERE s.status != 'cancelled' AND (s.total_amount - COALESCE(sp.paid_amount, 0)) > 0.5
+    )
+    SELECT 
+        c.id as customer_id,
+        c.name as customer_name,
+        c.phone as customer_phone,
+        SUM(u.pending_amount) as total_outstanding,
+        SUM(CASE WHEN u.age_days <= 30 THEN u.pending_amount ELSE 0 END) as days_0_30,
+        SUM(CASE WHEN u.age_days > 30 AND u.age_days <= 60 THEN u.pending_amount ELSE 0 END) as days_31_60,
+        SUM(CASE WHEN u.age_days > 60 AND u.age_days <= 90 THEN u.pending_amount ELSE 0 END) as days_61_90,
+        SUM(CASE WHEN u.age_days > 90 THEN u.pending_amount ELSE 0 END) as days_90_plus
+    FROM UnpaidSales u
+    JOIN customers c ON u.customer_id = c.id
+    GROUP BY c.id
+    ORDER BY total_outstanding DESC
+  `;
+  return db.prepare(query).all();
+}
+
+/**
+ * 2. Customer Bill-by-Bill Outstanding (A/R Breakdown)
+ */
+export function getCustomerBillByBill(customerId) {
+  const query = `
+    WITH SalePayments AS (
+        SELECT bill_id, SUM(amount) as paid_amount
+        FROM transactions
+        WHERE LOWER(bill_type) = 'sale' 
+          AND LOWER(type) IN ('payment_in', 'credit_note', 'sale') 
+          AND LOWER(status) != 'deleted'
+        GROUP BY bill_id
+    )
+    SELECT 
+        s.id as sale_id,
+        s.reference_no,
+        date(s.created_at) as date,
+        s.total_amount as invoice_amount,
+        COALESCE(sp.paid_amount, 0) as paid_amount,
+        (s.total_amount - COALESCE(sp.paid_amount, 0)) as pending_amount,
+        CAST(julianday('now', 'localtime') - julianday(s.created_at, 'localtime') AS INTEGER) as age_days
+    FROM sales s
+    LEFT JOIN SalePayments sp ON s.id = sp.bill_id
+    WHERE s.customer_id = ? AND s.status != 'cancelled' AND (s.total_amount - COALESCE(sp.paid_amount, 0)) > 0.5
+    ORDER BY s.created_at ASC
+  `;
+  return db.prepare(query).all(customerId);
+}
+
+/**
+ * 3. Accounts Payable (A/P) Aging Summary
+ * Added robust LOWER() checks and included 'purchase' in type array
+ */
+export function getPayablesAging() {
+  const query = `
+    WITH PurchasePayments AS (
+        SELECT bill_id, SUM(amount) as paid_amount
+        FROM transactions
+        WHERE LOWER(bill_type) = 'purchase' 
+          AND LOWER(type) IN ('payment_out', 'debit_note', 'purchase') 
+          AND LOWER(status) != 'deleted'
+        GROUP BY bill_id
+    ),
+    UnpaidPurchases AS (
+        SELECT 
+            p.id as purchase_id,
+            p.supplier_id,
+            (p.total_amount - COALESCE(pp.paid_amount, 0)) as pending_amount,
+            CAST(julianday('now', 'localtime') - julianday(p.date, 'localtime') AS INTEGER) as age_days
+        FROM purchases p
+        LEFT JOIN PurchasePayments pp ON p.id = pp.bill_id
+        WHERE p.status != 'cancelled' AND (p.total_amount - COALESCE(pp.paid_amount, 0)) > 0.5
+    )
+    SELECT 
+        s.id as supplier_id,
+        s.name as supplier_name,
+        s.phone as supplier_phone,
+        SUM(u.pending_amount) as total_outstanding,
+        SUM(CASE WHEN u.age_days <= 30 THEN u.pending_amount ELSE 0 END) as days_0_30,
+        SUM(CASE WHEN u.age_days > 30 AND u.age_days <= 60 THEN u.pending_amount ELSE 0 END) as days_31_60,
+        SUM(CASE WHEN u.age_days > 60 AND u.age_days <= 90 THEN u.pending_amount ELSE 0 END) as days_61_90,
+        SUM(CASE WHEN u.age_days > 90 THEN u.pending_amount ELSE 0 END) as days_90_plus
+    FROM UnpaidPurchases u
+    JOIN suppliers s ON u.supplier_id = s.id
+    GROUP BY s.id
+    ORDER BY total_outstanding DESC
+  `;
+  return db.prepare(query).all();
+}
+
+/**
+ * 4. Supplier Bill-by-Bill Outstanding (A/P Breakdown)
+ */
+export function getSupplierBillByBill(supplierId) {
+  const query = `
+    WITH PurchasePayments AS (
+        SELECT bill_id, SUM(amount) as paid_amount
+        FROM transactions
+        WHERE LOWER(bill_type) = 'purchase' 
+          AND LOWER(type) IN ('payment_out', 'debit_note', 'purchase') 
+          AND LOWER(status) != 'deleted'
+        GROUP BY bill_id
+    )
+    SELECT 
+        p.id as purchase_id,
+        p.reference_no as internal_ref_no,
+        date(p.date) as date,
+        p.total_amount as invoice_amount,
+        COALESCE(pp.paid_amount, 0) as paid_amount,
+        (p.total_amount - COALESCE(pp.paid_amount, 0)) as pending_amount,
+        CAST(julianday('now', 'localtime') - julianday(p.date, 'localtime') AS INTEGER) as age_days
+    FROM purchases p
+    LEFT JOIN PurchasePayments pp ON p.id = pp.bill_id
+    WHERE p.supplier_id = ? AND p.status != 'cancelled' AND (p.total_amount - COALESCE(pp.paid_amount, 0)) > 0.5
+    ORDER BY p.date ASC
+  `;
+  return db.prepare(query).all(supplierId);
 }

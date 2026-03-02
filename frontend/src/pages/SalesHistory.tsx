@@ -14,7 +14,8 @@ import {
 import {
   FileDownIcon as FileDownloadIcon,
   X,
-  Download,
+  Table,
+  List,
   FileText,
 } from "lucide-react";
 import DashboardHeader from "../components/DashboardHeader";
@@ -48,6 +49,8 @@ const getInitialFilters = (): DashboardFilter => {
   };
 };
 
+type ExportType = "excel-header" | "excel-item" | "pdf" | null;
+
 export default function SalesTablePage() {
   const [activeFilters, setActiveFilters] =
     useState<DashboardFilter>(getInitialFilters);
@@ -78,7 +81,7 @@ export default function SalesTablePage() {
   // Date range modal for export
   const [exportModal, setExportModal] = useState<{
     open: boolean;
-    type: "excel" | "pdf" | null;
+    type: ExportType;
   }>({ open: false, type: null });
 
   const [exportLoading, setExportLoading] = useState(false);
@@ -87,7 +90,7 @@ export default function SalesTablePage() {
     total: number;
   } | null>(null);
 
-  const openExportDateModal = (type: "excel" | "pdf") => {
+  const openExportDateModal = (type: ExportType) => {
     setExportModal({ open: true, type });
     setFormatSelectorOpen(false);
   };
@@ -107,10 +110,16 @@ export default function SalesTablePage() {
     setExportLoading(true);
     let result;
 
-    if (exportModal.type === "excel") {
+    if (
+      exportModal.type === "excel-header" ||
+      exportModal.type === "excel-item"
+    ) {
+      const exportType =
+        exportModal.type === "excel-header" ? "header" : "item";
       result = await ipcRenderer.invoke("export-sales-to-excel", {
         startDate,
         endDate,
+        exportType,
       });
     } else if (exportModal.type === "pdf") {
       setPdfProgress({ current: 0, total: 0 });
@@ -210,7 +219,7 @@ export default function SalesTablePage() {
         open={formatSelectorOpen}
         onClose={() => setFormatSelectorOpen(false)}
         PaperProps={{
-          sx: { borderRadius: "20px", width: "100%", maxWidth: 400 },
+          sx: { borderRadius: "20px", width: "100%", maxWidth: 440 },
         }}
       >
         <DialogTitle
@@ -230,7 +239,7 @@ export default function SalesTablePage() {
         <DialogContent sx={{ pb: 4 }}>
           <Stack spacing={2} mt={1}>
             <Box
-              onClick={() => openExportDateModal("excel")}
+              onClick={() => openExportDateModal("excel-header")}
               sx={{
                 p: 2.5,
                 borderRadius: "16px",
@@ -256,14 +265,53 @@ export default function SalesTablePage() {
                   color: "#2E7D32",
                 }}
               >
-                <Download size={24} />
+                <Table size={24} />
               </Box>
               <Box>
                 <Typography variant="subtitle1" fontWeight={700}>
-                  Excel Spreadsheet
+                  Sales Register (Excel)
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Detailed list of all sales data
+                  Summary export: 1 row per invoice. Best for accounting.
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box
+              onClick={() => openExportDateModal("excel-item")}
+              sx={{
+                p: 2.5,
+                borderRadius: "16px",
+                border: "2px solid",
+                borderColor: "divider",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                "&:hover": {
+                  borderColor: "primary.main",
+                  backgroundColor: "rgba(25, 118, 210, 0.04)",
+                  transform: "translateY(-2px)",
+                },
+              }}
+            >
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: "12px",
+                  bgcolor: "#E3F2FD",
+                  color: "#1565C0",
+                }}
+              >
+                <List size={24} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  Item Sales Report (Excel)
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Detailed export: 1 row per item. Best for inventory tracking.
                 </Typography>
               </Box>
             </Box>
@@ -299,10 +347,10 @@ export default function SalesTablePage() {
               </Box>
               <Box>
                 <Typography variant="subtitle1" fontWeight={700}>
-                  PDF Batch
+                  PDF Batch Export
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Download individual invoice copies
+                  Download individual invoice copies to a folder.
                 </Typography>
               </Box>
             </Box>
@@ -315,9 +363,11 @@ export default function SalesTablePage() {
         onClose={() => setExportModal({ open: false, type: null })}
         onExport={handleExport}
         title={
-          exportModal.type === "excel"
-            ? "Export Sales to Excel"
-            : "Export Invoices to PDF"
+          exportModal.type === "pdf"
+            ? "Export Invoices to PDF"
+            : exportModal.type === "excel-header"
+              ? "Export Sales Register to Excel"
+              : "Export Item Sales to Excel"
         }
         loading={exportLoading}
       />

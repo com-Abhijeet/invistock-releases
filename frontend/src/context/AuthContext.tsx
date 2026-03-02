@@ -51,7 +51,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.error("Logout log failed", error);
       }
     }
-    // ✅ Clear Token
+    // ✅ Clear Token but DO NOT clear lastUsername
     localStorage.removeItem("authToken");
     setUser(null);
     if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
@@ -100,9 +100,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             mode === "server"
               ? "server"
               : (prev) =>
-                  prev === "client-connected" ? prev : "client-connecting"
+                  prev === "client-connected" ? prev : "client-connecting",
           );
-        }
+        },
       );
     }
     if (window.electron?.onSetServerUrl) {
@@ -127,7 +127,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     return () => {
       events.forEach((event) =>
-        window.removeEventListener(event, handleActivity)
+        window.removeEventListener(event, handleActivity),
       );
       if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
     };
@@ -136,7 +136,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // --- Login ---
   const login = async (
     username: string,
-    password: string
+    password: string,
   ): Promise<boolean> => {
     setAuthLoading(true);
     try {
@@ -149,10 +149,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (response.success && response.user) {
-        // ✅ SAVE TOKEN
+        // ✅ SAVE TOKEN AND USERNAME FOR FAST RE-LOGIN
         if (response.token) {
           localStorage.setItem("authToken", response.token);
         }
+        localStorage.setItem("lastUsername", username);
+
         setUser(response.user);
         toast.success(`Welcome, ${response.user.name}`);
         return true;
