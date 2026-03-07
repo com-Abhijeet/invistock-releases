@@ -1,12 +1,20 @@
 const { formatDate, formatAmount } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc } = require("./utils.js");
 
 const thermal80mm = (data) => {
-  const { sale, shop } = data;
-  const showDiscount = Boolean(shop.show_discount_column);
+  const { sale, shop, localSettings } = data;
   const isInclusive = shop.is_inclusive || false;
 
-  // Snapshot Variables (New Schema) w/ Legacy Fallbacks
+  const showDiscount = Boolean(localSettings.columns?.showDiscountCol ?? false);
+  const legalSettings = localSettings.legal || {};
+  const jurisdiction = legalSettings.jurisdiction || "";
+  const disclaimer = legalSettings.disclaimer || "";
+  const termsAndConditions = legalSettings.termsAndConditions || "";
+
+  // Dynamic Logo Construction - Updated to use logo_url first
+  const logoSrc = getLogoSrc(shop.logo_url || shop.logo);
+
+  // Snapshot Variables
   const custName = sale.customer_name || "Cash Sale";
   const custGst = sale.gstin || sale.customer_gst_no || "";
 
@@ -17,7 +25,6 @@ const thermal80mm = (data) => {
   const netAmount = subTotal - discountAmount;
   const roundOff = sale.total_amount - netAmount;
 
-  // Supermarket layout: Item Name on line 1. Qty, Rate, Amount on line 2.
   const itemsHtml = sale.items
     .map((item) => {
       const total = item.price;
@@ -55,11 +62,14 @@ const thermal80mm = (data) => {
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>${shop.shop_name}</h1>
-          <div class="meta">${shop.address_line1}, ${shop.city}</div>
-          <div class="meta">Ph: ${shop.contact_number}</div>
-          ${shop.gstin ? `<div class="meta">GSTIN: ${shop.gstin}</div>` : ""}
+        <div class="header" style="display: flex; align-items: center; justify-content: center; gap: 15px; text-align: left; margin-bottom: 10px;">
+          ${logoSrc ? `<img src="${logoSrc}" onerror="this.style.display='none'" style="max-height: 50px; max-width: 60px; object-fit: contain;" />` : ""}
+          <div>
+            <h1>${shop.shop_name}</h1>
+            <div class="meta">${shop.address_line1}, ${shop.city}</div>
+            <div class="meta">Ph: ${shop.contact_number}</div>
+            ${shop.gstin ? `<div class="meta">GSTIN: ${shop.gstin}</div>` : ""}
+          </div>
         </div>
         
         <div class="divider"></div>
@@ -121,12 +131,16 @@ const thermal80mm = (data) => {
           shop.generated_upi_qr
             ? `
           <div class="qr-box">
-            <img src="${shop.generated_upi_qr}" style="width:90px; height:90px; border: 1px solid #eee; padding: 4px;" />
+            <img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" style="width:90px; height:90px; border: 1px solid #eee; padding: 4px;" />
             <div style="font-size:10px; margin-top:2px;">Scan to Pay</div>
           </div>
         `
             : ""
         }
+
+        ${termsAndConditions ? `<div class="divider" style="margin-top:10px;"></div><div style="font-size: 9px; white-space: pre-wrap; text-align: left; margin-bottom: 4px;"><strong>Terms:</strong><br>${termsAndConditions}</div>` : ""}
+        ${disclaimer ? `<div style="font-size: 9px; text-align: center; margin-bottom: 2px;">${disclaimer}</div>` : ""}
+        ${jurisdiction ? `<div style="font-size: 9px; text-align: center; font-style: italic;">${jurisdiction}</div>` : ""}
         
         <div style="text-align:center; font-weight:bold; font-size:12px; margin-top:15px;">
            Thank You for Shopping!

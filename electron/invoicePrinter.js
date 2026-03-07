@@ -4,7 +4,7 @@ const { getTemplate } = require("./ipc/templateManager.js"); // ✅ Import Templ
 const { getMarathiName } = require("./transliterationService.js");
 
 async function printInvoice(payload) {
-  const { sale, shop, copies = 1 } = payload;
+  const { sale, shop, copies = 1, localSettings } = payload;
   if (!sale || !shop) {
     console.error("❌ Missing sale or shop data for invoice printing.");
     return;
@@ -13,9 +13,9 @@ async function printInvoice(payload) {
   // 1. Generate QR Code
   if (shop?.upi_id && shop?.upi_banking_name) {
     const upiUrl = `upi://pay?pa=${encodeURIComponent(
-      shop.upi_id
+      shop.upi_id,
     )}&pn=${encodeURIComponent(
-      shop.upi_banking_name
+      shop.upi_banking_name,
     )}&am=${sale.total_amount.toFixed(2)}&cu=INR`;
     shop.generated_upi_qr = await QRCode.toDataURL(upiUrl);
   } else {
@@ -28,7 +28,7 @@ async function printInvoice(payload) {
     sale.items.map(async (item) => {
       const marathiName = await getMarathiName(item.product_name || "");
       return { ...item, marathi_name: marathiName };
-    })
+    }),
   );
 
   const enhancedSale = { ...sale, items: enhancedItems };
@@ -49,17 +49,21 @@ async function printInvoice(payload) {
           "Content-Security-Policy": ["img-src 'self' data:"],
         },
       });
-    }
+    },
   );
 
   // 4. Generate HTML using Template Manager
   // Use shop.invoice_template_id if set, else default
   const templateId = shop.invoice_template_id || "a4_standard";
 
-  const htmlContent = getTemplate(templateId, { sale: enhancedSale, shop });
+  const htmlContent = getTemplate(templateId, {
+    sale: enhancedSale,
+    shop,
+    localSettings,
+  });
 
   printWin.loadURL(
-    "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent)
+    "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent),
   );
 
   printWin.webContents.on("did-finish-load", () => {
@@ -73,7 +77,7 @@ async function printInvoice(payload) {
       (success, errorType) => {
         if (!success) console.error("❌ Invoice print failed:", errorType);
         printWin.close();
-      }
+      },
     );
   });
 }

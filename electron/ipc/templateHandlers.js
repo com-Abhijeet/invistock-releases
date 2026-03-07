@@ -60,13 +60,32 @@ const DUMMY_DATA = {
       },
     ],
   },
+  // --- ADDED DUMMY PREFERENCES HERE ---
+  localSettings: {
+    columns: {
+      showHsnSac: true,
+      showGstRateCol: true,
+      showGstAmtCol: true,
+      showDiscountCol: true,
+    },
+    display: {
+      showGstBreakdownBottom: true,
+    },
+    legal: {
+      jurisdiction: "Subject to Jalna Jurisdiction only",
+      disclaimer:
+        "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
+      termsAndConditions:
+        "1. Payment must be made within 15 days.\n2. Interest @ 18% p.a. will be charged on delayed payments.\n3. Goods once sold will not be taken back.",
+    },
+  },
 };
 
 function registerTemplateHandlers(ipcMain) {
   ipcMain.handle("generate-template-preview", async (event, templateId) => {
     try {
       // Generate HTML using the manager and dummy data
-      // We pass DUMMY_DATA which now includes bank/UPI info required by the templates
+      // We pass DUMMY_DATA which now includes bank/UPI info and local print settings required by the templates
       const html = getTemplate(templateId || "a4_standard", DUMMY_DATA);
       return { success: true, html };
     } catch (error) {

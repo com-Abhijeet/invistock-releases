@@ -34,11 +34,14 @@ import salesOrderRoutes from "./routes/salesOrderRoutes.mjs";
 import employeeRoutes from "./routes/employeeRoutes.mjs";
 import employeeSalesRoutes from "./routes/employeeSalesRoutes.mjs";
 import accountingRoutes from "./routes/accountingRoutes.mjs";
+import tallyRoutes from "./tally/tallyRoutes.mjs";
+import businessRoutes from "./routes/businessRoutes.mjs";
 
 // ✅ NEW: Import the Sync Routes for Mobile
 import syncRoutes from "./routes/syncRoutes.mjs";
 
 import { initializeDatabase, closeDatabase } from "./db/db.mjs";
+import { initializeTallyDb } from "./db/tallyDb.mjs";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const config = require("../electron/config.js");
@@ -86,6 +89,7 @@ export function startServer(dbPath, userDataPath) {
   const PORT = 5000; // Keeping 5000 as per your file (Mobile QR should use this port)
 
   initializeDatabase(dbPath);
+  initializeTallyDb(dbPath);
 
   app.use(
     cors({
@@ -126,6 +130,8 @@ export function startServer(dbPath, userDataPath) {
   app.use("/api/employees", employeeRoutes);
   app.use("/api/employee-sales", employeeSalesRoutes);
   app.use("/api/accounting", accountingRoutes);
+  app.use("/api/tally", tallyRoutes);
+  app.use("/api/business", businessRoutes);
 
   // ✅ Register Sync Routes
   app.use("/api/sync", syncRoutes);

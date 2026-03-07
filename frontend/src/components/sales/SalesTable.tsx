@@ -9,7 +9,7 @@ import {
   Undo2,
   MessageCircle,
   Wallet,
-  Pencil, // ✅ Import Wallet icon
+  Pencil,
 } from "lucide-react";
 import type {
   SalesFilter,
@@ -21,6 +21,7 @@ import { useNavigate } from "react-router-dom";
 import { getSaleById } from "../../lib/api/salesService";
 import { getShopData } from "../../lib/api/shopService";
 import { handlePrint } from "../../lib/handleInvoicePrint";
+import { getBusinessProfile } from "../../lib/api/businessService"; // ✅ Added import
 import toast from "react-hot-toast";
 
 // ✅ Import the Return Modal and Types
@@ -106,7 +107,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
     }
   };
 
-  // ✅ Handler for WhatsApp Sharing
+  // ✅ Handler for WhatsApp Sharing with Web Link
   const handleWhatsAppShare = async (saleId: number) => {
     const toastId = toast.loading("Preparing WhatsApp message...");
     try {
@@ -119,10 +120,11 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         return;
       }
 
-      // 2. Fetch Sale & Shop Data
-      const [saleRes, shop] = await Promise.all([
+      // 2. Fetch Sale, Shop & Business Data
+      const [saleRes, shop, business] = await Promise.all([
         getSaleById(saleId),
         getShopData(),
+        getBusinessProfile().catch(() => null), // Safely catch if business profile fails
       ]);
       const sale = saleRes.data;
 
@@ -134,44 +136,84 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         return;
       }
 
+      // --- ATTEMPT CLOUD UPLOAD ---
+      let webLink = "";
+      try {
+        const invoiceData = {
+          business_id: business?.kosh_business_id || "",
+          shopName: shop.shop_name,
+          shopAddress: shop.address_line1 || "",
+          gstin: shop.gstin || "",
+          invoiceNo: sale.reference_no,
+          date: sale.created_at || Date.now(),
+          customerName: sale.customer_name || "Customer",
+          customerPhone: phoneToSend,
+          items: sale.items.map((item: any) => ({
+            name: item.product_name,
+            qty: item.quantity,
+            rate: item.rate,
+            amount: item.quantity * item.rate,
+            gst_rate: item.gst_rate || 0,
+          })),
+          subTotal: sale.items.reduce(
+            (sum: number, item: any) => sum + item.quantity * item.rate,
+            0,
+          ),
+          taxAmount: sale.total_tax || 0,
+          discount: sale.discount || 0,
+          totalAmount: sale.total_amount,
+        };
+
+        const uploadRes =
+          await window.electron.uploadInvoiceToDrive(invoiceData);
+        if (uploadRes && uploadRes.success) {
+          webLink = `https://getkosh.co.in/invoice/web-view/${uploadRes.fileId}`;
+        }
+      } catch (e) {
+        console.warn("Cloud link generation failed in table share", e);
+      }
+
       // 3. Construct Message
       const nl = "\n";
-      const itemsList = sale.items
-        .map(
-          (
-            item: { product_name: any; quantity: number; rate: number },
-            i: number,
-          ) =>
-            `${i + 1}. ${item.product_name} x ${item.quantity} = ₹${(
-              item.rate * item.quantity
-            ).toLocaleString("en-IN")}`,
-        )
-        .join(nl);
+      let message = "";
 
-      // const message =
-      //   `*Invoice from ${shop.shop_name}*${nl}${nl}` +
-      //   `Hello ${sale.customer_name || "Customer"},${nl}` +
-      //   `Bill No: ${sale.reference_no}${nl}${nl}` +
-      //   `*Items:*${nl}${itemsList}${nl}` +
-      //   `------------------------------${nl}` +
-      //   `*Total: ₹${sale.total_amount.toLocaleString("en-IN")}*${nl}` +
-      //   `------------------------------${nl}` +
-      //   `Thank you!`;
+      if (webLink) {
+        message =
+          `*${shop.shop_name}*${nl}${nl}` +
+          `Hello ${sale.customer_name || "Customer"},${nl}${nl}` +
+          `Thank you for shopping with us! 🙏${nl}${nl}` +
+          `🧾 *View your detailed digital bill here:*${nl}` +
+          `${webLink}${nl}${nl}` +
+          `_Please find the PDF copy attached below._${nl}${nl}` +
+          `_Powered by Kosh Billing_`;
+      } else {
+        const itemsList = sale.items
+          .map(
+            (
+              item: { product_name: any; quantity: number; rate: number },
+              i: number,
+            ) =>
+              `${i + 1}. ${item.product_name} x ${item.quantity} = ₹${(
+                item.rate * item.quantity
+              ).toLocaleString("en-IN")}`,
+          )
+          .join(nl);
 
-      const message =
-        `*${shop.shop_name}*${nl}` +
-        `Invoice Summary${nl}` +
-        `———————————————${nl}${nl}` +
-        `Hello ${sale.customer_name || "Customer"},${nl}${nl}` +
-        `🧾 *Bill No:* ${sale.reference_no}${nl}` +
-        `📅 *Date:* ${new Date(sale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}` +
-        `*Items Purchased:*${nl}` +
-        `${itemsList}${nl}${nl}` +
-        `———————————————${nl}` +
-        `*Total Amount:* ₹${sale.total_amount.toLocaleString("en-IN")}${nl}` +
-        `———————————————${nl}${nl}` +
-        `Thank you for shopping with us 🙏${nl}` +
-        `Please find your invoice PDF attached.`;
+        message =
+          `*${shop.shop_name}*${nl}` +
+          `Invoice Summary${nl}` +
+          `———————————————${nl}${nl}` +
+          `Hello ${sale.customer_name || "Customer"},${nl}${nl}` +
+          `🧾 *Bill No:* ${sale.reference_no}${nl}` +
+          `📅 *Date:* ${new Date(sale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}` +
+          `*Items Purchased:*${nl}` +
+          `${itemsList}${nl}${nl}` +
+          `———————————————${nl}` +
+          `*Total Amount:* ₹${sale.total_amount.toLocaleString("en-IN")}${nl}` +
+          `———————————————${nl}${nl}` +
+          `Thank you for shopping with us 🙏${nl}` +
+          `Please find your invoice PDF attached.`;
+      }
 
       // 4. Send Text
       const textRes = await window.electron.sendWhatsAppMessage(
@@ -182,7 +224,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
       if (textRes.success) {
         toast.success("Text message sent!", { id: toastId });
 
-        // 5. Send PDF
+        // 5. Send PDF (Always send PDF)
         toast.loading("Sending PDF Invoice...", { id: toastId });
         const pdfRes = await window.electron.sendWhatsAppInvoicePdf({
           sale: sale,

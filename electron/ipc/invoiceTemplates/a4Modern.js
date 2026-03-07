@@ -4,13 +4,29 @@ const {
   formatAddress,
   numberToWords,
 } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc } = require("./utils.js");
 
 const a4Modern = (data) => {
-  const { sale, shop } = data;
+  const { sale, shop, localSettings } = data;
+  const gstEnabled = Boolean(shop.gst_enabled);
   const isInclusive = shop.is_inclusive || false;
 
-  // Snapshot Variables (New Schema) w/ Legacy Fallbacks
+  const colSettings = localSettings.columns || {};
+  const legalSettings = localSettings.legal || {};
+
+  const showHsnSac = Boolean(colSettings.showHsnSac ?? true);
+  const showDiscountCol = Boolean(colSettings.showDiscountCol ?? false);
+  const showGstRateCol = Boolean(colSettings.showGstRateCol ?? true);
+  const showGstAmtCol = Boolean(colSettings.showGstAmtCol ?? true);
+
+  const jurisdiction = legalSettings.jurisdiction || "";
+  const disclaimer = legalSettings.disclaimer || "";
+  const termsAndConditions = legalSettings.termsAndConditions || "";
+
+  // Dynamic Logo Construction - Updated to use logo_url first
+  const logoSrc = getLogoSrc(shop.logo_url || shop.logo);
+
+  // Snapshot Variables
   const custName = sale.customer_name || "Valued Customer";
   const custPhone = sale.customer_phone || "";
   const custAddress = sale.bill_address || sale.customer_address || "";
@@ -20,7 +36,7 @@ const a4Modern = (data) => {
   const custGst = sale.gstin || sale.customer_gst_no || "";
 
   // --- MULTI-PAGE LOGIC ---
-  const ROWS_PER_PAGE = 20; // A4 Modern has larger margins/fonts
+  const ROWS_PER_PAGE = 20;
   const items = sale.items;
   const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
 
@@ -51,14 +67,17 @@ const a4Modern = (data) => {
     <div class="page-container">
         <!-- HEADER -->
         <div class="header">
-          <div>
-            <div class="brand-name">${shop.shop_name}</div>
-            <div style="color: #4b5563; font-size: 13px; margin-top: 4px;">${
-              shop.address_line1
-            }, ${shop.city}</div>
-            <div style="color: #4b5563; font-size: 13px;">${
-              shop.contact_number
-            }</div>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <div>
+              <div class="brand-name">${shop.shop_name}</div>
+              <div style="color: #4b5563; font-size: 13px; margin-top: 4px;">${
+                shop.address_line1
+              }, ${shop.city}</div>
+              <div style="color: #4b5563; font-size: 13px;">${
+                shop.contact_number
+              }</div>
+            </div>
+            ${logoSrc ? `<img src="${logoSrc}" onerror="this.style.display='none'" style="max-height: 60px; max-width: 160px; object-fit: contain;" />` : ""}
           </div>
           <div>
             <div class="invoice-label">INVOICE</div>
@@ -83,40 +102,50 @@ const a4Modern = (data) => {
           </div>
         </div>
 
-        <!-- ITEMS TABLE (Fills Center) -->
+        <!-- ITEMS TABLE -->
         <div class="items-container">
           <table>
             <thead>
               <tr>
-                <th width="50%">Item Description</th>
-                <th width="10%" style="text-align:center">Qty</th>
-                <th width="20%" style="text-align:right">Rate</th>
-                <th width="20%" style="text-align:right">Amount</th>
+                <th width="auto">Item Description</th>
+                ${showHsnSac ? '<th width="10%" style="text-align:center">HSN</th>' : ""}
+                <th width="8%" style="text-align:center">Qty</th>
+                <th width="12%" style="text-align:right">Rate</th>
+                ${showDiscountCol ? '<th width="8%" style="text-align:right">Disc</th>' : ""}
+                ${showGstRateCol && gstEnabled ? '<th width="8%" style="text-align:center">GST%</th>' : ""}
+                ${showGstAmtCol && gstEnabled && !isInclusive ? '<th width="10%" style="text-align:right">GST Amt</th>' : ""}
+                <th width="15%" style="text-align:right">Amount</th>
               </tr>
             </thead>
             <tbody>
               ${pageItems
-                .map(
-                  (item) => `
-                <tr>
-                  <td>
-                    <div style="font-weight:600;">${item.product_name || item.name || "Unknown"}</div>
-                    ${item.description ? `<div style="font-size: 10px; font-style: italic; color: #6b7280; margin-top:2px;">${item.description}</div>` : ""}
-                    ${getTrackingHtml(item)}
-                    ${
-                      item.hsn
-                        ? `<div style="font-size:10px; color:#9ca3af; margin-top:1px;">HSN: ${item.hsn}</div>`
-                        : ""
-                    }
-                  </td>
-                  <td style="text-align:center">${item.quantity} ${item.unit || ""}</td>
-                  <td style="text-align:right">${formatAmount(item.rate)}</td>
-                  <td style="text-align:right; font-weight:600;">${formatAmount(
-                    item.price,
-                  )}</td>
-                </tr>
-              `,
-                )
+                .map((item) => {
+                  const valAfterDisc =
+                    item.rate *
+                    item.quantity *
+                    (1 - (item.discount || 0) / 100);
+                  const gstAmt =
+                    gstEnabled && !isInclusive
+                      ? valAfterDisc * ((item.gst_rate || 0) / 100)
+                      : 0;
+
+                  return `
+                  <tr>
+                    <td>
+                      <div style="font-weight:600;">${item.product_name || item.name || "Unknown"}</div>
+                      ${item.description ? `<div style="font-size: 10px; font-style: italic; color: #6b7280; margin-top:2px;">${item.description}</div>` : ""}
+                      ${getTrackingHtml(item)}
+                    </td>
+                    ${showHsnSac ? `<td style="text-align:center">${item.hsn || "-"}</td>` : ""}
+                    <td style="text-align:center">${item.quantity} ${item.unit || ""}</td>
+                    <td style="text-align:right">${formatAmount(item.rate)}</td>
+                    ${showDiscountCol ? `<td style="text-align:right">${item.discount || 0}%</td>` : ""}
+                    ${showGstRateCol && gstEnabled ? `<td style="text-align:center">${item.gst_rate || 0}%</td>` : ""}
+                    ${showGstAmtCol && gstEnabled && !isInclusive ? `<td style="text-align:right">${formatAmount(gstAmt)}</td>` : ""}
+                    <td style="text-align:right; font-weight:600;">${formatAmount(item.price)}</td>
+                  </tr>
+                `;
+                })
                 .join("")}
             </tbody>
           </table>
@@ -132,11 +161,7 @@ const a4Modern = (data) => {
               sale.total_amount,
             )}</div>
             
-            <div style="margin-top: 10px; font-size: 11px;">
-               <strong>Terms:</strong> Goods once sold will not be taken back.
-            </div>
-
-            <div class="bank-qr-row">
+            <div class="bank-qr-row" style="margin-top: 15px; margin-bottom: 15px;">
               <div class="bank-details">
                 <div style="font-weight:700; margin-bottom:2px;">Payment Details</div>
                 Bank: <strong>${shop.bank_name || "N/A"}</strong><br>
@@ -151,6 +176,12 @@ const a4Modern = (data) => {
                      </div>`
                   : ""
               }
+            </div>
+
+            <div style="font-size: 10px; line-height: 1.4; color: #374151;">
+               ${termsAndConditions ? `<strong>Terms & Conditions:</strong><br><span style="white-space: pre-wrap;">${termsAndConditions}</span><br>` : ""}
+               ${disclaimer ? `<div style="margin-top:4px;"><strong>Disclaimer:</strong> ${disclaimer}</div>` : ""}
+               ${jurisdiction ? `<div style="margin-top:2px;"><em>${jurisdiction}</em></div>` : ""}
             </div>
           </div>
 
@@ -219,7 +250,7 @@ const a4Modern = (data) => {
           .page-container {
              width: 210mm;
              height: 297mm;
-             padding: 15mm; /* Margins inside page container */
+             padding: 15mm; 
              box-sizing: border-box;
              display: flex;
              flex-direction: column;
@@ -230,23 +261,19 @@ const a4Modern = (data) => {
              page-break-after: auto;
           }
 
-          /* Header Section */
           .header { display: flex; justify-content: space-between; margin-bottom: 30px; flex-shrink: 0; }
           .brand-name { font-size: 24px; font-weight: 800; color: #2563eb; text-transform: uppercase; letter-spacing: -0.5px; }
           .invoice-label { font-size: 36px; font-weight: 800; color: #e5e7eb; text-align: right; line-height: 1; }
           .meta-label { font-size: 10px; text-transform: uppercase; color: #6b7280; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 2px; }
           .meta-value { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
           
-          /* Customer Box */
           .customer-box { background: #f9fafb; padding: 15px; border-radius: 8px; border: 1px solid #f3f4f6; margin-bottom: 30px; flex-shrink: 0; }
           
-          /* Items Section - Fills remaining space */
           .items-container { flex-grow: 1; }
           table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
           th { text-align: left; padding: 12px; font-size: 11px; text-transform: uppercase; color: #6b7280; border-bottom: 2px solid #e5e7eb; }
           td { padding: 16px 12px; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
           
-          /* Footer Section - Fixed at bottom */
           .footer-container { 
             margin-top: 20px; 
             padding-top: 20px; 
@@ -260,7 +287,6 @@ const a4Modern = (data) => {
           .footer-left { width: 60%; font-size: 12px; color: #4b5563; }
           .footer-right { width: 35%; text-align: right; }
 
-          /* Bank & QR Side by Side */
           .bank-qr-row { display: flex; gap: 20px; margin-top: 15px; }
           .bank-details { flex: 1; font-size: 11px; line-height: 1.4; border-left: 2px solid #e5e7eb; padding-left: 10px; }
           .qr-code { width: 80px; text-align: center; }

@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Typography,
   TextField,
@@ -20,6 +22,27 @@ interface Props {
 }
 
 export default function ProfileSettingsTab({ data, onChange }: Props) {
+  // Clean, synchronous helper to construct the custom app-image:// protocol
+  const getPreviewLogo = () => {
+    // Check both logo_url and logo just in case the db schema fluctuates
+    const fileName = data.logo_url || (data as any).logo;
+    if (!fileName) return undefined;
+
+    // If it's already a full URI, use it directly
+    if (
+      fileName.startsWith("http") ||
+      fileName.startsWith("data:") ||
+      fileName.startsWith("file://") ||
+      fileName.startsWith("app-image://")
+    ) {
+      return fileName;
+    }
+
+    // 🚀 Use the custom Electron protocol you already built for products!
+    // Added a timestamp cache-buster so browser doesn't cache the broken placeholder
+    return `app-image://images/logo/${fileName}?t=${Date.now()}`;
+  };
+
   return (
     <Grid container spacing={3}>
       {/* --- Left Column: Branding & Contact (Stacked) --- */}
@@ -35,7 +58,10 @@ export default function ProfileSettingsTab({ data, onChange }: Props) {
 
               <Box display="flex" flexDirection="column" alignItems="center">
                 <LogoPicker
-                  currentLogo={data.logo_url}
+                  // 🚨 THE MAGIC FIX: This key forces LogoPicker to refresh its internal
+                  // state the moment the database finishes loading the logo_url!
+                  key={data.logo_url || "empty-logo"}
+                  currentLogo={getPreviewLogo()}
                   onLogoSelect={(path: any) => onChange("logo_url", path)}
                 />
                 <Typography

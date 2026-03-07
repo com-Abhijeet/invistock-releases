@@ -91,6 +91,44 @@ const getTrackingHtml = (item) => {
   return `<div style="font-size: 8px; color: #555; font-style: italic; margin-top: 1px;">${parts.join(" | ")}</div>`;
 };
 
+// --- INLINE LOGO CONVERTER ---
+const getLogoSrc = (logo) => {
+  if (!logo) return "";
+
+  if (
+    logo.startsWith("http") ||
+    logo.startsWith("data:") ||
+    logo.startsWith("app-image://")
+  ) {
+    return logo;
+  }
+
+  try {
+    const { app } = require("electron");
+    const path = require("path");
+    const fs = require("fs");
+
+    const userDataPath = app.getPath("userData");
+    let imagePath = logo;
+
+    if (logo.startsWith("file://")) {
+      imagePath = logo.replace("file://", "");
+    } else {
+      imagePath = path.join(userDataPath, "images", "logo", logo);
+    }
+
+    if (fs.existsSync(imagePath)) {
+      let ext = path.extname(imagePath).toLowerCase().replace(".", "") || "png";
+      if (ext === "jpg") ext = "jpeg";
+      const base64Data = fs.readFileSync(imagePath, { encoding: "base64" });
+      return `data:image/${ext};base64,${base64Data}`;
+    }
+    return "";
+  } catch (e) {
+    return "";
+  }
+};
+
 const BRANDING_FOOTER = `
   <div style="text-align:center; margin-top:5px; font-size:9px; color:#888; border-top:1px dotted #ddd; padding-top:2px;">
     Powered by KOSH Software &bull; +91 8180904072
@@ -98,27 +136,43 @@ const BRANDING_FOOTER = `
 `;
 
 // --- DYNAMIC A4 GENERATOR ---
-function createInvoiceHTML({ sale, shop }) {
+function createInvoiceHTML(data) {
+  const { sale, shop, localSettings } = data;
+
+  // Local Settings Parsing
+  const colSettings = localSettings?.columns || {};
+  const displaySettings = localSettings?.display || {};
+  const legalSettings = localSettings?.legal || {};
+
+  const logoSrc = getLogoSrc(shop.logo_url || shop.logo);
+
   // Snapshot Variables (New Schema) w/ Legacy Fallbacks
   const custName = sale.customer_name || "Cash Customer";
   const custPhone = sale.customer_phone || "";
   const custAddress = sale.bill_address || sale.customer_address || "";
-  const custCity = sale.customer_city || ""; // City remains joined in current schema
+  const custCity = sale.customer_city || "";
   const custState = sale.state || sale.customer_state || "";
   const custPincode = sale.pincode || sale.customer_pincode || "";
   const custGst = sale.gstin || sale.customer_gst_no || "";
 
-  // Shop Preferences
+  // Shop Preferences & Print Rules
   const gstEnabled = Boolean(shop.gst_enabled);
-  const showHSN = Boolean(shop.hsn_required);
   const inclusiveTax = Boolean(shop.inclusive_tax_pricing);
-  const showGstBreakup =
-    shop.show_gst_breakup !== undefined ? Boolean(shop.show_gst_breakup) : true;
-  const showDiscountCol = Boolean(shop.show_discount_column);
 
-  // Column Rules
-  const showGstPctCol = gstEnabled && showGstBreakup;
-  const showGstAmtCol = gstEnabled && showGstBreakup && !inclusiveTax;
+  const showHSN = Boolean(colSettings.showHsnSac ?? true);
+  const showDiscountCol = Boolean(colSettings.showDiscountCol ?? false);
+  const showGstBreakup = Boolean(
+    displaySettings.showGstBreakdownBottom ?? true,
+  );
+
+  const showGstPctCol =
+    gstEnabled && Boolean(colSettings.showGstRateCol ?? true);
+  const showGstAmtCol =
+    gstEnabled && Boolean(colSettings.showGstAmtCol ?? true) && !inclusiveTax;
+
+  const jurisdiction = legalSettings.jurisdiction || "";
+  const disclaimer = legalSettings.disclaimer || "";
+  const termsAndConditions = legalSettings.termsAndConditions || "";
 
   // Header State Logic
   const isInterstate =
@@ -188,8 +242,8 @@ function createInvoiceHTML({ sale, shop }) {
   let totalColumns = 4; // #, Name, Qty, Rate
   if (showHSN) totalColumns++;
   if (showDiscountCol) totalColumns++;
-  if (showGstPctCol) totalColumns++; // GST %
-  if (showGstAmtCol) totalColumns++; // GST Amt
+  if (showGstPctCol) totalColumns++;
+  if (showGstAmtCol) totalColumns++;
   totalColumns++; // Total
 
   const renderPage = ({
@@ -252,11 +306,14 @@ function createInvoiceHTML({ sale, shop }) {
     return `
     <div class="page-container">
         <div class="header-box">
-          <div class="shop-info">
-            <h1>${shop.gst_invoice_format || "Tax Invoice"}</h1>
-            <div class="bold" style="font-size:14px; margin-bottom:2px;">${shop.use_alias_on_bills && shop.shop_alias ? shop.shop_alias : shop.shop_name}</div>
-            <div>${shop.use_alias_on_bills && shop.shop_alias ? "" : formatAddress(shop.address_line1, shop.city, shop.state, shop.pincode)}</div>
-            ${gstEnabled ? `<div style="margin-top:2px;"><strong>GSTIN: ${shop.gstin || "N/A"}</strong> | Ph: ${shop.contact_number || ""}</div>` : `<div>Ph: ${shop.contact_number || ""}</div>`}
+          <div class="shop-info" style="display: flex; justify-content: space-between; align-items: center; padding-right: 20px;">
+            <div>
+              <h1>${shop.gst_invoice_format || "Tax Invoice"}</h1>
+              <div class="bold" style="font-size:14px; margin-bottom:2px;">${shop.use_alias_on_bills && shop.shop_alias ? shop.shop_alias : shop.shop_name}</div>
+              <div>${shop.use_alias_on_bills && shop.shop_alias ? "" : formatAddress(shop.address_line1, shop.city, shop.state, shop.pincode)}</div>
+              ${gstEnabled ? `<div style="margin-top:2px;"><strong>GSTIN: ${shop.gstin || "N/A"}</strong> | Ph: ${shop.contact_number || ""}</div>` : `<div>Ph: ${shop.contact_number || ""}</div>`}
+            </div>
+            ${logoSrc ? `<img src="${logoSrc}" onerror="this.style.display='none'" style="max-height: 55px; max-width: 140px; object-fit: contain;" />` : ""}
           </div>
           <div class="invoice-meta">
             <div class="flex-between"><span>Inv No:</span> <span class="bold">${sale.reference_no}</span></div>
@@ -336,7 +393,7 @@ function createInvoiceHTML({ sale, shop }) {
              <div>${shop.bank_name || ""}</div>
              <div>A/C: ${shop.bank_account_no || ""}</div>
              <div>IFSC: ${shop.bank_account_ifsc_code || ""}</div>
-             ${shop.generated_upi_qr ? `<div class="qr-wrap"><img src="${shop.generated_upi_qr}" /></div>` : ""}
+             ${shop.generated_upi_qr ? `<div class="qr-wrap"><img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" /></div>` : ""}
           </div>
 
           <div class="totals-area">
@@ -356,9 +413,9 @@ function createInvoiceHTML({ sale, shop }) {
 
         <div class="signature-area">
            <div class="terms">
-              <strong>Terms:</strong><br>
-              1. Goods once sold will not be taken back.<br>
-              2. Subject to ${shop.city || "local"} jurisdiction.
+              ${termsAndConditions ? `<strong>Terms & Conditions:</strong><br><span style="white-space: pre-wrap;">${termsAndConditions}</span><br>` : ""}
+              ${disclaimer ? `<div style="margin-top:4px;"><strong>Disclaimer:</strong> ${disclaimer}</div>` : ""}
+              ${jurisdiction ? `<div style="margin-top:2px;"><em>${jurisdiction}</em></div>` : ""}
            </div>
            <div class="auth-sign">
               <div class="bold">For ${shop.shop_name}</div>
@@ -431,7 +488,7 @@ function createInvoiceHTML({ sale, shop }) {
             
             .continued { height: 80px; display: flex; align-items: center; justify-content: center; color: #888; font-style: italic; }
             .signature-area { display: flex; justify-content: space-between; border: 1px solid #000; border-top: 0; padding: 8px; height: 70px; align-items: flex-end; }
-            .terms { font-size: 8px; width: 60%; color: #444; }
+            .terms { font-size: 8px; width: 60%; color: #444; line-height: 1.3; }
             .auth-sign { text-align: right; width: 40%; }
             
             .qr-wrap { text-align: center; margin-top: 8px; }

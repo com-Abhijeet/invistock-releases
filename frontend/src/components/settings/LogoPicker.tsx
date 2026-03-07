@@ -4,11 +4,10 @@ import { Avatar, Button, Stack } from "@mui/material";
 import { Image as ImageIcon, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
-// Assuming you have access to ipcRenderer via your preload script
-const { ipcRenderer } = window.electron;
+const { ipcRenderer } = window.electron || {};
 
 interface Props {
-  currentLogo: string | null;
+  currentLogo: string | null | undefined;
   onLogoSelect: (fileName: string | null) => void;
 }
 
@@ -16,12 +15,12 @@ const LogoPicker = ({ currentLogo, onLogoSelect }: Props) => {
   const handleSelectClick = async () => {
     const toastId = toast.loading("Opening file dialog...");
     try {
-      // Call the IPC handler you provided
+      if (!ipcRenderer) throw new Error("IPC not available");
+
       const result = await ipcRenderer.invoke("select-logo");
       toast.dismiss(toastId);
 
       if (result.success) {
-        // Pass the new, permanent filename up to the parent component
         onLogoSelect(result.fileName);
         toast.success("Logo updated!");
       } else {
@@ -42,7 +41,7 @@ const LogoPicker = ({ currentLogo, onLogoSelect }: Props) => {
   return (
     <Stack spacing={2} alignItems="center">
       <Avatar
-        src={currentLogo ? `app-image://logo/${currentLogo}` : undefined}
+        src={currentLogo || undefined}
         variant="rounded"
         sx={{
           width: 150,
@@ -50,6 +49,10 @@ const LogoPicker = ({ currentLogo, onLogoSelect }: Props) => {
           fontSize: "4rem",
           backgroundColor: "grey.200",
           color: "grey.500",
+          // ✅ THIS IS THE FIX: Forces the image to fit entirely inside the box without cropping
+          "& .MuiAvatar-img": {
+            objectFit: "contain",
+          },
         }}
       >
         {!currentLogo && <ImageIcon />}

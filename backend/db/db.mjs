@@ -733,6 +733,11 @@ export function initializeDatabase(dbPath) {
       FOREIGN KEY(employee_id) REFERENCES employees(id),
       FOREIGN KEY(sale_id) REFERENCES sales(id)
     );
+
+    CREATE TABLE IF NOT EXISTS business (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      kosh_business_id TEXT UNIQUE
+    );
   `);
 
   /*

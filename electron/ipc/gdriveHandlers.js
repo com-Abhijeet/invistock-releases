@@ -4,6 +4,7 @@ const {
   getAuthUrl,
   handleAuthCallback,
   isConnected,
+  uploadInvoiceToDrive,
 } = require("../googleDriveService.js");
 
 function registerGDriveHandlers(ipcMain, { mainWindow } = {}) {
@@ -26,7 +27,7 @@ function registerGDriveHandlers(ipcMain, { mainWindow } = {}) {
               await handleAuthCallback(code);
               res.writeHead(200, { "Content-Type": "text/html" });
               res.end(
-                "<h1>Success!</h1><p>KOSH is connected. You can close this tab.</p>"
+                "<h1>Success!</h1><p>KOSH is connected. You can close this tab.</p>",
               );
 
               if (mainWindow) mainWindow.webContents.send("gdrive-connected");
@@ -47,7 +48,7 @@ function registerGDriveHandlers(ipcMain, { mainWindow } = {}) {
 
       server.listen(5001, "127.0.0.1", () => {
         console.log(
-          "[GDRIVE] Local auth server running at http://127.0.0.1:5001"
+          "[GDRIVE] Local auth server running at http://127.0.0.1:5001",
         );
         resolve({ success: true });
       });
@@ -79,6 +80,16 @@ function registerGDriveHandlers(ipcMain, { mainWindow } = {}) {
           daysUntilExpiry,
         });
       }
+    }
+  });
+
+  ipcMain.handle("upload-invoice-to-drive", async (event, invoiceData) => {
+    try {
+      const fileId = await uploadInvoiceToDrive(invoiceData);
+      return { success: true, fileId };
+    } catch (error) {
+      console.error("IPC Error uploading invoice to GDrive:", error);
+      return { success: false, error: error.message };
     }
   });
 }

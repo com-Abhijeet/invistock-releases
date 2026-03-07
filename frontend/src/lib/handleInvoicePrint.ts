@@ -3,14 +3,23 @@ import type { ShopSetupForm as ShopData } from "./types/shopTypes"; // Assuming 
 
 export const handlePrint = (sale: SaleData) => {
   try {
+    const localSettingsString = localStorage.getItem("app_print_settings");
+    const localSettings = localSettingsString
+      ? JSON.parse(localSettingsString)
+      : {};
+
+    console.log(localSettings);
     // Get shop data from local storage
     const shopDataString = localStorage.getItem("shop");
-    const shopData: ShopData | null = shopDataString ? JSON.parse(shopDataString) : null;
-   
+    const shopData: ShopData | null = shopDataString
+      ? JSON.parse(shopDataString)
+      : null;
+
     // Combine into one object
     const payload = {
       sale,
       shop: shopData || {}, // fallback empty object if missing
+      localSettings,
     };
 
     if (window.electron && window.electron.ipcRenderer) {

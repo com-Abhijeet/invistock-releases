@@ -4,6 +4,8 @@ const a4Standard = require("./invoiceTemplates/a4Standard");
 const a4Modern = require("./invoiceTemplates/a4Modern");
 const a5Landscape = require("./invoiceTemplates/a5Landscape");
 const a5Portrait = require("./invoiceTemplates/a5Portrait");
+const a5LandscapeModern = require("./invoiceTemplates/a5LandscapeModern");
+const a5PortraitModern = require("./invoiceTemplates/a5PortraitModern");
 
 const templates = {
   thermal_80mm: thermal80mm,
@@ -12,6 +14,8 @@ const templates = {
   a4_modern: a4Modern,
   a5_landscape: a5Landscape,
   a5_portrait: a5Portrait,
+  a5_landscape_modern: a5LandscapeModern,
+  a5_portrait_modern: a5PortraitModern,
 };
 
 const getTemplate = (templateId, data) => {

@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld("electron", {
         "export-non-gst-items-to-excel",
         "print-bulk-labels",
         "open-external-url",
+        "upload-invoice-to-drive",
 
         // WhatsApp & External
         "whatsapp-get-status",
@@ -153,6 +154,10 @@ contextBridge.exposeInMainWorld("electron", {
   // --- AUTH & UTILS ---
   loginAdmin: (password) => ipcRenderer.invoke("login-admin", password),
   selectDirectory: () => ipcRenderer.invoke("dialog:open-directory"),
+
+  uploadInvoiceToDrive: (invoiceData) =>
+    ipcRenderer.invoke("upload-invoice-to-drive", invoiceData),
+  
   getGDriveStatus: () => ipcRenderer.invoke("gdrive-status"),
   loginGDrive: () => ipcRenderer.invoke("gdrive-login"),
   onGDriveConnected: (callback) => ipcRenderer.on("gdrive-connected", callback),

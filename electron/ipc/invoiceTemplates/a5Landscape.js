@@ -4,12 +4,19 @@ const {
   formatAmount,
   numberToWords,
 } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc } = require("./utils.js");
 
 const a5Landscape = (data) => {
-  const { sale, shop } = data;
+  const { sale, shop, localSettings } = data;
 
-  // Snapshot Variables (New Schema) w/ Legacy Fallbacks
+  const colSettings = localSettings?.columns || {};
+  const displaySettings = localSettings?.display || {};
+  const legalSettings = localSettings?.legal || {};
+
+  // Dynamic Logo Construction (Uses logo_url first, falls back to logo)
+  const logoSrc = getLogoSrc(shop.logo_url);
+
+  // Snapshot Variables
   const custName = sale.customer_name || "Cash Customer";
   const custPhone = sale.customer_phone || "";
   const custAddress = sale.bill_address || sale.customer_address || "";
@@ -20,15 +27,24 @@ const a5Landscape = (data) => {
 
   // 1. Preferences & Dynamic UI
   const gstEnabled = Boolean(shop.gst_enabled);
-  const showHSN = Boolean(shop.hsn_required);
   const inclusiveTax = Boolean(shop.inclusive_tax_pricing);
-  const showGstBreakup =
-    shop.show_gst_breakup !== undefined ? Boolean(shop.show_gst_breakup) : true;
-  const showDiscountCol = Boolean(shop.show_discount_column);
+
+  // Mapped via local storage state
+  const showHSN = Boolean(colSettings.showHsnSac ?? true);
+  const showDiscountCol = Boolean(colSettings.showDiscountCol ?? false);
+  const showGstBreakup = Boolean(
+    displaySettings.showGstBreakdownBottom ?? true,
+  );
+
+  const jurisdiction = legalSettings.jurisdiction || "";
+  const disclaimer = legalSettings.disclaimer || "";
+  const termsAndConditions = legalSettings.termsAndConditions || "";
 
   // Per Guide: If inclusive, hide per-item GST Amt column
-  const showGstPctCol = gstEnabled && showGstBreakup;
-  const showGstAmtCol = gstEnabled && showGstBreakup && !inclusiveTax;
+  const showGstPctCol =
+    gstEnabled && Boolean(colSettings.showGstRateCol ?? true);
+  const showGstAmtCol =
+    gstEnabled && Boolean(colSettings.showGstAmtCol ?? true) && !inclusiveTax;
 
   // Header State Logic
   const isInterstate =
@@ -49,7 +65,6 @@ const a5Landscape = (data) => {
     totalSgst = 0,
     totalIgst = 0;
 
-  // Calculate Subtotal and Discount Correctly
   const subTotal = sale.items.reduce((sum, item) => sum + (item.price || 0), 0);
   const discountPercentage = sale.discount || 0;
   const discountAmount = (subTotal * discountPercentage) / 100;
@@ -87,12 +102,11 @@ const a5Landscape = (data) => {
   });
 
   // Calculate Colspan for Page Tracker
-  let totalColumns = 4; // #, Name, Qty, Rate
+  let totalColumns = 5; // #, Name, Qty, Rate, Total
   if (showHSN) totalColumns++;
   if (showDiscountCol) totalColumns++;
   if (showGstPctCol) totalColumns++;
   if (showGstAmtCol) totalColumns++;
-  totalColumns++; // Total
 
   const renderPage = (pageData) => {
     const { items: pageItems, isLastPage, pageIndex, totalPages } = pageData;
@@ -103,7 +117,7 @@ const a5Landscape = (data) => {
           item.rate * item.quantity * (1 - (item.discount || 0) / 100);
         let gstAmount =
           gstEnabled && !inclusiveTax
-            ? valAfterDisc * (item.gst_rate / 100)
+            ? valAfterDisc * ((item.gst_rate || 0) / 100)
             : 0;
 
         return `
@@ -125,7 +139,6 @@ const a5Landscape = (data) => {
       })
       .join("");
 
-    // 3. Filler Row Strategy (CSS Height: auto)
     const fillerRowHTML = `
         <tr class="filler-row">
             <td style="border-right:1px solid #000;">&nbsp;</td>
@@ -139,7 +152,6 @@ const a5Landscape = (data) => {
             <td style="">&nbsp;</td>
         </tr>`;
 
-    // 4. Page Tracker Row
     const pageTrackerRow =
       totalPages > 1
         ? `
@@ -152,11 +164,14 @@ const a5Landscape = (data) => {
     <div class="page-container">
         <!-- Header -->
         <div class="header-box">
-          <div class="shop-info">
-            <h1>${shop.gst_invoice_format || "Tax Invoice"}</h1>
-            <div class="bold" style="font-size:14px; margin-bottom:2px;">${shop.use_alias_on_bills && shop.shop_alias ? shop.shop_alias : shop.shop_name}</div>
-            <div style="font-size:9px;">${formatAddress(shop.address_line1, shop.city, shop.state, shop.pincode)}</div>
-            <div style="font-size:9px; margin-top:2px;">Ph: ${shop.contact_number} ${gstEnabled ? `| <strong>GSTIN: ${shop.gstin}</strong>` : ""}</div>
+          <div class="shop-info" style="display: flex; justify-content: space-between; align-items: center; padding-right: 20px;">
+            <div>
+              <h1>${shop.gst_invoice_format || "Tax Invoice"}</h1>
+              <div class="bold" style="font-size:14px; margin-bottom:2px;">${shop.use_alias_on_bills && shop.shop_alias ? shop.shop_alias : shop.shop_name}</div>
+              <div style="font-size:9px;">${formatAddress(shop.address_line1, shop.city, shop.state, shop.pincode)}</div>
+              <div style="font-size:9px; margin-top:2px;">Ph: ${shop.contact_number} ${gstEnabled ? `| <strong>GSTIN: ${shop.gstin}</strong>` : ""}</div>
+            </div>
+            ${logoSrc ? `<img src="${logoSrc}" onerror="this.style.display='none'" style="max-height: 55px; max-width: 140px; object-fit: contain;" />` : ""}
           </div>
           <div class="invoice-meta">
             <div class="flex-between"><span>Invoice No:</span> <span class="bold">${sale.reference_no}</span></div>
@@ -178,7 +193,7 @@ const a5Landscape = (data) => {
           </div>
         </div>
 
-        <!-- Items Table Container (Flex Grow) -->
+        <!-- Items Table Container -->
         <div class="items-table-container">
           <table>
             <thead>
@@ -207,41 +222,33 @@ const a5Landscape = (data) => {
           <div class="footer-left">
             <div>
               <div class="bold">Amount in Words:</div>
-              <div style="font-style:italic; margin-bottom:8px;">${numberToWords(sale.total_amount)}</div>
+              <div style="font-style:italic; margin-bottom:6px;">${numberToWords(sale.total_amount)}</div>
               ${
-                gstEnabled
+                gstEnabled && showGstBreakup
                   ? `
-      ${
-        showGstBreakup
-          ? `
-          <div style="margin-top:6px; font-size:9px; border-top:1px dotted #ccc; padding-top:4px;">
-              Taxable: ${formatAmount(totalTaxableValue)}<br>
-              ${
-                isInterstate
-                  ? `IGST: ${formatAmount(totalIgst)}`
-                  : `CGST: ${formatAmount(totalCgst)} | SGST: ${formatAmount(totalSgst)}`
-              }
-          </div>`
-          : ""
-      }
-      ${
-        inclusiveTax
-          ? `<div style="margin-top: 10px; font-weight: bold; font-size: 10px;">* All prices are inclusive of GST</div>`
-          : ""
-      }
-    `
+                  <div style="font-size:9px; border-top:1px dotted #ccc; padding-top:4px;">
+                      Taxable: ${formatAmount(totalTaxableValue)} | 
+                      ${isInterstate ? `IGST: ${formatAmount(totalIgst)}` : `CGST: ${formatAmount(totalCgst)} | SGST: ${formatAmount(totalSgst)}`}
+                  </div>`
                   : ""
               }
+              ${inclusiveTax ? `<div style="font-weight: bold; font-size: 9px; margin-top: 4px;">* All prices are inclusive of GST</div>` : ""}
             </div>
 
-            <div class="bank-qr-row">
+            <div class="bank-qr-row" style="margin-bottom: 8px;">
               <div class="bank-details">
                 <div class="bold">Bank Details:</div>
                 <div>${shop.bank_name || "N/A"}</div>
                 <div>A/C: ${shop.bank_account_no || "N/A"}</div>
                 <div>IFSC: ${shop.bank_account_ifsc_code || "N/A"}</div>
               </div>
-              ${shop.generated_upi_qr ? `<div><img src="${shop.generated_upi_qr}" class="qr-img" /></div>` : ""}
+              ${shop.generated_upi_qr ? `<div><img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" class="qr-img" /></div>` : ""}
+            </div>
+            
+            <div style="font-size: 8px; color: #333; line-height: 1.3;">
+                ${termsAndConditions ? `<div style="white-space: pre-wrap;"><strong>Terms:</strong> ${termsAndConditions.replace(/\n/g, " ")}</div>` : ""}
+                ${disclaimer ? `<div style="margin-top:2px;"><strong>Disclaimer:</strong> ${disclaimer}</div>` : ""}
+                ${jurisdiction ? `<div style="margin-top:2px; font-style:italic;">${jurisdiction}</div>` : ""}
             </div>
           </div>
 

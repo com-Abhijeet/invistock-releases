@@ -26,6 +26,7 @@ import {
   ClipboardCheck,
   UsersRound,
   BookCheck,
+  CloudCheck,
 } from "lucide-react";
 
 export const menuSections = [
@@ -228,6 +229,16 @@ export const menuSections = [
         icon: <Settings size={20} />,
         path: "/settings",
         shortcut: "F12",
+      },
+      {
+        label: "Tallly Sync", // Tally reference
+        icon: <Settings size={20} />,
+        path: "/tally",
+      },
+      {
+        label: "Kosh Business", // Tally reference
+        icon: <CloudCheck size={20} />,
+        path: "/business-settings",
       },
     ],
   },

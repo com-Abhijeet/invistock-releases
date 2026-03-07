@@ -25,7 +25,7 @@ import Grid from "@mui/material/GridLegacy";
 import { FormField } from "../FormField";
 import { type ShopSetupForm } from "../../lib/types/shopTypes";
 import { useState, useEffect } from "react";
-import { Eye, X, Receipt, Tag, Printer } from "lucide-react";
+import { Eye, X, Receipt, Tag, Printer, Columns, Scale } from "lucide-react";
 import toast from "react-hot-toast";
 
 const { ipcRenderer } = window.electron;
@@ -42,6 +42,8 @@ const INVOICE_TEMPLATES = [
   { id: "thermal_58mm", label: "Thermal 58mm (Compact)" },
   { id: "a5_landscape", label: "A5 Landscape" },
   { id: "a5_portrait", label: "A5 Portait" },
+  { id: "a5_portrait_modern", label: "A5 Portait Modern" },
+  { id: "a5_landscape_modern", label: "A5 Landscape Modern" },
 ];
 
 // Grouped Label Templates
@@ -96,6 +98,43 @@ const LABEL_TEMPLATES = [
   },
 ];
 
+// Interface for the new LocalStorage settings
+interface LocalPrintSettings {
+  columns: {
+    showHsnSac: boolean;
+    showGstRateCol: boolean;
+    showGstAmtCol: boolean;
+    showDiscountCol: boolean;
+  };
+  display: {
+    showGstBreakdownBottom: boolean;
+  };
+  legal: {
+    jurisdiction: string;
+    disclaimer: string;
+    termsAndConditions: string;
+  };
+}
+
+const DEFAULT_LOCAL_SETTINGS: LocalPrintSettings = {
+  columns: {
+    showHsnSac: true,
+    showGstRateCol: true,
+    showGstAmtCol: true,
+    showDiscountCol: false,
+  },
+  display: {
+    showGstBreakdownBottom: true,
+  },
+  legal: {
+    jurisdiction: "Subject to Jalna Jurisdiction only",
+    disclaimer:
+      "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
+    termsAndConditions:
+      "1. Payment must be made within 15 days.\n2. Interest @ 18% p.a. will be charged on delayed payments.\n3. Goods once sold will not be taken back.",
+  },
+};
+
 export default function PrintSettingsTab({ data, onChange }: Props) {
   const [availablePrinters, setAvailablePrinters] = useState([]);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -105,6 +144,12 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
     "invoice",
   );
 
+  // Local storage state for extra print settings
+  const [localSettings, setLocalSettings] = useState<LocalPrintSettings>(
+    DEFAULT_LOCAL_SETTINGS,
+  );
+  const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
+
   useEffect(() => {
     async function fetchPrinters() {
       if (!ipcRenderer) return;
@@ -113,6 +158,44 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
     }
     fetchPrinters();
   }, []);
+
+  // Load local settings on mount
+  useEffect(() => {
+    const stored = localStorage.getItem("app_print_settings");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        // Merge with defaults to ensure missing fields are populated if we update the schema later
+        setLocalSettings({
+          columns: { ...DEFAULT_LOCAL_SETTINGS.columns, ...parsed.columns },
+          display: { ...DEFAULT_LOCAL_SETTINGS.display, ...parsed.display },
+          legal: { ...DEFAULT_LOCAL_SETTINGS.legal, ...parsed.legal },
+        });
+      } catch (err) {
+        console.error("Failed to parse local print settings", err);
+      }
+    }
+    setIsSettingsLoaded(true);
+  }, []);
+
+  const updateLocalSetting = (
+    category: keyof LocalPrintSettings,
+    field: string,
+    value: any,
+  ) => {
+    setLocalSettings((prev) => {
+      const updated = {
+        ...prev,
+        [category]: {
+          ...(prev[category] as any),
+          [field]: value,
+        },
+      };
+      // Persist to local storage immediately
+      localStorage.setItem("app_print_settings", JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   const handlePreview = async (type: "invoice" | "label") => {
     if (!ipcRenderer) return;
@@ -129,6 +212,7 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
           ? "generate-template-preview"
           : "generate-label-preview";
 
+      // You may need to update your main process to accept the localSettings if the preview needs to reflect these changes
       const result = await ipcRenderer.invoke(channel, templateId);
 
       if (result.success) {
@@ -345,6 +429,209 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
             </CardContent>
           </Card>
         </Grid>
+
+        {/* --- LOCAL INVOICE LAYOUT SETTINGS --- */}
+        {isSettingsLoaded && (
+          <>
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
+                <CardContent>
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    spacing={1.5}
+                    mb={2}
+                  >
+                    <Columns size={20} className="text-purple-600" />
+                    <Typography variant="h6" fontWeight={600}>
+                      Invoice Layout & Columns
+                    </Typography>
+                  </Stack>
+                  <Divider sx={{ mb: 3 }} />
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={localSettings.columns.showHsnSac}
+                            onChange={(e) =>
+                              updateLocalSetting(
+                                "columns",
+                                "showHsnSac",
+                                e.target.checked,
+                              )
+                            }
+                          />
+                        }
+                        label={
+                          <Typography variant="body2">Show HSN/SAC</Typography>
+                        }
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={localSettings.columns.showGstRateCol}
+                            onChange={(e) =>
+                              updateLocalSetting(
+                                "columns",
+                                "showGstRateCol",
+                                e.target.checked,
+                              )
+                            }
+                          />
+                        }
+                        label={
+                          <Typography variant="body2">
+                            Show GST Rate (%)
+                          </Typography>
+                        }
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={localSettings.columns.showGstAmtCol}
+                            onChange={(e) =>
+                              updateLocalSetting(
+                                "columns",
+                                "showGstAmtCol",
+                                e.target.checked,
+                              )
+                            }
+                          />
+                        }
+                        label={
+                          <Typography variant="body2">
+                            Show GST Amount
+                          </Typography>
+                        }
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={localSettings.columns.showDiscountCol}
+                            onChange={(e) =>
+                              updateLocalSetting(
+                                "columns",
+                                "showDiscountCol",
+                                e.target.checked,
+                              )
+                            }
+                          />
+                        }
+                        label={
+                          <Typography variant="body2">Show Discount</Typography>
+                        }
+                      />
+                    </Grid>
+                    <Grid item xs={12} sx={{ mt: 1 }}>
+                      <Divider sx={{ mb: 2 }} />
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={
+                              localSettings.display.showGstBreakdownBottom
+                            }
+                            onChange={(e) =>
+                              updateLocalSetting(
+                                "display",
+                                "showGstBreakdownBottom",
+                                e.target.checked,
+                              )
+                            }
+                          />
+                        }
+                        label={
+                          <Typography variant="body2" fontWeight={600}>
+                            Show GST Breakdown Table at Bottom
+                          </Typography>
+                        }
+                      />
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* --- LEGAL & TERMS SETTINGS --- */}
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
+                <CardContent>
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    spacing={1.5}
+                    mb={2}
+                  >
+                    <Scale size={20} className="text-gray-700" />
+                    <Typography variant="h6" fontWeight={600}>
+                      Legal & Terms
+                    </Typography>
+                  </Stack>
+                  <Divider sx={{ mb: 3 }} />
+
+                  <Stack spacing={3}>
+                    <FormField label="Jurisdiction">
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={localSettings.legal.jurisdiction}
+                        onChange={(e) =>
+                          updateLocalSetting(
+                            "legal",
+                            "jurisdiction",
+                            e.target.value,
+                          )
+                        }
+                        placeholder="Subject to Jalna Jurisdiction only"
+                      />
+                    </FormField>
+
+                    <FormField label="Disclaimer Statement">
+                      <TextField
+                        fullWidth
+                        size="small"
+                        multiline
+                        rows={2}
+                        value={localSettings.legal.disclaimer}
+                        onChange={(e) =>
+                          updateLocalSetting(
+                            "legal",
+                            "disclaimer",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </FormField>
+
+                    <FormField label="Terms & Conditions">
+                      <TextField
+                        fullWidth
+                        size="small"
+                        multiline
+                        rows={4}
+                        value={localSettings.legal.termsAndConditions}
+                        onChange={(e) =>
+                          updateLocalSetting(
+                            "legal",
+                            "termsAndConditions",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </FormField>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          </>
+        )}
 
         {/* --- PRINT BEHAVIOR --- */}
         <Grid item xs={12}>

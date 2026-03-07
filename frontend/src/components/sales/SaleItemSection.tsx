@@ -773,9 +773,9 @@ export default function SaleItemSection({
                 PRODUCT SEARCH
               </TableCell>
               <TableCell sx={{ ...headerSx, width: "12%" }}>BARCODE</TableCell>
-              <TableCell sx={{ ...headerSx, width: "6%" }}>QTY</TableCell>
+              <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>UNIT</TableCell>
-              <TableCell sx={{ ...headerSx, width: "12%" }}>
+              <TableCell sx={{ ...headerSx, width: "10%" }}>
                 {shop?.inclusive_tax_pricing ? "RATE (INC.)" : "RATE"}
               </TableCell>
               {shop?.gst_enabled && (

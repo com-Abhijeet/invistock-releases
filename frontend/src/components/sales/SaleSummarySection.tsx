@@ -35,6 +35,7 @@ import type { CustomerType } from "../../lib/types/customerTypes";
 import { Settings, Save, X, Receipt } from "lucide-react";
 import toast from "react-hot-toast";
 import { getShopData } from "../../lib/api/shopService";
+import { getBusinessProfile } from "../../lib/api/businessService";
 
 interface Props {
   sale: SalePayload;
@@ -59,6 +60,7 @@ const SaleSummarySection = ({
   const [shop, setShop] = useState<any>(null);
   const [warningOpen, setWarningOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [businessId, setBusinessId] = useState("");
 
   const [doPrint, setDoPrint] = useState(true);
   const [doWhatsApp, setDoWhatsApp] = useState(true);
@@ -192,6 +194,11 @@ const SaleSummarySection = ({
         if (data?.print_after_save) setDoPrint(true);
       })
       .catch(() => setShop(null));
+    getBusinessProfile()
+      .then((data) => {
+        if (data?.kosh_business_id) setBusinessId(data.kosh_business_id);
+      })
+      .catch(() => {});
   }, []);
 
   const handleFieldChange = (field: keyof SalePayload, value: any) => {
@@ -305,8 +312,10 @@ const SaleSummarySection = ({
       let savedSale;
       if (mode === "edit" && sale.id) {
         savedSale = (await updateSale(Number(sale.id), payload)).data;
+        console.log("SAVED SALE", savedSale);
       } else {
         savedSale = (await createSale(payload)).data;
+        console.log("SAVED SALE", savedSale);
         if (salesOrderId)
           await updateSalesOrder(salesOrderId, {
             status: "completed",
@@ -319,24 +328,120 @@ const SaleSummarySection = ({
       setSuccess(true);
       toast.success(mode === "edit" ? "Sale Updated!" : "Sale Saved!");
       if (doPrint) handlePrint(savedSale);
+
+      // --- CLOUD INVOICE / WHATSAPP LOGIC ---
       if (doWhatsApp && customer?.phone) {
-        const nl = "\n";
-        const itemsList = savedSale.items
-          .map(
-            (item: any, index: number) =>
-              `${index + 1}. ${item.product_name} x ${item.quantity} = ₹${(item.quantity * item.rate).toLocaleString("en-IN")}`,
-          )
-          .join(nl);
         const shopName = shop?.shop_name || "Our Shop";
-        const message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}${nl}Hello ${customer?.name || "Customer"},${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}*Items Purchased:*${nl}${itemsList}${nl}${nl}———————————————${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}${nl}Thank you for shopping with us 🙏${nl}Please find your invoice PDF attached.`;
-        if (window.electron?.sendWhatsAppMessage)
+        let message = "";
+
+        try {
+          // 1. Construct Invoice Data for Cloud Web-Renderer
+          const invoiceData = {
+            business_id: businessId, // Keeping as requested
+            shopName: shopName, // Keeping as requested
+            shopAddress: savedSale.bill_address || "",
+            gstin: savedSale.gstin || "",
+            invoiceNo: savedSale.reference_no,
+            date: savedSale.created_at || new Date().toISOString(),
+            customerName: savedSale.customer_name || "Customer",
+            customerPhone: savedSale.customer_phone || "",
+            customerAddress: savedSale.customer_address || "",
+            customerState: savedSale.customer_state || "",
+            customerPincode: savedSale.customer_pincode || "",
+
+            items: savedSale.items.map(
+              (item: {
+                rate: string;
+                quantity: string;
+                discount: any;
+                product_name: any;
+                description: any;
+                unit: any;
+                gst_rate: any;
+                hsn: any;
+              }) => {
+                // Calculate amount after item-level percentage discount
+                const itemRate = parseFloat(item.rate);
+                const itemQty = parseFloat(item.quantity);
+                const itemDiscountPercent = parseFloat(item.discount || 0);
+                const lineTotal = itemRate * itemQty;
+                const discountedAmount =
+                  lineTotal - lineTotal * (itemDiscountPercent / 100);
+
+                return {
+                  name: item.product_name,
+                  description: item.description,
+                  qty: itemQty,
+                  rate: itemRate,
+                  unit: item.unit,
+                  discount_percent: itemDiscountPercent,
+                  amount: discountedAmount,
+                  gst_rate: item.gst_rate || 0,
+                  hsn: item.hsn || "",
+                };
+              },
+            ),
+
+            subTotal: savedSale.items.reduce(
+              (sum: number, item: { rate: string; quantity: string }) => {
+                return sum + parseFloat(item.rate) * parseFloat(item.quantity);
+              },
+              0,
+            ),
+
+            taxAmount: savedSale.total_tax || 0, // Ensure this field exists in your full object
+            discount: savedSale.discount || 0, // Overall bill discount percentage
+            totalAmount: savedSale.total_amount,
+            roundoff: savedSale.round_off, // Fixed casing from roundOff to round_off
+            paymentMode: savedSale.payment_mode,
+            paymentStatus:
+              savedSale.payment_summary?.status || savedSale.status,
+          };
+
+          // 2. Upload to Google Drive via IPC
+          const uploadRes =
+            await window.electron?.uploadInvoiceToDrive(invoiceData);
+
+          if (uploadRes && uploadRes.success) {
+            // 3A. Success! Send the new specific Web Link
+            const webLink = `https://getkosh.co.in/invoice/web-view/${uploadRes.fileId}`;
+            message = `*${shopName}*\n\nHello ${customer?.name || "Customer"},\n\nThank you for shopping with us! 🙏\n\n🧾 *View your detailed digital bill here:*\n${webLink}\n\n_Please find the PDF copy attached below._\n\n_Powered by Kosh Billing_`;
+          } else {
+            throw new Error(uploadRes?.error || "Drive upload failed");
+          }
+        } catch (uploadError) {
+          console.warn(
+            "Cloud Invoice failed, falling back to standard text message",
+            uploadError,
+          );
+
+          // 3B. Fallback: Send standard text message if Drive isn't connected
+          const nl = "\n";
+          const itemsList = savedSale.items
+            .map(
+              (item: any, index: number) =>
+                `${index + 1}. ${item.product_name} x ${item.quantity} = ₹${(item.quantity * item.rate).toLocaleString("en-IN")}`,
+            )
+            .join(nl);
+
+          message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}${nl}Hello ${customer?.name || "Customer"},${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}*Items Purchased:*${nl}${itemsList}${nl}${nl}———————————————${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}${nl}Thank you for shopping with us 🙏${nl}Please find your invoice PDF attached.`;
+        }
+
+        // 4. Send the WhatsApp Text Message (with or without link)
+        if (window.electron?.sendWhatsAppMessage) {
           window.electron.sendWhatsAppMessage(customer.phone, message);
-        await window.electron?.sendWhatsAppInvoicePdf({
+        }
+
+        // 5. ALWAYS attach the PDF Invoice (Removed the 'isCloudLinkSent' condition)
+        const res = await window.electron?.sendWhatsAppInvoicePdf({
           sale: sale,
           shop: shop,
           customerPhone: customer?.phone,
         });
+
+        console.log("RESPONSE FROM PDF", res);
       }
+
       resetForm();
     } catch (err: any) {
       toast.error(err.message || "Error during submission.");

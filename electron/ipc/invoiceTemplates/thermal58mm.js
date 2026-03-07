@@ -1,11 +1,19 @@
 const { formatDate, formatAmount } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc } = require("./utils.js");
 
 const thermal58mm = (data) => {
-  const { sale, shop } = data;
+  const { sale, shop, localSettings } = data;
   const isInclusive = shop.is_inclusive || false;
 
-  // Snapshot Variables (New Schema) w/ Legacy Fallbacks
+  const legalSettings = localSettings.legal || {};
+  const jurisdiction = legalSettings.jurisdiction || "";
+  const disclaimer = legalSettings.disclaimer || "";
+  const termsAndConditions = legalSettings.termsAndConditions || "";
+
+  // Dynamic Logo Construction - Updated to use logo_url first
+  const logoSrc = getLogoSrc(shop.logo_url || shop.logo);
+
+  // Snapshot Variables
   const custName = sale.customer_name || "Cash Sale";
   const custGst = sale.gstin || sale.customer_gst_no || "";
 
@@ -46,11 +54,14 @@ const thermal58mm = (data) => {
         </style>
       </head>
       <body>
-        <div class="center">
-          <h1>${shop.shop_name}</h1>
-          <div style="font-size: 9px;">${shop.address_line1}, ${shop.city}</div>
-          <div style="font-size: 9px;">Ph: ${shop.contact_number}</div>
-          ${shop.gstin ? `<div style="font-size: 9px;">GSTIN: ${shop.gstin}</div>` : ""}
+        <div class="center" style="display: flex; align-items: center; justify-content: center; gap: 8px; text-align: left; margin-bottom: 8px;">
+          ${logoSrc ? `<img src="${logoSrc}" onerror="this.style.display='none'" style="max-height: 35px; max-width: 45px; object-fit: contain;" />` : ""}
+          <div>
+            <h1>${shop.shop_name}</h1>
+            <div style="font-size: 9px;">${shop.address_line1}, ${shop.city}</div>
+            <div style="font-size: 9px;">Ph: ${shop.contact_number}</div>
+            ${shop.gstin ? `<div style="font-size: 9px;">GSTIN: ${shop.gstin}</div>` : ""}
+          </div>
         </div>
         
         <div class="line"></div>
@@ -125,9 +136,13 @@ const thermal58mm = (data) => {
 
         ${
           shop.generated_upi_qr
-            ? `<div class="center" style="margin-top:10px;"><img src="${shop.generated_upi_qr}" style="width:70px;" /></div>`
+            ? `<div class="center" style="margin-top:10px;"><img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" style="width:70px;" /></div>`
             : ""
         }
+
+        ${termsAndConditions ? `<div class="line" style="margin-top:10px;"></div><div style="font-size: 8px; white-space: pre-wrap; text-align: left; margin-bottom: 4px;"><strong>Terms:</strong><br>${termsAndConditions}</div>` : ""}
+        ${disclaimer ? `<div style="font-size: 8px; text-align: center; margin-bottom: 2px;">${disclaimer}</div>` : ""}
+        ${jurisdiction ? `<div style="font-size: 8px; text-align: center; font-style: italic;">${jurisdiction}</div>` : ""}
 
         <div class="center" style="margin-top: 10px; font-weight: bold;">
           Thank you for shopping!

@@ -79,6 +79,8 @@ import EmployeeListPage from "./pages/EmployeeListPage";
 import EmployeeDetailPage from "./pages/EmployeeDetailPage";
 import AccountingDashboard from "./pages/AccountingDashboard";
 import ExpiryReportPage from "./pages/ExpiryReportPage";
+import TallyDashboard from "./pages/TallyDashboard";
+import BusinessSettings from "./pages/BusinessSettingsPage";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -488,6 +490,22 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="settings">
                         <SettingsPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/tally"
+                    element={
+                      <PermissionGuard requiredPermission="">
+                        <TallyDashboard />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/business-settings"
+                    element={
+                      <PermissionGuard requiredPermission="settings">
+                        <BusinessSettings />
                       </PermissionGuard>
                     }
                   />
