@@ -52,16 +52,26 @@ interface Transaction {
   payment_mode: string;
   type: string;
 }
+
 interface LedgerEntry {
   id: number;
   date: string;
   reference: string;
   total_amount: number;
+  credit_notes: number;
   paid_amount: number;
   balance: number;
-  status: "PAID" | "PARTIAL" | "PENDING";
+  status: "PAID" | "PARTIAL" | "PENDING" | "CREDITED" | "REFUND_DUE";
   transactions: Transaction[];
 }
+
+// Utility to cleanly format negative currency without weird dash placements
+const formatCurrency = (val: number) => {
+  if (val < 0) {
+    return `-₹${Math.abs(val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return `₹${val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 export default function CustomerLedgerPage() {
   const { id } = useParams();
@@ -71,7 +81,12 @@ export default function CustomerLedgerPage() {
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<any>(null);
   const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
-  const [totals, setTotals] = useState({ billed: 0, paid: 0, pending: 0 });
+  const [totals, setTotals] = useState({
+    billed: 0,
+    credits: 0,
+    paid: 0,
+    pending: 0,
+  });
   const [shop, setShop] = useState<any>(null);
 
   useEffect(() => {
@@ -100,10 +115,21 @@ export default function CustomerLedgerPage() {
 
   const processLedger = (rawLedger: any[]) => {
     let tb = 0,
+      tc = 0,
       tp = 0,
       tpen = 0;
+
     const entries: LedgerEntry[] = rawLedger.map((bill: any) => {
       const amt = parseFloat(bill.total_amount || 0);
+      const credits = parseFloat(bill.total_credit_notes || 0);
+
+      // ✅ STRICT SEPARATION: Payment In vs Payment Out
+      const paidIn = parseFloat(bill.total_paid || 0);
+      const paidOut = parseFloat(bill.total_refunded || 0);
+
+      const netPaid = paidIn - paidOut;
+      const bal = amt - credits - netPaid;
+
       const txs =
         bill.transactions?.map((t: any) => ({
           id: t.id,
@@ -112,33 +138,42 @@ export default function CustomerLedgerPage() {
           payment_mode: t.payment_mode,
           type: t.type,
         })) || [];
-      const paid =
-        bill.paid_amount !== undefined
-          ? parseFloat(bill.paid_amount)
-          : txs.reduce((s: number, t: any) => s + t.amount, 0);
-      const bal = amt - paid;
+
       tb += amt;
-      tp += paid;
-      tpen += bal;
+      tc += credits;
+      tp += netPaid;
+      tpen += bal; // ✅ BUG FIX: Allows negative totals so you can see if you owe money globally
+
       let status: LedgerEntry["status"] = "PENDING";
-      if (bal <= 0.9) status = "PAID";
-      else if (paid > 0) status = "PARTIAL";
+
+      if (bal <= 0.9 && bal >= -0.9) {
+        if (credits >= amt * 0.9 && netPaid <= 0.9) {
+          status = "CREDITED";
+        } else {
+          status = "PAID";
+        }
+      } else if (bal < -0.9) {
+        // ✅ EXPOSE NEGATIVE BALANCES AS REFUNDS OWED
+        status = "REFUND_DUE";
+      } else if (netPaid > 0 || credits > 0) {
+        status = "PARTIAL";
+      }
+
       return {
         id: bill.id,
         date: bill.bill_date,
         reference: bill.reference_no,
         total_amount: amt,
-        paid_amount: paid,
-        balance: bal > 0 ? bal : 0,
+        credit_notes: credits,
+        paid_amount: netPaid,
+        balance: bal, // ✅ Allows exact negative values
         status,
         transactions: txs,
       };
     });
-    // entries.sort(
-    //   (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    // );
+
     setLedgerData(entries);
-    setTotals({ billed: tb, paid: tp, pending: tpen });
+    setTotals({ billed: tb, credits: tc, paid: tp, pending: tpen });
   };
 
   const handlePrint = () =>
@@ -232,14 +267,22 @@ export default function CustomerLedgerPage() {
                       color="text.secondary"
                       fontWeight="bold"
                     >
-                      NET BALANCE DUE
+                      {totals.pending < 0
+                        ? "TOTAL REFUND OWED"
+                        : "NET BALANCE DUE"}
                     </Typography>
                     <Typography
                       variant="h4"
                       fontWeight="bold"
-                      color={totals.pending > 0 ? "error.main" : "success.main"}
+                      color={
+                        totals.pending < 0
+                          ? "warning.main"
+                          : totals.pending > 0
+                            ? "error.main"
+                            : "success.main"
+                      }
                     >
-                      ₹{totals.pending.toLocaleString()}
+                      {formatCurrency(totals.pending)}
                     </Typography>
                   </Box>
                 </Stack>
@@ -272,13 +315,19 @@ export default function CustomerLedgerPage() {
                     </TableCell>
                     <TableCell
                       align="right"
+                      sx={{ fontWeight: "bold", bgcolor: "grey.50" }}
+                    >
+                      Bill Total
+                    </TableCell>
+                    <TableCell
+                      align="right"
                       sx={{
                         fontWeight: "bold",
                         bgcolor: "grey.50",
-                        color: "primary.main",
+                        color: "warning.main",
                       }}
                     >
-                      Bill Amount (₹)
+                      Credits (Returns)
                     </TableCell>
                     <TableCell
                       align="right"
@@ -288,20 +337,20 @@ export default function CustomerLedgerPage() {
                         color: "success.main",
                       }}
                     >
-                      Paid (₹)
+                      Net Paid
                     </TableCell>
                     <TableCell
                       align="right"
                       sx={{ fontWeight: "bold", bgcolor: "grey.50" }}
                     >
-                      Balance (₹)
+                      Balance
                     </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {ledgerData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                      <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                         No transactions found for this period.
                       </TableCell>
                     </TableRow>
@@ -325,15 +374,23 @@ export default function CustomerLedgerPage() {
                     Total Billed
                   </Typography>
                   <Typography fontWeight="bold">
-                    ₹{totals.billed.toLocaleString()}
+                    {formatCurrency(totals.billed)}
                   </Typography>
                 </Box>
                 <Box textAlign="right">
                   <Typography variant="caption" color="text.secondary">
-                    Total Received
+                    Total Credits (Returns)
+                  </Typography>
+                  <Typography fontWeight="bold" color="warning.main">
+                    {formatCurrency(totals.credits)}
+                  </Typography>
+                </Box>
+                <Box textAlign="right">
+                  <Typography variant="caption" color="text.secondary">
+                    Total Received (Net)
                   </Typography>
                   <Typography fontWeight="bold" color="success.main">
-                    ₹{totals.paid.toLocaleString()}
+                    {formatCurrency(totals.paid)}
                   </Typography>
                 </Box>
                 <Box
@@ -349,9 +406,15 @@ export default function CustomerLedgerPage() {
                   </Typography>
                   <Typography
                     fontWeight="bold"
-                    color={totals.pending > 0 ? "error.main" : "text.primary"}
+                    color={
+                      totals.pending < 0
+                        ? "warning.main"
+                        : totals.pending > 0
+                          ? "error.main"
+                          : "text.primary"
+                    }
                   >
-                    ₹{totals.pending.toLocaleString()}
+                    {formatCurrency(totals.pending)}
                   </Typography>
                 </Box>
               </Stack>
@@ -407,36 +470,55 @@ function Row({ row }: { row: LedgerEntry }) {
         </TableCell>
         <TableCell>
           <Chip
-            label={row.status}
+            label={row.status.replace("_", " ")}
             size="small"
             color={
               row.status === "PAID"
                 ? "success"
-                : row.status === "PARTIAL"
-                  ? "warning"
-                  : "error"
+                : row.status === "CREDITED"
+                  ? "info"
+                  : row.status === "REFUND_DUE"
+                    ? "secondary"
+                    : row.status === "PARTIAL"
+                      ? "warning"
+                      : "error" // Default for PENDING
             }
             variant="outlined"
-            sx={{ fontWeight: "bold", fontSize: "0.7rem" }}
+            sx={{
+              fontWeight: "bold",
+              fontSize: "0.7rem",
+              textTransform: "uppercase",
+            }}
           />
         </TableCell>
-        <TableCell align="right">{row.total_amount.toLocaleString()}</TableCell>
-        <TableCell align="right" sx={{ color: "success.main" }}>
-          {row.paid_amount > 0 ? row.paid_amount.toLocaleString() : "-"}
+        <TableCell align="right">{formatCurrency(row.total_amount)}</TableCell>
+        <TableCell align="right" sx={{ color: "warning.main" }}>
+          {row.credit_notes > 0 ? formatCurrency(row.credit_notes) : "-"}
+        </TableCell>
+        <TableCell
+          align="right"
+          sx={{ color: "success.main", fontWeight: 600 }}
+        >
+          {row.paid_amount !== 0 ? formatCurrency(row.paid_amount) : "-"}
         </TableCell>
         <TableCell
           align="right"
           sx={{
             fontWeight: "bold",
-            color: row.balance > 0 ? "error.main" : "inherit",
+            color:
+              row.balance < 0
+                ? "warning.main"
+                : row.balance > 0
+                  ? "error.main"
+                  : "inherit",
           }}
         >
-          {row.balance.toLocaleString()}
+          {formatCurrency(row.balance)}
         </TableCell>
       </TableRow>
       {hasTransactions && (
         <TableRow>
-          <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+          <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
             <Collapse in={open} timeout="auto" unmountOnExit>
               <Box
                 sx={{
@@ -473,7 +555,7 @@ function Row({ row }: { row: LedgerEntry }) {
                       <TableCell
                         sx={{ fontSize: "0.75rem", color: "text.secondary" }}
                       >
-                        In/Out
+                        Type
                       </TableCell>
                       <TableCell
                         align="right"
@@ -490,15 +572,39 @@ function Row({ row }: { row: LedgerEntry }) {
                           {new Date(t.date).toLocaleDateString("en-IN")}
                         </TableCell>
                         <TableCell sx={{ textTransform: "capitalize" }}>
-                          {t.payment_mode}
+                          {t.payment_mode || "N/A"}
                         </TableCell>
                         <TableCell sx={{ textTransform: "capitalize" }}>
-                          {t.type === "payment_in"
-                            ? "Inwards payment"
-                            : "Outwards Payment"}
+                          <Chip
+                            label={
+                              t.type === "payment_in"
+                                ? "Payment In"
+                                : t.type === "payment_out"
+                                  ? "Refund (Cash Out)"
+                                  : "Credit Note (Return)"
+                            }
+                            size="small"
+                            color={
+                              t.type === "payment_in"
+                                ? "success"
+                                : t.type === "credit_note"
+                                  ? "warning"
+                                  : "default"
+                            }
+                            sx={{ height: 20, fontSize: "0.7rem" }}
+                          />
                         </TableCell>
-                        <TableCell align="right">
-                          ₹{t.amount.toLocaleString()}
+                        <TableCell
+                          align="right"
+                          sx={{
+                            color:
+                              t.type === "payment_out"
+                                ? "error.main"
+                                : "inherit",
+                          }}
+                        >
+                          {t.type === "payment_out" ? "-" : ""}
+                          {formatCurrency(t.amount)}
                         </TableCell>
                       </TableRow>
                     ))}

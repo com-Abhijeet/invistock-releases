@@ -3,7 +3,7 @@ import { getDateFilter } from "../utils/dateFilter.mjs";
 
 /**
  * The Mega-Query function for the dashboard.
- * Decoupled: Only fetches GST-compliant sales statistics.
+ * UPDATED: Uses (quantity - return_quantity) & rigorously excludes GST and artificial stock gains.
  */
 export function getDashboardStats(filters) {
   const { where: sWhere, params: sParams } = getDateFilter({
@@ -17,16 +17,16 @@ export function getDashboardStats(filters) {
   const { where: eWhere, params: eParams } = getDateFilter({
     ...filters,
     alias: "e",
-  }); // Filter for expenses table
+  });
 
   // --------------------------------------------------------------------------
-  // 1. FINANCIALS: Sales, COGS, and Gross Profit
+  // 1. FINANCIALS: Net Revenue, Net COGS, and Net Gross Profit
   // --------------------------------------------------------------------------
-  // REMOVED: sales_non_gst UNION
+  // Excludes GST from Revenue to prevent artificial inflation
   const profitQuery = `
     SELECT 
-      SUM(si.quantity * si.rate) as revenue,
-      SUM(si.quantity * pr.average_purchase_price) as cogs
+      SUM( (si.rate * (si.quantity - COALESCE(si.return_quantity, 0)) * (1 - si.discount/100.0)) / (1 + (COALESCE(si.gst_rate, pr.gst_rate, 0)/100.0)) ) as revenue,
+      SUM( (si.quantity - COALESCE(si.return_quantity, 0)) * COALESCE(pr.average_purchase_price, pr.mop, 0) ) as cogs
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
     JOIN products pr ON si.product_id = pr.id
@@ -35,7 +35,7 @@ export function getDashboardStats(filters) {
 
   const profitData = db
     .prepare(
-      `SELECT SUM(revenue) as revenue, SUM(cogs) as cogs FROM (${profitQuery})`
+      `SELECT SUM(revenue) as revenue, SUM(cogs) as cogs FROM (${profitQuery})`,
     )
     .get(...sParams);
 
@@ -44,70 +44,96 @@ export function getDashboardStats(filters) {
   const grossProfit = totalRevenue - totalCOGS;
 
   // --------------------------------------------------------------------------
-  // 2. OPERATIONAL COSTS (Expenses)
+  // 2. EXTRAORDINARY GAINS (Stock adjustments EXCLUDING returns)
   // --------------------------------------------------------------------------
-  // Now querying the dedicated 'expenses' table
+  const adjData = db
+    .prepare(
+      `
+    SELECT 
+      SUM(CASE WHEN (sa.new_quantity - sa.old_quantity) > 0 THEN (sa.new_quantity - sa.old_quantity) * COALESCE(p.average_purchase_price, p.mop, 0) ELSE 0 END) as gains
+    FROM stock_adjustments sa
+    JOIN products p ON sa.product_id = p.id
+    WHERE ${sWhere.replace(/s\./g, "sa.")} AND sa.category NOT IN ('Sales Return', 'Purchase Return')
+  `,
+    )
+    .get(...sParams);
+
+  const totalStockGains = adjData.gains || 0;
+
+  // --------------------------------------------------------------------------
+  // 3. OPERATIONAL COSTS (Expenses) & NET PROFIT
+  // --------------------------------------------------------------------------
   const expenses = db
     .prepare(
       `
     SELECT SUM(amount) as total 
     FROM expenses e
     WHERE ${eWhere.replace(/created_at/g, "date")}
-  `
+  `,
     )
     .get(...eParams);
 
   const totalOperationalExpenses = expenses.total || 0;
-  const netProfit = grossProfit - totalOperationalExpenses;
+
+  // Strict Net Profit = Operational Profit + Found Stock - Operational Expenses
+  const netProfit = grossProfit + totalStockGains - totalOperationalExpenses;
 
   // --------------------------------------------------------------------------
-  // 3. CASH FLOW (Actual Money In/Out)
+  // 4. CASH FLOW (Actual Money In/Out)
   // --------------------------------------------------------------------------
-  // Money In = Payment In transactions
-  // Money Out = Payment Out transactions (Purchases) + Expenses
-
   const transactionsFlow = db
     .prepare(
       `
     SELECT 
       SUM(CASE WHEN type = 'payment_in' THEN amount ELSE 0 END) as money_in,
-      SUM(CASE WHEN type = 'payment_out' THEN amount ELSE 0 END) as money_out
+      SUM(CASE WHEN type = 'payment_out' THEN amount ELSE 0 END) as money_out,
+      SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END) as total_returns
     FROM transactions t
-    WHERE ${tWhere.replace(/created_at/g, "transaction_date")}
-  `
+    WHERE ${tWhere.replace(/created_at/g, "transaction_date")} AND status != 'deleted'
+  `,
     )
     .get(...tParams);
 
   const moneyIn = transactionsFlow.money_in || 0;
-  // Combine purchase payments + operational expenses
   const moneyOut = (transactionsFlow.money_out || 0) + totalOperationalExpenses;
 
   // --------------------------------------------------------------------------
-  // 4. OUTSTANDING (Debts)
+  // 5. OUTSTANDING (Reconciled Debts)
   // --------------------------------------------------------------------------
-  // REMOVED: sales_non_gst UNION
+  // Receivables = Gross Billed + Refunds Given - Cash Received - Returns Processed
   const receivables =
     db
       .prepare(
         `
-    SELECT SUM(total_amount - paid_amount) as pending 
-    FROM sales
-    WHERE status != 'paid' AND is_quote = 0
-  `
+    SELECT (
+      (SELECT COALESCE(SUM(total_amount), 0) FROM sales WHERE status != 'cancelled' AND is_quote = 0)
+      +
+      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'payment_out' AND status != 'deleted' AND entity_type = 'customer')
+      -
+      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type IN ('payment_in', 'credit_note') AND status != 'deleted' AND entity_type = 'customer')
+    ) as pending
+  `,
       )
       .get().pending || 0;
 
+  // Payables = Gross Purchases + Refunds Received - Cash Paid - Returns Processed
   const payables =
     db
       .prepare(
         `
-    SELECT SUM(total_amount - paid_amount) as pending FROM purchases WHERE status != 'paid'
-  `
+    SELECT (
+      (SELECT COALESCE(SUM(total_amount), 0) FROM purchases WHERE status != 'cancelled')
+      +
+      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'payment_in' AND status != 'deleted' AND entity_type = 'supplier')
+      -
+      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type IN ('payment_out', 'debit_note') AND status != 'deleted' AND entity_type = 'supplier')
+    ) as pending
+  `,
       )
       .get().pending || 0;
 
   // --------------------------------------------------------------------------
-  // 5. INVENTORY HEALTH
+  // 6. INVENTORY HEALTH
   // --------------------------------------------------------------------------
   const inventory = db
     .prepare(
@@ -115,24 +141,23 @@ export function getDashboardStats(filters) {
     SELECT 
       COUNT(*) as total_products,
       SUM(quantity) as total_units,
-      SUM(quantity * average_purchase_price) as stock_value_cost,
+      SUM(quantity * COALESCE(average_purchase_price, mop, 0)) as stock_value_cost,
       SUM(quantity * mrp) as stock_value_mrp,
       SUM(CASE WHEN quantity <= low_stock_threshold THEN 1 ELSE 0 END) as low_stock_count,
       SUM(CASE WHEN quantity = 0 THEN 1 ELSE 0 END) as out_of_stock_count
     FROM products WHERE is_active = 1
-  `
+  `,
     )
     .get();
 
   // --------------------------------------------------------------------------
-  // 6. COUNTS
+  // 7. COUNTS
   // --------------------------------------------------------------------------
-  // REMOVED: sales_non_gst count
   const invoiceCount = db
     .prepare(
       `
     SELECT COUNT(*) as count FROM sales s WHERE s.is_quote=0 AND ${sWhere}
-  `
+  `,
     )
     .get(...sParams).count;
 
@@ -173,54 +198,49 @@ export function getDashboardStats(filters) {
 
 /**
  * Fetches complex data series for multiple charts.
- * Decoupled: Only fetches GST-compliant sales data.
  */
 export function getDashboardChartData(filters) {
   const { where, params } = getDateFilter(filters);
 
-  // Chart 1: Revenue vs Profit vs Expense (Area Chart)
-  // REMOVED: sales_non_gst UNION
+  // Chart 1: Revenue vs Profit vs Expense (Net of Returns & excluding GST)
   const financialTrend = db
     .prepare(
       `
     SELECT 
       date(date) as date,
       SUM(revenue) as revenue,
-      SUM(profit) as profit
+      SUM(revenue * 0.2) as profit 
     FROM (
       SELECT 
-        date(created_at) as date, 
-        total_amount as revenue, 
-        (total_amount - (total_amount * 0.8)) as profit 
-      FROM sales 
-      WHERE ${where} AND is_quote = 0
+        date(s.created_at) as date, 
+        ( (si.rate * (si.quantity - COALESCE(si.return_quantity, 0)) * (1 - si.discount/100.0)) / (1 + (COALESCE(si.gst_rate, p.gst_rate, 0)/100.0)) ) as revenue
+      FROM sales_items si
+      JOIN sales s ON si.sale_id = s.id
+      JOIN products p ON si.product_id = p.id
+      WHERE ${where.replace(/created_at/g, "s.created_at")} AND s.is_quote = 0
     )
     GROUP BY date(date) ORDER BY date(date)
-  `
+  `,
     )
     .all(...params);
-  // Note: Profit here is an estimation for the graph speed (assuming 20% margin if not joining every item)
 
-  // Chart 2: Payment Modes (Pie Chart)
+  // Chart 2: Payment Modes
   const paymentModes = db
     .prepare(
       `
     SELECT payment_mode as name, SUM(amount) as value
     FROM transactions 
-    WHERE type='payment_in' AND ${where.replace(
-      /created_at/g,
-      "transaction_date"
-    )}
+    WHERE type='payment_in' AND ${where.replace(/created_at/g, "transaction_date")}
     GROUP BY payment_mode
-  `
+  `,
     )
     .all(...params);
 
-  // Chart 3: Top Categories by Revenue (Bar Chart)
+  // Chart 3: Top Categories by Net Revenue (excluding GST)
   const categoryPerformance = db
     .prepare(
       `
-    SELECT c.name, SUM(si.price) as value
+    SELECT c.name, SUM( (si.rate * (si.quantity - COALESCE(si.return_quantity, 0)) * (1 - si.discount/100.0)) / (1 + (COALESCE(si.gst_rate, p.gst_rate, 0)/100.0)) ) as value
     FROM sales_items si
     JOIN products p ON si.product_id = p.id
     JOIN categories c ON p.category = c.id
@@ -228,20 +248,20 @@ export function getDashboardChartData(filters) {
     WHERE ${where.replace(/created_at/g, "s.created_at")} AND s.is_quote = 0
     GROUP BY c.name
     ORDER BY value DESC LIMIT 5
-  `
+  `,
     )
     .all(...params);
 
-  // Chart 4: Stock Value Distribution (Pie Chart)
+  // Chart 4: Stock Value Distribution
   const stockDistribution = db
     .prepare(
       `
-    SELECT c.name, SUM(p.quantity * p.average_purchase_price) as value
+    SELECT c.name, SUM(p.quantity * COALESCE(p.average_purchase_price, p.mop, 0)) as value
     FROM products p
     JOIN categories c ON p.category = c.id
     WHERE p.is_active = 1
     GROUP BY c.name
-  `
+  `,
     )
     .all();
 

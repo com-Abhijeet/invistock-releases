@@ -31,20 +31,19 @@ export async function createTransactionController(req, res) {
         res,
         400,
         "error",
-        `Missing required fields: ${missing.join(", ")}`
+        `Missing required fields: ${missing.join(", ")}`,
       );
     }
 
-    const newTransaction = await transactionsService.createTransactionService(
-      transactionData
-    );
+    const newTransaction =
+      await transactionsService.createTransactionService(transactionData);
 
     return sendResponse(
       res,
       201,
       "success",
       "Transaction created successfully.",
-      newTransaction
+      newTransaction,
     );
   } catch (error) {
     // Distinguish between validation errors (400) and system errors (500)
@@ -107,7 +106,7 @@ export async function getTransactionByIdController(req, res) {
       200,
       "success",
       "Transaction fetched.",
-      transaction
+      transaction,
     );
   } catch (error) {
     return sendResponse(res, 404, "error", error.message);
@@ -142,14 +141,16 @@ export async function getTransactionsByRelatedIdController(req, res) {
     const transactions =
       await transactionsService.getTransactionsByRelatedIdService(
         relatedId,
-        billType
+        billType,
       );
+
+    console.log("transactions", transactions);
     return sendResponse(
       res,
       200,
       "success",
       "Related transactions fetched.",
-      transactions
+      transactions,
     );
   } catch (error) {
     return sendResponse(res, 500, "error", error.message);
@@ -169,7 +170,7 @@ export async function updateTransactionController(req, res) {
 
     const updated = await transactionsService.updateTransactionService(
       id,
-      updatedData
+      updatedData,
     );
     return sendResponse(res, 200, "success", "Transaction updated.", updated);
   } catch (error) {
@@ -200,7 +201,7 @@ export async function getCustomerAccountSummaryController(req, res) {
     const id = Number(req.params.id);
     const summary = await transactionsService.getCustomerAccountSummaryService(
       id,
-      req.query
+      req.query,
     );
     return sendResponse(res, 200, "success", "Summary fetched", summary);
   } catch (error) {
@@ -213,7 +214,7 @@ export async function getSupplierAccountSummaryController(req, res) {
     const id = Number(req.params.id);
     const summary = await transactionsService.getSupplierAccountSummaryService(
       id,
-      req.query
+      req.query,
     );
     return sendResponse(res, 200, "success", "Summary fetched", summary);
   } catch (error) {
@@ -230,9 +231,8 @@ export async function getEntityTransactionsController(req, res) {
       limit: Number(req.query.limit),
       all: req.query.all === "true",
     };
-    const result = await transactionsService.getEntityTransactionsService(
-      filters
-    );
+    const result =
+      await transactionsService.getEntityTransactionsService(filters);
     return res.status(200).json({ status: "success", data: result });
   } catch (error) {
     return sendResponse(res, 500, "error", error.message);

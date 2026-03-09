@@ -90,6 +90,8 @@ export interface SaleItem {
   base_unit?: string | null;
   batch_number?: string | null;
   serial_number?: string | null;
+
+  return_quantity?: number | null;
 }
 
 export interface SaleData {

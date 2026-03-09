@@ -114,8 +114,11 @@ export function createSale(saleData, items) {
   }
 }
 
+/**
+ * @description Processes a sales return, updates stock, item return quantities, and creates a credit note.
+ */
 export function processSalesReturn(payload) {
-  const { saleId, returnItems, note } = payload;
+  const { saleId, returnItems, note, customTotalAmount } = payload;
 
   const transaction = db.transaction(() => {
     // 1. Get original sale
@@ -123,131 +126,133 @@ export function processSalesReturn(payload) {
     if (!sale) throw new Error("Sale not found");
 
     let totalRefundAmount = 0;
+    const cnRef = `CN-${Date.now()}`;
 
     // 2. Process each returned item
     for (const item of returnItems) {
-      // item expectation: { product_id, quantity, price, returnToStock, sales_item_id }
-      // sales_item_id is crucial to identify exactly WHICH serial/batch was returned
+      const { sales_item_id, quantity, returnToStock, price } = item;
+      totalRefundAmount += price;
 
-      // A. Calculate Refund Amount
-      totalRefundAmount += item.price;
+      const saleItem = db
+        .prepare(
+          `
+        SELECT si.*, p.tracking_type 
+        FROM sales_items si
+        JOIN products p ON si.product_id = p.id
+        WHERE si.id = ?
+      `,
+        )
+        .get(sales_item_id);
 
-      // B. Get Master Product Details
-      const currentProduct = ProductRepo.getProductById(item.product_id);
-      if (!currentProduct) continue; // Skip if product deleted/invalid
+      if (!saleItem) continue;
 
-      // C. Retrieve Batch/Serial/Unit Context from original Sales Item
-      let batchId = null;
-      let serialId = null;
-      let soldUnit = null;
+      db.prepare(
+        `
+        UPDATE sales_items 
+        SET return_quantity = COALESCE(return_quantity, 0) + ? 
+        WHERE id = ?
+      `,
+      ).run(quantity, sales_item_id);
 
-      if (item.sales_item_id) {
-        const saleItem = db
-          .prepare(
-            "SELECT batch_id, serial_id, unit FROM sales_items WHERE id = ?",
-          )
-          .get(item.sales_item_id);
-        if (saleItem) {
-          batchId = saleItem.batch_id;
-          serialId = saleItem.serial_id;
-          soldUnit = saleItem.unit;
-        }
-      } else {
-        // Fallback: Try to find a matching sales item (less precise for batches)
-        const saleItem = db
-          .prepare(
-            "SELECT batch_id, serial_id, unit FROM sales_items WHERE sale_id = ? AND product_id = ? LIMIT 1",
-          )
-          .get(saleId, item.product_id);
-        if (saleItem) {
-          batchId = saleItem.batch_id;
-          serialId = saleItem.serial_id;
-          soldUnit = saleItem.unit;
-        }
-      }
-
-      // --- UNIT CONVERSION ---
-      const qtyToReturn = convertToStockQuantity(
-        item.quantity,
-        soldUnit || item.unit,
+      const currentProduct = ProductRepo.getProductById(saleItem.product_id);
+      const qtyInStockUnits = convertToStockQuantity(
+        quantity,
+        saleItem.unit,
         currentProduct,
       );
 
-      // D. Inventory & Status Updates
-      if (item.returnToStock) {
-        // --- Option 1: Good condition -> Back to shelf ---
-        const newQty = currentProduct.quantity + qtyToReturn;
-        ProductRepo.updateProductQuantity(item.product_id, newQty);
+      if (returnToStock) {
+        const newQty = currentProduct.quantity + qtyInStockUnits;
+        ProductRepo.updateProductQuantity(saleItem.product_id, newQty);
 
-        if (batchId) {
-          BatchRepo.updateBatchQuantity(batchId, qtyToReturn);
+        if (saleItem.batch_id) {
+          db.prepare(
+            "UPDATE product_batches SET quantity = quantity + ? WHERE id = ?",
+          ).run(qtyInStockUnits, saleItem.batch_id);
         }
-        if (serialId) {
-          BatchRepo.updateSerialStatus(serialId, "available");
+
+        if (saleItem.serial_id) {
+          db.prepare(
+            "UPDATE product_serials SET status = 'available' WHERE id = ?",
+          ).run(saleItem.serial_id);
         }
 
         AdjustmentRepo.createAdjustmentLog({
-          product_id: item.product_id,
+          product_id: saleItem.product_id,
           category: "Sales Return",
           old_quantity: currentProduct.quantity,
           new_quantity: newQty,
-          adjustment: qtyToReturn,
-          reason: `Restocked from Bill #${sale.reference_no}`,
-          adjusted_by: "System",
-          batch_id: batchId,
-          serial_id: serialId,
+          adjustment: qtyInStockUnits,
+          reason: `Restocked from Bill #${sale.reference_no} (Line ID: ${sales_item_id})`,
+          batch_id: saleItem.batch_id,
+          serial_id: saleItem.serial_id,
+          adjusted_by: "System-Return",
         });
       } else {
-        // --- Option 2: Damaged/Scrap ---
-        if (serialId) {
-          BatchRepo.updateSerialStatus(serialId, "returned");
+        if (saleItem.serial_id) {
+          db.prepare(
+            "UPDATE product_serials SET status = 'returned' WHERE id = ?",
+          ).run(saleItem.serial_id);
         }
-
-        AdjustmentRepo.createAdjustmentLog({
-          product_id: item.product_id,
-          category: "Sales Return (Damaged)",
-          old_quantity: currentProduct.quantity,
-          new_quantity: currentProduct.quantity,
-          adjustment: 0,
-          reason: `Return (Damaged) from Bill #${sale.reference_no}`,
-          adjusted_by: "System",
-          batch_id: batchId,
-          serial_id: serialId,
-        });
       }
     }
 
-    // 3. Create Credit Note Transaction (Financial)
-    db.prepare(
+    // 3. Handle Credit Note Transaction
+    const finalPayout =
+      customTotalAmount !== undefined ? customTotalAmount : totalRefundAmount;
+
+    // Capture the result of the insertion to get the row ID
+    const result = db.prepare(
       `
       INSERT INTO transactions (
         reference_no, type, bill_id, bill_type, entity_id, entity_type,
-        transaction_date, amount, payment_mode, status, note, gst_amount, discount
-      ) VALUES (
-        ?, 'credit_note', ?, 'sale', ?, 'customer',
-        ?, ?, ?, 'completed', ?, 0, 0
-      )
+        transaction_date, amount, payment_mode, status, note
+      ) VALUES (?, 'credit_note', ?, 'sale', ?, 'customer', ?, ?, ?, 'completed', ?)
     `,
     ).run(
-      `CN-${Date.now()}`,
+      cnRef,
       saleId,
       sale.customer_id,
       new Date().toISOString().split("T")[0],
-      totalRefundAmount,
-      "Cash", // Default refund mode
-      note || `Refund for Sale #${sale.reference_no}`,
+      finalPayout,
+      "Cash",
+      note || `Return against Bill #${sale.reference_no}`,
     );
 
-    db.prepare("UPDATE sales SET status = 'returned' WHERE id = ?").run(saleId);
+    // Extract the generated ID
+    const cnId = result.lastInsertRowid;
 
-    return { success: true, refundAmount: totalRefundAmount };
+    // 4. Update Sale Status
+    const stats = db
+      .prepare(
+        `
+      SELECT SUM(quantity) as sold, SUM(return_quantity) as returned 
+      FROM sales_items WHERE sale_id = ?
+    `,
+      )
+      .get(saleId);
+
+    const finalStatus =
+      stats.returned >= stats.sold - 0.001 ? "returned" : "partially_returned";
+    db.prepare("UPDATE sales SET status = ? WHERE id = ?").run(
+      finalStatus,
+      saleId,
+    );
+
+    return {
+      success: true,
+      refundAmount: finalPayout,
+      status: finalStatus,
+      creditNoteRef: cnRef,
+      cnId: cnId, // Included the ID in the response
+    };
   });
 
   return transaction();
 }
 
 /**
- * @description Retrieves a sale and its associated items by ID, reconciling payment status with transactions.
+ * @description Retrieves a sale and its associated items by ID, reconciling payment status and return data.
  */
 export function getSaleWithItemsById(saleId) {
   try {
@@ -271,7 +276,6 @@ export function getSaleWithItemsById(saleId) {
 
     if (!sale) return null;
 
-    // Updated to use the new product snapshot fields implicitly (si.*)
     const itemsStmt = db.prepare(`
       SELECT
         si.*, 

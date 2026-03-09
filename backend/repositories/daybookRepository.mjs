@@ -3,26 +3,29 @@ import db from "../db/db.mjs";
 /**
  * Calculates the cash balance up to (but not including) the target date.
  * Formula: (Total In - Total Out) BEFORE 00:00:00 of target date.
+ * Strictly tracks actual cash movements, excluding non-cash credit/debit notes.
  */
 export function getOpeningBalance(dateStr) {
   // 1. Sum of all Transactions
-  // payment_in, debit_note -> Money In (Credit)
-  // payment_out, credit_note -> Money Out (Debit)
+  // payment_in -> Money In (Credit)
+  // payment_out -> Money Out (Debit)
   const trans = db
     .prepare(
       `
     SELECT 
       SUM(CASE 
-        WHEN type IN ('payment_in', 'debit_note') THEN amount 
+        WHEN type = 'payment_in' THEN amount 
         ELSE 0 
       END) as money_in,
       SUM(CASE 
-        WHEN type IN ('payment_out', 'credit_note') THEN amount 
+        WHEN type = 'payment_out' THEN amount 
         ELSE 0 
       END) as money_out
     FROM transactions
-    WHERE date(transaction_date) < date(?)
-  `
+    WHERE date(transaction_date) < date(?) 
+      AND status != 'deleted'
+      AND type IN ('payment_in', 'payment_out')
+  `,
     )
     .get(dateStr);
 
@@ -33,7 +36,7 @@ export function getOpeningBalance(dateStr) {
     SELECT SUM(amount) as total 
     FROM expenses 
     WHERE date(date) < date(?)
-  `
+  `,
     )
     .get(dateStr);
 
@@ -45,7 +48,7 @@ export function getOpeningBalance(dateStr) {
 
 /**
  * Fetches all financial activity for a specific date.
- * Combines Transactions (including Credit/Debit Notes) and Expenses.
+ * Combines strictly Cash Transactions and Expenses.
  */
 export function getDayBookTransactions(dateStr) {
   const query = `
@@ -58,24 +61,26 @@ export function getDayBookTransactions(dateStr) {
       t.reference_no as ref_no,
       t.note as description,
       
-      -- Money In: Payments Received + Debit Notes (Refunds from suppliers / Charges to customers)
+      -- Money In: Payments Received / Refunds Received
       CASE 
-        WHEN t.type IN ('payment_in', 'debit_note') THEN t.amount 
+        WHEN t.type = 'payment_in' THEN t.amount 
         ELSE 0 
       END as credit,
 
-      -- Money Out: Payments Made + Credit Notes (Refunds to customers / Returns to suppliers)
+      -- Money Out: Payments Made / Refunds Paid Out
       CASE 
-        WHEN t.type IN ('payment_out', 'credit_note') THEN t.amount 
+        WHEN t.type = 'payment_out' THEN t.amount 
         ELSE 0 
       END as debit,
       
-      t.type as type_label, -- 'payment_in', 'credit_note', etc.
+      t.type as type_label,
       'transaction' as source
     FROM transactions t
     LEFT JOIN customers c ON t.entity_type = 'customer' AND t.entity_id = c.id
     LEFT JOIN suppliers s ON t.entity_type = 'supplier' AND t.entity_id = s.id
-    WHERE date(t.transaction_date) = date(?)
+    WHERE date(t.transaction_date) = date(?) 
+      AND t.status != 'deleted'
+      AND t.type IN ('payment_in', 'payment_out')
 
     UNION ALL
 

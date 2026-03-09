@@ -44,6 +44,7 @@ export const saleItemSchema = z.object({
 
   //unit
   unit: z.string().optional().nullable(),
+  return_quantity: z.number().optional().nullable(),
 });
 
 // Schema for full sale
