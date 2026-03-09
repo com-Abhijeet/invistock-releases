@@ -1,6 +1,24 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Chip } from "@mui/material";
+import {
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Box,
+  Typography,
+  CircularProgress,
+  Stack,
+  Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  alpha,
+  useTheme,
+} from "@mui/material";
 import {
   Printer,
   Eye,
@@ -10,6 +28,7 @@ import {
   MessageCircle,
   Wallet,
   Pencil,
+  Banknote,
 } from "lucide-react";
 import type {
   SalesFilter,
@@ -21,19 +40,24 @@ import { useNavigate } from "react-router-dom";
 import { getSaleById } from "../../lib/api/salesService";
 import { getShopData } from "../../lib/api/shopService";
 import { handlePrint } from "../../lib/handleInvoicePrint";
-import { getBusinessProfile } from "../../lib/api/businessService"; // ✅ Added import
+import { getBusinessProfile } from "../../lib/api/businessService";
+import { api } from "../../lib/api/api";
 import toast from "react-hot-toast";
 
-// ✅ Import the Return Modal and Types
+// Import the Return Modal and Types
 import SalesReturnModal from "../sales/SalesReturnModal";
 import type { SalePayload } from "../../lib/types/salesTypes";
 
+// ✅ Import transaction service to securely fetch bill transactions
+import { getRelatedTransactions } from "../../lib/api/transactionService";
+
 interface SalesTableProps {
   filters: SalesFilter;
-  onMarkPayment?: (sale: SalesTableType) => void; // ✅ New Prop for lifting state
+  onMarkPayment?: (sale: SalesTableType) => void;
 }
 
 const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
+  const theme = useTheme();
   const [sales, setSales] = useState<SalesTableType[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -41,10 +65,25 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const navigate = useNavigate();
 
-  // ✅ State for the Return / Credit Note modal
+  // State for the Return / Credit Note modal
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [selectedSaleForReturn, setSelectedSaleForReturn] =
     useState<SalePayload | null>(null);
+
+  // State for the Settlement Modal
+  const [settleModal, setSettleModal] = useState<{
+    open: boolean;
+    loading: boolean;
+    sale: any | null;
+    pendingRefund: number;
+    paymentMode: string;
+  }>({
+    open: false,
+    loading: false,
+    sale: null,
+    pendingRefund: 0,
+    paymentMode: "cash",
+  });
 
   const loadData = async () => {
     setLoading(true);
@@ -90,7 +129,6 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
     navigate(`/customer/${res.data.customer_id}`);
   };
 
-  // ✅ Handler to fetch full details and open Return Modal
   const handleProcessReturn = async (saleId: number) => {
     const toastId = toast.loading("Loading sale details...");
     try {
@@ -107,11 +145,111 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
     }
   };
 
-  // ✅ Handler for WhatsApp Sharing with Web Link
+  // --- SETTLEMENT ACTION LOGIC (Using strict Transaction Service check) ---
+  const handleOpenSettle = async (row: SalesTableType) => {
+    setSettleModal((p) => ({
+      ...p,
+      open: true,
+      loading: true,
+      sale: row,
+      pendingRefund: 0,
+    }));
+
+    try {
+      // 1. Fetch exact transactions from backend service
+      const txs = await getRelatedTransactions(row.id, "sale");
+      console.log(txs);
+
+      // 2. Fetch sale details to get the exact entity IDs and Gross amount
+      const saleDetailsRes = await getSaleById(row.id);
+      const saleDetails = saleDetailsRes.data;
+
+      // 3. Rigorous CA calculation for pending refund directly from transaction records
+      const cn = txs
+        .filter(
+          (t: any) =>
+            t.type === "credit_note" &&
+            t.status !== "deleted" &&
+            t.status !== "cancelled",
+        )
+        .reduce((s: number, t: any) => s + t.amount, 0);
+      const dn = txs
+        .filter(
+          (t: any) =>
+            t.type === "debit_note" &&
+            t.status !== "deleted" &&
+            t.status !== "cancelled",
+        )
+        .reduce((s: number, t: any) => s + t.amount, 0);
+      const pIn = txs
+        .filter(
+          (t: any) =>
+            t.type === "payment_in" &&
+            t.status !== "deleted" &&
+            t.status !== "cancelled",
+        )
+        .reduce((s: number, t: any) => s + t.amount, 0);
+      const pOut = txs
+        .filter(
+          (t: any) =>
+            t.type === "payment_out" &&
+            t.status !== "deleted" &&
+            t.status !== "cancelled",
+        )
+        .reduce((s: number, t: any) => s + t.amount, 0);
+
+      const netBilled = (saleDetails.total_amount || 0) + dn - cn;
+      const netPaid = pIn - pOut;
+
+      // Calculate true outstanding balance
+      const balance = netBilled - netPaid;
+
+      // We only owe a refund if the balance is strictly negative
+      const pendingRefund = balance < -0.01 ? Math.abs(balance) : 0;
+
+      setSettleModal((p) => ({
+        ...p,
+        loading: false,
+        sale: saleDetails,
+        pendingRefund: parseFloat(pendingRefund.toFixed(2)),
+      }));
+    } catch (e) {
+      toast.error("Failed to load settlement details");
+      setSettleModal((p) => ({ ...p, open: false, loading: false }));
+    }
+  };
+
+  const handleAcceptSettlement = async () => {
+    if (!settleModal.sale) return;
+    try {
+      setSettleModal((p) => ({ ...p, loading: true }));
+      await api.post("/api/transactions", {
+        type: "payment_out",
+        bill_type: "sale",
+        bill_id: settleModal.sale.id,
+        entity_type: "customer",
+        entity_id: settleModal.sale.customer_id,
+        amount: settleModal.pendingRefund,
+        payment_mode: settleModal.paymentMode,
+        transaction_date: new Date().toISOString().split("T")[0],
+        status: "paid",
+        note: `Settled pending refund for Bill #${settleModal.sale.reference_no}`,
+      });
+      toast.success("Settlement payout recorded successfully!");
+      setSettleModal((p) => ({ ...p, open: false }));
+      loadData();
+    } catch (e: any) {
+      toast.error(
+        e.response?.data?.message || "Failed to record settlement payout.",
+      );
+      setSettleModal((p) => ({ ...p, loading: false }));
+    }
+  };
+
+  // --- WHATSAPP SHARE LOGIC ---
   const handleWhatsAppShare = async (saleId: number) => {
     const toastId = toast.loading("Preparing WhatsApp message...");
     try {
-      // 1. Check connection status first
       const wsStatus = await window.electron.getWhatsAppStatus();
       if (wsStatus.status !== "ready") {
         toast.error("WhatsApp not connected. Please scan QR in Settings.", {
@@ -120,11 +258,10 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         return;
       }
 
-      // 2. Fetch Sale, Shop & Business Data
       const [saleRes, shop, business] = await Promise.all([
         getSaleById(saleId),
         getShopData(),
-        getBusinessProfile().catch(() => null), // Safely catch if business profile fails
+        getBusinessProfile().catch(() => null),
       ]);
       const sale = saleRes.data;
 
@@ -136,7 +273,6 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         return;
       }
 
-      // --- ATTEMPT CLOUD UPLOAD ---
       let webLink = "";
       try {
         const invoiceData = {
@@ -173,7 +309,6 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         console.warn("Cloud link generation failed in table share", e);
       }
 
-      // 3. Construct Message
       const nl = "\n";
       let message = "";
 
@@ -215,7 +350,6 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
           `Please find your invoice PDF attached.`;
       }
 
-      // 4. Send Text
       const textRes = await window.electron.sendWhatsAppMessage(
         phoneToSend,
         message,
@@ -223,8 +357,6 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
 
       if (textRes.success) {
         toast.success("Text message sent!", { id: toastId });
-
-        // 5. Send PDF (Always send PDF)
         toast.loading("Sending PDF Invoice...", { id: toastId });
         const pdfRes = await window.electron.sendWhatsAppInvoicePdf({
           sale: sale,
@@ -249,7 +381,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
   };
 
   const handleReturnSuccess = () => {
-    loadData(); // Refresh table to show updated status
+    loadData();
     setIsReturnModalOpen(false);
     setSelectedSaleForReturn(null);
   };
@@ -272,13 +404,11 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         color = "secondary";
         break;
       case "returned":
+      case "partially_returned":
         color = "error";
         break;
       case "cancelled":
         color = "error";
-        break;
-      case "draft":
-        color = "default";
         break;
       default:
         color = "default";
@@ -289,7 +419,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         label={status.replace("_", " ")}
         size="small"
         color={color}
-        sx={{ textTransform: "capitalize" }}
+        sx={{ textTransform: "capitalize", fontWeight: 700 }}
       />
     );
   };
@@ -308,7 +438,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
     { key: "customer", label: "Customer" },
     {
       key: "total",
-      label: "Total Amount",
+      label: "Gross Amount",
       format: (val: number) => `₹${val.toLocaleString("en-IN")}`,
     },
     {
@@ -348,7 +478,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
       ? [
           {
             label: "Mark Payment",
-            icon: <Wallet size={18} color="green" />,
+            icon: <Wallet size={18} color={theme.palette.success.main} />,
             onClick: (row: SalesTableType) => onMarkPayment(row),
           },
         ]
@@ -365,13 +495,18 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
     },
     {
       label: "Send on WhatsApp",
-      icon: <MessageCircle size={18} color="#25D366" />, // WhatsApp green
+      icon: <MessageCircle size={18} color="#25D366" />,
       onClick: (row: SalesTableType) => handleWhatsAppShare(row.id),
     },
     {
       label: "Process Return / Credit Note",
       icon: <Undo2 size={18} />,
       onClick: (row: SalesTableType) => handleProcessReturn(row.id),
+    },
+    {
+      label: "Settle Store Credit (Refund)",
+      icon: <Banknote size={18} color={theme.palette.error.main} />,
+      onClick: (row: SalesTableType) => handleOpenSettle(row),
     },
   ];
 
@@ -400,6 +535,115 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
           onSuccess={handleReturnSuccess}
         />
       )}
+
+      {/* --- SETTLEMENT MODAL --- */}
+      <Dialog
+        open={settleModal.open}
+        onClose={() => setSettleModal((p) => ({ ...p, open: false }))}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800 }}>Settle Refund</DialogTitle>
+        <DialogContent dividers>
+          {settleModal.loading ? (
+            <Box display="flex" justifyContent="center" p={4}>
+              <CircularProgress />
+            </Box>
+          ) : settleModal.pendingRefund > 0 ? (
+            <Stack spacing={3} py={1}>
+              <Typography variant="body2" color="text.secondary">
+                This sale has a pending refund (Store Credit) due to a previous
+                return or overpayment.
+              </Typography>
+
+              <Box
+                bgcolor={alpha(theme.palette.error.main, 0.05)}
+                p={2}
+                borderRadius={2}
+                border="1px dashed"
+                borderColor="error.main"
+                textAlign="center"
+              >
+                <Typography
+                  variant="caption"
+                  color="error.main"
+                  fontWeight={800}
+                  display="block"
+                  gutterBottom
+                >
+                  PENDING REFUND AMOUNT
+                </Typography>
+                <Typography variant="h3" color="error.main" fontWeight={900}>
+                  ₹
+                  {settleModal.pendingRefund.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
+                </Typography>
+              </Box>
+
+              <Typography variant="body2" fontWeight={600}>
+                By accepting, you will instantly record a{" "}
+                <b>Cash Payout (Refund)</b> to clear this balance from the
+                customer's ledger.
+              </Typography>
+
+              <FormControl size="small" fullWidth>
+                <InputLabel>Refund Payment Mode</InputLabel>
+                <Select
+                  value={settleModal.paymentMode}
+                  label="Refund Payment Mode"
+                  onChange={(e) =>
+                    setSettleModal((p) => ({
+                      ...p,
+                      paymentMode: e.target.value,
+                    }))
+                  }
+                >
+                  <MenuItem value="cash" sx={{ fontWeight: 600 }}>
+                    CASH
+                  </MenuItem>
+                  <MenuItem value="upi" sx={{ fontWeight: 600 }}>
+                    UPI
+                  </MenuItem>
+                  <MenuItem value="card" sx={{ fontWeight: 600 }}>
+                    CARD
+                  </MenuItem>
+                  <MenuItem value="bank_transfer" sx={{ fontWeight: 600 }}>
+                    BANK TRANSFER
+                  </MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+          ) : (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              There is no pending refund or store credit for this bill. The
+              balance is fully settled.
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() => setSettleModal((p) => ({ ...p, open: false }))}
+            color="inherit"
+            disabled={settleModal.loading}
+            sx={{ fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          {settleModal.pendingRefund > 0 && !settleModal.loading && (
+            <Button
+              onClick={handleAcceptSettlement}
+              variant="contained"
+              color="error"
+              disableElevation
+              sx={{ fontWeight: 800 }}
+            >
+              Record Payout
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

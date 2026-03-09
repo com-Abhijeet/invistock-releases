@@ -111,7 +111,7 @@ export async function deleteTransaction(id: number): Promise<void> {
  */
 export async function getRelatedTransactions(
   relatedId: number,
-  entityType: "customer" | "supplier",
+  entityType: "sale" | "purchase",
 ): Promise<Transaction[]> {
   try {
     const response = await api.get(`${BASE_URL}/related/${relatedId}`, {

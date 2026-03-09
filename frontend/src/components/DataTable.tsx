@@ -17,7 +17,13 @@ import {
   Typography,
 } from "@mui/material";
 import { MoreHorizontal } from "lucide-react";
-import { useState, type MouseEvent } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  type MouseEvent,
+  type KeyboardEvent,
+} from "react";
 import type { DataTableProps } from "../lib/types/DataTableTypes";
 
 export default function DataTable({
@@ -34,12 +40,31 @@ export default function DataTable({
   rowsPerPageOptions = [5, 10, 20, 50, 100],
 }: DataTableProps) {
   const theme = useTheme();
-
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedRow, setSelectedRow] = useState<any>(null);
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
-  const handleMenuOpen = (event: MouseEvent<HTMLButtonElement>, row: any) => {
-    setAnchorEl(event.currentTarget);
+  // Ref to the table container to manage focus within the list
+  const tableRef = useRef<HTMLTableSectionElement>(null);
+
+  // Auto-focus the first row when the data is loaded and rows are available
+  useEffect(() => {
+    if (!loading && rows.length > 0) {
+      setFocusedIndex(0);
+      const firstRow = tableRef.current?.childNodes[0] as HTMLElement;
+      if (firstRow) {
+        firstRow.focus();
+      }
+    }
+  }, [loading, rows.length]);
+
+  const handleMenuOpen = (
+    event: MouseEvent<HTMLButtonElement> | HTMLElement,
+    row: any,
+  ) => {
+    // If it's a mouse event, use currentTarget, otherwise use the element passed (from keyboard)
+    const target = "currentTarget" in event ? event.currentTarget : event;
+    setAnchorEl(target);
     setSelectedRow(row);
   };
 
@@ -48,12 +73,42 @@ export default function DataTable({
     setSelectedRow(null);
   };
 
+  const handleKeyDown = (
+    event: KeyboardEvent<HTMLTableRowElement>,
+    index: number,
+    row: any,
+  ) => {
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        const nextIndex = Math.min(index + 1, rows.length - 1);
+        setFocusedIndex(nextIndex);
+        (tableRef.current?.childNodes[nextIndex] as HTMLElement)?.focus();
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        const prevIndex = Math.max(index - 1, 0);
+        setFocusedIndex(prevIndex);
+        (tableRef.current?.childNodes[prevIndex] as HTMLElement)?.focus();
+        break;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        if (actions.length > 0) {
+          handleMenuOpen(event.currentTarget, row);
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
   return (
     <Box
       sx={{
         width: "100%",
         overflow: "hidden",
-        borderRadius: 2, // Slightly more rounded
+        borderRadius: 2,
         border: `1px solid ${theme.palette.divider}`,
         boxShadow: "0px 1px 3px rgba(0, 0, 0, 0.05)",
         backgroundColor: theme.palette.background.paper,
@@ -61,10 +116,8 @@ export default function DataTable({
     >
       <TableContainer>
         <Table size="small">
-          {/* Keeping small size for density */}
           <TableHead>
             <TableRow sx={{ height: 48 }}>
-              {/* Fixed header height */}
               <TableCell
                 align="center"
                 sx={{
@@ -75,7 +128,7 @@ export default function DataTable({
                   letterSpacing: "0.5px",
                   borderBottom: `1px solid ${theme.palette.divider}`,
                   width: 60,
-                  pl: 2, // Left padding for first col
+                  pl: 2,
                 }}
               >
                 #
@@ -102,13 +155,13 @@ export default function DataTable({
                   sx={{
                     borderBottom: `1px solid ${theme.palette.divider}`,
                     width: 60,
-                    pr: 2, // Right padding for last col
+                    pr: 2,
                   }}
                 />
               )}
             </TableRow>
           </TableHead>
-          <TableBody>
+          <TableBody ref={tableRef}>
             {loading ? (
               <TableRow>
                 <TableCell
@@ -136,13 +189,22 @@ export default function DataTable({
                 <TableRow
                   key={row.id || i}
                   hover
+                  tabIndex={0} // Makes the row focusable
+                  onKeyDown={(e) => handleKeyDown(e, i, row)}
+                  onFocus={() => setFocusedIndex(i)}
                   sx={{
+                    outline: "none",
                     "&:last-child td, &:last-child th": { border: 0 },
                     transition: "background-color 0.15s ease",
                     cursor: "default",
-                    height: 44, // Consistent row height
+                    height: 44,
+                    // Visual indicator for keyboard focus
+                    "&:focus-visible": {
+                      backgroundColor: theme.palette.action.selected,
+                      boxShadow: `inset 4px 0 0 0 ${theme.palette.primary.main}`,
+                    },
                     "&:hover": {
-                      backgroundColor: theme.palette.action.hover, // Subtle hover
+                      backgroundColor: theme.palette.action.hover,
                     },
                   }}
                 >
@@ -176,13 +238,13 @@ export default function DataTable({
 
                   {actions.length > 0 && (
                     <TableCell align="right" sx={{ pr: 1 }}>
-                      {/* Reduced padding for action button */}
                       <IconButton
                         size="small"
+                        tabIndex={-1} // Prevent double tabbing (row is already focusable)
                         onClick={(e) => handleMenuOpen(e, row)}
                         sx={{
                           color: theme.palette.text.secondary,
-                          padding: "4px", // Smaller touch target visual
+                          padding: "4px",
                           "&:hover": {
                             color: theme.palette.primary.main,
                             bgcolor: theme.palette.action.selected,
@@ -213,7 +275,7 @@ export default function DataTable({
           rowsPerPageOptions={rowsPerPageOptions}
           sx={{
             borderTop: `1px solid ${theme.palette.divider}`,
-            minHeight: 48, // Slimmer pagination bar
+            minHeight: 48,
             ".MuiTablePagination-toolbar": {
               minHeight: 48,
               pl: 2,
@@ -229,7 +291,7 @@ export default function DataTable({
               },
             ".MuiTablePagination-select": {
               fontSize: "0.75rem",
-              paddingTop: "6px !important", // Alignment tweak
+              paddingTop: "6px !important",
               paddingBottom: "6px !important",
             },
             ".MuiTablePagination-actions": {
@@ -243,13 +305,14 @@ export default function DataTable({
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
+        autoFocus // Ensures the first item is focused when the menu opens
         PaperProps={{
-          elevation: 3, // Slightly higher elevation for menu
+          elevation: 3,
           sx: {
             borderRadius: 2,
             minWidth: 140,
             mt: 0.5,
-            boxShadow: "0 4px 20px rgba(0,0,0,0.1)", // Softer shadow
+            boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
             border: `1px solid ${theme.palette.divider}`,
           },
         }}
@@ -264,13 +327,13 @@ export default function DataTable({
               handleMenuClose();
             }}
             sx={{
-              fontSize: "0.8125rem", // Consistent font size
+              fontSize: "0.8125rem",
               py: 1,
               px: 2,
               gap: 1.5,
               fontWeight: 500,
               color: theme.palette.text.secondary,
-              minHeight: 36, // Compact menu items
+              minHeight: 36,
               "&:hover": {
                 color: theme.palette.primary.main,
                 bgcolor: theme.palette.action.hover,
@@ -280,7 +343,7 @@ export default function DataTable({
             {action.icon && (
               <Box
                 component="span"
-                sx={{ display: "flex", alignItems: "center", opacity: 0.8 }} // Slight opacity on icons
+                sx={{ display: "flex", alignItems: "center", opacity: 0.8 }}
               >
                 {action.icon}
               </Box>

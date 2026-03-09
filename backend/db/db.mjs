@@ -580,6 +580,7 @@ export function initializeDatabase(dbPath) {
       price REAL NOT NULL,
       batch_id INTEGER,
       serial_id INTEGER,
+      return_quantity INTEGER DEFAULT 0,
       FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
       FOREIGN KEY (product_id) REFERENCES products(id),
       FOREIGN KEY (batch_id) REFERENCES product_batches(id),
@@ -759,6 +760,7 @@ export function initializeDatabase(dbPath) {
   safeMigrate(db, "sales_items", "description", "TEXT");
   safeMigrate(db, "sales_items", "barcode", "TEXT");
   safeMigrate(db, "sales_items", "hsn", "TEXT");
+  safeMigrate(db, "sales_items", "return_quantity", "INTEGER");
 
   // 6. EXECUTE NON-GST SCHEMA (Standard Default)
   nonGstDb.exec(`

@@ -47,7 +47,13 @@ import type {
 } from "../../lib/types/transactionTypes";
 import type { CustomerType } from "../../lib/types/customerTypes";
 import type { SupplierType } from "../../lib/types/supplierTypes";
-import { Search, Wallet, CheckCircle, AlertCircle } from "lucide-react";
+import {
+  Search,
+  Wallet,
+  CheckCircle,
+  AlertCircle,
+  RotateCcw,
+} from "lucide-react";
 import toast from "react-hot-toast";
 
 interface AddEditTransactionModalProps {
@@ -58,7 +64,6 @@ interface AddEditTransactionModalProps {
   disableTypeSelection?: boolean;
 }
 
-// Helper Types for Bill Preview
 interface BillSummary {
   id: number;
   reference_no: string;
@@ -71,12 +76,6 @@ interface BillSummary {
   };
 }
 
-const transactionTypes: TransactionType[] = [
-  "payment_in",
-  "payment_out",
-  "credit_note",
-  "debit_note",
-];
 const billTypes: BillType[] = ["sale", "purchase"];
 const paymentModes = ["cash", "card", "upi", "credit"];
 const statuses = ["paid", "pending", "cancelled", "refunded", "issued"];
@@ -96,6 +95,22 @@ const defaultForm: Partial<Transaction> = {
   amount: 0,
   transaction_date: formatDate(new Date()),
   payment_mode: "cash",
+};
+
+// Helper for dynamic transaction options based on bill type
+const getTransactionOptions = (billType: string) => {
+  if (billType === "sale") {
+    return [
+      { value: "payment_in", label: "Receive Payment (Cash In)" },
+      { value: "payment_out", label: "Issue Cash Refund (Cash Out)" },
+      { value: "credit_note", label: "Process Return (Credit Note)" },
+    ];
+  }
+  return [
+    { value: "payment_out", label: "Send Payment (Cash Out)" },
+    { value: "payment_in", label: "Receive Cash Refund (Cash In)" },
+    { value: "debit_note", label: "Process Return (Debit Note)" },
+  ];
 };
 
 export default function AddEditTransactionModal({
@@ -171,13 +186,12 @@ export default function AddEditTransactionModal({
           res = await getCustomers(params);
           setEntityOptions((prev) => {
             const newRecords = res?.records || [];
-            const unique = [
+            return [
               ...prev,
               ...newRecords.filter(
                 (n: any) => !prev.some((p) => p.id === n.id),
               ),
             ];
-            return unique;
           });
         } else if (form.entity_type === "supplier") {
           res = await getSuppliers();
@@ -265,7 +279,12 @@ export default function AddEditTransactionModal({
               billData.payment_summary?.balance ??
               billData.total_amount - (billData.paid_amount || 0);
 
-            if (currentFormAmount === 0 && pending > 0) {
+            // Auto-fill amount only if it's a standard payment (not a refund)
+            const isStandardPayment =
+              (form.type === "payment_in" && form.bill_type === "sale") ||
+              (form.type === "payment_out" && form.bill_type === "purchase");
+
+            if (currentFormAmount === 0 && pending > 0 && isStandardPayment) {
               handleChange("amount", pending);
             }
           }
@@ -278,7 +297,7 @@ export default function AddEditTransactionModal({
     };
 
     fetchDetailedBill();
-  }, [form.bill_id, form.bill_type]);
+  }, [form.bill_id, form.bill_type, form.type]); // Re-run if type changes to re-evaluate auto-fill
 
   const handleChange = (field: keyof Transaction, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -333,33 +352,59 @@ export default function AddEditTransactionModal({
   const isGSTRequired =
     form.type === "credit_note" || form.type === "debit_note";
 
-  const previewBalance = selectedBillDetails?.payment_summary?.balance ?? 0;
+  // --- RECONCILIATION LOGIC FOR PREVIEWS ---
+  const previewBalance =
+    selectedBillDetails?.payment_summary?.balance ??
+    (selectedBillDetails?.total_amount || 0) -
+      (selectedBillDetails?.paid_amount || 0);
 
-  // FIX: Explicitly cast to boolean to avoid 'null' type error
+  const totalPaidSoFar =
+    selectedBillDetails?.payment_summary?.total_paid ??
+    (selectedBillDetails?.paid_amount || 0);
+
+  // Is this a standard debt payment or a cash refund?
+  const isStandardPayment =
+    (form.type === "payment_in" && form.bill_type === "sale") ||
+    (form.type === "payment_out" && form.bill_type === "purchase");
+
+  const isRefund =
+    (form.type === "payment_out" && form.bill_type === "sale") ||
+    (form.type === "payment_in" && form.bill_type === "purchase");
+
+  // Validations
   const isFullyPaid = Boolean(
     selectedBillDetails &&
+    isStandardPayment &&
     previewBalance <= 0.1 &&
-    (form.type === "payment_in" || form.type === "payment_out") &&
     !isEditMode,
   );
 
   const isOverpaying = Boolean(
+    selectedBillDetails &&
+    isStandardPayment &&
     (form.amount || 0) > previewBalance &&
-    (form.type === "payment_in" || form.type === "payment_out") &&
     !isEditMode &&
     !isFullyPaid,
   );
 
+  const isOverRefund = Boolean(
+    selectedBillDetails &&
+    isRefund &&
+    (form.amount || 0) > totalPaidSoFar &&
+    !isEditMode,
+  );
+
   const handleSubmit = async () => {
-    if (
-      !form.type ||
-      !form.entity_id ||
-      (!form.amount && !isFullyPaid) ||
-      !form.bill_id ||
-      (form.type === "credit_note" && form.gst_amount == null) ||
-      (form.type === "debit_note" && form.gst_amount == null)
-    ) {
+    if (!form.type || !form.entity_id || !form.bill_id) {
       toast.error("Please fill in all required fields.");
+      return;
+    }
+    if (!form.amount && !isFullyPaid) {
+      toast.error("Please enter a valid amount.");
+      return;
+    }
+    if (isGSTRequired && form.gst_amount == null) {
+      toast.error("Please enter the tax/GST amount for this note.");
       return;
     }
 
@@ -369,12 +414,15 @@ export default function AddEditTransactionModal({
       );
       return;
     }
-
     if (isOverpaying) {
       toast.error(
-        `Amount exceeds the pending balance (₹${previewBalance.toLocaleString(
-          "en-IN",
-        )}).`,
+        `Amount exceeds the pending balance (₹${previewBalance.toLocaleString("en-IN")}).`,
+      );
+      return;
+    }
+    if (isOverRefund) {
+      toast.error(
+        `Refund exceeds the net paid amount (₹${totalPaidSoFar.toLocaleString("en-IN")}). You cannot refund money you haven't received.`,
       );
       return;
     }
@@ -387,7 +435,7 @@ export default function AddEditTransactionModal({
         toast.success("Transaction updated successfully!");
       } else {
         await createTransaction(form);
-        toast.success("Transaction created successfully!");
+        toast.success("Transaction recorded successfully!");
       }
       onSuccess();
       onClose();
@@ -399,6 +447,8 @@ export default function AddEditTransactionModal({
     }
   };
 
+  const currentOptions = getTransactionOptions(form.bill_type || "sale");
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
@@ -408,10 +458,10 @@ export default function AddEditTransactionModal({
         <Stack spacing={2.5} sx={{ p: 1 }}>
           <Stack direction="row" spacing={2}>
             <FormControl fullWidth size="small" disabled={disableTypeSelection}>
-              <InputLabel>Bill Type</InputLabel>
+              <InputLabel>Bill Context</InputLabel>
               <Select
                 value={form.bill_type || ""}
-                label="Bill Type"
+                label="Bill Context"
                 onChange={(e) =>
                   handleBillTypeChange(e.target.value as BillType)
                 }
@@ -425,17 +475,17 @@ export default function AddEditTransactionModal({
             </FormControl>
 
             <FormControl fullWidth size="small" disabled={disableTypeSelection}>
-              <InputLabel>Transaction Type</InputLabel>
+              <InputLabel>Transaction Action</InputLabel>
               <Select
                 value={form.type || ""}
-                label="Transaction Type"
+                label="Transaction Action"
                 onChange={(e) =>
                   handleChange("type", e.target.value as TransactionType)
                 }
               >
-                {transactionTypes.map((type) => (
-                  <MenuItem key={type} value={type}>
-                    {type.replace("_", " ").toUpperCase()}
+                {currentOptions.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    {opt.label}
                   </MenuItem>
                 ))}
               </Select>
@@ -492,7 +542,7 @@ export default function AddEditTransactionModal({
             renderInput={(params) => (
               <TextField
                 {...params}
-                label="Select Bill to Link"
+                label="Select Linked Bill"
                 size="small"
                 InputProps={{
                   ...params.InputProps,
@@ -513,62 +563,106 @@ export default function AddEditTransactionModal({
             </Box>
           ) : (
             selectedBillDetails && (
-              <Card variant="outlined" sx={{ bgcolor: "action.hover" }}>
+              <Card
+                variant="outlined"
+                sx={{
+                  bgcolor: isRefund ? "error.50" : "action.hover",
+                  borderColor: isRefund ? "error.main" : "divider",
+                }}
+              >
                 <CardContent
                   sx={{ py: 1.5, px: 2, "&:last-child": { pb: 1.5 } }}
                 >
                   <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-                    <Wallet size={16} />
-                    <Typography variant="subtitle2" fontWeight={600}>
-                      Bill Payment Status
+                    {isRefund ? (
+                      <RotateCcw size={16} color="error" />
+                    ) : (
+                      <Wallet size={16} />
+                    )}
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={700}
+                      color={isRefund ? "error.main" : "text.primary"}
+                    >
+                      {isRefund
+                        ? "Refund Eligibility Status"
+                        : "Bill Payment Status"}
                     </Typography>
                   </Stack>
                   <Divider sx={{ mb: 1.5 }} />
-                  <Stack direction="row" justifyContent="space-between">
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Total Bill
-                      </Typography>
-                      <Typography variant="body2" fontWeight={700}>
-                        ₹
-                        {selectedBillDetails.total_amount?.toLocaleString(
-                          "en-IN",
-                        ) ?? 0}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Paid
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        color="success.main"
-                        fontWeight={700}
-                      >
-                        ₹
-                        {selectedBillDetails.payment_summary?.total_paid?.toLocaleString(
-                          "en-IN",
-                        ) ?? 0}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ textAlign: "right" }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Pending
-                      </Typography>
-                      <Typography
-                        variant="body1"
-                        color={
-                          previewBalance <= 0 ? "success.main" : "error.main"
-                        }
-                        fontWeight={800}
-                      >
-                        ₹
-                        {previewBalance <= 0
-                          ? "0.00 (PAID)"
-                          : previewBalance.toLocaleString("en-IN")}
-                      </Typography>
-                    </Box>
-                  </Stack>
+
+                  {isRefund ? (
+                    // Refund Context Display
+                    <Stack direction="row" justifyContent="space-between">
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Net Billed
+                        </Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                          ₹
+                          {selectedBillDetails.total_amount?.toLocaleString(
+                            "en-IN",
+                          ) ?? 0}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ textAlign: "right" }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Net Paid by Entity (Max Refund)
+                        </Typography>
+                        <Typography
+                          variant="body1"
+                          color="success.main"
+                          fontWeight={800}
+                        >
+                          ₹{totalPaidSoFar.toLocaleString("en-IN")}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  ) : (
+                    // Standard Payment Context Display
+                    <Stack direction="row" justifyContent="space-between">
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Net Billed
+                        </Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                          ₹
+                          {selectedBillDetails.total_amount?.toLocaleString(
+                            "en-IN",
+                          ) ?? 0}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Net Paid
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          color="success.main"
+                          fontWeight={700}
+                        >
+                          ₹{totalPaidSoFar.toLocaleString("en-IN")}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ textAlign: "right" }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Pending Balance
+                        </Typography>
+                        <Typography
+                          variant="body1"
+                          color={
+                            previewBalance <= 0 ? "success.main" : "error.main"
+                          }
+                          fontWeight={800}
+                        >
+                          ₹
+                          {previewBalance <= 0
+                            ? "0.00 (PAID)"
+                            : previewBalance.toLocaleString("en-IN")}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  )}
                 </CardContent>
               </Card>
             )
@@ -576,7 +670,8 @@ export default function AddEditTransactionModal({
 
           {isFullyPaid && (
             <Alert icon={<CheckCircle fontSize="inherit" />} severity="success">
-              This bill is already fully paid. No further action needed.
+              This bill is already fully paid. No further payment action is
+              needed.
             </Alert>
           )}
 
@@ -588,16 +683,22 @@ export default function AddEditTransactionModal({
             required
             value={form.amount || ""}
             onChange={(e) => handleChange("amount", Number(e.target.value))}
-            error={isOverpaying}
+            error={isOverpaying || isOverRefund}
             helperText={
               isOverpaying
-                ? `Error: Amount exceeds pending balance of ₹${previewBalance.toLocaleString(
-                    "en-IN",
-                  )}`
-                : ""
+                ? `Error: Amount exceeds pending balance of ₹${previewBalance.toLocaleString("en-IN")}`
+                : isOverRefund
+                  ? `Error: Cannot refund more than the Net Paid amount of ₹${totalPaidSoFar.toLocaleString("en-IN")}`
+                  : ""
             }
             disabled={isFullyPaid}
-            sx={{ "& input": { fontSize: "1.1rem", fontWeight: 600 } }}
+            sx={{
+              "& input": {
+                fontSize: "1.1rem",
+                fontWeight: 600,
+                color: isRefund ? "error.main" : "inherit",
+              },
+            }}
           />
 
           <Stack direction="row" spacing={2}>
@@ -614,10 +715,10 @@ export default function AddEditTransactionModal({
 
             {(form.type === "payment_in" || form.type === "payment_out") && (
               <FormControl fullWidth size="small">
-                <InputLabel>Mode</InputLabel>
+                <InputLabel>Payment Mode</InputLabel>
                 <Select
                   value={form.payment_mode || "cash"}
-                  label="Mode"
+                  label="Payment Mode"
                   disabled={isFullyPaid}
                   onChange={(e) =>
                     handleChange("payment_mode", e.target.value as string)
@@ -636,7 +737,7 @@ export default function AddEditTransactionModal({
           {isGSTRequired && (
             <TextField
               fullWidth
-              label="Tax Amount"
+              label="Tax/GST Component (₹)"
               type="number"
               size="small"
               value={form.gst_amount || ""}
@@ -676,13 +777,15 @@ export default function AddEditTransactionModal({
           </FormControl>
         </Stack>
 
-        {isOverpaying && (
+        {(isOverpaying || isOverRefund) && (
           <Alert
             icon={<AlertCircle fontSize="inherit" />}
             severity="error"
             sx={{ mt: 2 }}
           >
-            You cannot pay more than the outstanding balance.
+            {isOverRefund
+              ? "You cannot issue a refund larger than the cash you've received."
+              : "You cannot pay more than the outstanding balance."}
           </Alert>
         )}
       </DialogContent>
@@ -693,12 +796,12 @@ export default function AddEditTransactionModal({
         <Button
           onClick={handleSubmit}
           variant="contained"
-          disabled={loading || isFullyPaid || isOverpaying}
-          color={isOverpaying ? "error" : "primary"}
+          disabled={loading || isFullyPaid || isOverpaying || isOverRefund}
+          color={isOverpaying || isOverRefund ? "error" : "primary"}
           sx={{ minWidth: 120 }}
         >
           {loading ? (
-            <CircularProgress size={24} />
+            <CircularProgress size={24} color="inherit" />
           ) : isEditMode ? (
             "Update"
           ) : (

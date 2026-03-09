@@ -1,20 +1,6 @@
-import db from "../db/db.mjs"; // ✅ Corrected: Default import
+import db from "../db/db.mjs";
 import { getDateFilter } from "../utils/dateFilter.mjs";
 
-/**
- * @description Inserts a new customer record into the database with structured address details.
- * @param {object} customerData An object containing the customer's details.
- * @param {string} customerData.name The customer's full name.
- * @param {string} [customerData.phone] The customer's phone number.
- * @param {string} [customerData.address] The customer's street address or address line 1.
- * @param {string} [customerData.city] The customer's city.
- * @param {string} [customerData.state] The customer's state.
- * @param {string} [customerData.pincode] The customer's pincode.
- * @param {string} [customerData.gst_no] The customer's GST Identification Number.
- * @param {number} [customerData.credit_limit=0] The customer's credit limit.
- * @param {string} [customerData.additional_info] Any additional notes about the customer.
- * @returns {Promise<object>} On success, returns the newly created customer object with its new ID. On failure, returns an error object.
- */
 export function createCustomer(customerData) {
   try {
     const {
@@ -29,7 +15,6 @@ export function createCustomer(customerData) {
       additional_info = null,
     } = customerData;
 
-    // ✅ Update the INSERT statement to include the new columns
     const stmt = db.prepare(`
       INSERT INTO customers (
         name, phone, address, city, state, pincode, 
@@ -38,7 +23,6 @@ export function createCustomer(customerData) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    // ✅ Pass the new address variables to the run command in the correct order
     const result = stmt.run(
       name,
       phone,
@@ -58,17 +42,6 @@ export function createCustomer(customerData) {
   }
 }
 
-/**
- * @description Retrieves a paginated list of customers, with optional search functionality.
- * @param {object} options - Pagination, limit, and query parameters.
- * @param {number} [options.page=1] - The page number to fetch.
- * @param {number} [options.limit=10] - The number of records per page.
- * @param {string} [options.query=''] - A search string to filter customers by name or phone.
- * @param {boolean} [options.all=false] - If true, fetches all customers without pagination.
- * @returns {{records: Array, totalRecords: number}} An object containing the customer records and the total count.
- * @throws {Error} If the database query fails.
- */
-
 export function getAllCustomers({ page = 1, limit = 10, query = "", all }) {
   try {
     let whereClause = "";
@@ -79,14 +52,12 @@ export function getAllCustomers({ page = 1, limit = 10, query = "", all }) {
       params.push(`%${query}%`, `%${query}%`);
     }
 
-    // Prepare the statement for fetching records
     let recordsQuery = `
       SELECT * FROM customers
       ${whereClause}
       ORDER BY name ASC
     `;
 
-    // Handle pagination if 'all' is false
     if (!all) {
       const offset = (page - 1) * limit;
       recordsQuery += ` LIMIT ? OFFSET ?`;
@@ -96,7 +67,6 @@ export function getAllCustomers({ page = 1, limit = 10, query = "", all }) {
     const recordsStmt = db.prepare(recordsQuery);
     const records = recordsStmt.all(...params);
 
-    // Get the total number of records for pagination without pagination limits
     const totalRecordsQuery = `
       SELECT COUNT(*) AS count FROM customers ${whereClause}
     `;
@@ -113,7 +83,6 @@ export function getAllCustomers({ page = 1, limit = 10, query = "", all }) {
 }
 
 export function getCustomerById(id) {
-  // The parameters must be passed to the .all() method, not the .prepare() method.
   return db.prepare(`SELECT * FROM customers WHERE id = ?`).get(id);
 }
 
@@ -125,7 +94,6 @@ export function updateCustomer(id, updates) {
 
   const setClause = keys.map((key) => `${key} = ?`).join(", ");
 
-  // ✅ FIX: Replaced invalid db.run() with db.prepare().run()
   const stmt = db.prepare(
     `UPDATE customers SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
   );
@@ -136,7 +104,6 @@ export function updateCustomer(id, updates) {
 }
 
 export function deleteCustomer(id) {
-  // ✅ FIX: Replaced invalid db.run() with db.prepare().run()
   const stmt = db.prepare(`DELETE FROM customers WHERE id = ?`);
   return stmt.run(id);
 }
@@ -152,13 +119,7 @@ export function getCustomerByPhone(phone) {
   }
 }
 
-/**
- * Inserts multiple customers in a single transaction after validation and sanitization.
- * @param {Array<object>} customers - An array of customer objects.
- * @returns {{changes: number}}
- */
 export function bulkInsertCustomers(customers) {
-  // --- Pre-Validation Step ---
   const existingPhones = new Set(
     db
       .prepare("SELECT phone FROM customers WHERE phone IS NOT NULL")
@@ -186,7 +147,6 @@ export function bulkInsertCustomers(customers) {
     );
   }
 
-  // --- Transactional Insert ---
   const stmt = db.prepare(
     `INSERT INTO customers (name, phone, address, city, state, pincode, gst_no, credit_limit, additional_info)
      VALUES (@name, @phone, @address, @city, @state, @pincode, @gst_no, @credit_limit, @additional_info)`,
@@ -194,8 +154,6 @@ export function bulkInsertCustomers(customers) {
 
   const insertMany = db.transaction((items) => {
     for (const item of items) {
-      // ✅ DATA SANITIZATION: Enforce string types for text-like fields.
-      // This is the crucial fix to prevent trailing ".0" on numbers.
       if (item.phone != null) item.phone = String(item.phone);
       if (item.pincode != null) item.pincode = String(item.pincode);
       if (item.gst_no != null) item.gst_no = String(item.gst_no);
@@ -221,60 +179,59 @@ export function bulkInsertCustomers(customers) {
 
 /**
  * Fetches a complete financial ledger for a customer, grouped by sale.
- * This now ONLY fetches GST sales (Main App).
- * Accounts for Payments In and Refunds (Payment Out) as negative amounts.
- * @param {number} customerId The customer's ID.
- * @param {object} filters Date filters (startDate, endDate).
- * @returns {object} An object containing the customer details and their sale/transaction history.
+ * Strictly maps Payments In and Payments Out separately from Credit Notes.
  */
 export function getCustomerLedger(customerId, filters) {
-  // 1. Get the customer's details
   const customer = db
     .prepare("SELECT * FROM customers WHERE id = ?")
     .get(customerId);
   if (!customer) throw new Error("Customer not found");
 
-  // 2. Build date filter for sales table
   const { where: gstWhere, params: gstParams } = getDateFilter({
     from: filters.startDate,
     to: filters.endDate,
     alias: "s",
   });
 
-  // 3. Fetch all main GST sales (that aren't quotes)
   const allSales = db
     .prepare(
       `
     SELECT
-      id,
-      created_at AS bill_date,
-      reference_no,
-      total_amount,
-      paid_amount,
-      (total_amount - paid_amount) AS amount_pending,
+      s.id,
+      s.created_at AS bill_date,
+      s.reference_no,
+      s.total_amount,
+      COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN t.amount ELSE 0 END), 0) AS total_paid,
+      COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN t.amount ELSE 0 END), 0) AS total_refunded,
+      COALESCE(SUM(CASE WHEN t.type = 'credit_note' THEN t.amount ELSE 0 END), 0) AS total_credit_notes,
       'sale' AS bill_type
     FROM sales s
-    WHERE customer_id = ? AND is_quote = 0 AND ${gstWhere}
-    ORDER BY created_at DESC
+    LEFT JOIN transactions t ON s.id = t.bill_id 
+      AND t.bill_type = 'sale' 
+      AND t.status != 'deleted'
+      AND t.type IN ('payment_in', 'payment_out', 'credit_note')
+    WHERE s.customer_id = ? AND s.is_quote = 0 AND ${gstWhere}
+    GROUP BY s.id
+    ORDER BY s.created_at DESC
   `,
     )
     .all(customerId, ...gstParams);
 
-  // 4. Update the transactions query to handle payment_in and payment_out (as negative)
   const getPaymentsStmt = db.prepare(`
     SELECT 
+      id,
       transaction_date, 
-      (CASE WHEN type = 'payment_out' THEN amount ELSE amount END) AS amount, 
+      amount, 
       payment_mode,
       type
     FROM transactions
-    WHERE bill_id = ? AND bill_type = ? AND (type = 'payment_in' OR type = 'payment_out')
+    WHERE bill_id = ? AND bill_type = ? 
+      AND type IN ('payment_in', 'payment_out', 'credit_note')
+      AND status != 'deleted'
     ORDER BY transaction_date ASC
   `);
 
-  // 5. Map over the list
   const ledger = allSales.map((sale) => {
-    // Pass both the id AND the bill_type to find correct payments
     const transactions = getPaymentsStmt.all(sale.id, sale.bill_type);
     return {
       ...sale,
@@ -284,27 +241,24 @@ export function getCustomerLedger(customerId, filters) {
 
   return { customer, ledger };
 }
-/**
- * @description Gets a summary of all customers with overdue payments,
- * reconciled against the transactions table for accuracy.
- * @returns {Array<object>} List of customers with overdue bill metrics.
- */
+
 export function getOverdueCustomerSummary() {
   try {
     const customers = db
       .prepare(
         `
       WITH BillBalances AS (
-        -- Step 1: Calculate reconciled balance for every non-quote sale
         SELECT
           s.id AS sale_id,
           s.customer_id,
           s.created_at,
           s.total_amount,
+          -- ✅ FIX: Strictly Cash In/Out for Payment metric
           COALESCE(SUM(CASE 
-            WHEN t.type IN ('payment_in', 'sale') THEN t.amount 
+            WHEN t.type = 'payment_in' THEN t.amount 
             WHEN t.type = 'payment_out' THEN -t.amount 
             ELSE 0 END), 0) AS total_paid,
+          -- ✅ FIX: Credit Notes isolated
           COALESCE(SUM(CASE 
             WHEN t.type = 'credit_note' THEN t.amount 
             ELSE 0 END), 0) AS total_credit_notes
@@ -316,16 +270,13 @@ export function getOverdueCustomerSummary() {
         GROUP BY s.id
       ),
       ReconciledPending AS (
-        -- Step 2: Determine actual pending amount and age
         SELECT
           *,
           ((total_amount - total_credit_notes) - total_paid) AS reconciled_balance,
           (julianday('now', 'localtime') - julianday(created_at)) AS bill_age
         FROM BillBalances
-        -- 0.9 tolerance to handle floating point rounding issues
         WHERE ((total_amount - total_credit_notes) - total_paid) > 0.9
       )
-      -- Step 3: Group by customer and filter by the 7-day overdue rule
       SELECT
         c.id,
         c.name,
@@ -348,16 +299,7 @@ export function getOverdueCustomerSummary() {
     throw new Error("Failed to fetch overdue summary: " + error.message);
   }
 }
-/**
- * Retrieves a paginated list of customers with their financial summaries.
- * Metrics:
- * - Total Bills (Count)
- * - Total Purchased (Sum of Sales)
- * - Total Bills Paid (Count of sales with status='paid')
- * - Total Amount Paid (Sum of 'payment_in' + 'credit_note' transactions)
- * - Total Overdue (Purchased - Paid)
- * - Payment Percentage
- */
+
 export async function getCustomersWithFinancials({
   page = 1,
   limit = 20,
@@ -366,8 +308,6 @@ export async function getCustomersWithFinancials({
   sortOrder = "asc",
 }) {
   const offset = (page - 1) * limit;
-
-  // Search Filter
   let whereClause = "1=1";
   const params = [];
 
@@ -376,8 +316,6 @@ export async function getCustomersWithFinancials({
     params.push(`%${query}%`, `%${query}%`);
   }
 
-  // Common CTEs or Subqueries for Aggregation
-  // 1. Sales Aggregates
   const salesSubquery = `
     SELECT 
       customer_id,
@@ -389,19 +327,19 @@ export async function getCustomersWithFinancials({
     GROUP BY customer_id
   `;
 
-  // 2. Transactions Aggregates (Payments + Credits)
+  // ✅ FIX: Separated cash flow and debt adjustments
   const transSubquery = `
     SELECT 
       entity_id,
-      COALESCE(SUM(amount), 0) as total_amount_paid
+      COALESCE(SUM(CASE WHEN type = 'payment_in' THEN amount WHEN type = 'payment_out' THEN -amount ELSE 0 END), 0) as total_amount_paid,
+      COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as total_credit_notes
     FROM transactions
     WHERE entity_type = 'customer' 
       AND status != 'deleted' 
-      AND (type = 'payment_in' OR type = 'credit_note')
+      AND type IN ('payment_in', 'payment_out', 'credit_note')
     GROUP BY entity_id
   `;
 
-  // Main Query
   const sql = `
     SELECT 
       c.id, 
@@ -412,15 +350,11 @@ export async function getCustomersWithFinancials({
       COALESCE(s_stats.total_purchased, 0) as total_purchased,
       COALESCE(s_stats.total_bills_paid, 0) as total_bills_paid,
       COALESCE(t_stats.total_amount_paid, 0) as total_amount_paid,
-      
-      -- Calculated Fields
-      (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_amount_paid, 0)) as total_overdue,
-      
+      ((COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0)) - COALESCE(t_stats.total_amount_paid, 0)) as total_overdue,
       CASE 
-        WHEN COALESCE(s_stats.total_purchased, 0) = 0 THEN 0
-        ELSE ROUND((COALESCE(t_stats.total_amount_paid, 0) * 100.0) / COALESCE(s_stats.total_purchased, 0), 2)
+        WHEN (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0)) <= 0 THEN 0
+        ELSE ROUND((COALESCE(t_stats.total_amount_paid, 0) * 100.0) / (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0)), 2)
       END as payment_percentage
-
     FROM customers c
     LEFT JOIN (${salesSubquery}) s_stats ON c.id = s_stats.customer_id
     LEFT JOIN (${transSubquery}) t_stats ON c.id = t_stats.entity_id
@@ -429,10 +363,8 @@ export async function getCustomersWithFinancials({
     LIMIT ? OFFSET ?
   `;
 
-  // Count Query for Pagination
   const countSql = `SELECT COUNT(*) as count FROM customers c WHERE ${whereClause}`;
 
-  // Execute
   const records = await db.prepare(sql).all(...params, limit, offset);
   const total = await db.prepare(countSql).get(...params).count;
 

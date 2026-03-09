@@ -45,7 +45,7 @@ import {
   Check,
   MessageSquareText,
   ChevronDown,
-  RotateCcw,
+  RotateCcw, // ✅ Added for return history icon
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -58,6 +58,7 @@ type SaleItemRow = SaleItemPayload & {
   serial_id?: number;
   batch_number?: string;
   serial_number?: string;
+  return_quantity?: number; // ✅ NEW: Track return_quantity from DB
 
   // Pricing snapshots
   batch_mrp?: number;
@@ -70,7 +71,6 @@ type SaleItemRow = SaleItemPayload & {
 
   // Joined fields from Product Master (fallback for UI display)
   base_unit?: string | null;
-  return_quantity?: number | null;
 };
 
 // --- Conversion Factors & Families ---
@@ -115,6 +115,7 @@ const defaultItem = (): SaleItemRow => ({
   unit: "pcs",
   barcode: "",
   description: "",
+  return_quantity: 0, // ✅ Initialize
 });
 
 interface SaleItemSectionProps {
@@ -185,7 +186,6 @@ export default function SaleItemSection({
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (mode === "view") return;
 
-      // Ctrl + A: Add Row
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
         e.preventDefault();
         const lastItem = items[items.length - 1];
@@ -201,19 +201,15 @@ export default function SaleItemSection({
         }
       }
 
-      // Ctrl + Backspace: Delete Active Row
       if ((e.ctrlKey || e.metaKey) && e.key === "Backspace") {
         if (activeRowIndex !== null && items[activeRowIndex]) {
           e.preventDefault();
           const newItems = [...items];
           newItems.splice(activeRowIndex, 1);
           onItemsChange(newItems);
-
-          if (newItems.length > 0) {
-            setActiveRowIndex(Math.max(0, activeRowIndex - 1));
-          } else {
-            setActiveRowIndex(null);
-          }
+          setActiveRowIndex(
+            newItems.length > 0 ? Math.max(0, activeRowIndex - 1) : null,
+          );
           toast.success("Row removed");
         }
       }
@@ -223,7 +219,6 @@ export default function SaleItemSection({
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [items, activeRowIndex, mode, globalPriceType, onItemsChange]);
 
-  // Effect for Product Name Search
   useEffect(() => {
     if (inputValue.trim() === "") {
       setSearchResults([]);
@@ -245,7 +240,6 @@ export default function SaleItemSection({
     return () => clearTimeout(timer);
   }, [inputValue]);
 
-  // Effect for Barcode Search List
   useEffect(() => {
     if (barcodeInputValue.trim() === "") {
       setBarcodeSearchResults([]);
@@ -267,28 +261,17 @@ export default function SaleItemSection({
     return () => clearTimeout(timer);
   }, [barcodeInputValue]);
 
-  // Auto-focus logic when a new row is added
   useEffect(() => {
     if (mode === "view") return;
-
-    if (items.length > 0) {
+    if (items.length > 0 && items.length > prevItemsLength.current) {
       const lastIndex = items.length - 1;
-
-      if (items.length > prevItemsLength.current) {
-        setActiveRowIndex(lastIndex);
-
-        // Only trigger auto-focus if it's a completely newly generated blank row
-        if (items[lastIndex].product_id === 0) {
-          setTimeout(() => {
-            focusInput(lastIndex, "product");
-          }, 100); // slight delay to allow the new row to render in DOM
-        }
-      }
+      setActiveRowIndex(lastIndex);
+      if (items[lastIndex].product_id === 0)
+        setTimeout(() => focusInput(lastIndex, "product"), 100);
     }
     prevItemsLength.current = items.length;
   }, [items.length, mode, items]);
 
-  // Fallback cache logic
   useEffect(() => {
     setProductCache((prev) => {
       const next = { ...prev };
@@ -447,14 +430,14 @@ export default function SaleItemSection({
       batch_mfw: bMfw,
       price_type: pType,
       pricing_strategy: strategy,
+      return_quantity: 0, // Reset for new items
     };
 
     if (product.tracking_type === "serial" && batchInfo) {
       newItem.serial_id = batchInfo.id;
       if (batchInfo.batch_id) newItem.batch_id = batchInfo.batch_id;
-    } else if (product.tracking_type === "batch" && batchInfo) {
+    } else if (product.tracking_type === "batch" && batchInfo)
       newItem.batch_id = batchInfo.id;
-    }
 
     newItem.price = calculateItemPrice(newItem);
     const updatedItems = [...items];
@@ -479,7 +462,6 @@ export default function SaleItemSection({
     const updated = [...items];
     const currentItem = updated[index];
 
-    // --- UNIT CONVERSION LOGIC ---
     if (field === "unit") {
       const product = productCache[currentItem.product_id];
       const oldUnit = (
@@ -488,15 +470,12 @@ export default function SaleItemSection({
         "pcs"
       ).toLowerCase();
       const newUnit = (value as string).toLowerCase();
-
       const oldFactor = STANDARD_FACTORS[oldUnit] || 1;
       const newFactor = STANDARD_FACTORS[newUnit] || 1;
-
-      // Example: rate is ₹100/kg. factor kg=1, g=0.001.
-      // user selects 'g', newRate = 100 * (0.001 / 1) = ₹0.1/g
       if (oldFactor !== newFactor) {
-        const newRate = currentItem.rate * (newFactor / oldFactor);
-        currentItem.rate = Number(newRate.toFixed(4)); // Preserve precision internally
+        currentItem.rate = Number(
+          (currentItem.rate * (newFactor / oldFactor)).toFixed(4),
+        );
       }
     }
 
@@ -533,20 +512,16 @@ export default function SaleItemSection({
             (product as any).mrp ||
             0;
 
-        // Adjust for current unit factor
         const currentUnit = (
           item.unit ||
           product.base_unit ||
           "pcs"
         ).toLowerCase();
         const baseUnit = (product.base_unit || "pcs").toLowerCase();
-
         const oldFactor = STANDARD_FACTORS[baseUnit] || 1;
         const newFactor = STANDARD_FACTORS[currentUnit] || 1;
-
-        if (oldFactor !== newFactor) {
+        if (oldFactor !== newFactor)
           baseRate = baseRate * (newFactor / oldFactor);
-        }
 
         updatedItem.rate = Number(baseRate.toFixed(2));
         updatedItem.price = calculateItemPrice(updatedItem);
@@ -574,21 +549,18 @@ export default function SaleItemSection({
     const fields = showDescriptionRow
       ? [...baseFields, "description"]
       : baseFields;
-
     const currentIdx = fields.indexOf(field);
     if (e.key === "Enter") {
       e.preventDefault();
-      if (currentIdx < fields.length - 1) {
+      if (currentIdx < fields.length - 1)
         focusInput(idx, fields[currentIdx + 1]);
-      } else {
-        if (idx === items.length - 1 && items[idx].product_id !== 0) {
+      else {
+        if (idx === items.length - 1 && items[idx].product_id !== 0)
           onItemsChange([
             ...items,
             { ...defaultItem(), price_type: globalPriceType },
           ]);
-        } else if (idx < items.length - 1) {
-          focusInput(idx + 1, "product");
-        }
+        else if (idx < items.length - 1) focusInput(idx + 1, "product");
       }
     } else if (e.key === "ArrowDown" && idx < items.length - 1) {
       e.preventDefault();
@@ -599,7 +571,6 @@ export default function SaleItemSection({
     }
   };
 
-  // --- UNIT SELECTION LOGIC ---
   const getUnitsForProduct = (product: Product | undefined) => {
     if (!product) return ["pcs"];
     const base = (
@@ -607,8 +578,6 @@ export default function SaleItemSection({
       (product as any).unit ||
       "pcs"
     ).toLowerCase();
-
-    // Find matching family
     for (const group of UNIT_GROUPS) {
       if (group.includes(base)) {
         const units = new Set(group);
@@ -617,14 +586,11 @@ export default function SaleItemSection({
         return Array.from(units);
       }
     }
-
-    // Fallback if untracked family
     const units = new Set([base]);
     if (product.secondary_unit) units.add(product.secondary_unit.toLowerCase());
     return Array.from(units);
   };
 
-  // --- Styles ---
   const headerSx = {
     fontWeight: 800,
     color: "text.disabled",
@@ -673,7 +639,6 @@ export default function SaleItemSection({
         border: `1px solid #ccc`,
       }}
     >
-      {/* --- TOP CONFIGURATION BAR --- */}
       <Box
         sx={{
           px: 2,
@@ -709,7 +674,6 @@ export default function SaleItemSection({
                 fontSize: "0.75rem",
                 color: "primary.main",
                 bgcolor: alpha(theme.palette.primary.main, 0.05),
-                "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.1) },
               }}
             >
               {globalPriceType === "mrp"
@@ -719,13 +683,11 @@ export default function SaleItemSection({
                   : "Wholesale (MFW)"}
             </Button>
           </Stack>
-
           <Divider
             orientation="vertical"
             flexItem
             sx={{ height: 16, alignSelf: "center" }}
           />
-
           <FormControlLabel
             control={
               <Switch
@@ -747,7 +709,6 @@ export default function SaleItemSection({
             }
           />
         </Stack>
-
         <Typography
           variant="caption"
           sx={{ color: "text.disabled", fontWeight: 700 }}
@@ -804,7 +765,7 @@ export default function SaleItemSection({
               const isActive = activeRowIndex === idx;
               const allowedUnits = getUnitsForProduct(product);
 
-              // --- RETURN LOGIC CALCULATION ---
+              // ✅ RETURN LOGIC HELPERS
               const retQty = item.return_quantity || 0;
               const isFullyReturned = retQty >= (item.quantity || 1);
               const isPartiallyReturned = retQty > 0 && !isFullyReturned;
@@ -817,7 +778,7 @@ export default function SaleItemSection({
                     sx={{
                       "& > td": { border: 0, py: 0.5 },
                       bgcolor: isFullyReturned
-                        ? alpha(theme.palette.error.light, 0.08)
+                        ? alpha(theme.palette.error.light, 0.1)
                         : isActive
                           ? alpha(theme.palette.primary.main, 0.01)
                           : "transparent",
@@ -882,7 +843,7 @@ export default function SaleItemSection({
                             )}
                             {isPartiallyReturned && (
                               <Chip
-                                label={`${retQty} Returned`}
+                                label={`${retQty} Ret.`}
                                 size="small"
                                 color="warning"
                                 sx={{
@@ -911,7 +872,6 @@ export default function SaleItemSection({
                             freeSolo
                             size="small"
                             options={searchResults}
-                            disabled={mode !== "new"}
                             getOptionLabel={(opt) =>
                               typeof opt === "string"
                                 ? opt
@@ -926,28 +886,13 @@ export default function SaleItemSection({
                             onKeyDown={(e) =>
                               handleGridKeyDown(e, idx, "product")
                             }
-                            renderOption={(props, option) => (
-                              <li {...props}>
-                                <Stack>
-                                  <Typography variant="body2" fontWeight={700}>
-                                    {option.name}
-                                  </Typography>
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                  >
-                                    {option.barcode}
-                                  </Typography>
-                                </Stack>
-                              </li>
-                            )}
                             renderInput={(params) => (
                               <TextField
                                 {...params}
                                 inputRef={(el) =>
                                   (gridRefs.current[`${idx}-product`] = el)
                                 }
-                                placeholder="Type name or code..."
+                                placeholder="Type name..."
                                 variant="standard"
                                 sx={inputSx}
                               />
@@ -957,94 +902,32 @@ export default function SaleItemSection({
                       </Box>
                     </TableCell>
 
-                    {/* Barcode Search/Scan */}
                     <TableCell>
                       <Box sx={fieldBoxSx(isActive)}>
-                        <Autocomplete
+                        <TextField
+                          variant="standard"
                           fullWidth
-                          freeSolo
-                          size="small"
-                          options={barcodeSearchResults}
                           disabled={mode === "view"}
-                          getOptionLabel={(opt) =>
-                            typeof opt === "string" ? opt : opt.barcode || ""
-                          }
                           value={item.barcode || product?.barcode || ""}
-                          loading={barcodeLoading}
-                          onInputChange={(_, nv) => {
-                            setBarcodeInputValue(nv);
-                            handleFieldChange(idx, "barcode", nv);
+                          sx={{
+                            ...inputSx,
+                            "& input": {
+                              fontFamily: "monospace",
+                              fontSize: "0.8rem",
+                            },
                           }}
-                          onChange={(_, v) =>
-                            handleProductSelect(idx, v as Product)
+                          inputRef={(el) =>
+                            (gridRefs.current[`${idx}-barcode`] = el)
                           }
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              handleBarcodeScan(idx, item.barcode || "");
-                            } else {
-                              handleGridKeyDown(e, idx, "barcode");
-                            }
-                          }}
-                          renderOption={(props, option) => (
-                            <li {...props}>
-                              <Stack
-                                direction="row"
-                                spacing={1}
-                                alignItems="center"
-                                justifyContent="space-between"
-                                width="100%"
-                              >
-                                <Typography
-                                  variant="caption"
-                                  fontWeight={700}
-                                  sx={{ fontFamily: "monospace" }}
-                                >
-                                  {option.barcode}
-                                </Typography>
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                >
-                                  {option.name}
-                                </Typography>
-                              </Stack>
-                            </li>
-                          )}
-                          renderInput={(params) => (
-                            <TextField
-                              {...params}
-                              inputRef={(el) =>
-                                (gridRefs.current[`${idx}-barcode`] = el)
-                              }
-                              placeholder="Scan..."
-                              variant="standard"
-                              sx={{
-                                ...inputSx,
-                                "& input": {
-                                  fontFamily: '"JetBrains Mono", monospace',
-                                  fontSize: "0.8rem",
-                                },
-                              }}
-                              InputProps={{
-                                ...params.InputProps,
-                                endAdornment: (
-                                  <Stack direction="row" alignItems="center">
-                                    {barcodeLoading ||
-                                    scanningRowIndex === idx ? (
-                                      <CircularProgress size={12} />
-                                    ) : (
-                                      <ScanBarcode
-                                        size={14}
-                                        color={theme.palette.text.disabled}
-                                      />
-                                    )}
-                                    {params.InputProps.endAdornment}
-                                  </Stack>
-                                ),
-                              }}
-                            />
-                          )}
+                          onChange={(e) =>
+                            handleFieldChange(idx, "barcode", e.target.value)
+                          }
+                          onKeyDown={(e) =>
+                            e.key === "Enter"
+                              ? (e.preventDefault(),
+                                handleBarcodeScan(idx, item.barcode || ""))
+                              : handleGridKeyDown(e, idx, "barcode")
+                          }
                         />
                       </Box>
                     </TableCell>
@@ -1213,7 +1096,7 @@ export default function SaleItemSection({
                           color: isFullyReturned
                             ? "text.disabled"
                             : "text.primary",
-                          fontFamily: '"JetBrains Mono", monospace',
+                          fontFamily: "monospace",
                           textDecoration: isFullyReturned
                             ? "line-through"
                             : "none",
@@ -1238,7 +1121,6 @@ export default function SaleItemSection({
                   {showDescriptionRow && (
                     <TableRow sx={{ "& > td": { pt: 0, pb: 1, border: 0 } }}>
                       <TableCell />
-                      {shop?.hsn_required && <TableCell />}
                       <TableCell colSpan={8}>
                         <Box
                           sx={{
@@ -1247,10 +1129,8 @@ export default function SaleItemSection({
                             gap: 1.5,
                             px: 1.5,
                             py: 0.5,
-                            ml: 0.5,
                             borderRadius: "0 0 6px 6px",
                             borderLeft: `2px solid ${isActive ? theme.palette.primary.main : alpha(theme.palette.divider, 0.4)}`,
-                            bgcolor: alpha(theme.palette.action.hover, 0.01),
                           }}
                         >
                           <MessageSquareText
@@ -1262,15 +1142,13 @@ export default function SaleItemSection({
                             size="small"
                             variant="standard"
                             disabled={mode === "view"}
-                            placeholder="Add serial numbers, warranty notes, or product description..."
+                            placeholder="Add notes..."
                             value={item.description || ""}
                             sx={{
                               ...inputSx,
                               "& .MuiInputBase-root": {
                                 fontSize: "0.75rem",
-                                fontWeight: 500,
                                 fontStyle: "italic",
-                                color: "text.secondary",
                               },
                             }}
                             inputRef={(el) =>
@@ -1321,70 +1199,35 @@ export default function SaleItemSection({
               fontWeight: 800,
               textTransform: "none",
               color: "primary.main",
-              borderRadius: "6px",
             }}
           >
             Add Line Item (Ctrl + A)
           </Button>
           <Typography
             variant="caption"
-            sx={{ color: "text.disabled", fontWeight: 700, letterSpacing: 0.5 }}
+            sx={{ color: "text.disabled", fontWeight: 700 }}
           >
-            USE ENTER TO NAVIGATE • ARROWS TO MOVE
+            ENTER TO NAVIGATE • ARROWS TO MOVE
           </Typography>
         </Box>
       )}
 
+      {/* Menus and Dialogs for rate strategy and batch selection */}
       <Menu
         anchorEl={headerMenuAnchor}
         open={Boolean(headerMenuAnchor)}
         onClose={() => setHeaderMenuAnchor(null)}
-        PaperProps={{
-          sx: {
-            minWidth: 200,
-            borderRadius: "8px",
-            boxShadow: theme.shadows[10],
-          },
-        }}
       >
-        <Box
-          sx={{
-            px: 2,
-            py: 1,
-            borderBottom: `1px solid ${theme.palette.divider}`,
-          }}
-        >
-          <Typography variant="caption" fontWeight={800} color="text.disabled">
-            SELECT RATE STRATEGY
-          </Typography>
-        </Box>
         {[
           { id: "mrp", label: "Retail (MRP)" },
           { id: "mop", label: "Offer (MOP)" },
           { id: "mfw", label: "Wholesale (MFW)" },
-        ].map((type) => (
+        ].map((t) => (
           <MenuItem
-            key={type.id}
-            selected={globalPriceType === type.id}
-            onClick={() => handleGlobalTypeSelect(type.id as PriceType)}
-            sx={{ py: 1 }}
+            key={t.id}
+            onClick={() => handleGlobalTypeSelect(t.id as PriceType)}
           >
-            <Stack
-              direction="row"
-              width="100%"
-              justifyContent="space-between"
-              alignItems="center"
-            >
-              <Typography
-                variant="body2"
-                fontWeight={globalPriceType === type.id ? 700 : 500}
-              >
-                {type.label}
-              </Typography>
-              {globalPriceType === type.id && (
-                <Check size={14} color={theme.palette.primary.main} />
-              )}
-            </Stack>
+            {t.label}
           </MenuItem>
         ))}
       </Menu>
@@ -1394,13 +1237,8 @@ export default function SaleItemSection({
         onClose={() => setBatchModalOpen(false)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{
-          sx: { borderRadius: "12px", boxShadow: theme.shadows[10] },
-        }}
       >
-        <DialogTitle
-          sx={{ fontWeight: 800, fontSize: "0.9rem", color: "text.secondary" }}
-        >
+        <DialogTitle sx={{ fontWeight: 800, fontSize: "0.9rem" }}>
           SELECT BATCH / SERIAL
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0 }}>
@@ -1411,29 +1249,12 @@ export default function SaleItemSection({
           ) : (
             <List dense>
               {availableBatches.map((b: any) => (
-                <ListItemButton
-                  key={b.id}
-                  onClick={() => handleBatchSelect(b)}
-                  sx={{ py: 1.5 }}
-                >
+                <ListItemButton key={b.id} onClick={() => handleBatchSelect(b)}>
                   <ListItemText
                     primary={b.batch_number || b.serial_number}
                     secondary={`Stock: ${b.quantity} | MRP: ₹${b.mrp}`}
-                    primaryTypographyProps={{
-                      fontWeight: 800,
-                      fontSize: "0.875rem",
-                    }}
-                    secondaryTypographyProps={{
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                    }}
                   />
-                  <Chip
-                    label="Select"
-                    size="small"
-                    variant="outlined"
-                    sx={{ fontWeight: 800, fontSize: "0.65rem" }}
-                  />
+                  <Chip label="Select" size="small" variant="outlined" />
                 </ListItemButton>
               ))}
             </List>

@@ -46,6 +46,7 @@ router.post("/settings", (req, res) => {
       );
     res.json({ success: true, message: "Settings saved successfully." });
   } catch (err) {
+    console.log("error in creating settings", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

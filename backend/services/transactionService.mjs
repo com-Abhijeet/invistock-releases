@@ -64,7 +64,7 @@ export async function createTransactionService(transactionData) {
     totalBillAmount = originalBill.total_amount || 0;
 
     // 3. Logic Validation based on Type & Overpayment Check
-    const relatedTransactions = getTransactionsByRelatedIdRepo(
+    const relatedTransactions = await getTransactionsByRelatedIdRepo(
       bill_id,
       bill_type,
     );
@@ -93,26 +93,45 @@ export async function createTransactionService(transactionData) {
     // --- Validation Switch ---
     switch (type) {
       case "payment_in":
-        if (bill_type !== "sale")
-          throw new Error("Payment-in is only valid for Sales.");
-        if (amount > pendingBalance) {
-          throw new Error(
-            `Overpayment Error: You are trying to pay ₹${amount}, but the pending balance is only ₹${pendingBalance}.`,
-          );
+        // Valid for Sales (Receiving customer payment) OR Purchases (Receiving refund from supplier)
+        if (bill_type === "sale") {
+          // Cannot overcharge a customer
+          if (amount > pendingBalance) {
+            throw new Error(
+              `Overpayment: You are trying to receive ₹${amount}, but the pending balance is only ₹${pendingBalance}.`,
+            );
+          }
+        } else if (bill_type === "purchase") {
+          // Supplier is refunding us cash. We cannot get back more than we actually paid.
+          if (amount > totalPaid) {
+            throw new Error(
+              "Refund Error: Cannot receive a cash refund larger than what was actually paid to the supplier.",
+            );
+          }
         }
         break;
 
       case "payment_out":
-        if (bill_type !== "purchase")
-          throw new Error("Payment-out is only valid for Purchases.");
-        if (amount > pendingBalance) {
-          throw new Error(
-            `Overpayment Error: You are trying to pay ₹${amount}, but the pending balance is only ₹${pendingBalance}.`,
-          );
+        // Valid for Purchases (Paying a supplier) OR Sales (Giving cash refund to customer)
+        if (bill_type === "purchase") {
+          // Cannot overpay a supplier
+          if (amount > pendingBalance) {
+            throw new Error(
+              `Overpayment: You are trying to pay ₹${amount}, but the pending balance is only ₹${pendingBalance}.`,
+            );
+          }
+        } else if (bill_type === "sale") {
+          // We are refunding a customer cash. We cannot refund more than they actually paid.
+          if (amount > totalPaid) {
+            throw new Error(
+              "Refund Error: Cannot issue a cash refund larger than what the customer actually paid.",
+            );
+          }
         }
         break;
 
       case "credit_note":
+        // Credit notes strictly reduce Sale values
         if (bill_type !== "sale")
           throw new Error("Credit Notes are only valid for Sales.");
         if (amount > totalBillAmount - totalAdjustments) {
@@ -123,6 +142,7 @@ export async function createTransactionService(transactionData) {
         break;
 
       case "debit_note":
+        // Debit notes strictly reduce Purchase values
         if (bill_type !== "purchase")
           throw new Error("Debit Notes are only valid for Purchases.");
         if (amount > totalBillAmount - totalAdjustments) {
@@ -133,7 +153,7 @@ export async function createTransactionService(transactionData) {
         break;
 
       default:
-        throw new Error(`Invalid transaction type: ${type}`);
+        throw new Error("Invalid transaction type.");
     }
 
     // 4. Create Transaction
@@ -179,7 +199,7 @@ export async function getAllTransactionsService(filters) {
  */
 export async function getTransactionsByRelatedIdService(relatedId, entityType) {
   try {
-    return getTransactionsByRelatedIdRepo(relatedId, entityType);
+    return await getTransactionsByRelatedIdRepo(relatedId, entityType);
   } catch (error) {
     throw new Error("Failed to fetch related transactions: " + error.message);
   }
@@ -288,40 +308,58 @@ async function syncBillFinancials(billId, billType) {
     if (!bill) return;
 
     // 2. Fetch All Valid Transactions
-    const transactions = getTransactionsByRelatedIdRepo(billId, billType);
+    const transactions = await getTransactionsByRelatedIdRepo(billId, billType);
 
-    let totalPaid = 0;
-    let totalAdjustments = 0;
+    let totalPaymentIn = 0;
+    let totalPaymentOut = 0;
+    let totalCreditNotes = 0;
+    let totalDebitNotes = 0;
 
     transactions.forEach((t) => {
       // Ignore deleted transactions
       if (t.status === "deleted" || t.status === "cancelled") return;
 
-      if (t.type === "payment_in" || t.type === "payment_out") {
-        totalPaid += t.amount;
-      } else if (t.type === "credit_note" || t.type === "debit_note") {
-        totalAdjustments += t.amount;
-      }
+      if (t.type === "payment_in") totalPaymentIn += t.amount;
+      if (t.type === "payment_out") totalPaymentOut += t.amount;
+      if (t.type === "credit_note") totalCreditNotes += t.amount;
+      if (t.type === "debit_note") totalDebitNotes += t.amount;
     });
 
-    // 3. Calculate Logic
-    const netBillAmount = bill.total_amount - totalAdjustments;
+    // 3. Calculate Reconciled Logic
+    let safeNet = 0;
+    let safePaid = 0;
+
+    if (billType === "sale") {
+      // Sales Net: Gross + Extra Charges (DN) - Returns (CN)
+      safeNet = bill.total_amount + totalDebitNotes - totalCreditNotes;
+      // Paid by Customer: Cash Received - Cash Refunded
+      safePaid = totalPaymentIn - totalPaymentOut;
+    } else if (billType === "purchase") {
+      // Purchase Net: Gross + Extra Charges (CN) - Returns (DN)
+      safeNet = bill.total_amount + totalCreditNotes - totalDebitNotes;
+      // Paid to Supplier: Cash Sent - Cash Refunded (Received back)
+      safePaid = totalPaymentOut - totalPaymentIn;
+    }
 
     // Precision rounding to handle float mishaps
     const round = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
-    const safePaid = round(totalPaid);
-    const safeNet = round(netBillAmount);
+    safeNet = round(safeNet);
+    safePaid = round(safePaid);
 
     let newStatus = "pending";
 
-    // If fully paid (or overpaid slightly/exactly)
-    // Also handle cases where Net Bill becomes 0 due to credit notes -> effectively PAID
-    if (safePaid >= safeNet) {
+    // Status Assignment Logic
+    if (safePaid >= safeNet && safeNet > 0) {
       newStatus = "paid";
     } else if (safePaid > 0) {
       newStatus = "partial";
     } else {
       newStatus = "pending";
+    }
+
+    // Handle fully returned status
+    if (safeNet <= 0 && (totalCreditNotes > 0 || totalDebitNotes > 0)) {
+      newStatus = "returned";
     }
 
     // 4. Update the Parent Record
@@ -332,14 +370,12 @@ async function syncBillFinancials(billId, billType) {
     });
 
     console.log(
-      `[TransactionSync] Updated ${billType} #${bill.reference_no}: Status=${newStatus}, Paid=${safePaid}`,
+      `[TransactionSync] Updated ${billType} #${bill.reference_no}: Status=${newStatus}, Paid=${safePaid}, Net=${safeNet}`,
     );
   } catch (error) {
     console.error(
       `[TransactionSync] Failed to sync ${billType} #${billId}:`,
       error,
     );
-    // We swallow the error here to prevent the main transaction flow from failing
-    // just because the background sync failed, but we log it.
   }
 }

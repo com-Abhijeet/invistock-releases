@@ -26,7 +26,10 @@ export function initializeTallyDb(mainDbPath) {
       sgst_ledger TEXT DEFAULT 'SGST',
       igst_ledger TEXT DEFAULT 'IGST',
       discount_ledger TEXT DEFAULT 'Discount Allow',
-      round_off_ledger TEXT DEFAULT 'Round Off'
+      round_off_ledger TEXT DEFAULT 'Round Off',
+      default_expense_ledger TEXT DEFAULT 'Expense',
+      sync_mode TEXT,
+      company_name TEXT DEFAULT 'My_company'
     );
 
     CREATE TABLE IF NOT EXISTS sync_state (

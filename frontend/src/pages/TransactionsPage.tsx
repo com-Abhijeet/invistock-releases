@@ -13,8 +13,17 @@ import {
   Typography,
   Button,
 } from "@mui/material";
-import { Edit, Eye, Trash2, Plus, Download, FileText } from "lucide-react";
+import {
+  Edit,
+  Eye,
+  Trash2,
+  Plus,
+  Download,
+  FileText,
+  Printer,
+} from "lucide-react";
 import AddEditTransactionModal from "../components/transactions/AddEditTransactionModal";
+import TransactionPrintModal from "../components/transactions/TransactionPrintModal";
 import {
   getAllTransactions,
   deleteTransaction,
@@ -57,12 +66,17 @@ export default function TransactionsPage() {
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const [totalRecords, setTotalRecords] = useState(0);
 
-  // Modal States
+  // Edit/View Modal States
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
 
-  // ✅ Export Modal States
+  // ✅ Print Modal States
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [transactionToPrint, setTransactionToPrint] =
+    useState<Transaction | null>(null);
+
+  // Export Modal States
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportFrom, setExportFrom] = useState(
     new Date().toISOString().split("T")[0],
@@ -106,6 +120,11 @@ export default function TransactionsPage() {
     setSelectedTransaction(null);
     setModalOpen(false);
     fetchTransactions();
+  };
+
+  const handleOpenPrintModal = (transaction: Transaction) => {
+    setTransactionToPrint(transaction);
+    setPrintModalOpen(true);
   };
 
   const handleDelete = async (transaction: Transaction) => {
@@ -184,13 +203,21 @@ export default function TransactionsPage() {
 
   const columns = [
     { key: "reference_no", label: "Ref No." },
-    { key: "type", label: "Type" },
+    {
+      key: "type",
+      label: "Type",
+      format: (val: string) => val.replace("_", " ").toUpperCase(),
+    },
     {
       key: "transaction_date",
       label: "Date",
       format: (val: string) => new Date(val).toLocaleDateString("en-IN"),
     },
-    { key: "entity_type", label: "Entity Type" },
+    {
+      key: "entity_type",
+      label: "Entity Type",
+      format: (val: string) => val.toUpperCase(),
+    },
     {
       key: "amount",
       label: "Amount",
@@ -206,12 +233,17 @@ export default function TransactionsPage() {
 
   const actions: Action[] = [
     {
+      label: "Print Voucher",
+      icon: <Printer size={18} color="#ed6c02" />,
+      onClick: (row: Transaction) => handleOpenPrintModal(row),
+    },
+    {
       label: "View Transaction",
       icon: <Eye size={18} />,
       onClick: (row: Transaction) => handleOpenModal(row),
     },
     {
-      label: "View Bill",
+      label: "View Linked Bill",
       icon: <FileText size={18} color="#1976d2" />,
       onClick: (row: Transaction) => {
         if (row.bill_id && row.bill_type) {
@@ -234,7 +266,7 @@ export default function TransactionsPage() {
     },
     {
       label: "Delete",
-      icon: <Trash2 size={18} />,
+      icon: <Trash2 size={18} color="#d32f2f" />,
       onClick: (row: Transaction) => handleDelete(row),
     },
   ];
@@ -257,7 +289,6 @@ export default function TransactionsPage() {
         onFilterChange={setActiveFilters}
         actions={
           <Stack direction="row" spacing={1.5}>
-            {/* ✅ Updated Export Button with KbdButton */}
             <KbdButton
               variant="secondary"
               label="Export"
@@ -266,7 +297,6 @@ export default function TransactionsPage() {
               onClick={() => setExportModalOpen(true)}
               startIcon={<Download size={18} />}
             />
-            {/* ✅ Updated Add Button with KbdButton */}
             <KbdButton
               variant="primary"
               label="Add Transaction"
@@ -301,6 +331,7 @@ export default function TransactionsPage() {
         />
       )}
 
+      {/* CREATE / EDIT MODAL */}
       <AddEditTransactionModal
         open={modalOpen}
         onClose={handleCloseModal}
@@ -308,7 +339,24 @@ export default function TransactionsPage() {
         initialData={selectedTransaction}
       />
 
-      {/* ✅ Styled Export Date Range Modal */}
+      {/* ✅ PRINT VOUCHER MODAL */}
+      <TransactionPrintModal
+        open={printModalOpen}
+        onClose={() => {
+          setPrintModalOpen(false);
+          setTransactionToPrint(null);
+        }}
+        transaction={transactionToPrint}
+        entity={{
+          name: (transactionToPrint as any)?.entity_name,
+          phone: (transactionToPrint as any)?.entity_phone,
+        }}
+        linkedBill={{
+          reference_no: (transactionToPrint as any)?.bill_ref_no,
+        }}
+      />
+
+      {/* EXPORT MODAL */}
       <Dialog
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}

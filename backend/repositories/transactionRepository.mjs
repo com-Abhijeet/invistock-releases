@@ -190,14 +190,15 @@ export function getTransactionById(id) {
 /**
  * @description Gets all transactions for a specific bill (e.g., all payments for Sale #101).
  */
-export function getTransactionsByRelatedId(billId, billType) {
+export async function getTransactionsByRelatedId(billId, billType) {
+  console.log(billId, billType);
   try {
     const stmt = db.prepare(`
       SELECT * FROM transactions
       WHERE bill_id = ? AND bill_type = ? AND status != 'deleted'
       ORDER BY created_at ASC
     `);
-    return stmt.all(billId, billType);
+    return await stmt.all(billId, billType);
   } catch (error) {
     throw new Error("Repo Error: getTransactionsByRelatedId " + error.message);
   }

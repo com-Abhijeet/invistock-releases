@@ -22,6 +22,8 @@ import {
   ListItemText,
   alpha,
   IconButton,
+  Tooltip,
+  Chip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect, useRef } from "react";
@@ -31,8 +33,7 @@ import { updateSalesOrder } from "../../lib/api/salesOrderService";
 import { handlePrint } from "../../lib/handleInvoicePrint";
 import { createCustomer } from "../../lib/api/customerService";
 import type { CustomerType } from "../../lib/types/customerTypes";
-// import { numberToWords } from "../../utils/numberToWords";
-import { Settings, Save, X, Receipt } from "lucide-react";
+import { Settings, Save, X, Receipt, Info } from "lucide-react";
 import toast from "react-hot-toast";
 import { getShopData } from "../../lib/api/shopService";
 import { getBusinessProfile } from "../../lib/api/businessService";
@@ -68,27 +69,22 @@ const SaleSummarySection = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // --- COMPLIANT DERIVED CALCULATIONS ---
-  // Subtotal is the sum of item.price (which already includes item-level GST and item-level discounts)
   const subtotal = sale.items.reduce(
     (sum, item) => sum + (Number(item.price) || 0),
     0,
   );
   const discountPct = Number(sale.discount) || 0;
-  // Sale-level discount acts as a Post-Tax Cash Waiver
   const discountAmount = (subtotal * discountPct) / 100;
 
-  // Base calculated total before any manual round-off adjustments
   const netBeforeRound =
     Math.round(
       (Math.max(0, subtotal - discountAmount) + Number.EPSILON) * 100,
     ) / 100;
 
-  // Legacy Fallback: Calculate what the round off mathematically MUST have been
   const implicitRoundOff =
     Math.round((sale.total_amount - netBeforeRound + Number.EPSILON) * 100) /
     100;
 
-  // In view mode, if there's no explicitly saved round_off but there is a mathematical gap, use the gap.
   const displayRoundOff =
     mode === "view" && !sale.round_off && Math.abs(implicitRoundOff) > 0.005
       ? implicitRoundOff
@@ -101,7 +97,20 @@ const SaleSummarySection = ({
     sale.discount?.toString() || "0",
   );
 
-  // Sync Input String States (Prevents decimal typing bugs in React)
+  // Reconciled payment data from backend (Returns/Credit Notes)
+  const paymentSummary = (sale as any).payment_summary || {
+    total_paid: sale.paid_amount || 0,
+    total_credit_notes: 0,
+    net_payable: sale.total_amount,
+    balance:
+      Math.round(
+        (sale.total_amount - (sale.paid_amount || 0) + Number.EPSILON) * 100,
+      ) / 100,
+    status: sale.status || "pending",
+  };
+
+  const hasReturns = (paymentSummary.total_credit_notes || 0) > 0;
+
   useEffect(() => {
     if (parseFloat(discountInput) !== sale.discount) {
       setDiscountInput(sale.discount?.toString() || "0");
@@ -119,14 +128,10 @@ const SaleSummarySection = ({
     }
   }, [sale.round_off]);
 
-  // Automatic Total Synchronization (Respecting Manual Round Off strictly)
   useEffect(() => {
     if (mode === "view") return;
-
     const manualRoundOff = Number(sale.round_off) || 0;
     const expectedTotal = netBeforeRound + manualRoundOff;
-
-    // Only update if the total differs from expected by a meaningful fraction
     if (Math.abs(sale.total_amount - expectedTotal) > 0.001) {
       onSaleChange({
         ...sale,
@@ -155,37 +160,12 @@ const SaleSummarySection = ({
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        if (sale.items.length > 0 && confirm("Are you sure?")) handleCancel();
+        if (sale.items.length > 0 && confirm("Are you sure?")) resetForm();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mode, isSubmitting, sale]);
-
-  const handleContainerKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      const focusable = containerRef.current?.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusable) {
-        const elements = Array.from(focusable) as HTMLElement[];
-        const index = elements.indexOf(e.target as HTMLElement);
-        if (index > -1 && index < elements.length - 1) {
-          e.preventDefault();
-          elements[index + 1].focus();
-        }
-      }
-    }
-  };
-
-  const paymentSummary = (sale as any).payment_summary || {
-    total_paid: sale.paid_amount || 0,
-    balance:
-      Math.round(
-        (sale.total_amount - (sale.paid_amount || 0) + Number.EPSILON) * 100,
-      ) / 100,
-    status: sale.status || "pending",
-  };
 
   useEffect(() => {
     getShopData()
@@ -205,67 +185,8 @@ const SaleSummarySection = ({
     onSaleChange({ ...sale, [field]: value });
   };
 
-  const handleDiscountInputChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const valStr = e.target.value;
-    setDiscountInput(valStr);
-    const val = parseFloat(valStr);
-    if (!isNaN(val)) {
-      handleFieldChange("discount", Math.max(0, val));
-    } else if (valStr === "") {
-      handleFieldChange("discount", 0);
-    }
-  };
-
-  const handleManualRoundOffChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const valStr = e.target.value;
-    setRoundOffInput(valStr);
-
-    // Check for intermediate typing states
-    if (valStr === "" || valStr === "-") {
-      onSaleChange({ ...sale, round_off: 0 });
-      return;
-    }
-
-    const val = parseFloat(valStr);
-    if (!isNaN(val)) {
-      onSaleChange({
-        ...sale,
-        round_off: val,
-      });
-    }
-  };
-
   const handlePaidInFull = () => {
     onSaleChange({ ...sale, paid_amount: sale.total_amount, status: "paid" });
-  };
-  const handleCancel = () => {
-    resetForm();
-    toast("Operation canceled.");
-  };
-
-  const saleOptions = [
-    { label: "Reverse Charge", value: "is_reverse_charge" },
-    { label: "E-Commerce", value: "is_ecommerce_sale" },
-  ];
-  const selectedOptions = [
-    ...(sale.is_reverse_charge ? ["is_reverse_charge"] : []),
-    ...(sale.is_ecommerce_sale ? ["is_ecommerce_sale"] : []),
-  ];
-
-  const handleOptionsChange = (event: any) => {
-    const {
-      target: { value },
-    } = event;
-    const values = typeof value === "string" ? value.split(",") : value;
-    onSaleChange({
-      ...sale,
-      is_reverse_charge: values.includes("is_reverse_charge"),
-      is_ecommerce_sale: values.includes("is_ecommerce_sale"),
-    });
   };
 
   const handleSubmit = async () => {
@@ -452,7 +373,6 @@ const SaleSummarySection = ({
 
   const isViewMode = mode === "view";
 
-  // --- STYLING (ERP THEME) ---
   const labelStyle = {
     variant: "caption" as const,
     sx: {
@@ -497,7 +417,6 @@ const SaleSummarySection = ({
         borderTop: `1px solid ${theme.palette.divider}`,
       }}
       ref={containerRef}
-      onKeyDown={handleContainerKeyDown}
     >
       {/* 1. Slim Internal Notes Strip */}
       <Box
@@ -515,7 +434,7 @@ const SaleSummarySection = ({
             size="small"
             value={sale.note || ""}
             onChange={(e) => handleFieldChange("note", e.target.value)}
-            placeholder="Click to add billing notes..."
+            placeholder="Billing notes..."
             variant="standard"
             disabled={isViewMode}
             sx={{
@@ -532,34 +451,73 @@ const SaleSummarySection = ({
 
       <Box sx={{ px: 2, py: 1.5 }}>
         <Grid container spacing={2} alignItems="center">
-          {/* LEFT: Prominent Totals */}
-          <Grid item xs={12} md={3.5}>
+          {/* LEFT: Prominent Totals (RECONCILED) */}
+          <Grid item xs={12} md={4}>
             <Stack direction="row" spacing={2} alignItems="center">
               <Box>
-                <Typography {...labelStyle}>Net Payable</Typography>
+                <Typography {...labelStyle}>
+                  {hasReturns && isViewMode ? "Net Amount" : "Grand Total"}
+                </Typography>
                 <Typography
                   variant="h5"
                   sx={{
                     fontWeight: 900,
-                    color: theme.palette.primary.dark,
+                    color:
+                      hasReturns && isViewMode
+                        ? theme.palette.success.dark
+                        : theme.palette.primary.dark,
                     fontFamily: '"JetBrains Mono", monospace',
                     letterSpacing: -0.5,
                   }}
                 >
-                  {sale.total_amount.toLocaleString("en-IN", {
+                  {(isViewMode && hasReturns
+                    ? paymentSummary.net_payable
+                    : sale.total_amount
+                  ).toLocaleString("en-IN", {
                     style: "currency",
                     currency: "INR",
                   })}
                 </Typography>
               </Box>
+
+              {isViewMode && hasReturns && (
+                <>
+                  <Divider
+                    orientation="vertical"
+                    flexItem
+                    sx={{ height: 32, alignSelf: "center" }}
+                  />
+                  <Box>
+                    <Typography {...labelStyle}>Gross Bill</Typography>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Typography
+                        variant="body2"
+                        color="text.disabled"
+                        sx={{ textDecoration: "line-through", fontWeight: 700 }}
+                      >
+                        ₹{sale.total_amount.toLocaleString()}
+                      </Typography>
+                      <Chip
+                        label={`-₹${paymentSummary.total_credit_notes} Returned`}
+                        size="small"
+                        color="error"
+                        variant="outlined"
+                        sx={{ fontWeight: 800, height: 18, fontSize: "0.6rem" }}
+                      />
+                    </Stack>
+                  </Box>
+                </>
+              )}
+
               <Divider
                 orientation="vertical"
                 flexItem
                 sx={{ height: 32, alignSelf: "center" }}
               />
+
               <Box>
                 <Typography {...labelStyle}>Breakdown</Typography>
-                <Stack direction="row" spacing={1.5}>
+                <Stack direction="row" spacing={1.5} flexWrap="wrap">
                   <Typography
                     sx={{
                       fontSize: "0.7rem",
@@ -580,25 +538,35 @@ const SaleSummarySection = ({
                       Off: {discountAmount.toFixed(2)}
                     </Typography>
                   )}
-                  <Typography
-                    sx={{
-                      fontSize: "0.7rem",
-                      fontWeight: 700,
-                      color:
-                        Math.abs(displayRoundOff) > 0.01
-                          ? "primary.main"
-                          : "text.disabled",
-                    }}
-                  >
-                    Round: {displayRoundOff.toFixed(2)}
-                  </Typography>
+                  {Math.abs(displayRoundOff) > 0.005 && (
+                    <Typography
+                      sx={{
+                        fontSize: "0.7rem",
+                        fontWeight: 700,
+                        color: "primary.main",
+                      }}
+                    >
+                      Rnd: {displayRoundOff.toFixed(2)}
+                    </Typography>
+                  )}
+                  {hasReturns && isViewMode && (
+                    <Typography
+                      sx={{
+                        fontSize: "0.7rem",
+                        fontWeight: 700,
+                        color: "error.main",
+                      }}
+                    >
+                      Ret: -{paymentSummary.total_credit_notes.toFixed(2)}
+                    </Typography>
+                  )}
                 </Stack>
               </Box>
             </Stack>
           </Grid>
 
           {/* CENTER: Compact Inputs */}
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={5.5}>
             {!isViewMode ? (
               <Grid container spacing={1}>
                 <Grid item xs={2}>
@@ -609,7 +577,14 @@ const SaleSummarySection = ({
                       type="number"
                       variant="standard"
                       value={discountInput}
-                      onChange={handleDiscountInputChange}
+                      onChange={(e) => {
+                        setDiscountInput(e.target.value);
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v))
+                          handleFieldChange("discount", Math.max(0, v));
+                        else if (e.target.value === "")
+                          handleFieldChange("discount", 0);
+                      }}
                       sx={inputSx}
                     />
                   </Box>
@@ -622,16 +597,21 @@ const SaleSummarySection = ({
                       type="number"
                       variant="standard"
                       value={roundOffInput}
-                      onChange={handleManualRoundOffChange}
-                      placeholder="0.00"
+                      onChange={(e) => {
+                        setRoundOffInput(e.target.value);
+                        if (e.target.value === "" || e.target.value === "-") {
+                          onSaleChange({ ...sale, round_off: 0 });
+                          return;
+                        }
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) onSaleChange({ ...sale, round_off: v });
+                      }}
                       sx={inputSx}
                     />
                   </Box>
                 </Grid>
                 <Grid item xs={3.5}>
-                  <Typography {...labelStyle}>
-                    Paid (Ctrl+U for Full)
-                  </Typography>
+                  <Typography {...labelStyle}>Paid (Ctrl+U)</Typography>
                   <Box
                     sx={{
                       ...fieldBoxSx,
@@ -699,45 +679,62 @@ const SaleSummarySection = ({
                   </Box>
                 </Grid>
                 <Grid item xs={2}>
-                  <Typography {...labelStyle}>Options</Typography>
+                  <Typography {...labelStyle}>GST Opt</Typography>
                   <FormControl size="small" fullWidth>
                     <Select
                       multiple
-                      value={selectedOptions}
-                      onChange={handleOptionsChange}
+                      value={[
+                        ...(sale.is_reverse_charge
+                          ? ["is_reverse_charge"]
+                          : []),
+                        ...(sale.is_ecommerce_sale
+                          ? ["is_ecommerce_sale"]
+                          : []),
+                      ]}
+                      onChange={(e) => {
+                        const v = e.target.value as string[];
+                        onSaleChange({
+                          ...sale,
+                          is_reverse_charge: v.includes("is_reverse_charge"),
+                          is_ecommerce_sale: v.includes("is_ecommerce_sale"),
+                        });
+                      }}
                       input={
                         <OutlinedInput
                           sx={{
                             height: 32,
                             fontSize: "0.75rem",
-                            fontWeight: 700,
                             borderRadius: "4px",
                           }}
                         />
                       }
-                      renderValue={(_selected) => <Settings size={14} />}
+                      renderValue={() => <Settings size={14} />}
                     >
-                      {saleOptions.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value} dense>
-                          <Checkbox
-                            checked={selectedOptions.indexOf(opt.value) > -1}
-                            size="small"
-                          />
-                          <ListItemText
-                            primary={opt.label}
-                            primaryTypographyProps={{
-                              fontWeight: 600,
-                              fontSize: "0.8rem",
-                            }}
-                          />
-                        </MenuItem>
-                      ))}
+                      <MenuItem value="is_reverse_charge" dense>
+                        <Checkbox
+                          size="small"
+                          checked={sale.is_reverse_charge}
+                        />{" "}
+                        <ListItemText
+                          primary="Reverse Charge"
+                          primaryTypographyProps={{ fontSize: "0.75rem" }}
+                        />
+                      </MenuItem>
+                      <MenuItem value="is_ecommerce_sale" dense>
+                        <Checkbox
+                          size="small"
+                          checked={sale.is_ecommerce_sale}
+                        />{" "}
+                        <ListItemText
+                          primary="E-Commerce"
+                          primaryTypographyProps={{ fontSize: "0.75rem" }}
+                        />
+                      </MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
               </Grid>
             ) : (
-              /* VIEW MODE */
               <Stack
                 direction="row"
                 spacing={3}
@@ -763,32 +760,42 @@ const SaleSummarySection = ({
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography {...labelStyle}>Paid</Typography>
+                  <Typography {...labelStyle}>Total Paid</Typography>
                   <Typography sx={{ fontWeight: 900, fontSize: "0.8rem" }}>
                     ₹{paymentSummary.total_paid.toLocaleString()}
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography {...labelStyle}>Balance</Typography>
-                  <Typography
-                    sx={{
-                      fontWeight: 900,
-                      fontSize: "0.8rem",
-                      color: "error.main",
-                    }}
-                  >
-                    ₹{paymentSummary.balance.toLocaleString()}
-                  </Typography>
+                  <Typography {...labelStyle}>Current Balance</Typography>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography
+                      sx={{
+                        fontWeight: 900,
+                        fontSize: "0.8rem",
+                        color:
+                          paymentSummary.balance > 0
+                            ? "error.main"
+                            : "success.main",
+                      }}
+                    >
+                      ₹{paymentSummary.balance.toLocaleString()}
+                    </Typography>
+                    {hasReturns && (
+                      <Tooltip title="Balance is Net Amount minus Paid Amount.">
+                        <Info size={12} color={theme.palette.text.disabled} />
+                      </Tooltip>
+                    )}
+                  </Stack>
                 </Box>
               </Stack>
             )}
           </Grid>
 
-          {/* RIGHT: High-Speed Actions */}
+          {/* RIGHT: Actions */}
           {!isViewMode && (
             <Grid item xs={12} md={2.5}>
               <Stack direction="row" spacing={1} alignItems="center">
-                <Stack spacing={0}>
+                <Stack>
                   <FormControlLabel
                     control={
                       <Checkbox
@@ -843,7 +850,7 @@ const SaleSummarySection = ({
                 >
                   {isSubmitting ? "..." : "SAVE"}
                 </Button>
-                <IconButton onClick={handleCancel} color="error" size="small">
+                <IconButton onClick={resetForm} color="error" size="small">
                   <X size={18} />
                 </IconButton>
               </Stack>

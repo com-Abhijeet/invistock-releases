@@ -1,33 +1,54 @@
 import db from "../db/db.mjs";
 
 /**
- * Profit & Loss Statement Data
+ * Profit & Loss Statement (Income Statement)
+ * CA STRICT LOGIC:
+ * - Revenue = Net Taxable Sales (Net of Returns, EXCLUDING GST)
+ * - COGS = Purchase Cost of items actually kept by customers (Net of Returns)
+ * - Stock Gain/Loss = Only extraordinary adjustments (excludes Returns to prevent double-counting)
+ * - Expenses = All operating outflows
  */
 export function getPnLData(startDate, endDate) {
+  // 1. Calculate Net Taxable Revenue (Sales minus Returns, excluding GST)
   const revenueRow = db
     .prepare(
       `
-    SELECT SUM(total_amount) as total_revenue
-    FROM sales
-    WHERE status != 'cancelled' AND date(created_at) BETWEEN date(?) AND date(?)
+    SELECT 
+      SUM(
+        ( (si.rate * (si.quantity - COALESCE(si.return_quantity, 0)) * (1 - si.discount/100.0)) ) / 
+        (1 + (COALESCE(si.gst_rate, p.gst_rate, 0)/100.0))
+      ) as taxable_revenue
+    FROM sales_items si
+    JOIN sales s ON si.sale_id = s.id
+    LEFT JOIN products p ON si.product_id = p.id
+    WHERE s.status != 'cancelled' 
+      AND s.is_quote = 0 
+      AND date(s.created_at) BETWEEN date(?) AND date(?)
   `,
     )
     .get(startDate, endDate);
-  const totalRevenue = revenueRow.total_revenue || 0;
 
+  const netTaxableRevenue = revenueRow.taxable_revenue || 0;
+
+  // 2. Calculate COGS (Net of Returns)
   const cogsRow = db
     .prepare(
       `
-    SELECT SUM(si.quantity * COALESCE(p.average_purchase_price, p.mop, 0)) as total_cogs
+    SELECT 
+      SUM((si.quantity - COALESCE(si.return_quantity, 0)) * COALESCE(p.average_purchase_price, p.mop, 0)) as total_cogs
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
     JOIN products p ON si.product_id = p.id
-    WHERE s.status != 'cancelled' AND date(s.created_at) BETWEEN date(?) AND date(?)
+    WHERE s.status != 'cancelled' 
+      AND s.is_quote = 0
+      AND date(s.created_at) BETWEEN date(?) AND date(?)
   `,
     )
     .get(startDate, endDate);
+
   const totalCogs = cogsRow.total_cogs || 0;
 
+  // 3. Inventory Gains/Losses (From stock adjustments, strictly excluding Returns)
   const adjustmentsRow = db
     .prepare(
       `
@@ -41,6 +62,7 @@ export function getPnLData(startDate, endDate) {
     FROM stock_adjustments sa
     JOIN products p ON sa.product_id = p.id
     WHERE date(sa.created_at) BETWEEN date(?) AND date(?)
+      AND sa.category NOT IN ('Sales Return', 'Purchase Return')
   `,
     )
     .get(startDate, endDate);
@@ -48,6 +70,7 @@ export function getPnLData(startDate, endDate) {
   const stockGain = adjustmentsRow.total_gain || 0;
   const stockLoss = adjustmentsRow.total_loss || 0;
 
+  // 4. Operating Expenses
   const expenses = db
     .prepare(
       `
@@ -62,139 +85,165 @@ export function getPnLData(startDate, endDate) {
   const totalExpenses = expenses.reduce((sum, exp) => sum + exp.total, 0);
 
   return {
-    totalRevenue,
-    totalCogs,
-    grossProfit: totalRevenue - totalCogs,
-    stockGain,
-    stockLoss,
+    totalRevenue: parseFloat(netTaxableRevenue.toFixed(2)),
+    totalCogs: parseFloat(totalCogs.toFixed(2)),
+    grossProfit: parseFloat((netTaxableRevenue - totalCogs).toFixed(2)),
+    stockGain: parseFloat(stockGain.toFixed(2)),
+    stockLoss: parseFloat(stockLoss.toFixed(2)),
     expenses,
-    totalExpenses,
-    netProfit: totalRevenue - totalCogs + stockGain - totalExpenses - stockLoss,
+    totalExpenses: parseFloat(totalExpenses.toFixed(2)),
+    netProfit: parseFloat(
+      (
+        netTaxableRevenue -
+        totalCogs +
+        stockGain -
+        totalExpenses -
+        stockLoss
+      ).toFixed(2),
+    ),
   };
 }
 
+/**
+ * Customer Ledger (Accounts Receivable)
+ * Strict Reconciliation:
+ * - Sales/Refunds = DEBIT (Increases what they owe)
+ * - Payments/Returns = CREDIT (Decreases what they owe)
+ */
 export function getCustomerLedger(customerId, startDate, endDate) {
   const obRow = db
     .prepare(
       `
     SELECT
-      (SELECT COALESCE(SUM(total_amount), 0) FROM sales WHERE customer_id = ? AND date(created_at) < date(?))
+      (SELECT COALESCE(SUM(total_amount), 0) FROM sales WHERE customer_id = ? AND date(created_at) < date(?) AND status != 'cancelled')
+      +
+      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'customer' AND type = 'payment_out' AND date(transaction_date) < date(?) AND status != 'deleted')
       -
-      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_type = 'customer' AND entity_id = ? AND type IN ('payment_in', 'credit_note') AND date(transaction_date) < date(?))
+      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'customer' AND type IN ('payment_in', 'credit_note') AND date(transaction_date) < date(?) AND status != 'deleted')
       as balance
   `,
     )
-    .get(customerId, startDate, customerId, startDate);
+    .get(customerId, startDate, customerId, startDate, customerId, startDate);
+
   const openingBalance = obRow.balance || 0;
 
   const ledger = db
     .prepare(
       `
+    -- DEBIT: Sales Invoices
     SELECT 
-      'Sale Invoice' as record_type, 
-      s.id, 
-      s.reference_no, 
-      date(s.created_at) as date, 
-      s.total_amount as debit, 
-      COALESCE((
-        SELECT SUM(amount) 
-        FROM transactions t 
-        WHERE t.bill_id = s.id 
-          AND t.bill_type = 'sale' 
-          AND t.type = 'payment_in' 
-          AND date(t.transaction_date) = date(s.created_at) 
-          AND t.status != 'deleted'
-      ), 0) as credit, 
-      s.note
+      'Sale Invoice' as record_type, s.id, s.reference_no, date(s.created_at) as date, 
+      s.total_amount as debit, 0 as credit, s.note
     FROM sales s
     WHERE s.customer_id = ? AND date(s.created_at) BETWEEN date(?) AND date(?) AND s.status != 'cancelled'
     
     UNION ALL
-    
+
+    -- DEBIT: Cash Refunds to Customer (Increases Balance)
     SELECT 
-      CASE WHEN t.type = 'payment_in' THEN 'Payment Received' ELSE 'Credit Note' END as record_type, 
-      t.id, 
-      t.reference_no, 
-      date(t.transaction_date) as date, 
-      0 as debit, 
-      t.amount as credit, 
-      t.note
+      'Cash Refund' as record_type, t.id, t.reference_no, date(t.transaction_date) as date,
+      t.amount as debit, 0 as credit, t.note
     FROM transactions t
-    LEFT JOIN sales s ON t.bill_id = s.id AND t.bill_type = 'sale'
-    WHERE t.entity_type = 'customer' 
-      AND t.entity_id = ? 
-      AND t.type IN ('payment_in', 'credit_note') 
-      AND date(t.transaction_date) BETWEEN date(?) AND date(?) 
-      AND t.status != 'deleted'
-      AND NOT (t.type = 'payment_in' AND t.bill_type = 'sale' AND s.id IS NOT NULL AND date(t.transaction_date) = date(s.created_at))
+    WHERE t.entity_id = ? AND t.entity_type = 'customer' AND t.type = 'payment_out'
+      AND date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.status != 'deleted'
+
+    UNION ALL
     
-    ORDER BY date ASC
+    -- CREDIT: Payments Received or Sales Returns
+    SELECT 
+      CASE WHEN t.type = 'payment_in' THEN 'Payment Received' ELSE 'Sales Return (CN)' END as record_type, 
+      t.id, t.reference_no, date(t.transaction_date) as date, 
+      0 as debit, t.amount as credit, t.note
+    FROM transactions t
+    WHERE t.entity_id = ? AND t.entity_type = 'customer' AND t.type IN ('payment_in', 'credit_note')
+      AND date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.status != 'deleted'
+    
+    ORDER BY date ASC, id ASC
   `,
     )
-    .all(customerId, startDate, endDate, customerId, startDate, endDate);
+    .all(
+      customerId,
+      startDate,
+      endDate,
+      customerId,
+      startDate,
+      endDate,
+      customerId,
+      startDate,
+      endDate,
+    );
 
   return { openingBalance, ledger };
 }
 
+/**
+ * Supplier Ledger (Accounts Payable)
+ * Strict Reconciliation:
+ * - Purchases/Debit Notes = CREDIT (Increases what we owe)
+ * - Payments Out/Returns = DEBIT (Decreases what we owe)
+ */
 export function getSupplierLedger(supplierId, startDate, endDate) {
   const obRow = db
     .prepare(
       `
     SELECT
-      (SELECT COALESCE(SUM(total_amount), 0) FROM purchases WHERE supplier_id = ? AND date(date) < date(?))
+      (SELECT COALESCE(SUM(total_amount), 0) FROM purchases WHERE supplier_id = ? AND date(date) < date(?) AND status != 'cancelled')
+      +
+      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'supplier' AND type = 'payment_in' AND date(transaction_date) < date(?) AND status != 'deleted')
       -
-      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_type = 'supplier' AND entity_id = ? AND type IN ('payment_out', 'debit_note') AND date(transaction_date) < date(?))
+      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'supplier' AND type IN ('payment_out', 'debit_note') AND date(transaction_date) < date(?) AND status != 'deleted')
       as balance
   `,
     )
-    .get(supplierId, startDate, supplierId, startDate);
+    .get(supplierId, startDate, supplierId, startDate, supplierId, startDate);
+
   const openingBalance = obRow.balance || 0;
 
   const ledger = db
     .prepare(
       `
+    -- CREDIT: Purchase Bills
     SELECT 
-      'Purchase Bill' as record_type, 
-      p.id, 
-      p.reference_no, 
-      date(p.date) as date, 
-      COALESCE((
-        SELECT SUM(amount) 
-        FROM transactions t 
-        WHERE t.bill_id = p.id 
-          AND t.bill_type = 'purchase' 
-          AND t.type = 'payment_out' 
-          AND date(t.transaction_date) = date(p.date) 
-          AND t.status != 'deleted'
-      ), 0) as debit, 
-      p.total_amount as credit, 
-      p.note
+      'Purchase Bill' as record_type, p.id, p.reference_no, date(p.date) as date, 
+      0 as debit, p.total_amount as credit, p.note
     FROM purchases p
     WHERE p.supplier_id = ? AND date(p.date) BETWEEN date(?) AND date(?) AND p.status != 'cancelled'
     
     UNION ALL
-    
+
+    -- CREDIT: Cash Refund received from Supplier
     SELECT 
-      CASE WHEN t.type = 'payment_out' THEN 'Payment Sent' ELSE 'Debit Note' END as record_type, 
-      t.id, 
-      t.reference_no, 
-      date(t.transaction_date) as date, 
-      t.amount as debit, 
-      0 as credit, 
-      t.note
+      'Refund Received' as record_type, t.id, t.reference_no, date(t.transaction_date) as date, 
+      0 as debit, t.amount as credit, t.note
     FROM transactions t
-    LEFT JOIN purchases p ON t.bill_id = p.id AND t.bill_type = 'purchase'
-    WHERE t.entity_type = 'supplier' 
-      AND t.entity_id = ? 
-      AND t.type IN ('payment_out', 'debit_note') 
-      AND date(t.transaction_date) BETWEEN date(?) AND date(?) 
-      AND t.status != 'deleted'
-      AND NOT (t.type = 'payment_out' AND t.bill_type = 'purchase' AND p.id IS NOT NULL AND date(t.transaction_date) = date(p.date))
+    WHERE t.entity_id = ? AND t.entity_type = 'supplier' AND t.type = 'payment_in'
+      AND date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.status != 'deleted'
+
+    UNION ALL
     
-    ORDER BY date ASC
+    -- DEBIT: Payments or Purchase Returns
+    SELECT 
+      CASE WHEN t.type = 'payment_out' THEN 'Payment Sent' ELSE 'Purchase Return (DN)' END as record_type, 
+      t.id, t.reference_no, date(t.transaction_date) as date, 
+      t.amount as debit, 0 as credit, t.note
+    FROM transactions t
+    WHERE t.entity_id = ? AND t.entity_type = 'supplier' AND t.type IN ('payment_out', 'debit_note')
+      AND date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.status != 'deleted'
+    
+    ORDER BY date ASC, id ASC
   `,
     )
-    .all(supplierId, startDate, endDate, supplierId, startDate, endDate);
+    .all(
+      supplierId,
+      startDate,
+      endDate,
+      supplierId,
+      startDate,
+      endDate,
+      supplierId,
+      startDate,
+      endDate,
+    );
 
   return { openingBalance, ledger };
 }
@@ -286,8 +335,8 @@ export function getStockSummaryReport(startDate, endDate) {
     ),
     SaleAgg AS (
         SELECT si.product_id,
-               SUM(CASE WHEN date(s.created_at) BETWEEN date(@start) AND date(@end) THEN si.quantity ELSE 0 END) as period_qty,
-               SUM(CASE WHEN date(s.created_at) >= date(@start) THEN si.quantity ELSE 0 END) as since_start_qty
+               SUM(CASE WHEN date(s.created_at) BETWEEN date(@start) AND date(@end) THEN (si.quantity - COALESCE(si.return_quantity, 0)) ELSE 0 END) as period_qty,
+               SUM(CASE WHEN date(s.created_at) >= date(@start) THEN (si.quantity - COALESCE(si.return_quantity, 0)) ELSE 0 END) as since_start_qty
         FROM sales_items si
         JOIN sales s ON si.sale_id = s.id
         WHERE s.status != 'cancelled'
@@ -295,8 +344,8 @@ export function getStockSummaryReport(startDate, endDate) {
     ),
     AdjAgg AS (
         SELECT product_id,
-               SUM(CASE WHEN date(created_at) BETWEEN date(@start) AND date(@end) THEN (new_quantity - old_quantity) ELSE 0 END) as period_qty,
-               SUM(CASE WHEN date(created_at) >= date(@start) THEN (new_quantity - old_quantity) ELSE 0 END) as since_start_qty
+               SUM(CASE WHEN date(created_at) BETWEEN date(@start) AND date(@end) AND category NOT IN ('Sales Return', 'Purchase Return') THEN (new_quantity - old_quantity) ELSE 0 END) as period_qty,
+               SUM(CASE WHEN date(created_at) >= date(@start) AND category NOT IN ('Sales Return', 'Purchase Return') THEN (new_quantity - old_quantity) ELSE 0 END) as since_start_qty
         FROM stock_adjustments
         GROUP BY product_id
     )
@@ -347,10 +396,6 @@ export function getStockSummaryReport(startDate, endDate) {
 // FIXED: AGING & OUTSTANDING REPORTS (A/R & A/P)
 // ---------------------------------------------------------------------------
 
-/**
- * 1. Accounts Receivable (A/R) Aging Summary
- * Added robust LOWER() checks and included 'sale' in type array
- */
 export function getReceivablesAging() {
   const query = `
     WITH SalePayments AS (
@@ -388,9 +433,6 @@ export function getReceivablesAging() {
   return db.prepare(query).all();
 }
 
-/**
- * 2. Customer Bill-by-Bill Outstanding (A/R Breakdown)
- */
 export function getCustomerBillByBill(customerId) {
   const query = `
     WITH SalePayments AS (
@@ -417,10 +459,6 @@ export function getCustomerBillByBill(customerId) {
   return db.prepare(query).all(customerId);
 }
 
-/**
- * 3. Accounts Payable (A/P) Aging Summary
- * Added robust LOWER() checks and included 'purchase' in type array
- */
 export function getPayablesAging() {
   const query = `
     WITH PurchasePayments AS (
@@ -458,9 +496,6 @@ export function getPayablesAging() {
   return db.prepare(query).all();
 }
 
-/**
- * 4. Supplier Bill-by-Bill Outstanding (A/P Breakdown)
- */
 export function getSupplierBillByBill(supplierId) {
   const query = `
     WITH PurchasePayments AS (

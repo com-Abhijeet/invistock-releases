@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("electron", {
     invoke: (channel, ...args) => {
       const validInvokeChannels = [
         "print-check",
+        "print-transaction",
         "process-report",
         "print-custom-label",
         "license-updated-restart-app",
@@ -157,7 +158,7 @@ contextBridge.exposeInMainWorld("electron", {
 
   uploadInvoiceToDrive: (invoiceData) =>
     ipcRenderer.invoke("upload-invoice-to-drive", invoiceData),
-  
+
   getGDriveStatus: () => ipcRenderer.invoke("gdrive-status"),
   loginGDrive: () => ipcRenderer.invoke("gdrive-login"),
   onGDriveConnected: (callback) => ipcRenderer.on("gdrive-connected", callback),

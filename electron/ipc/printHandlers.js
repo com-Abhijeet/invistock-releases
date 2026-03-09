@@ -17,6 +17,9 @@ const {
 } = require("../../backend/repositories/supplierRepository.mjs");
 const { createSupplierLedgerHTML } = require("../supplierLedgerTemplate.js");
 const { processReport } = require("../reports/reportPrintHandler.js");
+const {
+  createTransactionReceiptHTML,
+} = require("../transactionPrintTemplate.js");
 
 function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
   ipcMain.handle("print-bulk-labels", async (event, items) => {
@@ -153,6 +156,33 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
 
   ipcMain.handle("process-report", async (event, type, data, meta, action) => {
     return await processReport(type, data, meta, action);
+  });
+
+  ipcMain.handle("print-transaction", async (event, payload) => {
+    try {
+      const shop = await getShop();
+      if (!shop) throw new Error("Shop settings not found");
+
+      const htmlContent = createTransactionReceiptHTML({ shop, ...payload });
+      const win = new BrowserWindow({ show: true });
+
+      // ✅ FIX: Attach listener BEFORE loading the URL
+      win.webContents.on("did-finish-load", () => {
+        // Force silent: false so the user can select their A4/A5 printer vs Thermal printer
+        win.webContents.print({ silent: false }, (success, error) => {
+          if (!success) console.error("Transaction print failed:", error);
+          win.close();
+        });
+      });
+
+      await win.loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
+      );
+      return { success: true };
+    } catch (error) {
+      console.error("Failed to print transaction:", error);
+      return { success: false, error: error.message };
+    }
   });
 }
 
