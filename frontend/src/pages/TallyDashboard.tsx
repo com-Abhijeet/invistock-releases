@@ -30,7 +30,6 @@ import {
   BookOpen,
   Wrench,
   Info,
-  ArrowRight,
   UserCircle,
   Truck,
   ShoppingCart,
@@ -53,7 +52,7 @@ import { DataCard as StatCard } from "../components/DataCard";
 import TallySetupGuide from "../components/TallySetupGuide";
 
 // --- INTELLIGENT ERROR TRANSLATOR ---
-const getHumanReadableError = (rawError: string, type: string) => {
+const getHumanReadableError = (rawError: string, _type: string) => {
   const errorLower = rawError.toLowerCase();
 
   if (errorLower.includes("does not exist") || errorLower.includes("ledger")) {
@@ -263,7 +262,7 @@ export default function TallyDashboard() {
       />
 
       <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
-        <Tabs value={activeTab} onChange={(e, val) => setActiveTab(val)}>
+        <Tabs value={activeTab} onChange={(_e, val) => setActiveTab(val)}>
           <Tab
             label="Sync Dashboard"
             icon={<Database size={18} />}

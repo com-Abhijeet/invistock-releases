@@ -42,7 +42,7 @@ export default function DataTable({
   const theme = useTheme();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedRow, setSelectedRow] = useState<any>(null);
-  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [_focusedIndex, setFocusedIndex] = useState<number>(-1);
 
   // Ref to the table container to manage focus within the list
   const tableRef = useRef<HTMLTableSectionElement>(null);

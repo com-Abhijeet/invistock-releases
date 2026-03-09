@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Box,
   Typography,
@@ -15,7 +15,6 @@ import {
   TableHead,
   TableRow,
   Alert,
-  AlertTitle,
   Accordion,
   AccordionSummary,
   AccordionDetails,
