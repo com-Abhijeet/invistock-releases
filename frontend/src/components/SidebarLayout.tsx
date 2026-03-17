@@ -51,6 +51,7 @@ import LabelInfoModal from "./inventory/LabelInfoModal";
 import theme from "../../theme";
 import { menuSections } from "../config/menu";
 import ExpiringItemsNotification from "./layout/ExpiringItemsNotification";
+import CalculatorModal from "./layout/CalculatorModal";
 
 const drawerWidth = 260;
 const collapsedDrawerWidth = 72;
@@ -552,8 +553,9 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
                     <Tag size={20} />
                   </IconButton>
                 </Tooltip>
-                <ExpiringItemsNotification />
 
+                <ExpiringItemsNotification />
+                <CalculatorModal />
                 <LowStockNotification />
                 <OverduePaymentsNotification />
 

@@ -4,7 +4,7 @@ const {
   formatAmount,
   numberToWords,
 } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
 
 const a5Portrait = (data) => {
   const { sale, shop, localSettings } = data;
@@ -12,9 +12,6 @@ const a5Portrait = (data) => {
   const colSettings = localSettings.columns || {};
   const displaySettings = localSettings.display || {};
   const legalSettings = localSettings.legal || {};
-
-  // Dynamic Logo Construction - Updated to use logo_url first
-  const logoSrc = getLogoSrc(shop.logo_url);
 
   // Snapshot Variables
   const custName = sale.customer_name || "Cash Customer";
@@ -171,7 +168,7 @@ const a5Portrait = (data) => {
               <div style="font-size:9px;">${formatAddress(shop.address_line1, shop.city, shop.state, shop.pincode)}</div>
               <div style="font-size:9px; margin-top:2px;">Ph: ${shop.contact_number} ${gstEnabled ? `| <strong>GSTIN: ${shop.gstin}</strong>` : ""}</div>
             </div>
-            ${logoSrc ? `<img src="${logoSrc}" onerror="this.style.display='none'" style="max-height: 50px; max-width: 100px; object-fit: contain;" />` : ""}
+            
           </div>
           <div class="invoice-meta">
             <div class="flex-between"><span>Inv No:</span> <span class="bold">${sale.reference_no}</span></div>
