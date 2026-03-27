@@ -428,7 +428,8 @@ export async function generatePrintPayload({
       copies: qty,
     });
   } else if (scope === "batch") {
-    const batch = BatchRepo.getBatchById(batchId);
+    console.log("Batch id", batchId);
+    const batch = await BatchRepo.getBatchById(batchId);
     if (!batch) throw new Error("Batch not found");
     const code = batch.barcode || batch.batch_uid || `BAT-${batch.id}`;
     labels.push({

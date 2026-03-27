@@ -8,6 +8,7 @@ const {
 const {
   getAllCategories,
 } = require("../../backend/repositories/categoryRepository.mjs");
+const { getShop } = require("../../backend/repositories/shopRepository.mjs");
 const { generateExcelReport } = require("../generateExcelReport.js");
 const { createInvoiceHTML } = require("../invoiceTemplate.js");
 
@@ -26,14 +27,11 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
         if (canceled || !filePath)
           return { success: false, message: "Export cancelled." };
 
-        // 1. Fix the ".xlsx.xlsx" double extension issue
-        // The dialog adds .xlsx, but generateExcelReport likely adds it again internally.
         let finalPath = filePath;
         if (finalPath.toLowerCase().endsWith(".xlsx")) {
-          finalPath = finalPath.slice(0, -5); // Strip the extension before passing
+          finalPath = finalPath.slice(0, -5);
         }
 
-        // 2. Fetch data
         const rawSalesData = getExportableSalesData({
           startDate,
           endDate,
@@ -47,77 +45,164 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
           };
         }
 
-        // 3. Data Sanitization (Fixes "Repair Broken File" in Excel)
-        // Excel strictly rejects nulls, NaNs, and certain XML control characters.
+        // Fetch Shop config to determine Tax Calculations & Interstate status
+        const shop = await getShop();
+        const inclusiveTax = shop?.inclusive_tax_pricing === 1;
+        const shopState = shop?.state || "";
+
+        // Data Sanitization & Strict GST Mathematics
         const salesData = rawSalesData.map((row) => {
           const cleanRow = {};
+
+          // Clean strings for Excel
           for (const key in row) {
             let val = row[key];
             if (val === null || val === undefined) {
-              cleanRow[key] = ""; // Convert nulls to empty strings
+              cleanRow[key] = "";
             } else if (typeof val === "string") {
-              // Strip invalid XML control characters (often found in notes/descriptions)
               cleanRow[key] = val.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F]/g, "");
             } else if (typeof val === "number" && isNaN(val)) {
-              cleanRow[key] = 0; // Prevent NaN crashes
+              cleanRow[key] = 0;
             } else {
               cleanRow[key] = val;
             }
           }
+
+          if (exportType === "item") {
+            const qty = Number(row.quantity) || 0;
+            const retQty = Number(row.return_quantity) || 0;
+            const netQty = qty - retQty;
+
+            const rate = Number(row.rate) || 0;
+            const discPct = Number(row.item_discount_percentage) || 0;
+            const gstPct = Number(row.gst_rate) || 0;
+
+            // Calculate base per-unit values
+            const discountedRate = rate * (1 - discPct / 100);
+            let unitTaxable, unitGst;
+
+            if (inclusiveTax) {
+              unitTaxable = discountedRate / (1 + gstPct / 100);
+              unitGst = discountedRate - unitTaxable;
+            } else {
+              unitTaxable = discountedRate;
+              unitGst = discountedRate * (gstPct / 100);
+            }
+
+            const isInterstate =
+              shopState &&
+              row.customer_state &&
+              shopState.toLowerCase() !== row.customer_state.toLowerCase();
+
+            // 1. ORIGINAL VALUES (Before Return)
+            cleanRow.original_quantity = qty;
+            cleanRow.original_taxable = Number((unitTaxable * qty).toFixed(2));
+            cleanRow.original_gst = Number((unitGst * qty).toFixed(2));
+            cleanRow.original_total = Number(
+              ((unitTaxable + unitGst) * qty).toFixed(2),
+            );
+
+            // 2. RETURNED VALUES (Credit Note Impact)
+            cleanRow.returned_quantity = retQty;
+            cleanRow.returned_taxable = Number(
+              (unitTaxable * retQty).toFixed(2),
+            );
+            cleanRow.returned_gst = Number((unitGst * retQty).toFixed(2));
+            cleanRow.returned_total = Number(
+              ((unitTaxable + unitGst) * retQty).toFixed(2),
+            );
+
+            // 3. NET VALUES (Actual realization after returns)
+            cleanRow.net_quantity = netQty;
+            cleanRow.net_taxable = Number((unitTaxable * netQty).toFixed(2));
+            cleanRow.net_gst = Number((unitGst * netQty).toFixed(2));
+            cleanRow.net_total = Number(
+              ((unitTaxable + unitGst) * netQty).toFixed(2),
+            );
+
+            // CGST / SGST / IGST Breakup on NET Value
+            if (isInterstate) {
+              cleanRow.net_igst = cleanRow.net_gst;
+              cleanRow.net_cgst = 0;
+              cleanRow.net_sgst = 0;
+            } else {
+              cleanRow.net_igst = 0;
+              cleanRow.net_cgst = Number((cleanRow.net_gst / 2).toFixed(2));
+              cleanRow.net_sgst = Number((cleanRow.net_gst / 2).toFixed(2));
+            }
+          } else {
+            // Header Export Logic
+            const subtotal = Number(row.subtotal) || 0;
+            const returnedAmt = Number(row.returned_amount) || 0;
+            const billDisc = Number(row.bill_discount_percentage) || 0;
+
+            cleanRow.bill_discount_amount = Number(
+              (subtotal * (billDisc / 100)).toFixed(2),
+            );
+            cleanRow.original_grand_total = Number(row.bill_grand_total) || 0;
+
+            const returnDisc = returnedAmt * (billDisc / 100);
+            cleanRow.returned_grand_total = Number(
+              (returnedAmt - returnDisc).toFixed(2),
+            );
+            cleanRow.net_grand_total = Number(
+              (
+                cleanRow.original_grand_total - cleanRow.returned_grand_total
+              ).toFixed(2),
+            );
+          }
+
           return cleanRow;
         });
 
         let columnMap = {};
 
         if (exportType === "header") {
-          // Approach 2: Header Export (Sales Register for Accounting)
           columnMap = {
             reference_no: "Invoice No",
             invoice_date: "Date",
             customer_name: "Customer Name",
             customer_phone: "Phone",
-            bill_address: "Billing Address",
-            city: "City",
-            state: "State",
-            pincode: "Pincode",
+            customer_state: "State of Supply",
             gstin: "GSTIN",
-            subtotal: "Subtotal",
-            bill_discount_percentage: "Bill Discount (%)",
-            bill_discount_amount: "Bill Discount (Amt)",
-            bill_round_off: "Round Off",
-            bill_grand_total: "Grand Total",
+            subtotal: "Original Subtotal",
+            bill_discount_amount: "Bill Discount",
+            original_grand_total: "Original Grand Total",
+            returned_grand_total: "Returned Amount",
+            net_grand_total: "Net Grand Total (After Return)",
             paid_amount: "Paid Amount",
             payment_mode: "Payment Mode",
             status: "Status",
-            note: "Note",
-            employee_id: "Staff ID",
           };
         } else {
-          // Approach 1: Item Export (Inventory/Product Analysis)
           columnMap = {
             reference_no: "Invoice No",
             invoice_date: "Date",
             customer_name: "Customer",
-            customer_phone: "Phone",
-            bill_address: "Billing Address",
-            city: "City",
-            state: "State",
-            pincode: "Pincode",
+            customer_state: "State of Supply",
             gstin: "GSTIN",
             product_name: "Product",
-            item_description: "Item Description",
-            barcode: "Barcode",
             hsn: "HSN",
-            quantity: "Qty",
-            unit: "Unit",
             rate: "Rate",
             gst_rate: "GST %",
-            item_discount_percentage: "Item Disc %",
-            item_total: "Item Total",
-            bill_discount_percentage: "Bill Disc %",
-            bill_round_off: "Bill Round Off",
-            bill_grand_total: "Bill Grand Total",
-            payment_mode: "Payment Mode",
+
+            original_quantity: "Original Qty",
+            original_taxable: "Original Taxable (₹)",
+            original_gst: "Original GST (₹)",
+            original_total: "Original Total (₹)",
+
+            returned_quantity: "Returned Qty",
+            returned_taxable: "Returned Taxable (₹)",
+            returned_gst: "Returned GST (₹)",
+            returned_total: "Returned Total (₹)",
+
+            net_quantity: "Net Qty",
+            net_taxable: "Net Taxable (₹)",
+            net_cgst: "Net CGST (₹)",
+            net_sgst: "Net SGST (₹)",
+            net_igst: "Net IGST (₹)",
+            net_total: "Net Final Total (₹)",
+
             status: "Status",
           };
         }

@@ -139,6 +139,8 @@ const BRANDING_FOOTER = `
 function createInvoiceHTML(data) {
   const { sale, shop, localSettings } = data;
 
+  console.log("sale reference no", sale.reference_no);
+
   // Local Settings Parsing
   const colSettings = localSettings?.columns || {};
   const displaySettings = localSettings?.display || {};

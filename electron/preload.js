@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld("electron", {
         "whatsapp-customer-ledger", // ✅ Added this missing channel
         "open-external-url",
         "whatsapp-restart",
+        "whatsapp-bulk-reminders",
 
         // Auth & Utils
         "login-admin",

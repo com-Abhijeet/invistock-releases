@@ -8,7 +8,7 @@ export const handlePrint = (sale: SaleData) => {
       ? JSON.parse(localSettingsString)
       : {};
 
-    console.log(localSettings);
+    // console.log(localSettings);
     // Get shop data from local storage
     const shopDataString = localStorage.getItem("shop");
     const shopData: ShopData | null = shopDataString

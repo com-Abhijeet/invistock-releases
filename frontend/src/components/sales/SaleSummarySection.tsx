@@ -68,6 +68,11 @@ const SaleSummarySection = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const localSettingsString = localStorage.getItem("app_print_settings");
+  const localSettings = localSettingsString
+    ? JSON.parse(localSettingsString)
+    : {};
+
   // --- COMPLIANT DERIVED CALCULATIONS ---
   const subtotal = sale.items.reduce(
     (sum, item) => sum + (Number(item.price) || 0),
@@ -324,9 +329,22 @@ const SaleSummarySection = ({
             await window.electron?.uploadInvoiceToDrive(invoiceData);
 
           if (uploadRes && uploadRes.success) {
-            // 3A. Success! Send the new specific Web Link
+            // 3A. Success! Send BOTH itemised message + Web Link
+
+            const nl = "\n";
+
+            const itemsList = savedSale.items
+              .map(
+                (item: any, index: number) =>
+                  `${index + 1}. ${item.product_name} x ${item.quantity} = ₹${(
+                    item.quantity * item.rate
+                  ).toLocaleString("en-IN")}`,
+              )
+              .join(nl);
+
             const webLink = `https://getkosh.co.in/invoice/web-view/${uploadRes.fileId}`;
-            message = `*${shopName}*\n\nHello ${customer?.name || "Customer"},\n\nThank you for shopping with us! 🙏\n\n🧾 *View your detailed digital bill here:*\n${webLink}\n\n_Please find the PDF copy attached below._\n\n_Powered by Kosh Billing_`;
+
+            message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}${nl}Hello ${customer?.name || "Customer"},${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}*Items Purchased:*${nl}${itemsList}${nl}———————————————${nl}💰 *Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}🌐 *View your detailed digital bill here:*${nl}${webLink}${nl}Thank you for shopping with us! 🙏${nl}Please find the PDF copy attached below.${nl}_Powered by Kosh Billing Software_`;
           } else {
             throw new Error(uploadRes?.error || "Drive upload failed");
           }
@@ -345,7 +363,17 @@ const SaleSummarySection = ({
             )
             .join(nl);
 
-          message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}${nl}Hello ${customer?.name || "Customer"},${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}*Items Purchased:*${nl}${itemsList}${nl}${nl}———————————————${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}${nl}Thank you for shopping with us 🙏${nl}Please find your invoice PDF attached.`;
+          message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}
+          ${nl}Hello ${customer?.name || "Customer"},
+          ${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}
+          ${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}
+          ${nl}${nl}*Items Purchased:*${nl}${itemsList}
+          ${nl}${nl}———————————————
+          ${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}
+          ${nl}———————————————${nl}
+          ${nl}Thank you for shopping with us 🙏
+          ${nl}Please find your invoice PDF attached.
+          ${nl}✨ Powered by Kosh`;
         }
 
         // 4. Send the WhatsApp Text Message (with or without link)
@@ -355,10 +383,13 @@ const SaleSummarySection = ({
 
         // 5. ALWAYS attach the PDF Invoice (Removed the 'isCloudLinkSent' condition)
         const res = await window.electron?.sendWhatsAppInvoicePdf({
-          sale: sale,
+          sale: savedSale,
           shop: shop,
+          localSettings: localSettings,
           customerPhone: customer?.phone,
         });
+
+        console.log("sale reference in frontend", sale.reference_no);
 
         console.log("RESPONSE FROM PDF", res);
       }
@@ -569,7 +600,7 @@ const SaleSummarySection = ({
           <Grid item xs={12} md={5.5}>
             {!isViewMode ? (
               <Grid container spacing={1}>
-                <Grid item xs={2}>
+                {/* <Grid item xs={2}>
                   <Typography {...labelStyle}>Disc %</Typography>
                   <Box sx={fieldBoxSx}>
                     <TextField
@@ -588,7 +619,7 @@ const SaleSummarySection = ({
                       sx={inputSx}
                     />
                   </Box>
-                </Grid>
+                </Grid> */}
                 <Grid item xs={2.5}>
                   <Typography {...labelStyle}>Round Off</Typography>
                   <Box sx={fieldBoxSx}>

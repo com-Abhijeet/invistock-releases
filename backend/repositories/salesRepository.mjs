@@ -202,22 +202,24 @@ export function processSalesReturn(payload) {
       customTotalAmount !== undefined ? customTotalAmount : totalRefundAmount;
 
     // Capture the result of the insertion to get the row ID
-    const result = db.prepare(
-      `
+    const result = db
+      .prepare(
+        `
       INSERT INTO transactions (
         reference_no, type, bill_id, bill_type, entity_id, entity_type,
         transaction_date, amount, payment_mode, status, note
       ) VALUES (?, 'credit_note', ?, 'sale', ?, 'customer', ?, ?, ?, 'completed', ?)
     `,
-    ).run(
-      cnRef,
-      saleId,
-      sale.customer_id,
-      new Date().toISOString().split("T")[0],
-      finalPayout,
-      "Cash",
-      note || `Return against Bill #${sale.reference_no}`,
-    );
+      )
+      .run(
+        cnRef,
+        saleId,
+        sale.customer_id,
+        new Date().toISOString().split("T")[0],
+        finalPayout,
+        "Cash",
+        note || `Return against Bill #${sale.reference_no}`,
+      );
 
     // Extract the generated ID
     const cnId = result.lastInsertRowid;
@@ -381,7 +383,6 @@ export function getSalesForPDFExport(filters) {
     items: items.filter((item) => item.sale_id === sale.id),
   }));
 }
-
 /**
  * @description Updates the header of a sale.
  */
@@ -608,15 +609,15 @@ export async function updateSaleStatus(id, status) {
 /**
  * @description Fetches highly detailed sales data for Excel export.
  * Supports both Header-level (Sales Register) and Item-level (Product Analysis) exports.
- * @param {object} filters - Contains startDate, endDate, and exportType ('header' | 'item')
  */
 export function getExportableSalesData(filters) {
   const { startDate, endDate, exportType = "item" } = filters;
 
   if (exportType === "header") {
-    // APPROACH 2: 1 Row per Invoice (Best for Accounting & GST)
+    // APPROACH 2: 1 Row per Invoice
     const stmt = db.prepare(`
       SELECT
+        s.id,
         s.reference_no,
         datetime(s.created_at) as invoice_date,
         COALESCE(s.customer_name, c.name, 'Walk-in Customer') as customer_name,
@@ -628,6 +629,7 @@ export function getExportableSalesData(filters) {
         c.gst_no as customer_gst_no,
         s.payment_mode,
         (SELECT SUM(price) FROM sales_items WHERE sale_id = s.id) as subtotal,
+        (SELECT SUM((price / NULLIF(quantity, 0)) * COALESCE(return_quantity, 0)) FROM sales_items WHERE sale_id = s.id) as returned_amount,
         s.discount as bill_discount_percentage,
         s.round_off as bill_round_off,
         s.total_amount as bill_grand_total,
@@ -641,20 +643,9 @@ export function getExportableSalesData(filters) {
         AND s.is_quote = 0
       ORDER BY s.created_at DESC
     `);
-
-    // We calculate the exact discount amount in JS so the Excel sheet is complete
-    const records = stmt.all({ startDate, endDate });
-    return records.map((record) => ({
-      ...record,
-      bill_discount_amount: Number(
-        (
-          ((record.subtotal || 0) * (record.bill_discount_percentage || 0)) /
-          100
-        ).toFixed(2),
-      ),
-    }));
+    return stmt.all({ startDate, endDate });
   } else {
-    // APPROACH 1: 1 Row per Item (Best for Inventory Analysis - with appended bill totals)
+    // APPROACH 1: 1 Row per Item (For deep GST Analysis)
     const stmt = db.prepare(`
       SELECT
         s.reference_no,
@@ -667,19 +658,18 @@ export function getExportableSalesData(filters) {
         COALESCE(s.pincode, c.pincode) as customer_pincode,
         c.gst_no as customer_gst_no,
         
-        -- Snapshot & Fallback Item Data
         COALESCE(si.product_name, p.name) as product_name,
         si.description as item_description,
         COALESCE(si.barcode, p.barcode, p.product_code) as barcode,
         COALESCE(si.hsn, p.hsn) as hsn,
         si.quantity,
+        COALESCE(si.return_quantity, 0) as return_quantity,
         si.unit,
         si.rate,
         si.gst_rate,
         si.discount as item_discount_percentage,
         si.price as item_total,
         
-        -- Appended Bill-level context (so the user sees the final bill amount on every row)
         s.discount as bill_discount_percentage,
         s.round_off as bill_round_off,
         s.total_amount as bill_grand_total,

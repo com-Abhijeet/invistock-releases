@@ -85,6 +85,7 @@ export function assignStock(req, res) {
 export async function getPrintData(req, res) {
   try {
     const { scope, productId, batchId, serialIds, copies } = req.body;
+    console.log(req.body);
 
     if (!scope || !productId) {
       return res

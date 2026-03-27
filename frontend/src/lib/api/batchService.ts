@@ -112,6 +112,7 @@ export const getBatchPrintData = async (payload: {
   copies: number;
 }): Promise<PrintLabelPayload[]> => {
   try {
+    console.log("payload", payload);
     const response = await api.post("/api/batches/print-data", payload);
     if (response.data.status === "success") {
       return response.data.data;

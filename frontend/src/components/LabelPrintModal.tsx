@@ -32,7 +32,8 @@ import { Package, ScanBarcode, Tag } from "lucide-react";
 
 // Safety check for Electron context
 // @ts-ignore
-const ipcRenderer = window?.electron?.ipcRenderer;
+const ipcRenderer =
+  typeof window !== "undefined" ? window?.electron?.ipcRenderer : null;
 
 type Props = {
   open: boolean;
@@ -62,7 +63,10 @@ export default function LabelPrintDialog({ open, onClose, product }: Props) {
     [],
   );
 
-  const shop = JSON.parse(localStorage.getItem("shop") || "{}");
+  const shop =
+    typeof window !== "undefined"
+      ? JSON.parse(localStorage.getItem("shop") || "{}")
+      : {};
 
   const isTracked =
     product?.tracking_type === "batch" || product?.tracking_type === "serial";
@@ -119,7 +123,7 @@ export default function LabelPrintDialog({ open, onClose, product }: Props) {
     const map = new Map();
     stockItems.forEach((item) => {
       // Handle items with no batch_id (Direct Serial Stock) by using -1
-      const bId = item.batch_id || -1;
+      const bId = item.id || -1;
 
       if (!map.has(bId)) {
         map.set(bId, {
@@ -138,10 +142,10 @@ export default function LabelPrintDialog({ open, onClose, product }: Props) {
 
     // If "General Stock" (-1) is selected, filter items with no batch_id
     if (filterBatchId === -1) {
-      return stockItems.filter((item) => !item.batch_id);
+      return stockItems.filter((item) => !item.id);
     }
 
-    return stockItems.filter((item) => item.batch_id === filterBatchId);
+    return stockItems.filter((item) => item.id === filterBatchId);
   }, [stockItems, isSerial, filterBatchId]);
 
   // --- HANDLERS ---
@@ -231,8 +235,7 @@ export default function LabelPrintDialog({ open, onClose, product }: Props) {
         allPrintJobs = await getBatchPrintData({
           scope: printScope,
           productId: product.id!,
-          // If scope is serial, we use the selectedSerialIds
-          // If scope is product, params are minimal
+          // Pass the batchId if scope is serial and a batch has been selected
           batchId:
             printScope === "serial" && filterBatchId !== ""
               ? filterBatchId === -1

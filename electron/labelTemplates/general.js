@@ -23,8 +23,7 @@ const generalTemplates = {
             <div class="name">${item.name}</div>
             <img src="${barcode}" style="height: 7mm; width: 95%;" />
             <div class="pr-row">
-               ${showStrike ? `<span class="old">MRP ₹${mrp}</span>` : ""}
-               <span class="price">₹${mainPrice}</span>
+               <span class="price">₹${mrp}</span>
             </div>
             <div class="foot">
                <span>${item.product_code || item.sku || ""}</span>

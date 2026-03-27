@@ -65,6 +65,11 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const navigate = useNavigate();
 
+  const localSettingsString = localStorage.getItem("app_print_settings");
+  const localSettings = localSettingsString
+    ? JSON.parse(localSettingsString)
+    : {};
+
   // State for the Return / Credit Note modal
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [selectedSaleForReturn, setSelectedSaleForReturn] =
@@ -310,45 +315,34 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
       }
 
       const nl = "\n";
-      let message = "";
 
+      // Build items list once
+      const itemsList = sale.items
+        .map(
+          (
+            item: { product_name: any; quantity: number; rate: number },
+            i: number,
+          ) =>
+            `${i + 1}. ${item.product_name} x ${item.quantity} = ₹${(
+              item.rate * item.quantity
+            ).toLocaleString("en-IN")}`,
+        )
+        .join(nl);
+
+      // Base message (common for both cases)
+      let message = `*${shop.shop_name}*${nl}Invoice Summary${nl}———————————————${nl}${nl}Hello ${sale.customer_name || "Customer"},${nl}${nl}🧾 *Bill No:* ${sale.reference_no}${nl}📅 *Date:* ${new Date(
+        sale.created_at || Date.now(),
+      ).toLocaleDateString(
+        "en-IN",
+      )}${nl}${nl}*Items Purchased:*${nl}${itemsList}${nl}${nl}———————————————${nl}💰 *Total Amount:* ₹${sale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}`;
+
+      // Conditional section (ONLY difference)
       if (webLink) {
-        message =
-          `*${shop.shop_name}*${nl}${nl}` +
-          `Hello ${sale.customer_name || "Customer"},${nl}${nl}` +
-          `Thank you for shopping with us! 🙏${nl}${nl}` +
-          `🧾 *View your detailed digital bill here:*${nl}` +
-          `${webLink}${nl}${nl}` +
-          `_Please find the PDF copy attached below._${nl}${nl}` +
-          `_Powered by Kosh Billing_`;
-      } else {
-        const itemsList = sale.items
-          .map(
-            (
-              item: { product_name: any; quantity: number; rate: number },
-              i: number,
-            ) =>
-              `${i + 1}. ${item.product_name} x ${item.quantity} = ₹${(
-                item.rate * item.quantity
-              ).toLocaleString("en-IN")}`,
-          )
-          .join(nl);
-
-        message =
-          `*${shop.shop_name}*${nl}` +
-          `Invoice Summary${nl}` +
-          `———————————————${nl}${nl}` +
-          `Hello ${sale.customer_name || "Customer"},${nl}${nl}` +
-          `🧾 *Bill No:* ${sale.reference_no}${nl}` +
-          `📅 *Date:* ${new Date(sale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}` +
-          `*Items Purchased:*${nl}` +
-          `${itemsList}${nl}${nl}` +
-          `———————————————${nl}` +
-          `*Total Amount:* ₹${sale.total_amount.toLocaleString("en-IN")}${nl}` +
-          `———————————————${nl}${nl}` +
-          `Thank you for shopping with us 🙏${nl}` +
-          `Please find your invoice PDF attached.`;
+        message += `${nl}🌐 *View your detailed digital bill here:*${nl}${webLink}${nl}`;
       }
+
+      // Common footer
+      message += `${nl}Thank you for shopping with us! 🙏${nl}Please find your invoice PDF attached.${nl}${nl}_Powered by Kosh Billing Software_`;
 
       const textRes = await window.electron.sendWhatsAppMessage(
         phoneToSend,
@@ -361,6 +355,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         const pdfRes = await window.electron.sendWhatsAppInvoicePdf({
           sale: sale,
           shop: shop,
+          localSettings: localSettings,
           customerPhone: phoneToSend,
         });
 

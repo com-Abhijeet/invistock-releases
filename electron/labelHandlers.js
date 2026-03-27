@@ -22,6 +22,7 @@ const DUMMY_SHOP = {
   shop_name: "My Awesome Store",
   shop_alias: "MAS",
   label_printer_width_mm: 50,
+  label_printer_height_mm: 25, // Added height constraint
 };
 
 const generateDummyBarcode = async () => {
@@ -69,6 +70,18 @@ function registerLabelHandlers(ipcMain) {
         html: `
           <!DOCTYPE html>
           <html>
+            <head>
+              <style>
+                body {
+                  margin: 0;
+                  padding: 0;
+                  width: ${DUMMY_SHOP.label_printer_width_mm}mm;
+                  height: ${DUMMY_SHOP.label_printer_height_mm}mm;
+                  overflow: hidden;
+                  background: white;
+                }
+              </style>
+            </head>
             <body>${content}</body>
           </html>
         `,

@@ -53,7 +53,6 @@ export const menuSections = [
         label: "Sales Analysis",
         icon: <BarChart3 size={20} />,
         path: "/sales",
-        shortcut: "F3",
       },
       {
         label: "Sales Voucher (POS)",
@@ -65,6 +64,7 @@ export const menuSections = [
         label: "Sales Register", // Professional term for Sales History
         icon: <Clock size={20} />,
         path: "/sales-history",
+        shortcut: "F3",
       },
       {
         label: "Generate Sales Order",

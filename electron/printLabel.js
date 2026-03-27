@@ -57,10 +57,11 @@ const createPrintWindow = async (payload) => {
   }
 
   // ===================================================
-  // TEMPLATE
+  // TEMPLATE & SIZING
   // ===================================================
 
-  const printerWidth = shop.label_printer_width_mm || 50;
+  const printerWidth = Number(shop.label_printer_width_mm) || 50;
+  const printerHeight = Number(shop.label_printer_height_mm) || 25;
   const templateId = shop.label_template_id || "lbl_standard";
 
   const { style, content } = createLabelHTML(
@@ -79,13 +80,19 @@ const createPrintWindow = async (payload) => {
         <meta charset="UTF-8" />
         ${style}
         <style>
-          body {
-            margin: 0;
-            padding: 0;
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: ${printerWidth}mm !important;
+            height: ${printerHeight}mm !important;
             background: white;
             -webkit-print-color-adjust: exact;
+            overflow: hidden !important; /* Prevents 2nd page spillover */
           }
-          @page { margin: 0; size: auto; }
+          @page { 
+            margin: 0 !important; 
+            size: ${printerWidth}mm ${printerHeight}mm !important; 
+          }
         </style>
       </head>
       <body>${content}</body>
@@ -164,6 +171,15 @@ const createPrintWindow = async (payload) => {
     printBackground: true,
     copies: printCopies,
     deviceName: isSilent ? printerName : undefined,
+    // Enforce custom dimensions in microns (1mm = 1000 microns)
+    pageSize: {
+      width: printerWidth * 1000,
+      height: printerHeight * 1000,
+    },
+    // Prevent Chromium from adding auto-margins (crucial for roll printers)
+    margins: {
+      marginType: "none",
+    },
   };
 
   win.webContents.print(options, (success, errorType) => {
