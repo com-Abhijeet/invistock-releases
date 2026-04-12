@@ -11,3 +11,5 @@ electron/googleDriveService.js
 .npmrc
 scripts
 TODO.md
+INVOICE_PRINTING_BOTTLENECK_REPORT.md
+INVOICE_OPTIMIZATION_SUMMARY.md

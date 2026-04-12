@@ -494,6 +494,9 @@ export function initializeDatabase(dbPath) {
       FOREIGN KEY (subcategory) REFERENCES subcategories(id) ON DELETE SET NULL
     );
 
+    CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode);
+    CREATE INDEX IF NOT EXISTS idx_products_name ON products(name COLLATE NOCASE);
+
     CREATE TABLE IF NOT EXISTS product_batches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL,
@@ -519,6 +522,7 @@ export function initializeDatabase(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_batches_product_id ON product_batches(product_id);
     CREATE INDEX IF NOT EXISTS idx_batches_expiry ON product_batches(expiry_date);
     CREATE INDEX IF NOT EXISTS idx_batches_uid ON product_batches(batch_uid);
+    CREATE INDEX IF NOT EXISTS idx_batches_barcode ON product_batches(barcode);
 
     CREATE TABLE IF NOT EXISTS product_serials (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
