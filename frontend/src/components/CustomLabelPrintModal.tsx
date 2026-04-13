@@ -20,7 +20,7 @@ import {
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
-import { Sliders, Type, Store, Monitor, Printer, RotateCw } from "lucide-react";
+import { Sliders, Type, Store, Monitor, Printer } from "lucide-react";
 
 // @ts-ignore
 const ipcRenderer = window?.electron?.ipcRenderer;

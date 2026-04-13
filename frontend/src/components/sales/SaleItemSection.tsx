@@ -234,7 +234,7 @@ export default function SaleItemSection({
       getAllProducts({
         query: inputValue,
         isActive: 1,
-        limit: 20,
+        limit: 5,
         page: 1,
         all: false,
       }).then((data) => {

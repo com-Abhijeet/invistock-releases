@@ -460,35 +460,65 @@ export async function generatePrintPayload({
   return labels;
 }
 
-/**
- * Scans a barcode and resolves it to a Product, Batch, or Serial.
- * Priority: Serial > Batch > Product (Exact) > Product (Name fallback)
- */
-export async function scanBarcode(code) {
-  if (!code) throw new Error("No code provided");
+//ALL INCLUDED BARCODE SCANNING
+// Move db.prepare() outside the function. Compiling SQL strings into binary
+// statements is an expensive operation. Doing it once globally speeds up execution significantly.
+let serialStmt;
+let batchStmt;
+let productFallbackStmt;
+let getProductByIdStmt;
 
-  const trimmedCode = code.trim();
+function initStatements(db) {
+  if (serialStmt) return; // Prevent re-initialization
 
-  // 1. Check Serial Numbers (Exact Match)
-  // We fetch full product separately to ensure all fields (unit, hsn, tax) are present
-  const serialCheck = db
-    .prepare(
-      `
+  serialStmt = db.prepare(`
     SELECT ps.*, pb.batch_number, pb.mrp as batch_mrp, pb.expiry_date, pb.mop as batch_mop, pb.mfw_price as batch_mfw
     FROM product_serials ps
     JOIN product_batches pb ON ps.batch_id = pb.id
     WHERE ps.serial_number = ?
-  `,
-    )
-    .get(trimmedCode);
+  `);
 
+  batchStmt = db.prepare(`
+    SELECT pb.*
+    FROM product_batches pb
+    WHERE pb.barcode = ? OR pb.batch_uid = ?
+  `);
+
+  getProductByIdStmt = db.prepare(`SELECT * FROM products WHERE id = ?`);
+
+  // 2. QUERY CONSOLIDATION & PRIORITY
+  // Combines the Product Exact Match and Name Match into a single database trip.
+  // We use CASE to assign a priority: Exact matches get priority 1, Name matches get priority 2.
+  productFallbackStmt = db.prepare(`
+    SELECT *,
+      CASE
+        WHEN barcode = ? OR product_code = ? THEN 1
+        ELSE 2
+      END as match_priority
+    FROM products
+    WHERE barcode = ? OR product_code = ? OR name = ? COLLATE NOCASE
+    ORDER BY match_priority ASC
+    LIMIT 1
+  `);
+}
+
+/**
+ * Scans a barcode and resolves it to a Product, Batch, or Serial.
+ * Priority: Serial > Batch > Product (Exact) > Product (Name fallback)
+ */
+export async function scanBarcode(db, code) {
+  if (!code) throw new Error("No code provided");
+  const trimmedCode = code.trim();
+
+  // Ensure statements are compiled (happens only once)
+  initStatements(db);
+
+  // 1. Check Serial Numbers
+  const serialCheck = serialStmt.get(trimmedCode);
   if (serialCheck) {
-    const product = db
-      .prepare("SELECT * FROM products WHERE id = ?")
-      .get(serialCheck.product_id);
     return {
       type: "serial",
-      product: product, // Full product details
+      product: getProductByIdStmt.get(serialCheck.product_id), // Cached statement fetch
       batch: {
         id: serialCheck.batch_id,
         batch_number: serialCheck.batch_number,
@@ -501,59 +531,40 @@ export async function scanBarcode(code) {
     };
   }
 
-  // 2. Check Batches (Exact Match on 'barcode')
-  const batchCheck = db
-    .prepare(
-      `
-    SELECT pb.*
-    FROM product_batches pb
-    WHERE pb.barcode = ? OR pb.batch_uid = ?
-  `,
-    )
-    .get(trimmedCode, trimmedCode);
-
+  // 2. Check Batches
+  const batchCheck = batchStmt.get(trimmedCode, trimmedCode);
   if (batchCheck) {
-    const product = db
-      .prepare("SELECT * FROM products WHERE id = ?")
-      .get(batchCheck.product_id);
     return {
       type: "batch",
-      product: product, // Full product details
+      product: getProductByIdStmt.get(batchCheck.product_id),
       batch: batchCheck,
     };
   }
 
-  // 3. Check Products (Exact Match on 'barcode' or 'product_code')
-  const productCheck = db
-    .prepare(
-      `
-    SELECT * FROM products WHERE barcode = ? OR product_code = ?
-  `,
-    )
-    .get(trimmedCode, trimmedCode);
+  // 3 & 4. Check Products (Exact Match & Name Fallback combined)
+  // We pass the code 5 times: 2 for the CASE block, 3 for the WHERE block
+  const productCheck = productFallbackStmt.get(
+    trimmedCode,
+    trimmedCode,
+    trimmedCode,
+    trimmedCode,
+    trimmedCode,
+  );
 
   if (productCheck) {
+    // Clean up the temporary priority column so it doesn't leak into your app data
+    delete productCheck.match_priority;
+
     return {
       type: "product",
       product: productCheck,
     };
   }
 
-  // 4. Fallback: Exact Name Match
-  // This handles cases where user types a known product name in scan field
-  const nameCheck = db
-    .prepare("SELECT * FROM products WHERE name = ? COLLATE NOCASE")
-    .get(trimmedCode);
-
-  if (nameCheck) {
-    return {
-      type: "product",
-      product: nameCheck,
-    };
-  }
-
   throw new Error("Item not found");
 }
+
+//BARCODE SCANNING ENDED
 
 export function getBatchAnalyticsForProduct(productId) {
   const priceTrend = db
