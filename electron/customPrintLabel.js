@@ -100,22 +100,28 @@ const createCustomPrintWindow = async (payload) => {
       config.height,
     );
 
-    const rowWidth =
+    // Precise Width Calculation: (LabelWidth * Cols) + (Gap * (Cols - 1))
+    const rowContentWidth =
       config.width * config.colsPerRow +
       config.gapBetweenCols * (config.colsPerRow - 1);
-    const pageWidth = rowWidth + config.horizontalOffset;
-    // We strictly define pageHeight as the mechanical pitch of the label roll
+    const pageWidth = rowContentWidth + config.horizontalOffset;
     const pageHeight = config.height + config.verticalOffset;
 
     const totalCopies = Math.max(1, Number(copies) || 1);
 
-    let labelsHtml = "";
-    for (let i = 0; i < totalCopies; i++) {
-      labelsHtml += `<div class="label-wrapper">${labelHTML}</div>`;
-      // If we've hit the end of a column row, we force a clear to prevent vertical bleed
-      if ((i + 1) % config.colsPerRow === 0) {
-        labelsHtml += `<div style="clear: both; width: 100%; height: 0; font-size: 0;"></div>`;
+    // Group labels into Rows
+    let rowsHtml = "";
+    let currentLabelCount = 0;
+
+    while (currentLabelCount < totalCopies) {
+      let rowItems = "";
+      for (let c = 0; c < config.colsPerRow; c++) {
+        if (currentLabelCount < totalCopies) {
+          rowItems += `<div class="label-wrapper">${labelHTML}</div>`;
+          currentLabelCount++;
+        }
       }
+      rowsHtml += `<div class="label-row">${rowItems}</div>`;
     }
 
     const html = `<!DOCTYPE html>
@@ -140,15 +146,24 @@ const createCustomPrintWindow = async (payload) => {
         width: ${pageWidth}mm !important;
         background: white;
         overflow: visible !important;
-        /* Prevent Chromium auto-scaling / fit-to-page */
         zoom: 1.0 !important;
         font-size: 0; 
       }
 
       body {
-        display: block; /* Switched back to block for reliable clear-based wrapping */
+        display: block;
         padding-left: ${config.horizontalOffset}mm !important;
         padding-top: ${config.verticalOffset}mm !important;
+      }
+
+      .label-row {
+        width: ${rowContentWidth}mm;
+        height: ${config.height}mm;
+        display: block;
+        page-break-after: always;
+        break-after: page;
+        clear: both;
+        font-size: 0; /* Kill inline-block gaps */
       }
 
       .label-wrapper {
@@ -158,20 +173,16 @@ const createCustomPrintWindow = async (payload) => {
         display: inline-block;
         vertical-align: top;
         overflow: hidden;
-        /* Ensure the browser treats this as a solid atomic block */
-        page-break-inside: avoid;
-        break-inside: avoid;
         position: relative;
       }
 
-      /* Clean up the right margin for the last column in every row */
-      .label-wrapper:nth-child(${config.colsPerRow}n),
-      .label-wrapper:nth-child(${config.colsPerRow}n + 1) {
-         /* Selector logic to ensure right-most label doesn't push width */
+      /* CRITICAL FIX: Remove margin from the last label in each row */
+      .label-wrapper:nth-child(${config.colsPerRow}n) {
+        margin-right: 0 !important;
       }
     </style>
   </head>
-  <body>${labelsHtml}</body>
+  <body>${rowsHtml}</body>
 </html>`;
 
     let isSilent =
@@ -184,7 +195,7 @@ const createCustomPrintWindow = async (payload) => {
       printerName = undefined;
     }
 
-    const tempFile = path.join(os.tmpdir(), `label-${Date.now()}.html`);
+    const tempFile = path.join(os.tmpdir(), `custom-label-${Date.now()}.html`);
     fs.writeFileSync(tempFile, html);
 
     const win = new BrowserWindow({
@@ -197,6 +208,7 @@ const createCustomPrintWindow = async (payload) => {
 
     await win.loadFile(tempFile);
 
+    // Wait for images
     await win.webContents.executeJavaScript(`
       new Promise(resolve => {
         const imgs = [...document.images];
