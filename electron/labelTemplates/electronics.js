@@ -1,59 +1,53 @@
 const { getBaseStyle, BRANDING_HTML, getPriceDetails } = require("./utils.js");
 
 const electronicsTemplates = {
-  // 1. Spec Sheet
-  ele_spec: (item, shop, barcode, width) => {
+  ele_spec: (item, shop, barcode, width, height = 25) => {
     const { mainPrice, encoded } = getPriceDetails(item);
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .es { border: 1px solid #000; padding: 2px; }
-        .tt { font-size: 9px; font-weight: 700; border-bottom: 1px solid #eee; margin-bottom: 2px; }
-        .rw { display: flex; justify-content: space-between; font-size: 8px; color: #444; margin-bottom: 1px; }
-        .pr { font-size: 12px; font-weight: 800; background: #eee; padding: 1px 4px; }
-        .sn { font-size: 7px; letter-spacing: 1px; text-align: center; margin-top: 1px; font-family: monospace; }
+        ${getBaseStyle(width, height)}
+        .es { border: 1px solid #000; padding: ${2 * scale}px; flex-grow: 1; display: flex; flex-direction: column; }
+        .tt { font-size: ${9 * scale}px; font-weight: 700; border-bottom: 1px solid #eee; margin-bottom: ${2 * scale}px; line-height: 1.1; }
+        .rw { display: flex; justify-content: space-between; font-size: ${8 * scale}px; color: #444; margin-bottom: 1px; }
+        .pr { font-size: ${12 * scale}px; font-weight: 800; background: #eee; padding: 1px ${4 * scale}px; }
+        .bc { flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 0; margin: ${1 * scale}px 0; }
+        .bc img { max-height: 100%; }
+        .sn { font-size: ${7 * scale}px; text-align: center; font-family: monospace; flex-shrink: 0; }
       </style>
       <div class="wrapper">
         <div class="es">
-           <div class="tt">${item.name}</div>
-           ${
-             item.brand
-               ? `<div class="rw"><span>Brand</span><b>${item.brand}</b></div>`
-               : ""
-           }
-           <div class="rw">
-              <span>Model</span>
-              <span>${item.product_code}</span>
-           </div>
+           <div class="tt truncate">${item.name}</div>
+           <div class="rw"><span>Brand</span><b>${item.brand || "-"}</b></div>
+           <div class="rw"><span>Model</span><span>${item.product_code || "-"}</span></div>
            <div class="rw" style="align-items:center;">
-              <span style="font-size:6px;">${encoded}</span>
+              <span style="font-size:${6 * scale}px;">${encoded}</span>
               <span class="pr">₹${mainPrice}</span>
            </div>
-           <img src="${barcode}" style="height: 6mm;" />
-           <div class="sn">S/N: ${item.product_code}</div>
+           <div class="bc"><img src="${barcode}" /></div>
+           <div class="sn">S/N: ${item.product_code || "---"}</div>
         </div>
         ${BRANDING_HTML}
       </div>
     `;
   },
 
-  // 2. High Tech Dark
-  ele_dark: (item, shop, barcode, width) => {
+  ele_dark: (item, shop, barcode, width, height = 25) => {
     const { mainPrice } = getPriceDetails(item);
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .dk { background: #000; color: #fff; padding: 3px; border-radius: 4px; text-align: center; }
-        .nm { font-size: 9px; font-weight: 700; margin-bottom: 2px; }
-        .bc-box { background: #fff; padding: 2px; border-radius: 2px; }
-        .pr { font-size: 12px; font-weight: 700; margin-top: 2px; }
+        ${getBaseStyle(width, height)}
+        .dk { background: #000; color: #fff; padding: ${3 * scale}px; border-radius: ${4 * scale}px; text-align: center; flex-grow: 1; display: flex; flex-direction: column; }
+        .nm { font-size: ${9 * scale}px; font-weight: 700; margin-bottom: ${2 * scale}px; line-height: 1.1; }
+        .bc-box { background: #fff; padding: ${2 * scale}px; border-radius: ${2 * scale}px; flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+        .bc-box img { max-height: 100%; }
+        .pr { font-size: ${12 * scale}px; font-weight: 700; margin-top: ${2 * scale}px; }
       </style>
       <div class="wrapper">
         <div class="dk">
-           <div class="nm">${item.name}</div>
-           <div class="bc-box">
-              <img src="${barcode}" style="height: 6mm;" />
-           </div>
+           <div class="nm truncate">${item.name}</div>
+           <div class="bc-box"><img src="${barcode}" /></div>
            <div class="pr">₹${mainPrice}</div>
         </div>
         ${BRANDING_HTML}
@@ -61,24 +55,27 @@ const electronicsTemplates = {
     `;
   },
 
-  // 3. Warranty Info
-  ele_warranty: (item, shop, barcode, width) => {
+  ele_warranty: (item, shop, barcode, width, height = 25) => {
     const { mainPrice } = getPriceDetails(item);
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .wr { border: 1px dashed #000; padding: 2px; }
-        .nm { font-weight: 700; font-size: 9px; }
-        .w-lbl { font-size: 7px; background: #ddd; display: inline-block; padding: 0 2px; margin: 1px 0; }
-        .rw { display: flex; justify-content: space-between; align-items: flex-end; }
+        ${getBaseStyle(width, height)}
+        .wr { border: 1px dashed #000; padding: ${2 * scale}px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; }
+        .nm { font-weight: 700; font-size: ${9 * scale}px; }
+        .w-lbl { font-size: ${7 * scale}px; background: #ddd; display: inline-block; padding: 0 ${2 * scale}px; align-self: flex-start; }
+        .rw { display: flex; justify-content: space-between; align-items: center; flex-grow: 1; min-height: 0; }
+        .bc { width: 60%; height: 100%; display: flex; align-items: center; }
+        .bc img { max-height: 100%; }
+        .pr { font-weight: 800; font-size: ${12 * scale}px; }
       </style>
       <div class="wrapper">
         <div class="wr">
-           <div class="nm">${item.name}</div>
+           <div class="nm truncate">${item.name}</div>
            <div class="w-lbl">Warranty Void If Removed</div>
            <div class="rw">
-              <img src="${barcode}" style="height: 7mm; width: 60%; margin:0;" />
-              <div style="font-weight:800; font-size:12px;">₹${mainPrice}</div>
+              <div class="bc"><img src="${barcode}" /></div>
+              <div class="pr">₹${mainPrice}</div>
            </div>
         </div>
         ${BRANDING_HTML}
@@ -86,20 +83,22 @@ const electronicsTemplates = {
     `;
   },
 
-  // 4. Mobile Accessory (Small)
-  ele_mobile: (item, shop, barcode, width) => {
+  ele_mobile: (item, shop, barcode, width, height = 25) => {
     const { mainPrice } = getPriceDetails(item);
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .mb { text-align: center; border: 1px solid #ccc; padding: 2px; }
-        .nm { font-size: 9px; font-weight: 600; white-space: nowrap; overflow: hidden; }
-        .pr { font-size: 14px; font-weight: 800; }
+        ${getBaseStyle(width, height)}
+        .mb { text-align: center; border: 1px solid #ccc; padding: ${2 * scale}px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; }
+        .nm { font-size: ${9 * scale}px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .bc { flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+        .bc img { max-height: 100%; }
+        .pr { font-size: ${14 * scale}px; font-weight: 800; }
       </style>
       <div class="wrapper">
         <div class="mb">
            <div class="nm">${item.name}</div>
-           <img src="${barcode}" style="height: 7mm;" />
+           <div class="bc"><img src="${barcode}" /></div>
            <div class="pr">₹${mainPrice}</div>
         </div>
         ${BRANDING_HTML}
@@ -107,28 +106,30 @@ const electronicsTemplates = {
     `;
   },
 
-  // 5. Serial Focus
-  ele_serial: (item, shop, barcode, width) => {
+  ele_serial: (item, shop, barcode, width, height = 25) => {
     const { mainPrice, encoded } = getPriceDetails(item);
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .sr { display: flex; align-items: center; border: 1px solid #000; padding: 1px; }
-        .l { width: 70%; padding-right: 2px; }
-        .r { width: 30%; border-left: 1px solid #000; text-align: center; }
-        .nm { font-size: 8px; font-weight: 600; max-height: 10px; overflow: hidden; }
-        .cd { font-family: monospace; font-size: 8px; margin-top: 1px; }
+        ${getBaseStyle(width, height)}
+        .sr { display: flex; border: 1px solid #000; padding: ${1 * scale}px; flex-grow: 1; min-height: 0; }
+        .l { width: 70%; padding-right: ${2 * scale}px; display: flex; flex-direction: column; justify-content: space-between; }
+        .r { width: 30%; border-left: 1px solid #000; text-align: center; display: flex; flex-direction: column; justify-content: center; }
+        .nm { font-size: ${8 * scale}px; font-weight: 600; line-height: 1.1; overflow: hidden; }
+        .bc { flex-grow: 1; display: flex; align-items: center; min-height: 0; }
+        .bc img { max-height: 100%; }
+        .cd { font-family: monospace; font-size: ${8 * scale}px; flex-shrink: 0; }
       </style>
       <div class="wrapper">
         <div class="sr">
            <div class="l">
-              <div class="nm">${item.name}</div>
-              <img src="${barcode}" style="height: 6mm; width: 100%; margin: 1px 0;" />
-              <div class="cd">SN: ${item.product_code}</div>
+              <div class="nm truncate">${item.name}</div>
+              <div class="bc"><img src="${barcode}" /></div>
+              <div class="cd">SN: ${item.product_code || "-"}</div>
            </div>
            <div class="r">
-              <div style="font-size:7px; color:#aaa;">${encoded}</div>
-              <div style="font-weight:800; font-size:11px; margin-top:4px;">₹${mainPrice}</div>
+              <div style="font-size:${7 * scale}px; color:#aaa;">${encoded}</div>
+              <div style="font-weight:800; font-size:${11 * scale}px;">₹${mainPrice}</div>
            </div>
         </div>
         ${BRANDING_HTML}
@@ -136,109 +137,114 @@ const electronicsTemplates = {
     `;
   },
 
-  // 6. Box Label (Large)
-  ele_box: (item, shop, barcode, width) => {
+  ele_box: (item, shop, barcode, width, height = 25) => {
     const { mainPrice } = getPriceDetails(item);
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .bx { border: 2px solid #000; padding: 3px; }
-        .rw { display: flex; justify-content: space-between; }
-        .nm { font-size: 11px; font-weight: 800; margin-bottom: 2px; }
-        .specs { font-size: 8px; color: #555; }
+        ${getBaseStyle(width, height)}
+        .bx { border: ${2 * scale}px solid #000; padding: ${3 * scale}px; flex-grow: 1; display: flex; flex-direction: column; }
+        .rw { display: flex; justify-content: space-between; align-items: flex-start; }
+        .nm { font-size: ${11 * scale}px; font-weight: 800; line-height: 1.1; margin-bottom: ${2 * scale}px; }
+        .specs { font-size: ${8 * scale}px; color: #555; }
+        .bc { flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 0; margin-top: ${2 * scale}px; }
+        .bc img { max-height: 100%; }
       </style>
       <div class="wrapper">
         <div class="bx">
-           <div class="nm">${item.name}</div>
+           <div class="nm truncate">${item.name}</div>
            <div class="rw">
               <div class="specs">
                  <div>Color: ${item.color || "-"}</div>
-                 <div>Model: ${item.product_code}</div>
+                 <div>Model: ${item.product_code || "-"}</div>
               </div>
-              <div style="font-size:16px; font-weight:900;">₹${mainPrice}</div>
+              <div style="font-size:${16 * scale}px; font-weight:900;">₹${mainPrice}</div>
            </div>
-           <img src="${barcode}" style="height: 8mm; margin-top: 2px;" />
+           <div class="bc"><img src="${barcode}" /></div>
         </div>
         ${BRANDING_HTML}
       </div>
     `;
   },
 
-  // 7. Component Tag (Tiny)
-  ele_comp: (item, shop, barcode, width) => {
+  ele_comp: (item, shop, barcode, width, height = 25) => {
     const { mainPrice } = getPriceDetails(item);
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .cp { font-size: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; padding: 1px; }
+        ${getBaseStyle(width, height)}
+        .cp { font-size: ${8 * scale}px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; padding: ${1 * scale}px; flex-grow: 1; }
       </style>
       <div class="wrapper">
         <div class="cp">
            <div style="width:60%; overflow:hidden;">
-              <div style="white-space:nowrap;">${item.name}</div>
+              <div class="truncate">${item.name}</div>
               <div style="font-weight:700;">₹${mainPrice}</div>
            </div>
-           <img src="${barcode}" style="height: 5mm; width: 35%;" />
+           <img src="${barcode}" style="height: 100%; max-height: 100%; width: 35%;" />
         </div>
       </div>
     `;
   },
 
-  // 8. Service Tag
-  ele_service: (item, shop, barcode, width) => {
+  ele_service: (item, shop, barcode, width, height = 25) => {
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .sv { text-align: center; border: 1px dashed #000; padding: 2px; }
-        .lbl { font-size: 8px; font-weight: 700; text-transform: uppercase; background: #ddd; }
+        ${getBaseStyle(width, height)}
+        .sv { text-align: center; border: 1px dashed #000; padding: ${2 * scale}px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; }
+        .lbl { font-size: ${8 * scale}px; font-weight: 700; text-transform: uppercase; background: #ddd; flex-shrink: 0; }
+        .bc { flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+        .bc img { max-height: 100%; }
+        .cd { font-family: monospace; font-weight: 700; font-size: ${10 * scale}px; flex-shrink: 0; }
       </style>
       <div class="wrapper">
         <div class="sv">
            <div class="lbl">Service ID</div>
-           <img src="${barcode}" style="height: 8mm; margin: 2px auto;" />
-           <div style="font-family:monospace; font-weight:700; font-size:10px;">${
-             item.product_code
-           }</div>
+           <div class="bc"><img src="${barcode}" /></div>
+           <div class="cd">${item.product_code || "---"}</div>
         </div>
         ${BRANDING_HTML}
       </div>
     `;
   },
 
-  // 9. Cable Tag (Wrap around style)
-  ele_cable: (item, shop, barcode, width) => {
+  ele_cable: (item, shop, barcode, width, height = 25) => {
     const { mainPrice } = getPriceDetails(item);
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .cb { display: flex; font-size: 8px; border: 1px solid #000; }
-        .cb > div { flex: 1; text-align: center; padding: 2px; border-right: 1px solid #000; display: flex; flex-direction: column; justify-content: center; }
+        ${getBaseStyle(width, height)}
+        .cb { display: flex; font-size: ${8 * scale}px; border: 1px solid #000; flex-grow: 1; }
+        .cb > div { flex: 1; text-align: center; padding: ${2 * scale}px; border-right: 1px solid #000; display: flex; flex-direction: column; justify-content: center; }
         .cb > div:last-child { border-right: none; }
+        .bc img { max-height: 100%; }
       </style>
       <div class="wrapper">
         <div class="cb">
-           <div>${item.name.substring(0, 10)}</div>
-           <div><img src="${barcode}" style="height:5mm;" /></div>
+           <div class="truncate">${item.name}</div>
+           <div><img src="${barcode}" style="height:100%; max-height: 100%;" /></div>
            <div style="font-weight:800;">₹${mainPrice}</div>
         </div>
       </div>
     `;
   },
 
-  // 10. Gaming / RGB
-  ele_gaming: (item, shop, barcode, width) => {
+  ele_gaming: (item, shop, barcode, width, height = 25) => {
     const { mainPrice } = getPriceDetails(item);
+    const scale = Math.max(0.5, Math.min(1.2, height / 25));
     return `
       <style>
-        ${getBaseStyle(width)}
-        .gm { border: 2px solid #000; background: #333; color: #fff; padding: 2px; text-align: center; border-radius: 4px; }
-        .gn { font-weight: 700; font-size: 10px; color: #0f0; text-transform: uppercase; }
-        .gb { background: #fff; padding: 2px; margin: 2px 0; border-radius: 2px; }
+        ${getBaseStyle(width, height)}
+        .gm { border: ${2 * scale}px solid #000; background: #333; color: #fff; padding: ${2 * scale}px; text-align: center; border-radius: ${4 * scale}px; flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; }
+        .gn { font-weight: 700; font-size: ${10 * scale}px; color: #0f0; text-transform: uppercase; }
+        .gb { background: #fff; padding: ${2 * scale}px; margin: ${2 * scale}px 0; border-radius: ${2 * scale}px; flex-grow: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+        .gb img { max-height: 100%; }
       </style>
       <div class="wrapper">
         <div class="gm">
-           <div class="gn">${item.name}</div>
-           <div class="gb"><img src="${barcode}" style="height: 6mm;" /></div>
+           <div class="gn truncate">${item.name}</div>
+           <div class="gb"><img src="${barcode}" /></div>
            <div style="font-weight:700;">₹${mainPrice}</div>
         </div>
         ${BRANDING_HTML}

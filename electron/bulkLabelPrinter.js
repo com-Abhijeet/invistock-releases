@@ -49,7 +49,9 @@ const generateBarcodeBase64 = async (barcodeText) => {
 
 async function printBulkLabels(items, shop) {
   try {
-    const printerWidth = shop.label_printer_width_mm || 58;
+    const printerWidth = shop.label_printer_width_mm || 50;
+    const printerHeight = shop.label_printer_height_mm || 25;
+    const templateId = shop.label_template_id || "lbl_standard";
 
     console.log(
       `🖨️ Bulk label print started. Processing ${items.length} items...`,
@@ -114,8 +116,8 @@ async function printBulkLabels(items, shop) {
         shop,
         barcodeImg,
         printerWidth,
-        undefined,
-        code,
+        templateId,
+        printerHeight,
       );
 
       const pageWrapper = `<div class="label-page">${content}</div>`;
@@ -145,10 +147,11 @@ async function printBulkLabels(items, shop) {
               page-break-after: always;
               break-after: page;
               width: ${printerWidth}mm;
+              height: ${printerHeight}mm;
               overflow: hidden;
               box-sizing: border-box;
             }
-            @page { margin: 0; size: ${printerWidth}mm auto; }
+            @page { margin: 0; size: ${printerWidth}mm auto; height: ${printerHeight}mm; }
             /* OPTIMIZATION 2: Hardware acceleration for faster Chromium paint */
             img { transform: translateZ(0); }
           </style>

@@ -95,11 +95,12 @@ const createLabelHTML = (
   shop,
   barcode,
   width,
-  templateId = "gen_standard"
+  templateId = "gen_standard",
+  height = 25,
 ) => {
   const generator = templates[templateId] || templates["gen_standard"];
   // Ensure width is treated as number
-  const html = generator(item, shop, barcode, Number(width));
+  const html = generator(item, shop, barcode, Number(width), Number(height));
   return { style: "", content: html };
 };
 
