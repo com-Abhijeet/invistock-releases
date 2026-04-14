@@ -1,6 +1,6 @@
 const { BrowserWindow } = require("electron");
 const QRCode = require("qrcode");
-const { getTemplate } = require("./ipc/templateManager.js");
+const { getTemplate } = require("./ipc/templateManager.js"); // ✅ Import Template Manager
 
 async function printInvoice(payload) {
   const { sale, shop, copies = 1, localSettings } = payload;
@@ -21,7 +21,6 @@ async function printInvoice(payload) {
     shop.generated_upi_qr = null;
   }
 
-  // 2. Prepare Data (Transliteration removed - not used in templates)
   const enhancedSale = sale;
 
   // 3. Create Hidden Window
@@ -57,21 +56,20 @@ async function printInvoice(payload) {
     "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent),
   );
 
-  // Explicit wait for rendering instead of unpredictable did-finish-load event
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
-  printWin.webContents.print(
-    {
-      silent: Boolean(shop.silent_printing),
-      printBackground: true,
-      deviceName: shop.invoice_printer_name || undefined,
-      copies: copies > 0 ? copies : 1,
-    },
-    (success, errorType) => {
-      if (!success) console.error("❌ Invoice print failed:", errorType);
-      printWin.close();
-    },
-  );
+  printWin.webContents.on("did-finish-load", () => {
+    printWin.webContents.print(
+      {
+        silent: Boolean(shop.silent_printing),
+        printBackground: true,
+        deviceName: shop.invoice_printer_name || undefined,
+        copies: copies > 0 ? copies : 1,
+      },
+      (success, errorType) => {
+        if (!success) console.error("❌ Invoice print failed:", errorType);
+        printWin.close();
+      },
+    );
+  });
 }
 
 module.exports = { printInvoice };
