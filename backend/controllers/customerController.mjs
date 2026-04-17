@@ -24,6 +24,7 @@ export const createCustomer = async (req, res) => {
     res.status(statusCode).json({
       message:
         error.message || "An unexpected error occurred creating the customer.",
+      existingCustomer: error.existingCustomer || null
     });
   }
 };

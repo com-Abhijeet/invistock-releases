@@ -34,6 +34,7 @@ export const createCustomer = async (customerData) => {
         "A customer with this phone number already exists."
       );
       err.statusCode = 409; // Conflict
+      err.existingCustomer = existingCustomer;
       throw err;
     }
 

@@ -64,7 +64,31 @@ const SaleSummarySection = ({
   const [businessId, setBusinessId] = useState("");
 
   const [doPrint, setDoPrint] = useState(true);
-  const [doWhatsApp, setDoWhatsApp] = useState(true);
+  const [doWhatsApp, setDoWhatsApp] = useState<boolean>(() => {
+    // 1. Read from localStorage on initial load
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("do_whatsapp");
+      if (stored !== null) {
+        return stored === "true"; // Convert string back to boolean
+      }
+    }
+    return true; // Default to true if nothing is saved yet
+  });
+
+  // 2. Update localStorage whenever the toggle changes
+  useEffect(() => {
+    localStorage.setItem("do_whatsapp", doWhatsApp.toString());
+  }, [doWhatsApp]);
+
+  const [conflictDialog, setConflictDialog] = useState<{
+    open: boolean;
+    existingCustomer: any;
+    newPhone: string;
+  }>({
+    open: false,
+    existingCustomer: null,
+    newPhone: "",
+  });
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -194,9 +218,13 @@ const SaleSummarySection = ({
     onSaleChange({ ...sale, paid_amount: sale.total_amount, status: "paid" });
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (resolvedCustomer?: {
+    id?: number;
+    phone?: string;
+    name?: string;
+  }) => {
     if (!sale.customer_id || sale.customer_id === 0) {
-      if (!customer?.name || !customer?.phone) {
+      if (!customer?.name || (!customer?.phone && !resolvedCustomer?.phone)) {
         toast.error("Customer Name and Phone Number are required.");
         return;
       }
@@ -212,20 +240,44 @@ const SaleSummarySection = ({
     setIsSubmitting(true);
     try {
       let saleDataWithCustomer = { ...sale };
-      if (!sale.customer_id || sale.customer_id === 0) {
-        const customerRes = await createCustomer({
-          name: customer?.name!,
-          phone: customer?.phone!,
-          address: customer?.address,
-          city: customer?.city,
-          state: customer?.state,
-          pincode: customer?.pincode,
-          gst_no: customer?.gst_no,
-        });
+
+      if (resolvedCustomer?.id) {
         saleDataWithCustomer = {
           ...saleDataWithCustomer,
-          customer_id: customerRes.id,
+          customer_id: resolvedCustomer.id,
+          customer_name: resolvedCustomer.name || sale.customer_name,
         };
+      } else if (!sale.customer_id || sale.customer_id === 0) {
+        const phoneToUse = resolvedCustomer?.phone || customer?.phone!;
+        try {
+          const customerRes = await createCustomer({
+            name: customer?.name!,
+            phone: phoneToUse,
+            address: customer?.address,
+            city: customer?.city,
+            state: customer?.state,
+            pincode: customer?.pincode,
+            gst_no: customer?.gst_no,
+          });
+          saleDataWithCustomer = {
+            ...saleDataWithCustomer,
+            customer_id: customerRes.id,
+          };
+        } catch (err: any) {
+          if (
+            err.response?.status === 409 &&
+            err.response?.data?.existingCustomer
+          ) {
+            setConflictDialog({
+              open: true,
+              existingCustomer: err.response.data.existingCustomer,
+              newPhone: "",
+            });
+            setIsSubmitting(false);
+            return;
+          }
+          throw err;
+        }
       }
 
       // Explicitly construct the final payload verifying all fields
@@ -382,16 +434,21 @@ const SaleSummarySection = ({
         }
 
         // 5. ALWAYS attach the PDF Invoice (Removed the 'isCloudLinkSent' condition)
-        const res = await window.electron?.sendWhatsAppInvoicePdf({
-          sale: savedSale,
-          shop: shop,
-          localSettings: localSettings,
-          customerPhone: customer?.phone,
-        });
+        window.electron
+          ?.sendWhatsAppInvoicePdf({
+            sale: savedSale,
+            shop: shop,
+            localSettings: localSettings,
+            customerPhone: customer?.phone,
+          })
+          .then((res: any) => {
+            console.log("RESPONSE FROM PDF", res);
+          })
+          .catch((err: any) => {
+            console.error("Error sending PDF via WhatsApp", err);
+          });
 
         console.log("sale reference in frontend", sale.reference_no);
-
-        console.log("RESPONSE FROM PDF", res);
       }
 
       resetForm();
@@ -481,7 +538,7 @@ const SaleSummarySection = ({
       </Box>
 
       <Box sx={{ px: 2, py: 1.5 }}>
-        <Grid container spacing={2} alignItems="center">
+        <Grid container spacing={1} alignItems="center">
           {/* LEFT: Prominent Totals (RECONCILED) */}
           <Grid item xs={12} md={4}>
             <Stack direction="row" spacing={2} alignItems="center">
@@ -854,7 +911,7 @@ const SaleSummarySection = ({
                     }
                     label={
                       <Typography sx={{ fontSize: "0.65rem", fontWeight: 700 }}>
-                        WA
+                        Whatsapp
                       </Typography>
                     }
                     sx={{ m: 0 }}
@@ -863,7 +920,7 @@ const SaleSummarySection = ({
                 <Button
                   variant="contained"
                   fullWidth
-                  onClick={handleSubmit}
+                  onClick={() => handleSubmit()}
                   disabled={isSubmitting}
                   startIcon={
                     isSubmitting ? (
@@ -914,6 +971,77 @@ const SaleSummarySection = ({
             }}
           >
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Conflict Dialog */}
+      <Dialog
+        open={conflictDialog.open}
+        onClose={() => setConflictDialog({ ...conflictDialog, open: false })}
+        PaperProps={{ sx: { borderRadius: "8px", minWidth: "400px" } }}
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 800,
+            fontSize: "1rem",
+            color: theme.palette.error.main,
+          }}
+        >
+          Customer Already Exists
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            A customer with the phone number <strong>{customer?.phone}</strong>{" "}
+            already exists as{" "}
+            <strong>{conflictDialog.existingCustomer?.name}</strong>.
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 600 }}>
+            Do you want to proceed with the existing customer, or enter a new
+            phone number for {customer?.name}?
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            label={`New Phone Number for ${customer?.name}`}
+            variant="outlined"
+            value={conflictDialog.newPhone}
+            onChange={(e) =>
+              setConflictDialog({ ...conflictDialog, newPhone: e.target.value })
+            }
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() =>
+              setConflictDialog({ ...conflictDialog, open: false })
+            }
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setConflictDialog({ ...conflictDialog, open: false });
+              handleSubmit({
+                id: conflictDialog.existingCustomer.id,
+                name: conflictDialog.existingCustomer.name,
+              });
+            }}
+          >
+            Use {conflictDialog.existingCustomer?.name}
+          </Button>
+          <Button
+            variant="contained"
+            disabled={
+              !conflictDialog.newPhone || conflictDialog.newPhone.length < 10
+            }
+            onClick={() => {
+              setConflictDialog({ ...conflictDialog, open: false });
+              handleSubmit({ phone: conflictDialog.newPhone });
+            }}
+          >
+            Save with New Phone
           </Button>
         </DialogActions>
       </Dialog>
