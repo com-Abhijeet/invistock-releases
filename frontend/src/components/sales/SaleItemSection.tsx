@@ -769,24 +769,24 @@ export default function SaleItemSection({
               >
                 #
               </TableCell>
-              {shop?.hsn_required && (
+              {!!shop?.hsn_required && (
                 <TableCell sx={{ ...headerSx, width: "8%" }}>HSN</TableCell>
               )}
-              <TableCell sx={{ ...headerSx, width: "22%" }}>
+              <TableCell sx={{ ...headerSx, width: "20%" }}>
                 PRODUCT SEARCH
               </TableCell>
-              <TableCell sx={{ ...headerSx, width: "12%" }}>BARCODE</TableCell>
-              <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
+              <TableCell sx={{ ...headerSx, width: "20%" }}>BARCODE</TableCell>
+              <TableCell sx={{ ...headerSx, width: "10%" }}>QTY</TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>UNIT</TableCell>
               <TableCell sx={{ ...headerSx, width: "10%" }}>
-                {shop?.inclusive_tax_pricing ? "RATE (INC.)" : "RATE"}
+                {!!shop?.inclusive_tax_pricing ? "RATE (INC.)" : "RATE"}
               </TableCell>
-              {shop?.gst_enabled && (
-                <TableCell sx={headerSx} align="center">
+              {!!shop?.gst_enabled && (
+                <TableCell sx={{ ...headerSx, width: "5%" }} align="center">
                   GST
                 </TableCell>
               )}
-              <TableCell sx={headerSx} align="center">
+              <TableCell sx={{ ...headerSx, width: "10%" }} align="center">
                 DISC%
               </TableCell>
               <TableCell
@@ -833,7 +833,7 @@ export default function SaleItemSection({
                     >
                       {idx + 1}
                     </TableCell>
-                    {shop?.hsn_required && (
+                    {!!shop?.hsn_required && (
                       <TableCell
                         sx={{
                           fontSize: "0.8rem",
@@ -1098,6 +1098,8 @@ export default function SaleItemSection({
                           onChange={(e) =>
                             handleFieldChange(idx, "unit", e.target.value)
                           }
+                          // 👇 ADD THIS LINE TO INTERCEPT THE ENTER KEY
+                          onKeyDown={(e) => handleGridKeyDown(e, idx, "unit")}
                         >
                           {allowedUnits.map((u) => (
                             <MenuItem
@@ -1157,7 +1159,7 @@ export default function SaleItemSection({
                       </Box>
                     </TableCell>
 
-                    {shop?.gst_enabled && (
+                    {!!shop?.gst_enabled && (
                       <TableCell align="center">
                         <Typography
                           variant="caption"
@@ -1235,10 +1237,10 @@ export default function SaleItemSection({
                     </TableCell>
                   </TableRow>
 
-                  {showDescriptionRow && (
+                  {!!showDescriptionRow && (
                     <TableRow sx={{ "& > td": { pt: 0, pb: 1, border: 0 } }}>
                       <TableCell />
-                      {shop?.hsn_required && <TableCell />}
+                      {!!shop?.hsn_required && <TableCell />}
                       <TableCell colSpan={8}>
                         <Box
                           sx={{

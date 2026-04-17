@@ -263,8 +263,8 @@ export default function SalesPosHeaderSection({
             sx={{
               ...containerSx,
               flexGrow: 0.8,
-              minWidth: 130,
-              width: 150,
+              minWidth: 150,
+              width: 200,
               borderColor: isPhoneMissing
                 ? alpha(theme.palette.error.main, 0.4)
                 : alpha(theme.palette.divider, 0.8),
@@ -298,7 +298,7 @@ export default function SalesPosHeaderSection({
           </Box>
 
           {/* 4. Personnel Selection (Extra Width) */}
-          <Box sx={{ ...containerSx, flexGrow: 1.5, minWidth: 200 }}>
+          <Box sx={{ ...containerSx, flexGrow: 1.5, minWidth: 180 }}>
             <Briefcase size={14} color={theme.palette.text.disabled} />
             <Typography sx={labelSx}>STAFF</Typography>
             <Autocomplete
@@ -331,6 +331,7 @@ export default function SalesPosHeaderSection({
               borderColor: alpha(theme.palette.primary.main, 0.2),
               flexGrow: 0.8,
               minWidth: 130,
+              maxWidth: 180,
             }}
           >
             <ScanLine size={14} color={theme.palette.primary.main} />
