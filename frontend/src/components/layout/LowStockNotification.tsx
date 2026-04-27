@@ -13,11 +13,19 @@ import {
   ListItemText,
   CircularProgress,
   Box,
-  Divider,
   Tooltip,
   ListItemButton,
+  Button,
+  useTheme,
+  alpha,
 } from "@mui/material";
-import { OctagonAlert, Image as ImageIcon } from "lucide-react";
+import {
+  OctagonAlert,
+  Image as ImageIcon,
+  ArrowRight,
+  CheckCircle2,
+  ChevronRight,
+} from "lucide-react";
 import {
   fetchLowStockCount,
   fetchLowStockList,
@@ -26,13 +34,13 @@ import {
 import { useNavigate } from "react-router-dom";
 
 export default function LowStockNotification() {
+  const theme = useTheme();
+  const navigate = useNavigate();
   const [count, setCount] = useState(0);
   const [products, setProducts] = useState<LowStockProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
-  const navigate = useNavigate();
 
-  // 1. Fetch the count on initial load
   const loadCount = () => {
     fetchLowStockCount()
       .then((data) => setCount(data.count))
@@ -43,7 +51,6 @@ export default function LowStockNotification() {
     loadCount();
   }, []);
 
-  // 2. When the popover opens, fetch the full list
   const handleOpen = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
     setLoading(true);
@@ -53,12 +60,9 @@ export default function LowStockNotification() {
       .finally(() => setLoading(false));
   };
 
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
-
+  const handleClose = () => setAnchorEl(null);
   const handleItemClick = (id: number) => {
-    navigate(`/product/${id}`); // Navigate to the product detail page
+    navigate(`/product/${id}`);
     handleClose();
   };
 
@@ -68,8 +72,8 @@ export default function LowStockNotification() {
     <>
       <Tooltip title="Low Stock Alerts">
         <IconButton color="inherit" onClick={handleOpen}>
-          <Badge badgeContent={count} color="error">
-            <OctagonAlert />
+          <Badge badgeContent={count} color="error" overlap="circular">
+            <OctagonAlert size={20} />
           </Badge>
         </IconButton>
       </Tooltip>
@@ -80,32 +84,115 @@ export default function LowStockNotification() {
         onClose={handleClose}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
-        PaperProps={{ sx: { width: 360, maxHeight: 400 } }}
+        slotProps={{
+          paper: {
+            sx: {
+              width: 420,
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              borderRadius: "16px",
+              boxShadow: "0px 12px 40px rgba(0, 0, 0, 0.12)",
+            },
+          },
+        }}
       >
-        <Box sx={{ p: 2 }}>
-          <Typography variant="h6" component="div">
-            Low Stock Alerts
-          </Typography>
-        </Box>
-        <Divider />
-
-        {loading ? (
-          <Box display="flex" justifyContent="center" my={3}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          // ✅ Use disablePadding on List
-          <List dense disablePadding>
-            {products.length === 0 ? (
-              <Typography sx={{ p: 2, color: "text.secondary" }}>
-                No products are currently low on stock.
+        {/* Header */}
+        <Box
+          sx={{
+            p: 2.5,
+            bgcolor: "white",
+            borderBottom: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Box display="flex" alignItems="center" gap={1.5}>
+            <Avatar
+              sx={{
+                bgcolor: alpha(theme.palette.error.main, 0.1),
+                color: "error.main",
+                width: 40,
+                height: 40,
+              }}
+            >
+              <OctagonAlert size={20} />
+            </Avatar>
+            <Box>
+              <Typography
+                variant="h6"
+                fontWeight={800}
+                color="text.primary"
+                lineHeight={1.2}
+              >
+                Low Stock Alerts
               </Typography>
-            ) : (
-              products.map((product) => (
-                // ✅ ListItem no longer has the 'button' prop
-                <ListItem key={product.id} disablePadding>
-                  {/* ✅ Wrap the content in ListItemButton */}
-                  <ListItemButton onClick={() => handleItemClick(product.id)}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                fontWeight={600}
+              >
+                {count === 0
+                  ? "Inventory looks healthy."
+                  : `${count} products need restocking soon.`}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Body */}
+        <Box sx={{ flexGrow: 1, overflowY: "auto", bgcolor: "grey.50" }}>
+          {loading ? (
+            <Box
+              display="flex"
+              justifyContent="center"
+              alignItems="center"
+              height={200}
+            >
+              <CircularProgress size={28} />
+            </Box>
+          ) : count === 0 ? (
+            <Box textAlign="center" py={8} px={3}>
+              <Avatar
+                sx={{
+                  bgcolor: "success.50",
+                  mx: "auto",
+                  mb: 2,
+                  width: 64,
+                  height: 64,
+                }}
+              >
+                <CheckCircle2 size={32} color={theme.palette.success.main} />
+              </Avatar>
+              <Typography
+                variant="subtitle1"
+                fontWeight={800}
+                color="text.primary"
+              >
+                Inventory is Healthy
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mt={0.5}>
+                All your products are currently above their minimum stock
+                thresholds.
+              </Typography>
+            </Box>
+          ) : (
+            <List disablePadding>
+              {products.map((product) => (
+                <ListItem
+                  key={product.id}
+                  disablePadding
+                  divider
+                  sx={{ bgcolor: "white" }}
+                >
+                  <ListItemButton
+                    onClick={() => handleItemClick(product.id)}
+                    sx={{
+                      py: 1.5,
+                      px: 2,
+                      "&:hover": {
+                        bgcolor: alpha(theme.palette.error.main, 0.02),
+                      },
+                    }}
+                  >
                     <ListItemAvatar>
                       <Avatar
                         variant="rounded"
@@ -114,19 +201,77 @@ export default function LowStockNotification() {
                             ? `app-image://products/${product.image_url}`
                             : undefined
                         }
+                        sx={{ bgcolor: "grey.100", color: "grey.500" }}
                       >
-                        <ImageIcon />
+                        <ImageIcon size={20} />
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
-                      primary={product.name}
-                      secondary={`Current: ${product.quantity} (Threshold: ${product.low_stock_threshold})`}
+                      primary={
+                        <Typography variant="body2" fontWeight={700}>
+                          {product.name}
+                        </Typography>
+                      }
+                      secondary={
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          fontWeight={600}
+                          display="block"
+                          mt={0.5}
+                        >
+                          Only{" "}
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="error.main"
+                            fontWeight={800}
+                          >
+                            {product.quantity}
+                          </Typography>{" "}
+                          left (Restock at {product.low_stock_threshold})
+                        </Typography>
+                      }
+                    />
+                    <ChevronRight
+                      size={16}
+                      color={theme.palette.text.disabled}
                     />
                   </ListItemButton>
                 </ListItem>
-              ))
-            )}
-          </List>
+              ))}
+            </List>
+          )}
+        </Box>
+
+        {/* Footer */}
+        {count > 0 && (
+          <Box
+            sx={{
+              bgcolor: "white",
+              borderTop: `1px solid ${theme.palette.divider}`,
+              p: 1,
+            }}
+          >
+            <Button
+              fullWidth
+              endIcon={<ArrowRight size={16} />}
+              onClick={() => {
+                navigate("/products");
+                handleClose();
+              }}
+              sx={{
+                textTransform: "none",
+                fontWeight: 700,
+                color: "error.main",
+                py: 1.5,
+                borderRadius: "8px",
+                "&:hover": { bgcolor: alpha(theme.palette.error.main, 0.04) },
+              }}
+            >
+              View All Inventory
+            </Button>
+          </Box>
         )}
       </Popover>
     </>

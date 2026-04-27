@@ -3,6 +3,14 @@ const QRCode = require("qrcode");
 const { getTemplate } = require("./ipc/templateManager.js"); // ✅ Import Template Manager
 
 async function printInvoice(payload) {
+  const startTime = Date.now();
+  const logTime = (msg) => {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`⏱️ [Invoice Print] ${msg} - Elapsed: ${elapsed}s`);
+  };
+
+  logTime("Started print job");
+
   const { sale, shop, copies = 1, localSettings } = payload;
   if (!sale || !shop) {
     console.error("❌ Missing sale or shop data for invoice printing.");
@@ -20,6 +28,8 @@ async function printInvoice(payload) {
   } else {
     shop.generated_upi_qr = null;
   }
+  
+  logTime("QR Code processed");
 
   const enhancedSale = sale;
 
@@ -30,6 +40,8 @@ async function printInvoice(payload) {
     show: !Boolean(shop.silent_printing),
     title: "Invoice Print",
   });
+  
+  logTime("Print Window created");
 
   printWin.webContents.session.webRequest.onHeadersReceived(
     (details, callback) => {
@@ -51,22 +63,34 @@ async function printInvoice(payload) {
     shop,
     localSettings,
   });
+  
+  logTime("Template HTML generated");
 
   printWin.loadURL(
     "data:text/html;charset=utf-8," + encodeURIComponent(htmlContent),
   );
 
   printWin.webContents.on("did-finish-load", () => {
+    logTime("Window did-finish-load - Calling print() now");
+    
+    // Store the time when print is called
+    const beforePrintTime = Date.now();
+    
     printWin.webContents.print(
       {
         silent: Boolean(shop.silent_printing),
-        printBackground: true,
+        printBackground: false,
         deviceName: shop.invoice_printer_name || undefined,
         copies: copies > 0 ? copies : 1,
       },
       (success, errorType) => {
+        const timeInSpooler = ((Date.now() - beforePrintTime) / 1000).toFixed(2);
+        logTime(`Print callback fired (Success: ${success}) - Time taken after print dialog: ${timeInSpooler}s`);
+        
         if (!success) console.error("❌ Invoice print failed:", errorType);
         printWin.close();
+        
+        logTime("Total print process finished completely.");
       },
     );
   });

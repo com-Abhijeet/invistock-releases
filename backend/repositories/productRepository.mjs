@@ -647,3 +647,17 @@ export function getProductsForMobile(options) {
 
   return { records, totalRecords };
 }
+
+export const getBatchTrackedProductsWithNoBatches = () => {
+  const query = db.prepare(`
+    SELECT p.* FROM products p
+    WHERE p.tracking_type = 'batch'
+      AND NOT EXISTS (
+        SELECT 1 
+        FROM product_batches pb 
+        WHERE pb.product_id = p.id
+      )
+  `);
+
+  return query.all();
+};

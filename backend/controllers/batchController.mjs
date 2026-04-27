@@ -208,3 +208,44 @@ export function generateBarcode(req, res) {
     res.status(500).json({ status: "error", error: error.message });
   }
 }
+
+/*
+ *BULK ACTIONS
+ */
+export function bulkCreateBatches(req, res) {
+  try {
+    const { batches } = req.body;
+    if (!batches || !Array.isArray(batches)) {
+      return res
+        .status(400)
+        .json({ status: "error", error: "Invalid batches data" });
+    }
+    const count = BatchService.bulkCreateOpeningStock(batches);
+    res.json({
+      status: "success",
+      message: `Successfully created ${count} batches`,
+    });
+  } catch (error) {
+    console.error("[BATCH CONTROLLER] Bulk Create Error:", error);
+    res.status(500).json({ status: "error", error: error.message });
+  }
+}
+
+export function bulkUntrackProducts(req, res) {
+  try {
+    const { productIds } = req.body;
+    if (!productIds || !Array.isArray(productIds)) {
+      return res
+        .status(400)
+        .json({ status: "error", error: "Invalid product IDs" });
+    }
+    const count = BatchService.bulkUntrackProducts(productIds);
+    res.json({
+      status: "success",
+      message: `Successfully untracked ${count} products`,
+    });
+  } catch (error) {
+    console.error("[BATCH CONTROLLER] Bulk Untrack Error:", error);
+    res.status(500).json({ status: "error", error: error.message });
+  }
+}

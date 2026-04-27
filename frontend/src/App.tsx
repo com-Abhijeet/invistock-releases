@@ -81,6 +81,7 @@ import AccountingDashboard from "./pages/AccountingDashboard";
 import ExpiryReportPage from "./pages/ExpiryReportPage";
 import TallyDashboard from "./pages/TallyDashboard";
 import BusinessSettings from "./pages/BusinessSettingsPage";
+import MissingBatchesPage from "./pages/MissingBatchesPage";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -295,6 +296,14 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="products">
                         <ProductBatchesPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/missing-batches"
+                    element={
+                      <PermissionGuard requiredPermission="products">
+                        <MissingBatchesPage />
                       </PermissionGuard>
                     }
                   />
@@ -546,7 +555,7 @@ function AppInitializer() {
   useEffect(() => {
     console.log("[INIT] Starting AppInitializer...");
 
-    let pollingInterval: NodeJS.Timeout | null = null;
+    let pollingInterval: ReturnType<typeof setInterval> | null = null;
     let isMounted = true;
 
     // 2. Initial Async Check
