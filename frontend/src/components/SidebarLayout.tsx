@@ -52,6 +52,7 @@ import theme from "../../theme";
 import { menuSections } from "../config/menu";
 import ExpiringItemsNotification from "./layout/ExpiringItemsNotification";
 import CalculatorModal from "./layout/CalculatorModal";
+import ActionCenter from "./layout/ActionCenter";
 
 const drawerWidth = 260;
 const collapsedDrawerWidth = 72;
@@ -554,6 +555,7 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
                   </IconButton>
                 </Tooltip>
 
+                <ActionCenter />
                 <ExpiringItemsNotification />
                 <CalculatorModal />
                 <LowStockNotification />

@@ -15,6 +15,9 @@ import {
   MenuItem,
   useTheme,
   Typography,
+  Checkbox,
+  Button,
+  alpha,
 } from "@mui/material";
 import { MoreHorizontal } from "lucide-react";
 import {
@@ -24,7 +27,19 @@ import {
   type MouseEvent,
   type KeyboardEvent,
 } from "react";
-import type { DataTableProps } from "../lib/types/DataTableTypes";
+import type { DataTableProps as BaseDataTableProps } from "../lib/types/DataTableTypes";
+
+// Extended props to include optional bulk actions without breaking existing usages
+export interface BulkAction {
+  label: string;
+  icon?: React.ReactNode;
+  onClick: (selectedRows: any[]) => void;
+}
+
+export type DataTableProps = BaseDataTableProps & {
+  bulkActions?: boolean;
+  bulkActionsList?: BulkAction[];
+};
 
 export default function DataTable({
   rows,
@@ -38,11 +53,17 @@ export default function DataTable({
   onRowsPerPageChange,
   hidePagination = false,
   rowsPerPageOptions = [5, 10, 20, 50, 100],
+  bulkActions = false,
+  bulkActionsList = [],
 }: DataTableProps) {
   const theme = useTheme();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedRow, setSelectedRow] = useState<any>(null);
   const [_focusedIndex, setFocusedIndex] = useState<number>(-1);
+
+  // Bulk Selection States
+  const [selectedItems, setSelectedItems] = useState<any[]>([]);
+  const [isBulkMode, setIsBulkMode] = useState<boolean>(false);
 
   // Ref to the table container to manage focus within the list
   const tableRef = useRef<HTMLTableSectionElement>(null);
@@ -62,7 +83,6 @@ export default function DataTable({
     event: MouseEvent<HTMLButtonElement> | HTMLElement,
     row: any,
   ) => {
-    // If it's a mouse event, use currentTarget, otherwise use the element passed (from keyboard)
     const target = "currentTarget" in event ? event.currentTarget : event;
     setAnchorEl(target);
     setSelectedRow(row);
@@ -73,11 +93,61 @@ export default function DataTable({
     setSelectedRow(null);
   };
 
+  // --- Bulk Selection Handlers ---
+  const isRowSelected = (row: any, index: number) => {
+    const id = row.id || index;
+    return selectedItems.some((item) => (item.id || rows.indexOf(item)) === id);
+  };
+
+  const handleSelect = (row: any, index: number) => {
+    const id = row.id || index;
+    setSelectedItems((prev) => {
+      const exists = prev.some(
+        (item) => (item.id || rows.indexOf(item)) === id,
+      );
+      if (exists) {
+        return prev.filter((item) => (item.id || rows.indexOf(item)) !== id);
+      } else {
+        return [...prev, row];
+      }
+    });
+  };
+
+  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      const newSelections = [...selectedItems];
+      rows.forEach((row, i) => {
+        const id = row.id || i;
+        if (
+          !newSelections.some((item) => (item.id || rows.indexOf(item)) === id)
+        ) {
+          newSelections.push(row);
+        }
+      });
+      setSelectedItems(newSelections);
+    } else {
+      const currentPageIds = rows.map((r, i) => r.id || i);
+      setSelectedItems((prev) =>
+        prev.filter((item) => {
+          const id = item.id || rows.indexOf(item);
+          return !currentPageIds.includes(id);
+        }),
+      );
+    }
+  };
+
   const handleKeyDown = (
     event: KeyboardEvent<HTMLTableRowElement>,
     index: number,
     row: any,
   ) => {
+    // Enter bulk selection mode with Shift + Enter
+    if (bulkActions && event.shiftKey && event.key === "Enter") {
+      event.preventDefault();
+      setIsBulkMode((prev) => !prev);
+      return;
+    }
+
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
@@ -94,7 +164,9 @@ export default function DataTable({
       case "Enter":
       case " ":
         event.preventDefault();
-        if (actions.length > 0) {
+        if (bulkActions && isBulkMode) {
+          handleSelect(row, index);
+        } else if (actions.length > 0) {
           handleMenuOpen(event.currentTarget, row);
         }
         break;
@@ -102,6 +174,14 @@ export default function DataTable({
         break;
     }
   };
+
+  const isAllCurrentPageSelected =
+    rows.length > 0 && rows.every((row, i) => isRowSelected(row, i));
+  const isSomeCurrentPageSelected =
+    rows.some((row, i) => isRowSelected(row, i)) && !isAllCurrentPageSelected;
+
+  const colSpanCount =
+    columns.length + (actions.length > 0 ? 2 : 1) + (bulkActions ? 1 : 0);
 
   return (
     <Box
@@ -114,10 +194,63 @@ export default function DataTable({
         backgroundColor: theme.palette.background.paper,
       }}
     >
+      {/* --- BULK ACTIONS TOOLBAR --- */}
+      {bulkActions && selectedItems.length > 0 && (
+        <Box
+          sx={{
+            px: 2,
+            py: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            bgcolor: alpha(theme.palette.primary.main, 0.08),
+            borderBottom: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Typography variant="subtitle2" color="primary.main" fontWeight={700}>
+            {selectedItems.length} item{selectedItems.length !== 1 ? "s" : ""}{" "}
+            selected
+          </Typography>
+          <Box sx={{ display: "flex", gap: 1 }}>
+            {bulkActionsList.map((action, idx) => (
+              <Button
+                key={idx}
+                size="small"
+                variant="contained"
+                disableElevation
+                startIcon={action.icon}
+                onClick={() => action.onClick(selectedItems)}
+                sx={{ textTransform: "none", fontWeight: 600, borderRadius: 2 }}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </Box>
+        </Box>
+      )}
+
       <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow sx={{ height: 48 }}>
+              {bulkActions && (
+                <TableCell
+                  padding="checkbox"
+                  sx={{
+                    borderBottom: `1px solid ${theme.palette.divider}`,
+                    width: 48,
+                    pl: 1,
+                  }}
+                >
+                  <Checkbox
+                    size="small"
+                    checked={isAllCurrentPageSelected}
+                    indeterminate={isSomeCurrentPageSelected}
+                    onChange={handleSelectAll}
+                    color="primary"
+                  />
+                </TableCell>
+              )}
               <TableCell
                 align="center"
                 sx={{
@@ -128,7 +261,7 @@ export default function DataTable({
                   letterSpacing: "0.5px",
                   borderBottom: `1px solid ${theme.palette.divider}`,
                   width: 60,
-                  pl: 2,
+                  pl: bulkActions ? 1 : 2,
                 }}
               >
                 #
@@ -165,7 +298,7 @@ export default function DataTable({
             {loading ? (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length + 2}
+                  colSpan={colSpanCount}
                   align="center"
                   sx={{ py: 6, borderBottom: "none" }}
                 >
@@ -175,7 +308,7 @@ export default function DataTable({
             ) : rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length + 2}
+                  colSpan={colSpanCount}
                   align="center"
                   sx={{ py: 6, borderBottom: "none" }}
                 >
@@ -185,78 +318,99 @@ export default function DataTable({
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((row, i) => (
-                <TableRow
-                  key={row.id || i}
-                  hover
-                  tabIndex={0} // Makes the row focusable
-                  onKeyDown={(e) => handleKeyDown(e, i, row)}
-                  onFocus={() => setFocusedIndex(i)}
-                  sx={{
-                    outline: "none",
-                    "&:last-child td, &:last-child th": { border: 0 },
-                    transition: "background-color 0.15s ease",
-                    cursor: "default",
-                    height: 44,
-                    // Visual indicator for keyboard focus
-                    "&:focus-visible": {
-                      backgroundColor: theme.palette.action.selected,
-                      boxShadow: `inset 4px 0 0 0 ${theme.palette.primary.main}`,
-                    },
-                    "&:hover": {
-                      backgroundColor: theme.palette.action.hover,
-                    },
-                  }}
-                >
-                  <TableCell
-                    align="center"
+              rows.map((row, i) => {
+                const isSelected = isRowSelected(row, i);
+
+                return (
+                  <TableRow
+                    key={row.id || i}
+                    hover
+                    tabIndex={0}
+                    onKeyDown={(e) => handleKeyDown(e, i, row)}
+                    onFocus={() => setFocusedIndex(i)}
+                    selected={isSelected}
                     sx={{
-                      color: theme.palette.text.disabled,
-                      fontWeight: 500,
-                      fontSize: "0.8125rem",
-                      pl: 2,
+                      outline: "none",
+                      "&:last-child td, &:last-child th": { border: 0 },
+                      transition: "background-color 0.15s ease",
+                      cursor: "default",
+                      height: 44,
+                      // Visual indicator for keyboard focus and selection
+                      backgroundColor: isSelected
+                        ? alpha(theme.palette.primary.main, 0.04)
+                        : "inherit",
+                      "&:focus-visible": {
+                        backgroundColor: theme.palette.action.selected,
+                        boxShadow: `inset 4px 0 0 0 ${theme.palette.primary.main}`,
+                      },
+                      "&:hover": {
+                        backgroundColor: isSelected
+                          ? alpha(theme.palette.primary.main, 0.08)
+                          : theme.palette.action.hover,
+                      },
                     }}
                   >
-                    {page * rowsPerPage + i + 1}
-                  </TableCell>
-
-                  {columns.map((col) => (
+                    {bulkActions && (
+                      <TableCell padding="checkbox" sx={{ pl: 1 }}>
+                        <Checkbox
+                          size="small"
+                          checked={isSelected}
+                          onChange={() => handleSelect(row, i)}
+                          tabIndex={-1} // Prevent tabbing to checkbox so row receives keyboard events
+                          color="primary"
+                        />
+                      </TableCell>
+                    )}
                     <TableCell
-                      key={col.key}
-                      align={col.align || "left"}
+                      align="center"
                       sx={{
-                        color: theme.palette.text.primary,
+                        color: theme.palette.text.disabled,
+                        fontWeight: 500,
                         fontSize: "0.8125rem",
-                        fontWeight: 400,
+                        pl: bulkActions ? 1 : 2,
                       }}
                     >
-                      {col.format
-                        ? col.format(row[col.key], row)
-                        : row[col.key] || "-"}
+                      {page * rowsPerPage + i + 1}
                     </TableCell>
-                  ))}
 
-                  {actions.length > 0 && (
-                    <TableCell align="right" sx={{ pr: 1 }}>
-                      <IconButton
-                        size="small"
-                        tabIndex={-1} // Prevent double tabbing (row is already focusable)
-                        onClick={(e) => handleMenuOpen(e, row)}
+                    {columns.map((col) => (
+                      <TableCell
+                        key={col.key}
+                        align={col.align || "left"}
                         sx={{
-                          color: theme.palette.text.secondary,
-                          padding: "4px",
-                          "&:hover": {
-                            color: theme.palette.primary.main,
-                            bgcolor: theme.palette.action.selected,
-                          },
+                          color: theme.palette.text.primary,
+                          fontSize: "0.8125rem",
+                          fontWeight: 400,
                         }}
                       >
-                        <MoreHorizontal size={16} />
-                      </IconButton>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))
+                        {col.format
+                          ? col.format(row[col.key], row)
+                          : row[col.key] || "-"}
+                      </TableCell>
+                    ))}
+
+                    {actions.length > 0 && (
+                      <TableCell align="right" sx={{ pr: 1 }}>
+                        <IconButton
+                          size="small"
+                          tabIndex={-1}
+                          onClick={(e) => handleMenuOpen(e, row)}
+                          sx={{
+                            color: theme.palette.text.secondary,
+                            padding: "4px",
+                            "&:hover": {
+                              color: theme.palette.primary.main,
+                              bgcolor: theme.palette.action.selected,
+                            },
+                          }}
+                        >
+                          <MoreHorizontal size={16} />
+                        </IconButton>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -305,7 +459,7 @@ export default function DataTable({
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
-        autoFocus // Ensures the first item is focused when the menu opens
+        autoFocus
         PaperProps={{
           elevation: 3,
           sx: {

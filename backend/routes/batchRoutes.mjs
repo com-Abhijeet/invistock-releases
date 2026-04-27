@@ -11,14 +11,19 @@ import {
   generateBarcode,
   getNotifications,
   getFullReport,
+  bulkCreateBatches,
+  bulkUntrackProducts,
 } from "../controllers/batchController.mjs";
 
 const router = Router();
 
-// Existing
 router.get("/product/:productId", getProductBatchSuggestions);
 router.get("/trace/serial/:serialNumber", traceSerialNumber);
 router.get("/trace/batch/:batchNumber", traceBatchNumber);
+
+// Bulk Operations
+router.post("/bulk-create", bulkCreateBatches);
+router.post("/bulk-untrack", bulkUntrackProducts);
 
 // New
 router.post("/assign-stock", assignStock);

@@ -708,3 +708,97 @@ export const getCategorizedExpiryReport = async () => {
     data: report,
   };
 };
+
+/*
+ * BULK ACTIONS
+ */
+
+/**
+ * Creates opening stock batches in bulk, translating units automatically.
+ */
+export function bulkCreateOpeningStock(batches) {
+  const transaction = db.transaction((batchList) => {
+    let createdCount = 0;
+
+    for (const item of batchList) {
+      const product = db
+        .prepare("SELECT * FROM products WHERE id = ?")
+        .get(item.product_id);
+      if (!product) continue;
+
+      // 1. Calculate the real base quantity using unitService
+      const inputQty = Number(item.quantity) || 0;
+      const baseQuantity = convertToStockQuantity(inputQty, item.unit, product);
+
+      // 2. Normalize the MRP and MOP down to the base unit price
+      // E.g., If user typed 1 Box, baseQty is 10. The ratio is 10/1 = 10.
+      // We divide the "Box Price" by 10 to get the "Per Pc Price" for the DB.
+      const ratio = inputQty > 0 ? baseQuantity / inputQty : 1;
+      const baseMrp = Number(item.mrp) / ratio;
+      const baseMop = Number(item.mop) / ratio;
+
+      // 3. Generate a UID for the batch
+      const countStmt = db.prepare(
+        "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?",
+      );
+      const result = countStmt.get(item.product_id);
+      const nextSequence = (result ? result.count : 0) + 1;
+      const batchUid = generateBatchUid(item.product_id, nextSequence);
+
+      // 4. Insert the new batch using the normalized base-unit metrics
+      const insertBatch = db.prepare(`
+        INSERT INTO product_batches (
+          product_id, batch_uid, batch_number,
+          expiry_date, mrp, mop, mfw_price,
+          quantity, location, is_active, created_at
+        ) VALUES (
+          @productId, @batchUid, @batchNumber,
+          @expiryDate, @mrp, @mop, @mfwPrice,
+          @quantity, @location, 1, datetime('now', 'localtime')
+        )
+      `);
+
+      insertBatch.run({
+        productId: item.product_id,
+        batchUid: batchUid,
+        batchNumber: item.batch_number || "OPENING-STOCK",
+        expiryDate: item.expiry_date || null,
+        mrp: baseMrp,
+        mop: baseMop,
+        mfwPrice: baseMrp,
+        quantity: baseQuantity,
+        location: "Store",
+      });
+
+      // 5. Update the master product's total inventory count
+      db.prepare(
+        "UPDATE products SET quantity = quantity + ? WHERE id = ?",
+      ).run(baseQuantity, item.product_id);
+
+      createdCount++;
+    }
+    return createdCount;
+  });
+
+  return transaction(batches);
+}
+
+/**
+ * Bulk updates tracking type to 'none' for given products.
+ */
+export function bulkUntrackProducts(productIds) {
+  if (!productIds || productIds.length === 0) return 0;
+
+  const transaction = db.transaction((ids) => {
+    const placeholders = ids.map(() => "?").join(",");
+    const stmt = db.prepare(`
+      UPDATE products 
+      SET tracking_type = 'none' 
+      WHERE id IN (${placeholders})
+    `);
+    const info = stmt.run(...ids);
+    return info.changes;
+  });
+
+  return transaction(productIds);
+}

@@ -116,3 +116,7 @@ export async function importProducts(filePath, mappings) {
     throw new Error("Failed to process and import products.");
   }
 }
+
+export const getMissingBatchesProducts = async () => {
+  return await productRepo.getBatchTrackedProductsWithNoBatches();
+};
