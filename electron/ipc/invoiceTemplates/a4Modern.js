@@ -4,7 +4,7 @@ const {
   formatAddress,
   numberToWords,
 } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc, calculatePhysicalItemCount } = require("./utils.js");
 
 const a4Modern = (data) => {
   const { sale, shop, localSettings } = data;
@@ -46,6 +46,7 @@ const a4Modern = (data) => {
   const discountAmount = (subTotal * discountPercentage) / 100;
   const netAmount = subTotal - discountAmount;
   const roundOff = sale.total_amount - netAmount;
+  const totalPhysicalQty = calculatePhysicalItemCount(items);
 
   const pages = [];
   for (let i = 0; i < totalPages; i++) {
@@ -190,6 +191,7 @@ const a4Modern = (data) => {
              ${
                isLastPage
                  ? `
+                 <div class="summary-row" style="font-size: 11px; margin-bottom: 5px; color: #6b7280;"><span>Total Qty</span> <span style="font-weight: 700; color: #111;">${totalPhysicalQty}</span></div>
                  <div class="summary-row"><span>Subtotal</span> <span>${formatAmount(subTotal)}</span></div>
                  
                  ${

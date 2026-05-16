@@ -1,4 +1,5 @@
 // invoiceTemplate.js - Standard A4 Template with Dynamic Preferences
+const { calculatePhysicalItemCount } = require("./ipc/invoiceTemplates/utils.js");
 
 // --- HELPERS ---
 const formatAmount = (amount) =>
@@ -231,6 +232,7 @@ function createInvoiceHTML(data) {
   const ROWS_PER_PAGE = 24;
   const items = sale.items;
   const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
+  const totalPhysicalQty = calculatePhysicalItemCount(items);
   const pages = [];
   for (let i = 0; i < totalPages; i++) {
     pages.push({
@@ -305,6 +307,13 @@ function createInvoiceHTML(data) {
         </tr>`
         : "";
 
+    const totalQtyRow = isLastPage
+      ? `
+        <tr class="page-tracker-row">
+            <td colspan="${totalColumns}" style="text-align: right; padding-right: 10px; font-size: 10px; color: #000;">Total Qty: <strong>${totalPhysicalQty}</strong></td>
+        </tr>`
+      : "";
+
     return `
     <div class="page-container">
         <div class="header-box">
@@ -355,6 +364,7 @@ function createInvoiceHTML(data) {
               <tbody>
                 ${itemsHTML}
                 ${fillerRowHTML}
+                ${totalQtyRow}
                 ${pageTrackerRow}
               </tbody>
             </table>

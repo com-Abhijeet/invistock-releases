@@ -28,7 +28,7 @@ async function printInvoice(payload) {
   } else {
     shop.generated_upi_qr = null;
   }
-  
+
   logTime("QR Code processed");
 
   const enhancedSale = sale;
@@ -40,7 +40,7 @@ async function printInvoice(payload) {
     show: !Boolean(shop.silent_printing),
     title: "Invoice Print",
   });
-  
+
   logTime("Print Window created");
 
   printWin.webContents.session.webRequest.onHeadersReceived(
@@ -63,7 +63,7 @@ async function printInvoice(payload) {
     shop,
     localSettings,
   });
-  
+
   logTime("Template HTML generated");
 
   printWin.loadURL(
@@ -72,27 +72,44 @@ async function printInvoice(payload) {
 
   printWin.webContents.on("did-finish-load", () => {
     logTime("Window did-finish-load - Calling print() now");
-    
+
     // Store the time when print is called
     const beforePrintTime = Date.now();
-    
-    printWin.webContents.print(
-      {
-        silent: Boolean(shop.silent_printing),
-        printBackground: false,
-        deviceName: shop.invoice_printer_name || undefined,
-        copies: copies > 0 ? copies : 1,
-      },
-      (success, errorType) => {
-        const timeInSpooler = ((Date.now() - beforePrintTime) / 1000).toFixed(2);
-        logTime(`Print callback fired (Success: ${success}) - Time taken after print dialog: ${timeInSpooler}s`);
-        
-        if (!success) console.error("❌ Invoice print failed:", errorType);
-        printWin.close();
-        
-        logTime("Total print process finished completely.");
-      },
-    );
+
+    // Dynamically determine print settings based on template
+    let pageSize, landscape;
+    if (templateId.includes("a4")) {
+      pageSize = "A4";
+      landscape = false;
+    } else if (templateId.includes("a5")) {
+      pageSize = "A5";
+      landscape = templateId.includes("landscape");
+    }
+
+    const printOptions = {
+      silent: Boolean(shop.silent_printing),
+      printBackground: false,
+      deviceName: shop.invoice_printer_name || undefined,
+      copies: copies > 0 ? copies : 1,
+      margins: { marginType: "none" },
+    };
+
+    if (pageSize) {
+      printOptions.pageSize = pageSize;
+      printOptions.landscape = landscape;
+    }
+
+    printWin.webContents.print(printOptions, (success, errorType) => {
+      const timeInSpooler = ((Date.now() - beforePrintTime) / 1000).toFixed(2);
+      logTime(
+        `Print callback fired (Success: ${success}) - Time taken after print dialog: ${timeInSpooler}s`,
+      );
+
+      if (!success) console.error("❌ Invoice print failed:", errorType);
+      printWin.close();
+
+      logTime("Total print process finished completely.");
+    });
   });
 }
 

@@ -4,7 +4,7 @@ const {
   formatAmount,
   numberToWords,
 } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc, calculatePhysicalItemCount } = require("./utils.js");
 
 const a5PortraitCentered = (data) => {
   const { sale, shop, localSettings } = data;
@@ -54,6 +54,7 @@ const a5PortraitCentered = (data) => {
   const ROWS_PER_PAGE = 15;
   const items = sale.items;
   const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
+  const totalPhysicalQty = calculatePhysicalItemCount(items);
 
   let totalTaxableValue = 0,
     totalTaxAmount = 0,
@@ -152,6 +153,10 @@ const a5PortraitCentered = (data) => {
         ? `<tr class="page-tracker-row"><td colspan="${totalColumns}">Page ${pageIndex} of ${totalPages}</td></tr>`
         : "";
 
+    const totalQtyRow = isLastPage
+      ? `<tr class="page-tracker-row"><td colspan="${totalColumns}" style="text-align: right; padding-right: 10px; font-size: 10px; color: #000;">Total Qty: <strong>${totalPhysicalQty}</strong></td></tr>`
+      : "";
+
     return `
     <div class="page-container">
         
@@ -205,6 +210,7 @@ const a5PortraitCentered = (data) => {
             <tbody>
               ${itemsHTML}
               ${fillerRowHTML}
+              ${totalQtyRow}
               ${pageTrackerRow}
             </tbody>
           </table>

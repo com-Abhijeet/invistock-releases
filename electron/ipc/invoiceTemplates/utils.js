@@ -92,9 +92,31 @@ const BRANDING_FOOTER = `
   </div>
 `;
 
+// --- HELPER: Physical Item Count ---
+const MEASURABLE_UNITS = [
+  "kg", "g", "mg", "quintal", "tonne", 
+  "l", "ml", 
+  "m", "cm", "ft", "in"
+];
+
+const calculatePhysicalItemCount = (items) => {
+  let count = 0;
+  items.forEach(item => {
+    const unit = (item.unit || "").toLowerCase().trim();
+    if (MEASURABLE_UNITS.includes(unit)) {
+      count += 1;
+    } else {
+      // For pcs, doz, box, goni, etc. Add the quantity (default to 1 if missing)
+      count += (Number(item.quantity) || 1);
+    }
+  });
+  return count;
+};
+
 module.exports = {
   calculateGST,
   getTrackingHtml,
   BRANDING_FOOTER,
   getLogoSrc,
+  calculatePhysicalItemCount,
 };

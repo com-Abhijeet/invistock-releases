@@ -4,7 +4,7 @@ const {
   formatAmount,
   numberToWords,
 } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, calculatePhysicalItemCount } = require("./utils.js");
 
 const a5Portrait = (data) => {
   const { sale, shop, localSettings } = data;
@@ -54,6 +54,7 @@ const a5Portrait = (data) => {
   const ROWS_PER_PAGE = 18;
   const items = sale.items;
   const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
+  const totalPhysicalQty = calculatePhysicalItemCount(items);
 
   // Pre-calculate totals for footer tax summary
   let totalTaxableValue = 0,
@@ -157,6 +158,13 @@ const a5Portrait = (data) => {
         </tr>`
         : "";
 
+    const totalQtyRow = isLastPage
+      ? `
+        <tr class="page-tracker-row">
+            <td colspan="${totalColumns}" style="text-align: right; padding-right: 10px; font-size: 10px; color: #000;">Total Qty: <strong>${totalPhysicalQty}</strong></td>
+        </tr>`
+      : "";
+
     return `
     <div class="page-container">
         <!-- Header -->
@@ -209,6 +217,7 @@ const a5Portrait = (data) => {
             <tbody>
               ${itemsHTML}
               ${fillerRowHTML}
+              ${totalQtyRow}
               ${pageTrackerRow}
             </tbody>
           </table>
