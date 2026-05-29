@@ -53,7 +53,9 @@ import {
   CheckCircle,
   AlertCircle,
   RotateCcw,
+  Printer,
 } from "lucide-react";
+import CheckPrintModal from "../ui/CheckPrintModal";
 import toast from "react-hot-toast";
 
 interface AddEditTransactionModalProps {
@@ -134,6 +136,8 @@ export default function AddEditTransactionModal({
   const [selectedBillDetails, setSelectedBillDetails] =
     useState<BillSummary | null>(null);
   const [fetchingBillDetails, setFetchingBillDetails] = useState(false);
+  const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
+  const [lastSavedTransaction, setLastSavedTransaction] = useState<any>(null);
 
   const isEditMode = !!initialData?.id;
 
@@ -433,12 +437,21 @@ export default function AddEditTransactionModal({
         if (!initialData?.id) throw new Error("Transaction ID is missing.");
         await updateTransaction(initialData.id, form);
         toast.success("Transaction updated successfully!");
+        onSuccess();
+        onClose();
       } else {
-        await createTransaction(form);
+        const res = await createTransaction(form);
+        setLastSavedTransaction(res);
         toast.success("Transaction recorded successfully!");
+        // We don't close immediately if it's a payment out, giving user a chance to print check
+        if (form.type === "payment_out") {
+          // Stay open
+          onSuccess();
+        } else {
+          onSuccess();
+          onClose();
+        }
       }
-      onSuccess();
-      onClose();
     } catch (e: any) {
       console.error(e);
       toast.error(e.message || "An error occurred. Please try again.");
@@ -790,25 +803,50 @@ export default function AddEditTransactionModal({
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
+        {lastSavedTransaction && form.type === "payment_out" && (
+          <Button
+            startIcon={<Printer size={18} />}
+            onClick={() => setIsCheckModalOpen(true)}
+            color="success"
+            variant="outlined"
+            sx={{ mr: "auto" }}
+          >
+            Print Cheque
+          </Button>
+        )}
         <Button onClick={onClose} color="inherit" disabled={loading}>
-          Cancel
+          {lastSavedTransaction ? "Close" : "Cancel"}
         </Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          disabled={loading || isFullyPaid || isOverpaying || isOverRefund}
-          color={isOverpaying || isOverRefund ? "error" : "primary"}
-          sx={{ minWidth: 120 }}
-        >
-          {loading ? (
-            <CircularProgress size={24} color="inherit" />
-          ) : isEditMode ? (
-            "Update"
-          ) : (
-            "Save"
-          )}
-        </Button>
+        {!lastSavedTransaction && (
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            disabled={loading || isFullyPaid || isOverpaying || isOverRefund}
+            color={isOverpaying || isOverRefund ? "error" : "primary"}
+            sx={{ minWidth: 120 }}
+          >
+            {loading ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : isEditMode ? (
+              "Update"
+            ) : (
+              "Save"
+            )}
+          </Button>
+        )}
       </DialogActions>
+
+      <CheckPrintModal
+        open={isCheckModalOpen}
+        onClose={() => setIsCheckModalOpen(false)}
+        initialData={{
+          payee:
+            (entityOptions.find((e) => e.id === form.entity_id) as any)?.name ||
+            "",
+          amount: form.amount || 0,
+          date: form.transaction_date,
+        }}
+      />
     </Dialog>
   );
 }

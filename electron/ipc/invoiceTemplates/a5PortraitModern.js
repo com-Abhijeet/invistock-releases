@@ -291,10 +291,11 @@ const a5PortraitCentered = (data) => {
   return `
     <html>
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
         <style>
           @page { size: A5 portrait; margin: 0; }
-          body { font-family: 'Arial', sans-serif; font-size: 11px; color: #000; margin: 0; padding: 0; background: #fff; }
-          .page-container { width: 148mm; height: 210mm; padding: 10mm; box-sizing: border-box; display: flex; flex-direction: column; page-break-after: always; }
+          body { font-family: 'Arial', sans-serif; font-size: 11px; color: #000; margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
+          .page-container { width: 100vw; height: 100vh; padding: 10mm; box-sizing: border-box; display: flex; flex-direction: column; page-break-after: always; }
           .page-container:last-child { page-break-after: auto; }
           
           .bold { font-weight: bold; }

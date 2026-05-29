@@ -53,6 +53,7 @@ import { menuSections } from "../config/menu";
 import ExpiringItemsNotification from "./layout/ExpiringItemsNotification";
 import CalculatorModal from "./layout/CalculatorModal";
 import ActionCenter from "./layout/ActionCenter";
+import CheckPrintModal from "./ui/CheckPrintModal";
 
 const drawerWidth = 260;
 const collapsedDrawerWidth = 72;
@@ -207,9 +208,10 @@ const SidebarNav = ({
                           arrow
                         >
                           <ListItemButton
-                            component={Link}
-                            to={item.path}
-                            selected={selected}
+                          {...(item.path.startsWith("#")
+                            ? { onClick: () => window.dispatchEvent(new CustomEvent('trigger-check-print')) }
+                            : { component: Link, to: item.path })}
+                          selected={selected}
                             sx={{
                               minHeight: 40,
                               justifyContent: isCollapsed
@@ -303,12 +305,21 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
   // Label Info Modal
   const [labelInfoOpen, setLabelInfoOpen] = useState(false);
 
+  // Check Print Modal
+  const [checkPrintOpen, setCheckPrintOpen] = useState(false);
+
   // Profile Menu State
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const openMenu = Boolean(anchorEl);
 
   const theme = useTheme();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleCheckPrintTrigger = () => setCheckPrintOpen(true);
+    window.addEventListener('trigger-check-print', handleCheckPrintTrigger);
+    return () => window.removeEventListener('trigger-check-print', handleCheckPrintTrigger);
+  }, []);
 
   useEffect(() => {
     getShopData().then(setShop);
@@ -716,6 +727,12 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
       <LabelInfoModal
         open={labelInfoOpen}
         onClose={() => setLabelInfoOpen(false)}
+      />
+
+      {/* Check Print Modal */}
+      <CheckPrintModal
+        open={checkPrintOpen}
+        onClose={() => setCheckPrintOpen(false)}
       />
     </Box>
   );
