@@ -27,6 +27,7 @@ import {
   UsersRound,
   BookCheck,
   CloudCheck,
+  Printer,
 } from "lucide-react";
 
 export const menuSections = [
@@ -239,6 +240,16 @@ export const menuSections = [
         label: "Kosh Business", // Tally reference
         icon: <CloudCheck size={20} />,
         path: "/business-settings",
+      },
+    ],
+  },
+  {
+    title: "Utilities",
+    items: [
+      {
+        label: "Check Printing",
+        icon: <Printer size={20} />,
+        path: "#check-print", // Special path to trigger modal
       },
     ],
   },

@@ -4,7 +4,7 @@ const {
   formatAmount,
   numberToWords,
 } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc, calculatePhysicalItemCount } = require("./utils.js");
 
 const a5LandscapeCentered = (data) => {
   const { sale, shop, localSettings } = data;
@@ -54,6 +54,7 @@ const a5LandscapeCentered = (data) => {
   const ROWS_PER_PAGE = 8;
   const items = sale.items;
   const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
+  const totalPhysicalQty = calculatePhysicalItemCount(items);
 
   let totalTaxableValue = 0,
     totalTaxAmount = 0,
@@ -152,6 +153,10 @@ const a5LandscapeCentered = (data) => {
         ? `<tr class="page-tracker-row"><td colspan="${totalColumns}">Page ${pageIndex} of ${totalPages}</td></tr>`
         : "";
 
+    const totalQtyRow = isLastPage
+      ? `<tr class="page-tracker-row"><td colspan="${totalColumns}" style="text-align: right; padding-right: 10px; font-size: 10px; color: #000;">Total Qty: <strong>${totalPhysicalQty}</strong></td></tr>`
+      : "";
+
     return `
     <div class="page-container">
         
@@ -205,6 +210,7 @@ const a5LandscapeCentered = (data) => {
             <tbody>
               ${itemsHTML}
               ${fillerRowHTML}
+              ${totalQtyRow}
               ${pageTrackerRow}
             </tbody>
           </table>
@@ -285,10 +291,11 @@ const a5LandscapeCentered = (data) => {
   return `
     <html>
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
         <style>
           @page { size: A5 landscape; margin: 0; }
-          body { font-family: 'Arial', sans-serif; font-size: 11px; color: #000; margin: 0; padding: 0; background: #fff; }
-          .page-container { width: 210mm; height: 148mm; padding: 8mm; box-sizing: border-box; display: flex; flex-direction: column; page-break-after: always; }
+          body { font-family: 'Arial', sans-serif; font-size: 11px; color: #000; margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
+          .page-container { width: 100vw; height: 100vh; padding: 8mm; box-sizing: border-box; display: flex; flex-direction: column; page-break-after: always; }
           .page-container:last-child { page-break-after: auto; }
           
           .bold { font-weight: bold; }

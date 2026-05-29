@@ -1,5 +1,5 @@
 const { formatDate, formatAmount } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc, calculatePhysicalItemCount } = require("./utils.js");
 
 const thermal80mm = (data) => {
   const { sale, shop, localSettings } = data;
@@ -24,6 +24,7 @@ const thermal80mm = (data) => {
   const discountAmount = (subTotal * discountPercentage) / 100;
   const netAmount = subTotal - discountAmount;
   const roundOff = sale.total_amount - netAmount;
+  const totalPhysicalQty = calculatePhysicalItemCount(sale.items);
 
   const itemsHtml = sale.items
     .map((item) => {
@@ -91,6 +92,7 @@ const thermal80mm = (data) => {
 
         <div class="totals">
           <div class="info-row"><span>Total Items:</span> <span>${sale.items.length}</span></div>
+          <div class="info-row"><span>Total Qty:</span> <span class="bold">${totalPhysicalQty}</span></div>
           <div class="info-row"><span>Subtotal:</span> <span>${formatAmount(subTotal)}</span></div>
           ${
             discountPercentage > 0

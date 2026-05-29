@@ -20,6 +20,7 @@ const { processReport } = require("../reports/reportPrintHandler.js");
 const {
   createTransactionReceiptHTML,
 } = require("../transactionPrintTemplate.js");
+const { printCheck } = require("../checkPrinter.js");
 
 function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
   ipcMain.handle("print-bulk-labels", async (event, items) => {
@@ -181,6 +182,16 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
       return { success: true };
     } catch (error) {
       console.error("Failed to print transaction:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("print-check", async (event, payload) => {
+    try {
+      await printCheck(payload);
+      return { success: true };
+    } catch (error) {
+      console.error("Failed to print check:", error);
       return { success: false, error: error.message };
     }
   });
