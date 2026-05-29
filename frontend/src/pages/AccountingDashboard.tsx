@@ -352,7 +352,7 @@ export default function AccountingDashboard() {
     if (dataToExport.length === 0) return toast.error("No data to export");
     toast.loading("Exporting...");
     try {
-      const res = await ipcRenderer.invoke("export-excel", {
+      const res = await ipcRenderer.invoke("generate-excel-report", {
         data: dataToExport,
         fileName: `${reportType}_${Date.now()}`,
       });
