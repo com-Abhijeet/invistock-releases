@@ -4,7 +4,7 @@ const {
   formatAmount,
   numberToWords,
 } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER, calculatePhysicalItemCount } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, calculatePhysicalItemCount, estimateFooterExtraRows, buildDynamicPages } = require("./utils.js");
 
 const a5Portrait = (data) => {
   const { sale, shop, localSettings } = data;
@@ -50,10 +50,9 @@ const a5Portrait = (data) => {
     custState &&
     shop.state.toLowerCase() !== custState.toLowerCase();
 
-  // 2. Pagination & Row Counting
+  // 2. Pagination & Row Counting (dynamic last-page capacity)
   const ROWS_PER_PAGE = 18;
   const items = sale.items;
-  const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
   const totalPhysicalQty = calculatePhysicalItemCount(items);
 
   // Pre-calculate totals for footer tax summary
@@ -107,7 +106,7 @@ const a5Portrait = (data) => {
   if (showGstAmtCol) totalColumns++;
 
   const renderPage = (pageData) => {
-    const { items: pageItems, isLastPage, pageIndex, totalPages } = pageData;
+    const { items: pageItems, isLastPage, pageIndex, totalPages, startIndex } = pageData;
 
     const itemsHTML = pageItems
       .map((item, i) => {
@@ -120,7 +119,7 @@ const a5Portrait = (data) => {
 
         return `
         <tr class="data-row">
-            <td class="text-center">${(pageIndex - 1) * ROWS_PER_PAGE + i + 1}</td>
+            <td class="text-center">${(startIndex || 0) + i + 1}</td>
             <td style="text-align:left;">
                 <div class="item-name">${item.product_name || item.name || "Unknown"}</div>
                 ${item.description ? `<div style="font-size: 8px; font-style: italic; color: #555;">${item.description}</div>` : ""}
@@ -150,13 +149,7 @@ const a5Portrait = (data) => {
             <td style="">&nbsp;</td>
         </tr>`;
 
-    const pageTrackerRow =
-      totalPages > 1
-        ? `
-        <tr class="page-tracker-row">
-            <td colspan="${totalColumns}">Page ${pageIndex} of ${totalPages}</td>
-        </tr>`
-        : "";
+    const pageTrackerRow = "";
 
     const totalQtyRow = isLastPage
       ? `
@@ -193,7 +186,7 @@ const a5Portrait = (data) => {
             <span style="font-size:9px;">${formatAddress(custAddress, custCity, custState, custPincode)} ${custPhone ? `(Ph: ${custPhone})` : ""}</span>
           </div>
           <div class="extra-meta">
-             ${gstEnabled ? `<div>Cust GST: ${custGst || "Unregistered"}</div>` : ""}
+             ${gstEnabled && custGst ? `<div>Cust GST: ${custGst}</div>` : ""}
              <div style="margin-top:2px;">Mode: ${sale.payment_mode || "Cash"}</div>
           </div>
         </div>
@@ -241,15 +234,20 @@ const a5Portrait = (data) => {
               ${inclusiveTax ? `<div style="font-weight: bold; font-size: 10px; margin-top: 6px;">* All prices are inclusive of GST</div>` : ""}
             </div>
 
+            ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code || shop.generated_upi_qr ? `
             <div class="bank-qr-row" style="margin-bottom: 8px;">
+              ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code ? `
               <div class="bank-details">
                 <div class="bold">Bank Details:</div>
                 <div>${shop.bank_name || "N/A"}</div>
                 <div>A/C: ${shop.bank_account_no || "N/A"}</div>
                 <div>IFSC: ${shop.bank_account_ifsc_code || "N/A"}</div>
-              </div>
-              ${shop.generated_upi_qr ? `<div><img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" class="qr-img" /></div>` : ""}
-            </div>
+              </div>` : ""}
+              ${shop.generated_upi_qr ? `<div>
+                <img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" class="qr-img" />
+                <div style="font-size: 8px; font-weight: bold; text-align: center; margin-top: 2px;">Pay via UPI</div>
+              </div>` : ""}
+            </div>` : ""}
             
             <div style="margin-top: 8px; font-size: 9px; color: #444; line-height: 1.3;">
                 ${termsAndConditions ? `<div style="white-space: pre-wrap;"><strong>Terms:</strong><br>${termsAndConditions}</div>` : ""}
@@ -281,19 +279,23 @@ const a5Portrait = (data) => {
              </div>
           </div>
         </div>
+        ${totalPages > 1 ? `<div style="text-align:center; font-size:9px; color:#555; margin-top: 4px;">Page ${pageIndex} of ${totalPages}</div>` : ""}
         ${BRANDING_FOOTER}
     </div>`;
   };
 
-  const pages = [];
-  for (let i = 0; i < totalPages; i++) {
-    pages.push({
-      items: items.slice(i * ROWS_PER_PAGE, (i + 1) * ROWS_PER_PAGE),
-      isLastPage: i === totalPages - 1,
-      pageIndex: i + 1,
-      totalPages: totalPages,
-    });
-  }
+  const footerExtraRows = estimateFooterExtraRows({
+    termsAndConditions,
+    disclaimer,
+    jurisdiction,
+    hasQrCode: Boolean(shop.generated_upi_qr || (shop.upi_id && shop.upi_banking_name)),
+    showGstBreakup: gstEnabled && showGstBreakup,
+    charsPerLine: 60,
+    rowHeightPx: 20,
+    lineHeightPx: 12,
+  });
+
+  const pages = buildDynamicPages(items, ROWS_PER_PAGE, footerExtraRows, 6);
 
   return `
     <html>
@@ -331,7 +333,7 @@ const a5Portrait = (data) => {
           .footer-right { width: 35%; padding: 8px; display: flex; flex-direction: column; justify-content: space-between; }
           .bank-qr-row { display: flex; gap: 10px; margin-top: 6px; border-top: 1px dotted #ccc; padding-top: 6px; align-items: center; }
           .bank-details { flex: 1; line-height: 1.3; font-size: 9px; }
-          .qr-img { width: 50px; height: 50px; border: 1px solid #ddd; padding: 1px; }
+          .qr-img { width: 65px; height: 65px; border: 1px solid #ddd; padding: 1px; }
           .grand-total { border-top: 1px solid #000; margin-top: 6px; padding-top: 6px; font-weight: bold; font-size: 14px; }
           .continued { height: 40px; display: flex; align-items: center; justify-content: center; color: #888; font-style: italic; }
           .signature-box { text-align: right; font-weight: bold; font-size: 10px; }

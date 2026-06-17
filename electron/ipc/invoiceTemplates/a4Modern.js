@@ -4,7 +4,7 @@ const {
   formatAddress,
   numberToWords,
 } = require("../../invoiceTemplate.js");
-const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc, calculatePhysicalItemCount } = require("./utils.js");
+const { getTrackingHtml, BRANDING_FOOTER, getLogoSrc, calculatePhysicalItemCount, estimateFooterExtraRows, buildDynamicPages } = require("./utils.js");
 
 const a4Modern = (data) => {
   const { sale, shop, localSettings } = data;
@@ -35,10 +35,9 @@ const a4Modern = (data) => {
   const custPincode = sale.pincode || sale.customer_pincode || "";
   const custGst = sale.gstin || sale.customer_gst_no || "";
 
-  // --- MULTI-PAGE LOGIC ---
+  // --- MULTI-PAGE LOGIC (dynamic last-page capacity) ---
   const ROWS_PER_PAGE = 20;
   const items = sale.items;
-  const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
 
   // Calculate Totals Correctly
   const subTotal = sale.items.reduce((sum, item) => sum + (item.price || 0), 0);
@@ -48,21 +47,21 @@ const a4Modern = (data) => {
   const roundOff = sale.total_amount - netAmount;
   const totalPhysicalQty = calculatePhysicalItemCount(items);
 
-  const pages = [];
-  for (let i = 0; i < totalPages; i++) {
-    const start = i * ROWS_PER_PAGE;
-    const end = start + ROWS_PER_PAGE;
-    const pageItems = items.slice(start, end);
-    pages.push({
-      items: pageItems,
-      isLastPage: i === totalPages - 1,
-      pageIndex: i + 1,
-      totalPages: totalPages,
-    });
-  }
+  const footerExtraRows = estimateFooterExtraRows({
+    termsAndConditions,
+    disclaimer,
+    jurisdiction,
+    hasQrCode: Boolean(shop.generated_upi_qr || (shop.upi_id && shop.upi_banking_name)),
+    showGstBreakup: gstEnabled,
+    charsPerLine: 70,
+    rowHeightPx: 24,
+    lineHeightPx: 14,
+  });
+
+  const pages = buildDynamicPages(items, ROWS_PER_PAGE, footerExtraRows, 6);
 
   const renderPage = (pageData) => {
-    const { items: pageItems, isLastPage, pageIndex, totalPages } = pageData;
+    const { items: pageItems, isLastPage, pageIndex, totalPages, startIndex } = pageData;
 
     return `
     <div class="page-container">
@@ -163,17 +162,19 @@ const a4Modern = (data) => {
             )}</div>
             
             <div class="bank-qr-row" style="margin-top: 15px; margin-bottom: 15px;">
+              ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code ? `
               <div class="bank-details">
                 <div style="font-weight:700; margin-bottom:2px;">Payment Details</div>
                 Bank: <strong>${shop.bank_name || "N/A"}</strong><br>
                 A/C: ${shop.bank_account_no || "N/A"}<br>
                 IFSC: ${shop.bank_account_ifsc_code || "N/A"}
               </div>
+              ` : ""}
               ${
                 shop.generated_upi_qr
                   ? `<div class="qr-code">
-                       <img src="${shop.generated_upi_qr}" style="width:70px; height:70px; border:1px solid #eee; padding:2px;" />
-                       <div style="font-size:9px; color:#6b7280; margin-top:2px;">Scan to Pay</div>
+                       <img src="${shop.generated_upi_qr}" style="width:85px; height:85px; border:1px solid #eee; padding:2px;" />
+                       <div style="font-size:9px; font-weight: bold; color:#6b7280; margin-top:2px;">Pay via UPI</div>
                      </div>`
                   : ""
               }
@@ -230,6 +231,7 @@ const a4Modern = (data) => {
              </div>
           </div>
         </div>
+        ${totalPages > 1 ? `<div style="text-align:center; font-size:9px; color:#555; margin-top: 4px;">Page ${pageIndex} of ${totalPages}</div>` : ""}
         ${BRANDING_FOOTER}
     </div>
     `;

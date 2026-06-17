@@ -1,5 +1,5 @@
 // invoiceTemplate.js - Standard A4 Template with Dynamic Preferences
-const { calculatePhysicalItemCount } = require("./ipc/invoiceTemplates/utils.js");
+const { calculatePhysicalItemCount, estimateFooterExtraRows, buildDynamicPages } = require("./ipc/invoiceTemplates/utils.js");
 
 // --- HELPERS ---
 const formatAmount = (amount) =>
@@ -228,20 +228,23 @@ function createInvoiceHTML(data) {
     }
   });
 
-  // Pagination Logic
+  // Pagination Logic — dynamic last-page capacity based on footer content
   const ROWS_PER_PAGE = 24;
   const items = sale.items;
-  const totalPages = Math.ceil(items.length / ROWS_PER_PAGE) || 1;
   const totalPhysicalQty = calculatePhysicalItemCount(items);
-  const pages = [];
-  for (let i = 0; i < totalPages; i++) {
-    pages.push({
-      items: items.slice(i * ROWS_PER_PAGE, (i + 1) * ROWS_PER_PAGE),
-      isLastPage: i === totalPages - 1,
-      pageIndex: i + 1,
-      totalPages: totalPages,
-    });
-  }
+
+  const footerExtraRows = estimateFooterExtraRows({
+    termsAndConditions,
+    disclaimer,
+    jurisdiction,
+    hasQrCode: Boolean(shop.generated_upi_qr || (shop.upi_id && shop.upi_banking_name)),
+    showGstBreakup: gstEnabled && showGstBreakup,
+    charsPerLine: 70,
+    rowHeightPx: 20,
+    lineHeightPx: 12,
+  });
+
+  const pages = buildDynamicPages(items, ROWS_PER_PAGE, footerExtraRows, 8);
 
   let totalColumns = 4; // #, Name, Qty, Rate
   if (showHSN) totalColumns++;
@@ -255,6 +258,7 @@ function createInvoiceHTML(data) {
     isLastPage,
     pageIndex,
     totalPages,
+    startIndex,
   }) => {
     const itemsHTML = pageItems
       .map((item, index) => {
@@ -267,7 +271,7 @@ function createInvoiceHTML(data) {
 
         return `
     <tr class="data-row">
-      <td class="text-center">${(pageIndex - 1) * ROWS_PER_PAGE + index + 1}</td>
+      <td class="text-center">${(startIndex || 0) + index + 1}</td>
       <td style="text-align:left;">
         <div class="item-name">${item.product_name || item.name || "Unknown"}</div>
         ${item.description ? `<div style="font-size: 8px; font-style: italic; color: #555;">${item.description}</div>` : ""}
@@ -297,15 +301,7 @@ function createInvoiceHTML(data) {
             <td style="">&nbsp;</td>
         </tr>`;
 
-    const pageTrackerRow =
-      totalPages > 1
-        ? `
-        <tr class="page-tracker-row">
-            <td colspan="${totalColumns}">
-                Page ${pageIndex} of ${totalPages}
-            </td>
-        </tr>`
-        : "";
+    const pageTrackerRow = "";
 
     const totalQtyRow = isLastPage
       ? `
@@ -341,7 +337,7 @@ function createInvoiceHTML(data) {
             ${custPhone ? `<br>Ph: ${custPhone}` : ""}
           </div>
           <div class="extra-meta">
-             ${gstEnabled ? `<div>Cust GST: ${custGst || "Unregistered"}</div>` : ""}
+             ${gstEnabled && custGst ? `<div>Cust GST: ${custGst}</div>` : ""}
              <div style="margin-top:2px;">Mode: ${sale.payment_mode || "Cash"}</div>
           </div>
         </div>
@@ -401,11 +397,13 @@ function createInvoiceHTML(data) {
           </div>
           
           <div class="bank-details">
+             ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code ? `
              <div class="bold">Bank Details:</div>
              <div>${shop.bank_name || ""}</div>
              <div>A/C: ${shop.bank_account_no || ""}</div>
              <div>IFSC: ${shop.bank_account_ifsc_code || ""}</div>
-             ${shop.generated_upi_qr ? `<div class="qr-wrap"><img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" /></div>` : ""}
+             ` : ""}
+             ${shop.generated_upi_qr ? `<div class="qr-wrap"><img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" /><div style="font-size: 9px; font-weight: bold; margin-top: 2px;">Pay via UPI</div></div>` : ""}
           </div>
 
           <div class="totals-area">
@@ -434,6 +432,7 @@ function createInvoiceHTML(data) {
               <div style="font-size:9px; margin-top:30px;">Authorized Signature</div>
            </div>
         </div>
+        ${totalPages > 1 ? `<div style="text-align:center; font-size:9px; color:#555; margin-top: 4px;">Page ${pageIndex} of ${totalPages}</div>` : ""}
         ${BRANDING_FOOTER}
     </div>`;
   };
@@ -504,7 +503,7 @@ function createInvoiceHTML(data) {
             .auth-sign { text-align: right; width: 40%; }
             
             .qr-wrap { text-align: center; margin-top: 8px; }
-            .qr-wrap img { width: 65px; height: 65px; border: 1px solid #eee; }
+            .qr-wrap img { width: 85px; height: 85px; border: 1px solid #eee; }
         </style>
       </head>
       <body>${pages.map(renderPage).join("")}</body>

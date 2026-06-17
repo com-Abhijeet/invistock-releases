@@ -104,8 +104,8 @@ const createCustomPrintWindow = async (payload) => {
     const rowContentWidth =
       config.width * config.colsPerRow +
       config.gapBetweenCols * (config.colsPerRow - 1);
-    const pageWidth = rowContentWidth + config.horizontalOffset;
-    const pageHeight = config.height + config.verticalOffset;
+    const pageWidth = rowContentWidth + Math.max(0, config.horizontalOffset);
+    const pageHeight = config.height + Math.max(0, config.verticalOffset);
 
     const totalCopies = Math.max(1, Number(copies) || 1);
 
