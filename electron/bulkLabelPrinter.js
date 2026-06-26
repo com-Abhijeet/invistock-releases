@@ -1,46 +1,17 @@
 const { BrowserWindow } = require("electron");
-const bwipjs = require("bwip-js");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
 const { createLabelHTML } = require("./labelTemplate.js");
+const { barcodeCache } = require("./barcodeCache.js"); // ⚡ OPTIMIZED: Use shared cache
 
 /**
- * OPTIMIZATION 1: Switch to SVG.
- * SVGs take 0 time to encode/decode compared to PNG Base64,
- * dropping memory usage by 95% and layout time to near zero.
+ * ⚡ OPTIMIZED: Use shared barcode cache for SVG generation.
+ * Caches identical barcodes to avoid regeneration in bulk operations.
  */
 const generateBarcodeBase64 = async (barcodeText) => {
-  return new Promise((resolve, reject) => {
-    try {
-      const svg = bwipjs.toSVG({
-        bcid: "code128",
-        text: String(barcodeText),
-        height: 10,
-        includetext: true,
-        textxalign: "center",
-      });
-      // Return as an inline SVG data URL compatible with <img src="...">
-      resolve(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
-    } catch (err) {
-      // Fallback to PNG if toSVG fails (e.g. older library version)
-      bwipjs.toBuffer(
-        {
-          bcid: "code128",
-          text: String(barcodeText),
-          scale: 2,
-          height: 10,
-          includetext: true,
-          textxalign: "center",
-        },
-        (pngErr, png) => {
-          if (pngErr) reject(pngErr);
-          else resolve(`data:image/png;base64,${png.toString("base64")}`);
-        },
-      );
-    }
-  });
+  return await barcodeCache.generateSVG(barcodeText);
 };
 
 // =======================================================

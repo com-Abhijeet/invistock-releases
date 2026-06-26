@@ -23,6 +23,7 @@ function mapTransactionTypeToReferenceType(transactionType) {
  */
 export function createTransaction(transactionData) {
   try {
+    console.log("transacton Data in repo", transactionData);
     const stmt = db.prepare(`
       INSERT INTO transactions (
         reference_no, type, bill_id, bill_type, entity_id, entity_type,
