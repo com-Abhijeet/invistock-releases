@@ -304,6 +304,7 @@ export default function AddEditTransactionModal({
   }, [form.bill_id, form.bill_type, form.type]); // Re-run if type changes to re-evaluate auto-fill
 
   const handleChange = (field: keyof Transaction, value: any) => {
+    console.log("Setting - ", field, "to : ", value);
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 

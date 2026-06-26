@@ -1,4 +1,5 @@
 const { BrowserWindow } = require("electron");
+const { printWindowManager } = require("./printWindowManager.js"); // ⚡ OPTIMIZED
 
 /**
  * Creates a hidden browser window and prints its HTML content.
@@ -6,15 +7,15 @@ const { BrowserWindow } = require("electron");
  * @param {object} printOptions - Options for the webContents.print() method.
  */
 async function printNonGstReceipt(htmlContent, printOptions = {}) {
-  // Use a width that's appropriate for an 80mm printer
-  const receiptWindow = new BrowserWindow({
+  // ⚡ OPTIMIZED: Reuse window from manager
+  const receiptWindow = printWindowManager.getWindow("receipt", {
     show: true,
     width: 302, // Approx 80mm in pixels
     height: 600,
   });
 
   await receiptWindow.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`
+    `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
   );
 
   return new Promise((resolve, reject) => {
@@ -26,7 +27,10 @@ async function printNonGstReceipt(htmlContent, printOptions = {}) {
         } else {
           resolve();
         }
-        receiptWindow.close();
+        // ⚡ OPTIMIZED: Recycle window instead of closing
+        setTimeout(() => {
+          printWindowManager.recycleWindow("receipt");
+        }, 300);
       });
     });
   });

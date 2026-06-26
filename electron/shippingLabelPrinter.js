@@ -2,6 +2,7 @@ const { BrowserWindow } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { printWindowManager } = require("./printWindowManager.js"); // ⚡ OPTIMIZED
 
 /**
  * Prints shipping label with preview + reliable dialog.
@@ -55,18 +56,13 @@ async function printShippingLabel(htmlContent, printOptions = {}) {
     }
 
     // ===================================================
-    // WINDOW (VISIBLE FOR PREVIEW + DIALOG)
+    // WINDOW (⚡ OPTIMIZED: Reuse from manager)
     // ===================================================
 
-    const labelWindow = new BrowserWindow({
-      show: true, // ALWAYS visible
+    const labelWindow = printWindowManager.getWindow("shipping", {
+      show: true,
       width: 500,
       height: 650,
-      autoHideMenuBar: true,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
     });
 
     // ===================================================
@@ -114,9 +110,10 @@ async function printShippingLabel(htmlContent, printOptions = {}) {
             resolve();
           }
 
+          // ⚡ OPTIMIZED: Recycle window instead of closing
           setTimeout(
             () => {
-              if (!labelWindow.isDestroyed()) labelWindow.close();
+              printWindowManager.recycleWindow("shipping");
               fs.unlink(tempFile, () => {});
             },
             isSilent ? 400 : 1500,

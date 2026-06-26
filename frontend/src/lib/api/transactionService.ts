@@ -62,7 +62,7 @@ export async function createTransaction(
   transactionData: Partial<Transaction>,
 ): Promise<Transaction> {
   try {
-    console.log(transactionData);
+    console.log("Transaction data in service : -", transactionData);
     const response = await api.post(BASE_URL, transactionData);
     return response.data.data;
   } catch (error: any) {

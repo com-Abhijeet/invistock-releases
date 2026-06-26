@@ -188,7 +188,7 @@ export function getBestSalesDay(filters) {
   return stmt.get(...params) || {};
 }
 
-// 🔹 Sales Table (Paginated with Search)
+// 🔹 Sales Table (Paginated with Search - Updated Payment Mode)
 export function getSalesTable({ page = 1, limit = 20, ...filters }) {
   // 1. Destructure the query from the rest of the filters
   const { query, ...dateFilters } = filters;
@@ -224,7 +224,16 @@ export function getSalesTable({ page = 1, limit = 20, ...filters }) {
       c.name AS customer,
       s.total_amount AS total,
       s.paid_amount AS paid_amount,
-      s.payment_mode AS payment_mode,
+      COALESCE(
+        (
+          SELECT group_concat(DISTINCT t.payment_mode)
+          FROM transactions t
+          WHERE t.bill_id = s.id 
+            AND t.payment_mode IS NOT NULL 
+            AND t.payment_mode != ''
+        ),
+        s.payment_mode
+      ) AS payment_mode,
       s.is_quote AS is_quote,
       s.status AS status,
       s.created_at AS created_at
@@ -237,7 +246,15 @@ export function getSalesTable({ page = 1, limit = 20, ...filters }) {
     )
     .all(...params, limit, offset);
 
-  // 5. Execute the count query with the same combined filters
+  // 5. To match your preferred format, replace commas from group_concat with ' + '
+  const formattedRecords = records.map((record) => ({
+    ...record,
+    payment_mode: record.payment_mode
+      ? record.payment_mode.replace(/,/g, " + ")
+      : "Cash",
+  }));
+
+  // 6. Execute the count query with the same combined filters
   const totalRecords = db
     .prepare(
       `
@@ -249,7 +266,7 @@ export function getSalesTable({ page = 1, limit = 20, ...filters }) {
     )
     .get(...params).count;
 
-  return { records, totalRecords };
+  return { records: formattedRecords, totalRecords };
 }
 
 /* --------------------------- INVENTORY DASHBOARD STATS --------------------------- */

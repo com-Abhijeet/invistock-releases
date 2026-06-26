@@ -21,7 +21,7 @@ iQIDAQAB
 
 const API_URL = process.env.VITE_API_URL
   ? `${process.env.VITE_API_URL}/security/validate`
-  : "http://localhost:5001/api/v1/security/validate";
+  : "https://api.getkosh.co.in/api/v1/security/validate";
 
 function parseDate(dateStr) {
   const day = parseInt(dateStr.substring(0, 2), 10);
