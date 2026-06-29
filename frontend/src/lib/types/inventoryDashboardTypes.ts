@@ -55,6 +55,16 @@ export interface ApiFilterParams {
 export interface StockOverall {
   total_quantity: number;
   total_value: number;
+  total_skus?: number;
+  out_of_stock?: number;
+  low_stock?: number;
+}
+
+// 🔹 Inventory Health Metrics
+export interface InventoryHealthMetrics {
+  expiredCount: number;
+  expiringSoonCount: number;
+  monthlySalesVolume: number;
 }
 
 // 🔹 Stock aggregated by category

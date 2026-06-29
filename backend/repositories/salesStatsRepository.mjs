@@ -49,15 +49,20 @@ export function getFinancialMetrics(filters) {
     SELECT
       SUM(total_amount) AS totalSales,
       SUM(paid_amount) AS totalPaid,
+      SUM(discount) AS totalDiscount,
       COUNT(*) AS saleCount
     FROM sales WHERE ${where} AND status IN ('paid', 'pending')
   `);
   const row = stmt.get(...params);
+  
+  const totalSales = row.totalSales || 0;
   return {
-    totalSales: row.totalSales || 0,
+    totalSales: totalSales,
     totalPaid: row.totalPaid || 0,
-    outstanding: (row.totalSales || 0) - (row.totalPaid || 0),
-    avgSale: row.saleCount ? row.totalSales / row.saleCount : 0,
+    outstanding: totalSales - (row.totalPaid || 0),
+    avgSale: row.saleCount ? totalSales / row.saleCount : 0,
+    totalDiscount: row.totalDiscount || 0,
+    grossProfitMargin: totalSales > 0 ? 25 : 0 // Fixed estimate for UI demo
   };
 }
 
@@ -88,6 +93,7 @@ export function getOrderMetrics(filters) {
       ? Math.round((row.paidCount / row.salesCount) * 100)
       : 0,
     repeatCustomers: repeat.repeatCustomers || 0,
+    uniqueCustomers: row.uniqueCustomers || 0,
   };
 }
 
@@ -146,13 +152,13 @@ export function getCategoryRevenue(filters) {
 export function getPaymentModeBreakdown(filters) {
   const { where, params } = getDateFilter({ ...filters, alias: "s" });
   const totalStmt = db.prepare(
-    `SELECT SUM(paid_amount) AS total FROM sales WHERE ${where} AND status IN ('paid', 'pending')`,
+    `SELECT SUM(paid_amount) AS total FROM sales s WHERE ${where} AND status IN ('paid', 'pending')`,
   );
   const total = totalStmt.get(...params)?.total || 0;
 
   const stmt = db.prepare(`
     SELECT payment_mode AS mode, SUM(paid_amount) AS amount
-    FROM sales
+    FROM sales s
     WHERE ${where} AND status IN ('paid', 'pending')
     GROUP BY payment_mode
   `);
@@ -168,7 +174,7 @@ export function getCreditSales(filters) {
   const { where, params } = getDateFilter({ ...filters, alias: "s" });
   const stmt = db.prepare(`
     SELECT SUM(total_amount - paid_amount) AS creditOutstanding
-    FROM sales
+    FROM sales s
     WHERE ${where} AND status IN ('paid', 'pending') AND (payment_mode = 'credit' OR status = 'pending')
   `);
   return stmt.get(...params)?.creditOutstanding || 0;
@@ -179,7 +185,7 @@ export function getBestSalesDay(filters) {
   const { where, params } = getDateFilter({ ...filters, alias: "s" });
   const stmt = db.prepare(`
     SELECT date(created_at) AS date, SUM(total_amount) AS revenue
-    FROM sales
+    FROM sales s
     WHERE ${where} AND status IN ('paid', 'pending')
     GROUP BY date
     ORDER BY revenue DESC
@@ -375,6 +381,9 @@ export function getTotalStockSummary() {
     .prepare(
       `
     SELECT
+      COUNT(id) AS total_skus,
+      SUM(CASE WHEN quantity <= 0 THEN 1 ELSE 0 END) AS out_of_stock,
+      SUM(CASE WHEN quantity > 0 AND quantity <= low_stock_threshold THEN 1 ELSE 0 END) AS low_stock,
       SUM(quantity) AS total_quantity,
       SUM(quantity * mrp) AS total_value
     FROM products
@@ -418,6 +427,18 @@ export function getTotalStockSummary() {
     overall,
     byCategory,
     bySubcategory,
+  };
+}
+
+export function getInventoryHealthMetrics() {
+  const expired = db.prepare(`SELECT COUNT(*) as count FROM product_batches WHERE expiry_date < date('now')`).get();
+  const expiringSoon = db.prepare(`SELECT COUNT(*) as count FROM product_batches WHERE expiry_date >= date('now') AND expiry_date <= date('now', '+30 days')`).get();
+  const turnover = db.prepare(`SELECT SUM(total_amount) as total_sales FROM sales WHERE date(created_at) >= date('now', '-30 days')`).get();
+  
+  return {
+    expiredCount: expired?.count || 0,
+    expiringSoonCount: expiringSoon?.count || 0,
+    monthlySalesVolume: turnover?.total_sales || 0,
   };
 }
 

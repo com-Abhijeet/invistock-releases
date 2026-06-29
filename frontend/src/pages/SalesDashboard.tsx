@@ -8,6 +8,7 @@ import type { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
 import SalesCategoryPieChart from "../components/sales/SalesCategoryPieChart";
 import SalesStatistics from "../components/sales/SalesStatistics";
 import SalesTrendChart from "../components/sales/SalesTrendChart";
+import TopPerformersGrid from "../components/sales/TopPerformersGrid";
 import theme from "../../theme";
 
 // ✅ ADDED: Proper initialization logic
@@ -153,6 +154,9 @@ const SalesDashboard = () => {
               </Box>
             </Grid>
           </Grid>
+
+          {/* New Top Performers Interactive Grid */}
+          <TopPerformersGrid filters={finalFilters} key={`top-${refreshKey}`} />
         </Box>
       </Box>
     </Box>

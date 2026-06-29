@@ -6,6 +6,7 @@ import Grid from "@mui/material/GridLegacy";
 import PurchaseStatistics from "../components/purchase/PurchaseStatisticsSection";
 import PurchaseTrendChart from "../components/purchase/PurchaseTrendChart";
 import PurchaseCategoryPieChart from "../components/purchase/PurchaseCategoryPieChart";
+import PurchaseTopPerformersGrid from "../components/purchase/PurchaseTopPerformersGrid";
 import DashboardHeader from "../components/DashboardHeader";
 import type { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
 import {
@@ -162,6 +163,8 @@ const PurchaseDashboard = () => {
               </Box>
             </Grid>
           </Grid>
+          
+          <PurchaseTopPerformersGrid filters={activeFilters} key={`top-supp-${activeFilters.filter}-${activeFilters.from}`} />
         </Box>
       </Box>
     </Box>

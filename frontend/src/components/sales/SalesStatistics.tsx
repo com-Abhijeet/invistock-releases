@@ -71,7 +71,12 @@ const SalesStatistics = ({ filters }: SalesStatisticsProps) => {
     );
   }
 
-  // Split stats into two logical groups to handle the 7 items creatively
+  // Calculate repeat customer rate
+  const repeatRate = order?.uniqueCustomers 
+    ? Math.round((order.repeatCustomers / order.uniqueCustomers) * 100) 
+    : 0;
+
+  // Split stats into two logical groups
   const financialStats = [
     {
       title: "Total Revenue",
@@ -97,24 +102,42 @@ const SalesStatistics = ({ filters }: SalesStatisticsProps) => {
       icon: <BarChart3 size={24} />,
       color: theme.palette.info.main,
     },
+    {
+      title: "Total Discounts",
+      value: currency(financial?.totalDiscount),
+      icon: <BarChart3 size={24} />,
+      color: theme.palette.secondary.main,
+    },
+    {
+      title: "Est. Margin",
+      value: `${financial?.grossProfitMargin || 0}%`,
+      icon: <BarChart3 size={24} />,
+      color: theme.palette.success.light,
+    },
   ];
 
   const operationalStats = [
     {
-      title: "Orders",
+      title: "Total Invoices",
       value: order?.salesCount ?? 0,
       icon: <ShoppingBag size={24} />,
       color: theme.palette.text.primary,
     },
     {
-      title: "Pending",
+      title: "Pending Orders",
       value: order?.pendingCount ?? 0,
       icon: <AlertCircle size={24} />,
       color: theme.palette.error.main,
     },
     {
-      title: "Repeat Customers",
-      value: order?.repeatCustomers ?? 0,
+      title: "Unique Customers",
+      value: order?.uniqueCustomers ?? 0,
+      icon: <Users size={24} />,
+      color: theme.palette.info.dark,
+    },
+    {
+      title: "Repeat Rate",
+      value: `${repeatRate}%`,
       icon: <Users size={24} />,
       color: theme.palette.secondary.main,
     },
@@ -123,9 +146,9 @@ const SalesStatistics = ({ filters }: SalesStatisticsProps) => {
   return (
     <Box mb={3}>
       <Grid container spacing={2}>
-        {/* Row 1: Financial Metrics (4 items) - Takes full width */}
+        {/* Row 1: Financial Metrics (6 items) */}
         {financialStats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={3} key={`fin-${index}`}>
+          <Grid item xs={12} sm={6} md={4} lg={2} key={`fin-${index}`}>
             <DataCard
               title={stat.title}
               value={stat.value}
@@ -135,9 +158,9 @@ const SalesStatistics = ({ filters }: SalesStatisticsProps) => {
           </Grid>
         ))}
 
-        {/* Row 2: Operational Metrics (3 items) - Centered or stretched to fill */}
+        {/* Row 2: Operational Metrics (4 items) */}
         {operationalStats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={4} key={`op-${index}`}>
+          <Grid item xs={12} sm={6} md={3} key={`op-${index}`}>
             <DataCard
               title={stat.title}
               value={stat.value}

@@ -21,4 +21,8 @@ purchaseStatsRoutes.get(
 // 📈 Enterprise purchase stats
 purchaseStatsRoutes.get("/stats", purchaseController.getPurchaseStats);
 
+purchaseStatsRoutes.get("/order-metrics", purchaseController.getPurchaseOrderMetricsController);
+purchaseStatsRoutes.get("/top-products", purchaseController.getTopPurchasedProductsController);
+purchaseStatsRoutes.get("/payment-mode-breakdown", purchaseController.getPurchasePaymentModeBreakdownController);
+
 export default purchaseStatsRoutes;

@@ -120,3 +120,11 @@ export async function importProducts(filePath, mappings) {
 export const getMissingBatchesProducts = async () => {
   return await productRepo.getBatchTrackedProductsWithNoBatches();
 };
+
+export const bulkUpdate = async (productIds, updateData) => {
+  try {
+    return await productRepo.bulkUpdateProducts(productIds, updateData);
+  } catch (err) {
+    throw new Error(err.message || "Failed to bulk update products");
+  }
+};

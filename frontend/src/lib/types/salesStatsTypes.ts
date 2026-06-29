@@ -27,6 +27,8 @@ export interface FinancialMetrics {
   totalPaid: number;
   outstanding: number;
   avgSale: number;
+  grossProfitMargin: number;
+  totalDiscount: number;
 }
 
 export interface OrderMetrics {
@@ -34,6 +36,7 @@ export interface OrderMetrics {
   pendingCount: number;
   paidPercentage: number;
   repeatCustomers: number;
+  uniqueCustomers: number;
 }
 
 export interface TopCustomer {

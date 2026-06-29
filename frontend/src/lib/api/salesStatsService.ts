@@ -39,6 +39,8 @@ export async function fetchFinancialMetrics(
         totalPaid: 0,
         outstanding: 0,
         avgSale: 0,
+        grossProfitMargin: 0,
+        totalDiscount: 0,
       }
     );
   } catch (error: any) {
@@ -46,7 +48,7 @@ export async function fetchFinancialMetrics(
     toast.error(
       error.response?.data?.message || "Failed to fetch financial metrics"
     );
-    return { totalSales: 0, totalPaid: 0, outstanding: 0, avgSale: 0 };
+    return { totalSales: 0, totalPaid: 0, outstanding: 0, avgSale: 0, grossProfitMargin: 0, totalDiscount: 0 };
   }
 }
 
@@ -61,6 +63,7 @@ export async function fetchOrderMetrics(
         pendingCount: 0,
         paidPercentage: 0,
         repeatCustomers: 0,
+        uniqueCustomers: 0,
       }
     );
   } catch (error: any) {
@@ -73,6 +76,7 @@ export async function fetchOrderMetrics(
       pendingCount: 0,
       paidPercentage: 0,
       repeatCustomers: 0,
+      uniqueCustomers: 0,
     };
   }
 }

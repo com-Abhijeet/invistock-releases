@@ -8,6 +8,7 @@ import CategoryWiseSales from "../components/inventory/CategoryWiseSales";
 import FastMovingProducts from "../components/inventory/FastMovingProducts";
 import SlowMovingProducts from "../components/inventory/SlowMovingProducts";
 import StockSummaryRow from "../components/inventory/StockSummaryRow";
+import InventoryHealthSection from "../components/inventory/InventoryHealthSection";
 import DashboardHeader from "../components/DashboardHeader";
 // ✅ Import the necessary types
 import type {
@@ -67,8 +68,10 @@ export default function InventoryDashboardPage() {
           <StockSummaryRow />
         </Grid>
       </Grid>
+      
+      <InventoryHealthSection />
 
-      <Grid container spacing={2}>
+      <Grid container spacing={2} mt={1}>
         <Grid item xs={12} md={6}>
           <TopSellingProducts filters={finalFilters} />
         </Grid>

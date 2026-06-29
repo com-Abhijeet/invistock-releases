@@ -18,6 +18,8 @@ router.get("/low-stock/list", controller.getLowStockProductsController);
 router.get("/missing-batches", controller.getMissingBatchesProductsController);
 
 // --- Dynamic Routes (Must come AFTER specific routes) ---
+router.put("/bulk-update", controller.bulkUpdateProductsController);
+
 router.get("/:id", controller.getProduct);
 router.get("/:id/history", controller.getProductHistoryController);
 router.put(

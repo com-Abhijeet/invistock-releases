@@ -7,6 +7,7 @@ import type { Product } from "../../lib/types/product";
 import DataTable from "../DataTable";
 import LabelPrintDialog from "../LabelPrintModal";
 import CustomLabelPrintModal from "../CustomLabelPrintModal"; // Import the new modal
+import BulkEditProductModal from "./BulkEditProductModal";
 import { getAllProducts } from "../../lib/api/productService";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
@@ -29,6 +30,10 @@ export default function ProductTable({
 
   // New State for Custom Label Modal
   const [customLabelModalOpen, setCustomLabelModalOpen] = useState(false);
+
+  // Bulk Edit States
+  const [bulkEditModalOpen, setBulkEditModalOpen] = useState(false);
+  const [selectedBulkProducts, setSelectedBulkProducts] = useState<Product[]>([]);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +152,17 @@ export default function ProductTable({
           setRowsPerPage(newLimit);
           setPage(0);
         }}
+        bulkActions={true}
+        bulkActionsList={[
+          {
+            label: "Bulk Edit",
+            icon: <Pencil size={16} />,
+            onClick: (selectedRows: Product[]) => {
+              setSelectedBulkProducts(selectedRows);
+              setBulkEditModalOpen(true);
+            },
+          }
+        ]}
       />
 
       {/* Standard Label Modal */}
@@ -166,6 +182,17 @@ export default function ProductTable({
           product={selectedProduct}
         />
       )}
+
+      {/* Bulk Edit Modal */}
+      <BulkEditProductModal
+        open={bulkEditModalOpen}
+        onClose={() => setBulkEditModalOpen(false)}
+        selectedProducts={selectedBulkProducts}
+        onSuccess={() => {
+          fetchProducts();
+          setSelectedBulkProducts([]);
+        }}
+      />
     </>
   );
 }

@@ -4,6 +4,7 @@ import {
   getFastMovingProducts,
   getSlowMovingProducts,
   getTotalStockSummary,
+  getInventoryHealthMetrics,
 } from "../repositories/salesStatsRepository.mjs";
 
 export const fetchTopProducts = (filters) => {
@@ -24,4 +25,8 @@ export const fetchSlowMovingProducts = (filters) => {
 
 export function fetchTotalStockSummaryService() {
   return getTotalStockSummary();
+}
+
+export function fetchInventoryHealthMetricsService() {
+  return getInventoryHealthMetrics();
 }

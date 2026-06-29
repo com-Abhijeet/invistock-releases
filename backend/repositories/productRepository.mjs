@@ -661,3 +661,27 @@ export const getBatchTrackedProductsWithNoBatches = () => {
 
   return query.all();
 };
+
+export function bulkUpdateProducts(productIds, updateData) {
+  if (!productIds || productIds.length === 0) return { changes: 0 };
+  
+  const fields = Object.keys(updateData);
+  if (fields.length === 0) return { changes: 0 };
+
+  const setClause = fields.map(field => `${field} = ?`).join(', ');
+  const values = fields.map(field => updateData[field]);
+
+  // Create placeholders for the IN clause
+  const placeholders = productIds.map(() => '?').join(', ');
+  
+  const query = `UPDATE products SET ${setClause}, updated_at = datetime('now') WHERE id IN (${placeholders})`;
+
+  try {
+    const stmt = db.prepare(query);
+    const result = stmt.run(...values, ...productIds);
+    return { changes: result.changes };
+  } catch (error) {
+    console.error("Database error in bulkUpdateProducts:", error);
+    throw new Error("Could not bulk update products in the database.");
+  }
+}

@@ -5,6 +5,9 @@ import type {
   CategorySpend,
   PurchaseKPI,
   MonthlyStat,
+  PurchaseOrderMetrics,
+  TopPurchasedProduct,
+  PurchasePaymentModeBreakdown,
 } from "../types/purchaseStatsTypes";
 import toast from "react-hot-toast";
 
@@ -85,5 +88,36 @@ export async function fetchPurchaseStats(): Promise<PurchaseKPI | null> {
     console.error("Error fetching KPI stats:", err);
     toast.error("Failed to load purchase KPIs");
     return null;
+  }
+}
+
+export async function fetchPurchaseOrderMetrics(params?: any): Promise<PurchaseOrderMetrics | null> {
+  try {
+    const res = await api.get(`${BASE_URL}/order-metrics`, { params });
+    return res.data.data;
+  } catch (err) {
+    console.error("Error fetching order metrics:", err);
+    toast.error("Failed to load purchase order metrics");
+    return null;
+  }
+}
+
+export async function fetchTopPurchasedProducts(params?: any): Promise<TopPurchasedProduct[]> {
+  try {
+    const res = await api.get(`${BASE_URL}/top-products`, { params });
+    return res.data.data ?? [];
+  } catch (err) {
+    console.error("Error fetching top products:", err);
+    return [];
+  }
+}
+
+export async function fetchPurchasePaymentModeBreakdown(params?: any): Promise<PurchasePaymentModeBreakdown[]> {
+  try {
+    const res = await api.get(`${BASE_URL}/payment-mode-breakdown`, { params });
+    return res.data.data ?? [];
+  } catch (err) {
+    console.error("Error fetching payment mode breakdown:", err);
+    return [];
   }
 }

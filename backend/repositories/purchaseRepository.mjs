@@ -569,3 +569,59 @@ export function getPurchaseStats() {
     .all();
   return { ...total, ...avg, ...max, top_supplier: topSupplier, recent };
 }
+
+export function getPurchaseOrderMetrics(filters) {
+  const { where, params } = getDateFilter({ ...filters, alias: "p" });
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) AS purchaseCount,
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingCount,
+      SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS paidCount,
+      COUNT(DISTINCT supplier_id) AS uniqueSuppliers
+    FROM purchases p WHERE ${where}
+  `).get(...params);
+
+  return {
+    purchaseCount: row.purchaseCount || 0,
+    pendingCount: row.pendingCount || 0,
+    paidPercentage: row.purchaseCount
+      ? Math.round((row.paidCount / row.purchaseCount) * 100)
+      : 0,
+    uniqueSuppliers: row.uniqueSuppliers || 0,
+  };
+}
+
+export function getTopPurchasedProducts({ limit = 5, ...filters }) {
+  const { where, params } = getDateFilter({ ...filters, alias: "p" });
+  const stmt = db.prepare(`
+    SELECT pr.name, SUM(pi.quantity) AS qty, SUM(pi.price) AS revenue
+    FROM purchase_items pi
+    JOIN purchases p ON pi.purchase_id = p.id
+    JOIN products pr ON pi.product_id = pr.id
+    WHERE ${where}
+    GROUP BY pr.id
+    ORDER BY revenue DESC
+    LIMIT ?
+  `);
+  return stmt.all(...params, limit);
+}
+
+export function getPurchasePaymentModeBreakdown(filters) {
+  const { where, params } = getDateFilter({ ...filters, alias: "p" });
+  const totalStmt = db.prepare(
+    `SELECT SUM(paid_amount) AS total FROM purchases p WHERE ${where}`
+  );
+  const total = totalStmt.get(...params)?.total || 0;
+
+  const stmt = db.prepare(`
+    SELECT payment_mode AS mode, SUM(paid_amount) AS amount
+    FROM purchases p
+    WHERE ${where}
+    GROUP BY payment_mode
+  `);
+
+  return stmt.all(...params).map((row) => ({
+    ...row,
+    percentage: total ? Math.round((row.amount / total) * 100) : 0,
+  }));
+}

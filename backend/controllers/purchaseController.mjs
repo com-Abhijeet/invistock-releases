@@ -145,3 +145,33 @@ export async function getPurchaseStats(req, res) {
     res.status(500).json({ status: "error", message: err.message });
   }
 }
+
+export async function getPurchaseOrderMetricsController(req, res) {
+  try {
+    const data = await purchaseService.getPurchaseOrderMetricsService(req.query);
+    res.status(200).json({ status: "success", data });
+  } catch (err) {
+    console.error("Error in getPurchaseOrderMetrics:", err);
+    res.status(500).json({ status: "error", message: err.message });
+  }
+}
+
+export async function getTopPurchasedProductsController(req, res) {
+  try {
+    const data = await purchaseService.getTopPurchasedProductsService(req.query);
+    res.status(200).json({ status: "success", data });
+  } catch (err) {
+    console.error("Error in getTopPurchasedProducts:", err);
+    res.status(500).json({ status: "error", message: err.message });
+  }
+}
+
+export async function getPurchasePaymentModeBreakdownController(req, res) {
+  try {
+    const data = await purchaseService.getPurchasePaymentModeBreakdownService(req.query);
+    res.status(200).json({ status: "success", data });
+  } catch (err) {
+    console.error("Error in getPurchasePaymentModeBreakdown:", err);
+    res.status(500).json({ status: "error", message: err.message });
+  }
+}
