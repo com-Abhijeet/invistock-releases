@@ -5,6 +5,7 @@ import {
   getLicenseInfo,
   saveLicenseInfo,
 } from "../repositories/licenseRepository.mjs";
+import { getShop } from "../repositories/shopRepository.mjs";
 import pkg from "electron";
 const { app } = pkg;
 
@@ -118,6 +119,13 @@ async function verifyOnline(licenseKey) {
     const appVersion = app.getVersion();
     const osInfo = process.platform;
 
+    let shopDetails = null;
+    try {
+      shopDetails = await getShop();
+    } catch (err) {
+      console.warn("[LICENSE] Could not fetch shop details", err);
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
 
@@ -130,6 +138,7 @@ async function verifyOnline(licenseKey) {
         osInfo: osInfo,
         appVersion: appVersion,
         platform: osInfo,
+        shopDetails,
       }),
       signal: controller.signal,
     });
