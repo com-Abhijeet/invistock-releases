@@ -126,6 +126,20 @@ export async function updateProduct(
   }
 }
 
+export async function bulkUpdateProducts(
+  productIds: number[],
+  updateData: Partial<Product>,
+): Promise<any> {
+  try {
+    const response = await api.put(`${API_BASE}/bulk-update`, { productIds, updateData });
+    toast.success(`${response.data.data.changes} products updated successfully.`);
+    return response.data.data;
+  } catch (err: any) {
+    toast.error(err?.response?.data?.message || "Failed to bulk update products.");
+    return err;
+  }
+}
+
 export async function deleteProduct(id: string): Promise<boolean> {
   try {
     await api.delete(`${API_BASE}/${id}`);

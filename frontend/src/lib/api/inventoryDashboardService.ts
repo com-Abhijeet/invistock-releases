@@ -62,3 +62,13 @@ export async function getTotalStockSummary() {
 
   return res.data.data;
 }
+
+export async function getInventoryHealthMetrics() {
+  const res = await api.get(`${BASE}/health-metrics`);
+
+  if (res.data.status !== "success") {
+    throw new Error("Failed to fetch health metrics");
+  }
+
+  return res.data.data;
+}

@@ -315,3 +315,34 @@ export function getCategorySpendService(query) {
 export function getPurchaseStatsService() {
   return purchaseRepository.getPurchaseStats();
 }
+
+export function getPurchaseOrderMetricsService(query) {
+  const { filter = "month", start_date, end_date, year } = query;
+  return purchaseRepository.getPurchaseOrderMetrics({
+    filter,
+    start_date,
+    end_date,
+    year,
+  });
+}
+
+export function getTopPurchasedProductsService(query) {
+  const { filter = "month", start_date, end_date, year, limit } = query;
+  return purchaseRepository.getTopPurchasedProducts({
+    filter,
+    start_date,
+    end_date,
+    year,
+    limit,
+  });
+}
+
+export function getPurchasePaymentModeBreakdownService(query) {
+  const { filter = "month", start_date, end_date, year } = query;
+  return purchaseRepository.getPurchasePaymentModeBreakdown({
+    filter,
+    start_date,
+    end_date,
+    year,
+  });
+}

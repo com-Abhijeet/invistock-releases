@@ -57,23 +57,29 @@ const PurchaseStatistics = ({ summary, kpi }: Props) => {
     },
   ];
 
-  // --- Row 2: Operational / Analysis (3 cards) ---
+  // --- Row 2: Operational / Analysis (4 cards) ---
   const row2Stats = [
     {
+      title: "Purchase Vouchers",
+      value: kpi?.total_purchases || 0,
+      icon: <ShoppingBag size={24} />, 
+      color: theme.palette.text.primary,
+    },
+    {
       title: "Avg. Purchase Value",
-      value: currency(kpi.avg_purchase_value),
-      icon: <CreditCard size={24} />, // Changed icon for variety
+      value: currency(kpi?.avg_purchase_value),
+      icon: <CreditCard size={24} />, 
       color: theme.palette.info.main,
     },
     {
       title: "Max Purchase Value",
-      value: currency(kpi.max_purchase),
-      icon: <TrendingUp size={24} />, // Changed icon for variety
+      value: currency(kpi?.max_purchase),
+      icon: <TrendingUp size={24} />, 
       color: theme.palette.warning.main,
     },
     {
       title: "Top Supplier",
-      value: kpi.top_supplier?.supplier_name || "No Data",
+      value: kpi?.top_supplier?.supplier_name || "No Data",
       icon: <User size={24} />,
       color: theme.palette.secondary.main,
     },
@@ -96,7 +102,7 @@ const PurchaseStatistics = ({ summary, kpi }: Props) => {
 
         {/* Row 2 */}
         {row2Stats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={4} key={`r2-${index}`}>
+          <Grid item xs={12} sm={6} md={3} key={`r2-${index}`}>
             <DataCard
               title={stat.title}
               value={stat.value}

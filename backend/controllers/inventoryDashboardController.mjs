@@ -91,3 +91,23 @@ export const getTotalStockSummaryController = async (req, res) => {
     });
   }
 };
+
+export const getInventoryHealthMetricsController = async (req, res) => {
+  try {
+    const result = await dashboardService.fetchInventoryHealthMetricsService();
+
+    return res.status(200).json({
+      status: "success",
+      message: "Inventory health metrics fetched successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error(
+      `[BACKEND] - INVENTORY DASHBOARD CONTROLLER - ERROR IN GETTING HEALTH METRICS CONTROLLER ${error}`
+    );
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to fetch inventory health metrics",
+    });
+  }
+};

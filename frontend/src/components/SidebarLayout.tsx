@@ -294,7 +294,7 @@ const SidebarNav = ({
 
 export default function SidebarLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
-  const [_shop, setShop] = useState<ShopSetupForm | null>(null);
+  const [, setShop] = useState<ShopSetupForm | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
@@ -512,38 +512,35 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
               zIndex: theme.zIndex.drawer + 1,
             }}
           >
-            <Toolbar sx={{ minHeight: { xs: 56, sm: 64 } }}>
-              <IconButton
-                color="inherit"
-                edge="start"
-                onClick={handleDrawerToggle}
-                sx={{ mr: 2, display: { sm: "none" } }}
-              >
-                <MenuIcon />
-              </IconButton>
-
-              {/* Back Button */}
-              <Tooltip title="Go Back">
+            <Toolbar sx={{ minHeight: { xs: 56, sm: 64 }, display: "flex", justifyContent: "space-between" }}>
+              {/* Left Side: Navigation & Utils */}
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: 1, justifyContent: 'flex-start' }}>
                 <IconButton
-                  onClick={() => navigate(-1)}
-                  sx={{
-                    mr: 2,
-                    color: theme.palette.text.secondary,
-                    "&:hover": { color: theme.palette.primary.main },
-                  }}
+                  color="inherit"
+                  edge="start"
+                  onClick={handleDrawerToggle}
+                  sx={{ mr: 1, display: { sm: "none" } }}
                 >
-                  <ArrowLeft size={20} />
+                  <MenuIcon />
                 </IconButton>
-              </Tooltip>
 
-              {/* ✅ GLOBAL SEARCH COMPONENT */}
-              <Box
-                sx={{ flexGrow: 1, display: "flex", justifyContent: "center" }}
-              >
-                <GlobalSearch />
-              </Box>
+                {/* Back Button */}
+                <Tooltip title="Go Back">
+                  <IconButton
+                    onClick={() => navigate(-1)}
+                    sx={{
+                      mr: 1,
+                      color: theme.palette.text.secondary,
+                      "&:hover": { color: theme.palette.primary.main },
+                    }}
+                  >
+                    <ArrowLeft size={20} />
+                  </IconButton>
+                </Tooltip>
 
-              <Stack direction="row" alignItems="center" spacing={1}>
+                {/* Utils */}
+                <CalculatorModal />
+                
                 {/* Help Shortcut Icon */}
                 <Tooltip title="Keyboard Shortcuts (?)">
                   <IconButton
@@ -565,10 +562,22 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
                     <Tag size={20} />
                   </IconButton>
                 </Tooltip>
+              </Stack>
 
+              {/* ✅ GLOBAL SEARCH COMPONENT */}
+              <Box
+                sx={{ flex: 1, display: "flex", justifyContent: "center" }}
+              >
+                <GlobalSearch />
+              </Box>
+
+              {/* Right Side: Action Center, Alerts & Profile */}
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: 1, justifyContent: 'flex-end' }}>
+                {/* Action Center */}
                 <ActionCenter />
+
+                {/* Alerts */}
                 <ExpiringItemsNotification />
-                <CalculatorModal />
                 <LowStockNotification />
                 <OverduePaymentsNotification />
 
@@ -608,6 +617,8 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
                     </Box>
                   </IconButton>
                 </Tooltip>
+              </Stack>
+            </Toolbar>
 
                 <Menu
                   anchorEl={anchorEl}
@@ -658,8 +669,7 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
                     Logout
                   </MenuItem>
                 </Menu>
-              </Stack>
-            </Toolbar>
+
           </AppBar>
         )}
 

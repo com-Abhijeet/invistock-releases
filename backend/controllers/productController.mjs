@@ -207,3 +207,27 @@ export const getMissingBatchesProductsController = async (req, res) => {
     console.log("ERROR in getting missing batch products", error);
   }
 };
+
+export const bulkUpdateProductsController = async (req, res) => {
+  try {
+    const { productIds, updateData } = req.body;
+    
+    if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({ success: false, message: "Valid product IDs are required" });
+    }
+    
+    if (!updateData || Object.keys(updateData).length === 0) {
+      return res.status(400).json({ success: false, message: "Update data is required" });
+    }
+    
+    const result = await productService.bulkUpdate(productIds, updateData);
+    res.status(200).json({
+      success: true,
+      message: `${result.changes} products updated successfully.`,
+      data: result,
+    });
+  } catch (error) {
+    console.error(`[BACKEND] - PRODUCT CONTROLLER - ERROR IN BULK UPDATING PRODUCTS ${error}`);
+    return res.status(500).json({ success: false, message: "Error in bulk updating products" });
+  }
+};

@@ -68,11 +68,53 @@ export default function StockSummaryRow() {
               Total Stock
             </Typography>
             <Typography fontSize="0.75rem" color="text.secondary">
-              In Stock
+              Valuation
             </Typography>
           </CardContent>
         </Card>
       </Tooltip>
+
+      <Card sx={{ width: 140, flexShrink: 0, borderLeft: "4px solid #9c27b0" }}>
+        <CardContent>
+          <Typography fontSize="1.5rem" fontWeight={700} color="secondary">
+            {overall.total_skus || 0}
+          </Typography>
+          <Typography fontSize="0.9rem" fontWeight={600}>
+            Unique SKUs
+          </Typography>
+          <Typography fontSize="0.75rem" color="text.secondary">
+            In System
+          </Typography>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ width: 140, flexShrink: 0, borderLeft: "4px solid #d32f2f" }}>
+        <CardContent>
+          <Typography fontSize="1.5rem" fontWeight={700} color="error">
+            {overall.out_of_stock || 0}
+          </Typography>
+          <Typography fontSize="0.9rem" fontWeight={600}>
+            Out of Stock
+          </Typography>
+          <Typography fontSize="0.75rem" color="text.secondary">
+            Action Needed
+          </Typography>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ width: 140, flexShrink: 0, borderLeft: "4px solid #ed6c02" }}>
+        <CardContent>
+          <Typography fontSize="1.5rem" fontWeight={700} color="warning.main">
+            {overall.low_stock || 0}
+          </Typography>
+          <Typography fontSize="0.9rem" fontWeight={600}>
+            Low Stock
+          </Typography>
+          <Typography fontSize="0.75rem" color="text.secondary">
+            Needs Restock
+          </Typography>
+        </CardContent>
+      </Card>
 
       {/* 🔹 Vertical Divider */}
       <Divider orientation="vertical" flexItem />

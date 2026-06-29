@@ -36,3 +36,22 @@ export type PurchaseKPI = {
     total_amount: number;
   }[];
 };
+
+export type PurchaseOrderMetrics = {
+  purchaseCount: number;
+  pendingCount: number;
+  paidPercentage: number;
+  uniqueSuppliers: number;
+};
+
+export type TopPurchasedProduct = {
+  name: string;
+  qty: number;
+  revenue: number;
+};
+
+export type PurchasePaymentModeBreakdown = {
+  mode: string;
+  amount: number;
+  percentage: number;
+};
