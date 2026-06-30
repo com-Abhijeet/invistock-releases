@@ -98,7 +98,7 @@ function Row({
                 p: 1,
                 borderRadius: 2,
                 bgcolor: alpha(theme.palette.primary.main, 0.1),
-                color: "primary.main",
+                color: 'text.primary',
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",

@@ -176,7 +176,7 @@ export default function ViewLicensePage() {
     <Box
       p={3}
       sx={{
-        backgroundColor: "#f8f9fa",
+        bgcolor: 'background.default',
         minHeight: "100vh",
       }}
     >
@@ -195,7 +195,7 @@ export default function ViewLicensePage() {
               sx={{
                 p: 3,
                 borderRadius: 2,
-                bgcolor: "#1A2744",
+                bgcolor: 'text.primary',
                 color: "white",
                 border: "none",
                 display: "flex",
@@ -207,7 +207,7 @@ export default function ViewLicensePage() {
             >
               <Box flex={1} minWidth={0}>
                 <Box display="flex" alignItems="center" gap={1.5} mb={0.5}>
-                  <Monitor size={24} color="#F0A500" />
+                  <Monitor size={24} color="#111827" />
                   <Typography variant="h6" fontWeight="bold">
                     Machine Identity
                   </Typography>
@@ -230,7 +230,7 @@ export default function ViewLicensePage() {
                 }}
               >
                 <Box flex={1} minWidth={0}>
-                  <Typography variant="caption" sx={{ color: "#F0A500", fontWeight: "bold", letterSpacing: 1, display: "block", mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ color: 'secondary.main', fontWeight: "bold", letterSpacing: 1, display: "block", mb: 0.5 }}>
                     YOUR MACHINE ID
                   </Typography>
                   <Typography
@@ -245,12 +245,12 @@ export default function ViewLicensePage() {
                 
                 <Stack direction="row" spacing={0.5} flexShrink={0}>
                   <Tooltip title="Copy ID">
-                    <IconButton size="small" onClick={handleCopyId} sx={{ color: "#F0A500", bgcolor: "rgba(240, 165, 0, 0.1)" }}>
+                    <IconButton size="small" onClick={handleCopyId} sx={{ color: 'secondary.main', bgcolor: "rgba(240, 165, 0, 0.1)" }}>
                       <Copy size={18} />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Share ID">
-                    <IconButton size="small" onClick={handleShareClick} sx={{ color: "#F0A500", bgcolor: "rgba(240, 165, 0, 0.1)" }}>
+                    <IconButton size="small" onClick={handleShareClick} sx={{ color: 'secondary.main', bgcolor: "rgba(240, 165, 0, 0.1)" }}>
                       <Share2 size={18} />
                     </IconButton>
                   </Tooltip>
@@ -315,7 +315,7 @@ export default function ViewLicensePage() {
                   {loading ? <CircularProgress size={48} /> : statusInfo.icon}
                 </Box>
 
-                <Typography variant="h4" fontWeight="800" sx={{ color: "#1A2744" }}>
+                <Typography variant="h4" fontWeight="800" sx={{ color: 'text.primary' }}>
                   License Status
                 </Typography>
 
@@ -339,7 +339,7 @@ export default function ViewLicensePage() {
                         <Typography
                           variant="h5"
                           fontWeight={800}
-                          sx={{ color: "#1A2744" }}
+                          sx={{ color: 'text.primary' }}
                         >
                           {new Date(status.data.expiryDate).toLocaleDateString(
                             "en-IN",
@@ -373,8 +373,8 @@ export default function ViewLicensePage() {
               >
                 <Stack spacing={2}>
                   <Box display="flex" alignItems="center" gap={1.5}>
-                    <KeyRound size={22} color="#1A2744" />
-                    <Typography variant="h6" fontWeight="bold" sx={{ color: "#1A2744" }}>
+                    <KeyRound size={22} color="#111827" />
+                    <Typography variant="h6" fontWeight="bold" sx={{ color: 'text.primary' }}>
                       Update License Key
                     </Typography>
                   </Box>
@@ -398,7 +398,7 @@ export default function ViewLicensePage() {
                     onClick={handleActivateLicense}
                     disabled={activating || !licenseKey}
                     sx={{
-                      bgcolor: "#1A2744",
+                      bgcolor: 'text.primary',
                       color: "white",
                       fontWeight: "bold",
                       py: 1,
@@ -421,11 +421,11 @@ export default function ViewLicensePage() {
                   borderRadius: 2,
                   border: "1px solid",
                   borderColor: "divider",
-                  bgcolor: "white",
+                  bgcolor: 'background.paper',
                 }}
               >
                 <Stack spacing={2} height="100%">
-                  <Typography variant="h6" fontWeight="bold" sx={{ color: "#1A2744" }}>
+                  <Typography variant="h6" fontWeight="bold" sx={{ color: 'text.primary' }}>
                     Need a License?
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -433,7 +433,7 @@ export default function ViewLicensePage() {
                   </Typography>
 
                   <Box sx={{ mt: 'auto' }}>
-                    <Typography variant="subtitle2" fontWeight="bold" sx={{ color: "#1A2744", mb: 1 }}>
+                    <Typography variant="subtitle2" fontWeight="bold" sx={{ color: 'text.primary', mb: 1 }}>
                       Contact Abhijeet Shinde
                     </Typography>
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
@@ -442,7 +442,7 @@ export default function ViewLicensePage() {
                         fullWidth
                         startIcon={<Phone size={18} />}
                         href="tel:+918180904072"
-                        sx={{ color: "#1A2744", borderColor: "divider", textTransform: 'none' }}
+                        sx={{ color: 'text.primary', borderColor: "divider", textTransform: 'none' }}
                       >
                         +91 8180904072
                       </Button>
@@ -451,7 +451,7 @@ export default function ViewLicensePage() {
                         fullWidth
                         startIcon={<Mail size={18} />}
                         href="mailto:contact@getkosh.co.in"
-                        sx={{ color: "#1A2744", borderColor: "divider", textTransform: 'none' }}
+                        sx={{ color: 'text.primary', borderColor: "divider", textTransform: 'none' }}
                       >
                         contact@getkosh.co.in
                       </Button>

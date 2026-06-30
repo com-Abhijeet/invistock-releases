@@ -461,7 +461,7 @@ export default function AddEditProductModal({
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle sx={{ bgcolor: "primary.main", color: "white", pb: 3 }}>
+      <DialogTitle sx={{ bgcolor: 'text.primary', color: "white", pb: 3 }}>
         <Stack direction="row" alignItems="center" spacing={1.5}>
           <PackagePlus color="white" />
           <Typography variant="h6" color="white">

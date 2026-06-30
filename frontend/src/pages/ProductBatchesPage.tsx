@@ -557,7 +557,7 @@ export default function ProductBatchesPage() {
                           <Typography
                             variant="body2"
                             fontWeight={700}
-                            color="primary.main"
+                            color="#111827"
                           >
                             ₹{batch.mrp?.toFixed(2) || "0.00"}
                           </Typography>
@@ -634,7 +634,7 @@ export default function ProductBatchesPage() {
                       <IconButton
                         size="small"
                         sx={{
-                          color: "primary.main",
+                          color: 'text.primary',
                           bgcolor: "primary.lighter",
                           "&:hover": {
                             bgcolor: "primary.light",

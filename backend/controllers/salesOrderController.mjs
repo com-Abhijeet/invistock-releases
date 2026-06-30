@@ -5,6 +5,7 @@ export function createOrder(req, res) {
     const result = SalesOrderService.createOrder(req.body);
     res.status(201).json({ status: "success", data: result });
   } catch (error) {
+    console.error("createOrder -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -14,6 +15,7 @@ export function updateOrder(req, res) {
     SalesOrderService.updateOrder(req.params.id, req.body);
     res.json({ status: "success", message: "Order updated" });
   } catch (error) {
+    console.error("updateOrder -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -23,6 +25,7 @@ export function deleteOrder(req, res) {
     SalesOrderService.deleteOrder(req.params.id);
     res.json({ status: "success", message: "Order deleted" });
   } catch (error) {
+    console.error("deleteOrder -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -34,6 +37,7 @@ export function getOrderById(req, res) {
       return res.status(404).json({ status: "error", message: "Not found" });
     res.json({ status: "success", data: order });
   } catch (error) {
+    console.error("getOrderById -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -43,6 +47,7 @@ export function getAllOrders(req, res) {
     const result = SalesOrderService.getAllOrders(req.query);
     res.json({ status: "success", ...result });
   } catch (error) {
+    console.error("getAllOrders -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }

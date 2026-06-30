@@ -5,6 +5,7 @@ export function createEmployeeSale(req, res) {
     const result = EmployeeSalesService.createEmployeeSale(req.body);
     res.status(201).json({ success: true, data: result });
   } catch (error) {
+    console.error("createEmployeeSale -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -14,6 +15,7 @@ export function getAllEmployeeSales(req, res) {
     const data = EmployeeSalesService.getAllEmployeeSales();
     res.json({ success: true, data });
   } catch (error) {
+    console.error("getAllEmployeeSales -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -28,6 +30,7 @@ export function getEmployeeSaleById(req, res) {
     }
     res.json({ success: true, data });
   } catch (error) {
+    console.error("getEmployeeSaleById -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -42,6 +45,7 @@ export function getEmployeeSalesByEmployeeId(req, res) {
     );
     res.json({ success: true, data });
   } catch (error) {
+    console.error("getEmployeeSalesByEmployeeId -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -59,6 +63,7 @@ export function updateEmployeeSale(req, res) {
     }
     res.json({ success: true, data: result });
   } catch (error) {
+    console.error("updateEmployeeSale -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -73,6 +78,7 @@ export function deleteEmployeeSale(req, res) {
     }
     res.json({ success: true, message: "Record deleted successfully" });
   } catch (error) {
+    console.error("deleteEmployeeSale -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

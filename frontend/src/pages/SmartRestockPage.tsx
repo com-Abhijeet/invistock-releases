@@ -90,7 +90,7 @@ export default function SmartRestockPage() {
       label: "Buy Qty",
       align: "center" as const,
       format: (val: number) => (
-        <Typography color="primary.main" fontWeight="bold">
+        <Typography color="#111827" fontWeight="bold">
           +{val}
         </Typography>
       ),
@@ -108,7 +108,7 @@ export default function SmartRestockPage() {
       p={2}
       pt={3}
       sx={{
-        bgcolor: "#fff",
+        bgcolor: 'background.paper',
         borderTopLeftRadius: "36px",
         borderBottomLeftRadius: "36px",
         minHeight: "100vh",
@@ -147,7 +147,7 @@ export default function SmartRestockPage() {
                 title="Capital Required"
                 value={`₹${totalInvestment.toLocaleString("en-IN")}`}
                 icon={<TrendingUp />}
-                color="primary.main"
+                color="#111827"
                 subtext="To restock for 30 days"
               />
             </Grid>

@@ -208,7 +208,7 @@ export default function MobileProductView() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             sx={{
-              "& .MuiOutlinedInput-root": { bgcolor: "white" },
+              "& .MuiOutlinedInput-root": { bgcolor: 'background.paper' },
               "& .MuiOutlinedInput-input": { p: 1.2 },
             }}
             InputProps={{

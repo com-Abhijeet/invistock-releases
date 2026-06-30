@@ -285,7 +285,7 @@ export default function CustomerAccountsPage() {
   ];
 
   return (
-    <Box p={3} sx={{ minHeight: "100vh", bgcolor: "#f8f9fa" }}>
+    <Box p={3} sx={{ minHeight: "100vh", bgcolor: 'background.default' }}>
       <DashboardHeader
         title="Customer Accounts Overview"
         showSearch={true}

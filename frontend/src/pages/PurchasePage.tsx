@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -5,7 +6,6 @@ import { useParams } from "react-router-dom";
 import {
   Box,
   useTheme,
-  Fab,
   Tooltip,
   Typography,
   Dialog,
@@ -13,8 +13,10 @@ import {
   DialogContent,
   IconButton,
   Chip,
+  Button,
 } from "@mui/material";
-import { Close as CloseIcon } from "@mui/icons-material";
+import { Close as CloseIcon, FolderOpen as FolderIcon, Save as SaveIcon, Keyboard as KeyboardIcon } from "@mui/icons-material";
+import toast from "react-hot-toast";
 import Grid from "@mui/material/GridLegacy";
 
 import PurchaseHeaderSection from "../components/purchase/PurchaseHeaderSection";
@@ -22,6 +24,13 @@ import PurchaseItemSection from "../components/purchase/PurchaseItemSection";
 import PurchaseSummarySection from "../components/purchase/PurchaseSummarySection";
 import { getPurchaseById } from "../lib/api/purchaseService";
 import type { PurchaseItem, PurchasePayload } from "../lib/types/purchaseTypes";
+
+
+interface SavedPurchaseDraft {
+  id: string;
+  timestamp: number;
+  purchasePayload: PurchasePayload;
+}
 
 const generateInitialPurchase = (): PurchasePayload => ({
   reference_no: "",
@@ -74,6 +83,65 @@ const PurchasePage = () => {
   // Shortcut Modal State
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
 
+  // Drafts State
+  const [draftsModalOpen, setDraftsModalOpen] = useState(false);
+  const [drafts, setDrafts] = useState<SavedPurchaseDraft[]>([]);
+
+  const loadDraftsFromStorage = () => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("purchase_drafts");
+      if (stored) setDrafts(JSON.parse(stored));
+    }
+  };
+
+  useEffect(() => {
+    loadDraftsFromStorage();
+  }, []);
+
+  const saveDraft = () => {
+    if (!purchase || purchase.items.length === 0) {
+      toast.error("Cannot save an empty draft.");
+      return;
+    }
+    const newDraft: SavedPurchaseDraft = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      purchasePayload: purchase,
+    };
+    const updatedDrafts = [newDraft, ...drafts];
+    setDrafts(updatedDrafts);
+    localStorage.setItem("purchase_drafts", JSON.stringify(updatedDrafts));
+    toast.success("Draft saved");
+  };
+
+  const deleteDraft = (draftId: string) => {
+    const updatedDrafts = drafts.filter((d) => d.id !== draftId);
+    setDrafts(updatedDrafts);
+    localStorage.setItem("purchase_drafts", JSON.stringify(updatedDrafts));
+    toast.success("Draft deleted");
+  };
+
+  const loadDraft = (draft: SavedPurchaseDraft) => {
+    setPurchase(draft.purchasePayload);
+    setDraftsModalOpen(false);
+    toast.success("Draft loaded");
+  };
+
+  useEffect(() => {
+    const isDirty = purchase && purchase.items.length > 0;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty && !isView && !isEdit) {
+        const message = "You have unsaved items. Save a draft before leaving?";
+        e.preventDefault();
+        e.returnValue = message;
+        return message;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [purchase, isView, isEdit]);
+
+
   useEffect(() => {
     if ((isEdit || isView) && id) {
       const fetchPurchase = async () => {
@@ -117,11 +185,80 @@ const PurchasePage = () => {
         height: "calc(100vh - 64px)",
         backgroundColor: theme.palette.background.default,
         overflow: "hidden",
-        position: "relative", // For absolute positioning of FAB
+        position: "relative",
       }}
     >
+      {/* Compact Top Action Bar */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          m: 0,
+          p: 0,
+          bgcolor: theme.palette.background.paper,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          zIndex: 10,
+        }}
+      >
+        {!isView && !isEdit && (
+          <>
+            <Button
+              variant="text"
+              color="primary"
+              onClick={saveDraft}
+              startIcon={<SaveIcon sx={{ fontSize: "0.9rem !important" }} />}
+              sx={{
+                fontSize: "0.65rem",
+                textTransform: "none",
+                py: 0.5,
+                px: 1.5,
+                minWidth: "auto",
+                borderRadius: 0,
+                borderRight: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+              Save Draft
+            </Button>
+            <Button
+              variant="text"
+              color="primary"
+              onClick={() => setDraftsModalOpen(true)}
+              startIcon={<FolderIcon sx={{ fontSize: "0.9rem !important" }} />}
+              sx={{
+                fontSize: "0.65rem",
+                textTransform: "none",
+                py: 0.5,
+                px: 1.5,
+                minWidth: "auto",
+                borderRadius: 0,
+                borderRight: `1px solid ${theme.palette.divider}`,
+              }}
+            >
+              View Drafts
+            </Button>
+          </>
+        )}
+        <Button
+          variant="text"
+          color="info"
+          onClick={() => setShortcutHelpOpen(true)}
+          startIcon={<KeyboardIcon sx={{ fontSize: "0.9rem !important" }} />}
+          sx={{
+            fontSize: "0.65rem",
+            textTransform: "none",
+            py: 0.5,
+            px: 1.5,
+            minWidth: "auto",
+            borderRadius: 0,
+          }}
+        >
+          Shortcuts
+        </Button>
+      </Box>
+
       {/* Header (Fixed) */}
-      <Box sx={{ p: 2, pb: 1, flexShrink: 0, zIndex: 10 }}>
+      <Box sx={{ p: 2, pt: 1, pb: 1, flexShrink: 0, zIndex: 10 }}>
         <PurchaseHeaderSection
           purchase={purchase}
           onPurchaseChange={(p) => !isView && setPurchase(p)}
@@ -159,41 +296,21 @@ const PurchasePage = () => {
       <Box
         sx={{
           flexShrink: 0,
-          backgroundColor: "#fff",
+          bgcolor: 'background.paper',
           borderTop: `1px solid ${theme.palette.divider}`,
           zIndex: 10,
         }}
       >
         <PurchaseSummarySection
+          draftsModalOpen={draftsModalOpen}
+          setDraftsModalOpen={setDraftsModalOpen}
+          saveDraft={saveDraft}
           purchase={purchase}
           onPurchaseChange={(p) => !isView && setPurchase(p)}
           setSuccess={setSuccess}
-          // FIXED: Correctly pass 'edit' mode when action is edit
           mode={isView ? "view" : isEdit ? "edit" : "new"}
           resetForm={generateInitialPurchase}
         />
-      </Box>
-
-      {/* --- SHORTCUT HELP FAB --- */}
-      <Box
-        sx={{
-          position: "absolute",
-          bottom: 100, // Adjusted to sit above summary or similar to SalesPos
-          right: 24,
-          zIndex: 20,
-        }}
-      >
-        <Tooltip title="Keyboard Shortcuts" placement="left">
-          <Fab
-            size="small"
-            onClick={() => setShortcutHelpOpen(true)}
-            sx={{ bgcolor: "#fff" }}
-          >
-            <Typography variant="h6" fontWeight="bold">
-              ?
-            </Typography>
-          </Fab>
-        </Tooltip>
       </Box>
 
       {/* --- KEYBOARD SHORTCUTS MODAL --- */}

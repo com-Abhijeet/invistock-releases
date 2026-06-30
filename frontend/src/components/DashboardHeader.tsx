@@ -270,7 +270,7 @@ export default function DashboardHeader({
                 <Typography
                   variant="caption"
                   fontWeight={700}
-                  color="primary.main"
+                  color="#111827"
                 >
                   {from} {to ? `→ ${to}` : "(...)"}
                 </Typography>
@@ -453,7 +453,7 @@ export default function DashboardHeader({
                 </Stack>
               </Box>
 
-              <Box sx={{ bgcolor: "white" }}>
+              <Box sx={{ bgcolor: 'background.paper' }}>
                 <Stack
                   direction="row"
                   justifyContent="space-between"

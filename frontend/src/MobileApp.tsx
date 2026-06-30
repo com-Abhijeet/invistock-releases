@@ -189,7 +189,7 @@ export default function MobileApp() {
       </AppBar>
 
       {/* 2. Search Bar */}
-      <Box sx={{ p: 2, bgcolor: "white", borderBottom: "1px solid #eee" }}>
+      <Box sx={{ p: 2, bgcolor: 'background.paper', borderBottom: "1px solid #eee" }}>
         <TextField
           fullWidth
           size="small"
@@ -263,7 +263,7 @@ export default function MobileApp() {
             return (
               <ListItem
                 key={p.id}
-                sx={{ bgcolor: "white", mb: 1, borderRadius: 2, boxShadow: 1 }}
+                sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 2, boxShadow: 1 }}
               >
                 <ListItemAvatar>
                   <Avatar

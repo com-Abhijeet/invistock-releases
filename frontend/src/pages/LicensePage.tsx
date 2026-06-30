@@ -373,7 +373,7 @@ export default function LicensePage() {
               sx={{
                 "& .MuiOutlinedInput-root": {
                   borderRadius: 3,
-                  bgcolor: "#fff",
+                  bgcolor: 'background.paper',
                   "&.Mui-focused fieldset": {
                     borderColor: themeColors.primary,
                   },

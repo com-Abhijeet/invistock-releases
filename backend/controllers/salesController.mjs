@@ -26,7 +26,7 @@ export const createSaleController = async (req, res) => {
       data: newSale,
     });
   } catch (error) {
-    console.error("Error in createSaleController:", error.message);
+    console.error("createSaleController -", error);
     return res.status(500).json({
       status: "error",
       message: error.message || "Failed to create sale.",
@@ -67,7 +67,7 @@ export const updateSaleController = async (req, res) => {
       data: updatedSale,
     });
   } catch (error) {
-    console.error("Error in updateSaleController:", error.message);
+    console.error("updateSaleController -", error);
     return res.status(500).json({
       status: "error",
       message: error.message || "Failed to update sale.",
@@ -95,7 +95,7 @@ export const getSalesPaginatedController = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    console.error("Error in getSalesPaginatedController:", error.message);
+    console.error("getSalesPaginatedController -", error);
     return res.status(500).json({ status: "error", message: error.message });
   }
 };
@@ -129,7 +129,7 @@ export const getSaleByIdController = async (req, res) => {
       data: sale,
     });
   } catch (error) {
-    console.error("Error in getSaleByIdController:", error.message);
+    console.error("getSaleByIdController -", error);
     return res.status(500).json({ status: "error", message: error.message });
   }
 };
@@ -158,7 +158,7 @@ export const deleteSaleByIdController = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    console.error("Error in deleteSaleByIdController:", error.message);
+    console.error("deleteSaleByIdController -", error);
     return res.status(500).json({ status: "error", message: error.message });
   }
 };
@@ -182,7 +182,7 @@ export const getSalesSummaryController = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    console.error("Error in getSalesSummaryController:", error.message);
+    console.error("getSalesSummaryController -", error);
     return res.status(500).json({ status: "error", message: error.message });
   }
 };
@@ -207,7 +207,7 @@ export function processSalesReturnController(req, res) {
       data: result,
     });
   } catch (error) {
-    console.error("Sales Return Error:", error.message);
+    console.error("processSalesReturnController -", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -249,7 +249,7 @@ export const updateSaleStatusController = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    console.error("Error in updateSaleStatusController:", error.message);
+    console.error("updateSaleStatusController -", error);
     return res.status(500).json({ status: "error", message: error.message });
   }
 };
@@ -280,7 +280,7 @@ export const getCustomerSalesController = async (req, res) => {
       data: sales,
     });
   } catch (error) {
-    console.error("Error in getCustomerSalesController:", error.message);
+    console.error("getCustomerSalesController -", error);
     return res.status(500).json({ status: "error", message: error.message });
   }
 };
@@ -311,7 +311,7 @@ export const searchSalesByReferenceController = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    console.error("Error in searchSalesByReferenceController:", error.message);
+    console.error("searchSalesByReferenceController -", error);
     return res.status(500).json({ status: "error", message: error.message });
   }
 };
@@ -330,7 +330,7 @@ export async function getSalesTrendController(req, res) {
     const data = await salesService.getSalesTrend(req.query);
     return res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getSalesTrendController:", err.message);
+    console.error("getSalesTrendController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -347,7 +347,7 @@ export async function getFinancialMetricsController(req, res) {
     const metrics = await salesService.getFinancialMetrics(req.query);
     return res.status(200).json({ status: "success", data: metrics });
   } catch (err) {
-    console.error("Error in getFinancialMetricsController:", err.message);
+    console.error("getFinancialMetricsController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -364,7 +364,7 @@ export async function getOrderMetricsController(req, res) {
     const metrics = await salesService.getOrderMetrics(req.query);
     return res.status(200).json({ status: "success", data: metrics });
   } catch (err) {
-    console.error("Error in getOrderMetricsController:", err.message);
+    console.error("getOrderMetricsController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -381,7 +381,7 @@ export async function getTopCustomersController(req, res) {
     const data = await salesService.getTopCustomers(req.query);
     return res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getTopCustomersController:", err.message);
+    console.error("getTopCustomersController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -398,7 +398,7 @@ export async function getTopProductsController(req, res) {
     const data = await salesService.getTopProducts(req.query);
     return res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getTopProductsController:", err.message);
+    console.error("getTopProductsController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -415,7 +415,7 @@ export async function getCategoryRevenueController(req, res) {
     const data = await salesService.getCategoryRevenue(req.query);
     return res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getCategoryRevenueController:", err.message);
+    console.error("getCategoryRevenueController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -432,7 +432,7 @@ export async function getPaymentModeBreakdownController(req, res) {
     const data = await salesService.getPaymentModeBreakdown(req.query);
     return res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getPaymentModeBreakdownController:", err.message);
+    console.error("getPaymentModeBreakdownController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -449,7 +449,7 @@ export async function getCreditSalesController(req, res) {
     const data = await salesService.getCreditSales(req.query);
     return res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getCreditSalesController:", err.message);
+    console.error("getCreditSalesController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -466,7 +466,7 @@ export async function getBestSalesDayController(req, res) {
     const data = await salesService.getBestSalesDay(req.query);
     return res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getBestSalesDayController:", err.message);
+    console.error("getBestSalesDayController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -494,7 +494,7 @@ export async function getSalesTableController(req, res) {
       totalRecords: data.totalRecords,
     });
   } catch (err) {
-    console.error("Error in getSalesTableController:", err.message);
+    console.error("getSalesTableController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -515,7 +515,7 @@ export async function getCustomerSalesKPIController(req, res) {
       data: data,
     });
   } catch (error) {
-    console.error("Error in getSalesTableController:", err.message);
+    console.error("getCustomerSalesKPIController -", error);
     res.status(500).json({ status: "error", message: err.message });
   }
 }

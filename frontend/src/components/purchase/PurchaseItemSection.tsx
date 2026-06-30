@@ -23,6 +23,7 @@ import {
   DialogActions,
   Alert,
   Collapse,
+  alpha,
 } from "@mui/material";
 import {
   Trash2,
@@ -57,6 +58,57 @@ const PurchaseItemSection = ({
   const [shop, setShop] = useState<ShopSetupForm | null>(null);
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0);
+
+  // --- STYLES ---
+  const headerSx = {
+    fontWeight: 800,
+    color: "text.disabled",
+    fontSize: "0.625rem",
+    textTransform: "uppercase" as const,
+    letterSpacing: 1.2,
+    py: 1.5,
+    borderBottom: `1px solid ${theme.palette.divider}`,
+  };
+
+  const fieldBoxSx = (isActive: boolean) => ({
+    bgcolor: isActive
+      ? alpha(theme.palette.primary.main, 0.04)
+      : alpha(theme.palette.action.hover, 0.03),
+    border: `1px solid ${isActive ? theme.palette.primary.main : alpha(theme.palette.divider, 0.6)}`,
+    borderRadius: "4px",
+    px: 1,
+    py: 0.5,
+    minHeight: 34,
+    display: "flex",
+    alignItems: "center",
+    transition: "all 0.2s",
+    "&:hover": { bgcolor: alpha(theme.palette.action.hover, 0.06) },
+    "&:focus-within": {
+      borderColor: theme.palette.primary.main,
+      bgcolor: "background.paper",
+    },
+  });
+
+  const inputSx = {
+    "& .MuiInputBase-root": {
+      fontSize: "0.875rem",
+      fontWeight: 600,
+      padding: 0,
+    },
+    "& .MuiInput-underline:before, & .MuiInput-underline:after": {
+      display: "none",
+    },
+    "& .MuiInputBase-input": {
+      textAlign: "right",
+    },
+  };
+  
+  const textLeftInputSx = {
+    ...inputSx,
+    "& .MuiInputBase-input": {
+      textAlign: "left",
+    },
+  };
 
   // Modal State
   const [batchModalOpen, setBatchModalOpen] = useState(false);
@@ -306,15 +358,15 @@ const PurchaseItemSection = ({
     return Array.from(units);
   };
 
-  const headerSx = {
-    fontWeight: 700,
-    color: "text.secondary",
-    fontSize: "0.75rem",
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
-    borderBottom: `2px solid ${theme.palette.divider}`,
-    py: 1.5,
-  };
+  // const headerSx = {
+  //   fontWeight: 700,
+  //   color: "text.secondary",
+  //   fontSize: "0.75rem",
+  //   textTransform: "uppercase" as const,
+  //   letterSpacing: 0.5,
+  //   borderBottom: `2px solid ${theme.palette.divider}`,
+  //   py: 1.5,
+  // };
 
   // Get current detected count for the modal preview
   const currentModalSerialCount = serialInputText
@@ -380,7 +432,7 @@ const PurchaseItemSection = ({
               <TableCell sx={{ ...headerSx, width: "10%" }}>COST</TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>MARGIN%</TableCell>
               <TableCell sx={{ ...headerSx, width: "10%" }}>MRP</TableCell>
-              <TableCell sx={{ ...headerSx, width: "15%" }} align="right">
+              <TableCell sx={{ ...headerSx, width: "15%", pr: 2 }} align="right">
                 AMOUNT
               </TableCell>
               <TableCell sx={{ ...headerSx, width: "5%" }}></TableCell>
@@ -404,8 +456,18 @@ const PurchaseItemSection = ({
                   hover
                   selected={activeRowIndex === idx}
                   onClick={() => setActiveRowIndex(idx)}
+                  sx={{
+                    "& > td": { border: 0, py: 0.5 },
+                    bgcolor: activeRowIndex === idx
+                      ? alpha(theme.palette.primary.main, 0.01)
+                      : "transparent",
+                  }}
                 >
-                  <TableCell align="center" sx={{ color: "text.secondary" }}>
+                  <TableCell align="center" sx={{
+                        color: "text.disabled",
+                        fontWeight: 800,
+                        fontSize: "0.7rem",
+                      }}>
                     {item.sr_no}
                   </TableCell>
 
@@ -485,121 +547,136 @@ const PurchaseItemSection = ({
                   </TableCell>
 
                   <TableCell sx={{ p: 1 }}>
-                    <TextField
-                      inputRef={(el) =>
-                        (gridRefs.current[`${idx}-quantity`] = el)
-                      }
-                      type="number"
-                      variant="standard"
-                      fullWidth
-                      value={item.quantity}
-                      onKeyDown={(e) => handleCellKeyDown(e, idx, "quantity")}
-                      onClick={() => setActiveRowIndex(idx)}
-                      onChange={(e) =>
-                        handleFieldChange(
-                          idx,
-                          "quantity",
-                          Number(e.target.value),
-                        )
-                      }
-                      // Make readonly if serial tracked so users use the modal to dictate quantity
-                      InputProps={{
-                        disableUnderline: true,
-                        readOnly: readOnly || isSerialTracked,
-                      }}
-                      inputProps={{ min: 1, style: { fontWeight: "bold" } }}
-                    />
+                    <Box sx={fieldBoxSx(activeRowIndex === idx)}>
+                      <TextField
+                        inputRef={(el) =>
+                          (gridRefs.current[`${idx}-quantity`] = el)
+                        }
+                        type="number"
+                        variant="standard"
+                        fullWidth
+                        value={item.quantity}
+                        onKeyDown={(e) => handleCellKeyDown(e, idx, "quantity")}
+                        onClick={() => setActiveRowIndex(idx)}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            idx,
+                            "quantity",
+                            Number(e.target.value),
+                          )
+                        }
+                        // Make readonly if serial tracked so users use the modal to dictate quantity
+                        InputProps={{
+                          disableUnderline: true,
+                          readOnly: readOnly || isSerialTracked,
+                        }}
+                        inputProps={{ min: 1 }}
+                        sx={inputSx}
+                      />
+                    </Box>
                   </TableCell>
 
                   <TableCell sx={{ p: 1 }}>
-                    <TextField
-                      inputRef={(el) => (gridRefs.current[`${idx}-unit`] = el)}
-                      select
-                      variant="standard"
-                      fullWidth
-                      value={item.unit || ""}
-                      onKeyDown={(e) => handleCellKeyDown(e, idx, "unit")}
-                      onChange={(e) =>
-                        handleFieldChange(idx, "unit", e.target.value)
-                      }
-                      disabled={!product || readOnly}
-                      InputProps={{ disableUnderline: true }}
-                    >
-                      {allowedUnits.map((u) => (
-                        <MenuItem key={u} value={u}>
-                          {u}
-                        </MenuItem>
-                      ))}
-                    </TextField>
+                    <Box sx={fieldBoxSx(activeRowIndex === idx)}>
+                      <TextField
+                        inputRef={(el) => (gridRefs.current[`${idx}-unit`] = el)}
+                        select
+                        variant="standard"
+                        fullWidth
+                        value={item.unit || ""}
+                        onKeyDown={(e) => handleCellKeyDown(e, idx, "unit")}
+                        onChange={(e) =>
+                          handleFieldChange(idx, "unit", e.target.value)
+                        }
+                        disabled={!product || readOnly}
+                        InputProps={{ disableUnderline: true }}
+                        sx={textLeftInputSx}
+                      >
+                        {allowedUnits.map((u) => (
+                          <MenuItem key={u} value={u}>
+                            {u}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Box>
                   </TableCell>
 
                   <TableCell sx={{ p: 1 }}>
-                    <TextField
-                      inputRef={(el) => (gridRefs.current[`${idx}-rate`] = el)}
-                      type="number"
-                      variant="standard"
-                      fullWidth
-                      value={item.rate}
-                      onKeyDown={(e) => handleCellKeyDown(e, idx, "rate")}
-                      onChange={(e) =>
-                        handleFieldChange(idx, "rate", Number(e.target.value))
-                      }
-                      InputProps={{ disableUnderline: true, readOnly }}
-                    />
+                    <Box sx={fieldBoxSx(activeRowIndex === idx)}>
+                      <TextField
+                        inputRef={(el) => (gridRefs.current[`${idx}-rate`] = el)}
+                        type="number"
+                        variant="standard"
+                        fullWidth
+                        value={item.rate}
+                        onKeyDown={(e) => handleCellKeyDown(e, idx, "rate")}
+                        onChange={(e) =>
+                          handleFieldChange(idx, "rate", Number(e.target.value))
+                        }
+                        InputProps={{ disableUnderline: true, readOnly }}
+                        sx={inputSx}
+                      />
+                    </Box>
                   </TableCell>
 
                   <TableCell sx={{ p: 1 }}>
-                    <TextField
-                      inputRef={(el) =>
-                        (gridRefs.current[`${idx}-margin`] = el)
-                      }
-                      type="number"
-                      variant="standard"
-                      fullWidth
-                      value={item.margin}
-                      onKeyDown={(e) => handleCellKeyDown(e, idx, "margin")}
-                      onChange={(e) => {
-                        const margin = Number(e.target.value);
-                        const mrp = item.rate + (item.rate * margin) / 100;
-                        const updated = [...items];
-                        updated[idx] = {
-                          ...updated[idx],
-                          margin,
-                          mrp: parseFloat(mrp.toFixed(2)),
-                        };
-                        onItemsChange(updated);
-                      }}
-                      InputProps={{ disableUnderline: true, readOnly }}
-                    />
+                    <Box sx={fieldBoxSx(activeRowIndex === idx)}>
+                      <TextField
+                        inputRef={(el) =>
+                          (gridRefs.current[`${idx}-margin`] = el)
+                        }
+                        type="number"
+                        variant="standard"
+                        fullWidth
+                        value={item.margin}
+                        onKeyDown={(e) => handleCellKeyDown(e, idx, "margin")}
+                        onChange={(e) => {
+                          const margin = Number(e.target.value);
+                          const mrp = item.rate + (item.rate * margin) / 100;
+                          const updated = [...items];
+                          updated[idx] = {
+                            ...updated[idx],
+                            margin,
+                            mrp: parseFloat(mrp.toFixed(2)),
+                          };
+                          onItemsChange(updated);
+                        }}
+                        InputProps={{ disableUnderline: true, readOnly }}
+                        sx={inputSx}
+                      />
+                    </Box>
                   </TableCell>
 
                   <TableCell sx={{ p: 1 }}>
-                    <TextField
-                      inputRef={(el) => (gridRefs.current[`${idx}-mrp`] = el)}
-                      type="number"
-                      variant="standard"
-                      fullWidth
-                      value={item.mrp}
-                      onKeyDown={(e) => handleCellKeyDown(e, idx, "mrp")}
-                      onChange={(e) => {
-                        const mrp = Number(e.target.value);
-                        const rate = item.rate;
-                        let margin = 0;
-                        if (rate > 0) margin = ((mrp - rate) / rate) * 100;
-                        const updated = [...items];
-                        updated[idx] = {
-                          ...updated[idx],
-                          mrp,
-                          margin: parseFloat(margin.toFixed(2)),
-                        };
-                        onItemsChange(updated);
-                      }}
-                      InputProps={{ disableUnderline: true, readOnly }}
-                    />
+                    <Box sx={fieldBoxSx(activeRowIndex === idx)}>
+                      <TextField
+                        inputRef={(el) => (gridRefs.current[`${idx}-mrp`] = el)}
+                        type="number"
+                        variant="standard"
+                        fullWidth
+                        value={item.mrp}
+                        onKeyDown={(e) => handleCellKeyDown(e, idx, "mrp")}
+                        onChange={(e) => {
+                          const mrp = Number(e.target.value);
+                          const rate = item.rate;
+                          let margin = 0;
+                          if (rate > 0) margin = ((mrp - rate) / rate) * 100;
+                          const updated = [...items];
+                          updated[idx] = {
+                            ...updated[idx],
+                            mrp,
+                            margin: parseFloat(margin.toFixed(2)),
+                          };
+                          onItemsChange(updated);
+                        }}
+                        InputProps={{ disableUnderline: true, readOnly }}
+                        sx={inputSx}
+                      />
+                    </Box>
                   </TableCell>
 
-                  <TableCell align="right">
-                    <Typography fontWeight={700}>
+                  <TableCell align="right" sx={{ pr: 2 }}>
+                    <Typography fontWeight={800} color="text.primary">
                       {item.price.toLocaleString("en-IN", {
                         style: "currency",
                         currency: "INR",

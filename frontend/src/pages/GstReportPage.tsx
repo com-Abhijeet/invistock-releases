@@ -127,7 +127,7 @@ export default function GstrReportsPage() {
               color: "text.secondary",
               transition: "all 0.2s",
               "&.Mui-selected": {
-                color: "primary.main",
+                color: 'text.primary',
                 backgroundColor: alpha(theme.palette.primary.main, 0.04),
               },
               "&:hover": {

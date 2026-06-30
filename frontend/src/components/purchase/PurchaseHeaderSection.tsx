@@ -3,18 +3,25 @@
 import { useEffect, useState, useRef } from "react";
 import {
   Box,
-  MenuItem,
   TextField,
   Typography,
+  CircularProgress,
+  Autocomplete,
   Stack,
   useTheme,
-  Divider,
-  CircularProgress,
-  InputAdornment,
-  Tooltip,
+  Button,
+  Collapse,
+  alpha,
 } from "@mui/material";
-import Grid from "@mui/material/GridLegacy";
-import { Calendar, Building, Hash } from "lucide-react";
+import {
+  User,
+  Hash,
+  MapPin,
+  Calendar,
+  ChevronUp,
+  FileText,
+  ScanLine,
+} from "lucide-react";
 import { getSuppliers as getAllSuppliers } from "../../lib/api/supplierService";
 import type { PurchasePayload } from "../../lib/types/purchaseTypes";
 import type { SupplierType as Supplier } from "../../lib/types/supplierTypes";
@@ -25,16 +32,17 @@ interface Props {
   readOnly?: boolean;
 }
 
-const PurchaseHeaderSection = ({
+export default function PurchaseHeaderSection({
   purchase,
   onPurchaseChange,
   readOnly = false,
-}: Props) => {
+}: Props) {
   const theme = useTheme();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showMore, setShowMore] = useState(false);
+  const [supplierQuery, setSupplierQuery] = useState("");
 
-  // Refs for shortcuts
   const billNoRef = useRef<HTMLInputElement>(null);
   const supplierRef = useRef<HTMLInputElement>(null);
 
@@ -44,31 +52,22 @@ const PurchaseHeaderSection = ({
       .finally(() => setLoading(false));
   }, []);
 
-  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (readOnly) return;
-
-      // Ctrl + B: Focus Bill No
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.code === "KeyR" || e.key.toLowerCase() === "r")
-      ) {
+      if ((e.ctrlKey || e.metaKey) && (e.code === "KeyR" || e.key.toLowerCase() === "r")) {
         e.preventDefault();
         billNoRef.current?.focus();
       }
-
-      // Ctrl + F: Focus Supplier (Matches Sales "Find Customer")
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.code === "KeyB" || e.key.toLowerCase() === "B")
-      ) {
+      if ((e.ctrlKey || e.metaKey) && (e.code === "KeyB" || e.key.toLowerCase() === "b")) {
         e.preventDefault();
-        // Since it's a select, focusing opens/activates it depending on browser behavior
         supplierRef.current?.focus();
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        setShowMore((prev) => !prev);
+      }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [readOnly]);
@@ -79,158 +78,251 @@ const PurchaseHeaderSection = ({
     }
   };
 
-  // Reusable label style matching Summary/Sales
-  const labelStyle = {
-    variant: "caption" as const,
-    fontWeight: 700,
-    color: "text.secondary",
-    display: "block",
-    mb: 0.5,
-    sx: { textTransform: "uppercase", letterSpacing: 0.5 },
+  const containerSx = {
+    display: "flex",
+    alignItems: "center",
+    gap: 1,
+    px: 1,
+    py: 0.5,
+    borderRadius: "8px",
+    bgcolor: alpha(theme.palette.action.hover, 0.03),
+    border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    "&:focus-within": {
+      bgcolor: "background.paper",
+      borderColor: theme.palette.primary.main,
+      boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.1)}`,
+    },
   };
+
+  const labelSx = {
+    fontSize: "0.65rem",
+    fontWeight: 800,
+    color: "text.disabled",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    whiteSpace: "nowrap",
+  };
+
+  const inputSx = {
+    "& .MuiInputBase-root": {
+      fontSize: "0.875rem",
+      fontWeight: 600,
+      padding: 0,
+    },
+    "& .MuiInput-underline:before, & .MuiInput-underline:after": {
+      display: "none",
+    },
+  };
+
+  const isSupplierMissing = purchase.supplier_id === 0 && !readOnly;
+  const isBillNoMissing = !purchase.reference_no && !readOnly;
 
   return (
     <Box
       sx={{
+        bgcolor: theme.palette.background.paper,
         borderBottom: `1px solid ${theme.palette.divider}`,
-        overflow: "hidden",
+        border: `1px solid #ccc`,
       }}
     >
-      {/* --- Section 1: Meta Data (Ref & Date) --- */}
-      <Box sx={{ p: 3, pb: 2 }}>
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-          spacing={3}
+      <Stack spacing={0}>
+        {/* Main Toolbar Container */}
+        <Box
+          sx={{
+            p: 1.5,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 1.5,
+            alignItems: "center",
+          }}
         >
-          {/* Left: Ref No */}
-          <Box>
-            <Tooltip title="Shortcut: Ctrl + B" placement="top-start">
-              <Typography {...labelStyle}>
-                <span style={{ textDecoration: "underline" }}>R</span>EF NO /
-                BILL NO <span style={{ color: "red" }}>*</span>
-              </Typography>
-            </Tooltip>
-            <TextField
-              inputRef={billNoRef}
-              variant="standard"
-              value={purchase.reference_no}
-              onChange={(e) => handleChange("reference_no", e.target.value)}
-              placeholder="Enter Bill No. (Ctrl+R)"
-              disabled={readOnly}
-              required
-              InputProps={{
-                disableUnderline: true,
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Hash size={16} color={theme.palette.text.disabled} />
-                  </InputAdornment>
-                ),
-                sx: {
-                  fontWeight: 700,
-                  color: theme.palette.primary.main,
-                  fontSize: "1rem",
-                },
+          {/* Supplier Selection Command Bar - Required */}
+          <Box
+            sx={{
+              ...containerSx,
+              flexGrow: 2,
+              minWidth: 250,
+              borderColor: isSupplierMissing
+                ? alpha(theme.palette.error.main, 0.4)
+                : alpha(theme.palette.divider, 0.8),
+            }}
+          >
+            <User
+              size={14}
+              color={
+                isSupplierMissing
+                  ? theme.palette.error.main
+                  : theme.palette.primary.main
+              }
+            />
+            <Typography
+              sx={{
+                ...labelSx,
+                color: isSupplierMissing ? "error.main" : "text.disabled",
               }}
-              // Validation: Char limit
-              inputProps={{ maxLength: 30 }}
+            >
+              SUPPLIER *
+            </Typography>
+            <Autocomplete
+              fullWidth
+              size="small"
+              options={suppliers}
+              loading={loading}
+              disabled={readOnly}
+              getOptionLabel={(option) => option.name || ""}
+              value={suppliers.find((opt) => opt.id === purchase.supplier_id) || null}
+              inputValue={supplierQuery}
+              onInputChange={(_, val, reason) => {
+                if (reason === "input" || reason === "clear") {
+                  setSupplierQuery(val);
+                }
+              }}
+              onChange={(_, val) => {
+                if (val) {
+                  handleChange("supplier_id", val.id);
+                  setSupplierQuery(val.name);
+                } else {
+                  handleChange("supplier_id", 0);
+                  setSupplierQuery("");
+                }
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  inputRef={supplierRef}
+                  variant="standard"
+                  placeholder="Required * (Ctrl+B)"
+                  sx={inputSx}
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: loading ? (
+                      <CircularProgress size={12} />
+                    ) : (
+                      params.InputProps.endAdornment
+                    ),
+                  }}
+                />
+              )}
             />
           </Box>
 
-          {/* Right: Date */}
-          <Box>
-            <Typography {...labelStyle}>
-              DATE <span style={{ color: "red" }}>*</span>
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <TextField
-                type="date"
-                variant="standard"
-                value={purchase.date}
-                onChange={(e) => handleChange("date", e.target.value)}
-                disabled={readOnly}
-                required
-                InputProps={{
-                  disableUnderline: true,
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Calendar size={16} color={theme.palette.text.disabled} />
-                    </InputAdornment>
-                  ),
-                  sx: { fontWeight: 600, fontSize: "0.95rem" },
-                }}
-              />
-            </Stack>
-          </Box>
-        </Stack>
-      </Box>
-
-      <Divider sx={{ borderStyle: "dashed" }} />
-
-      {/* --- Section 2: Supplier Details --- */}
-      <Box sx={{ p: 3 }}>
-        <Grid container spacing={4}>
-          <Grid item xs={12} md={6}>
-            <Tooltip title="Shortcut: Ctrl + B">
-              <Typography {...labelStyle}>
-                <span style={{ textDecoration: "underline" }}>B</span>ILL FROM
-                (SUPPLIER) <span style={{ color: "red" }}>*</span>
-              </Typography>
-            </Tooltip>
-            <TextField
-              inputRef={supplierRef}
-              fullWidth
-              select
-              variant="outlined"
-              value={purchase.supplier_id}
-              onChange={(e) => handleChange("supplier_id", e.target.value)}
-              disabled={readOnly}
-              required
-              placeholder="Select Supplier"
-              InputProps={{
-                disableUnderline: true,
-                sx: {
-                  fontSize: "1.1rem",
-                  fontWeight: 600,
-                  color: "text.primary",
-                },
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Building size={18} color={theme.palette.text.disabled} />
-                  </InputAdornment>
-                ),
+          {/* Ref No / Bill No - Required */}
+          <Box
+            sx={{
+              ...containerSx,
+              flexGrow: 0.8,
+              minWidth: 150,
+              width: 200,
+              borderColor: isBillNoMissing
+                ? alpha(theme.palette.error.main, 0.4)
+                : alpha(theme.palette.divider, 0.8),
+            }}
+          >
+            <Hash
+              size={14}
+              color={
+                isBillNoMissing
+                  ? theme.palette.error.main
+                  : theme.palette.text.disabled
+              }
+            />
+            <Typography
+              sx={{
+                ...labelSx,
+                color: isBillNoMissing ? "error.main" : "text.disabled",
               }}
             >
-              {loading ? (
-                <MenuItem disabled>
-                  <CircularProgress size={20} />
-                </MenuItem>
-              ) : (
-                suppliers.map((supplier) => (
-                  <MenuItem key={supplier.id} value={supplier.id}>
-                    {supplier.name}
-                  </MenuItem>
-                ))
-              )}
-            </TextField>
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <Typography {...labelStyle}>SUPPLIER CONTACT</Typography>
-            <Typography
-              variant="body1"
-              color="text.primary"
-              sx={{ py: 0.5, fontSize: "0.95rem", fontWeight: 500 }}
-            >
-              {suppliers.find((s) => s.id === purchase.supplier_id)?.phone ||
-                "—"}
+              REF/BILL NO *
             </Typography>
-          </Grid>
-        </Grid>
-      </Box>
+            <TextField
+              fullWidth
+              inputRef={billNoRef}
+              variant="standard"
+              disabled={readOnly}
+              value={purchase.reference_no}
+              onChange={(e) => handleChange("reference_no", e.target.value)}
+              placeholder="(Ctrl+R)"
+              inputProps={{ maxLength: 16 }}
+              sx={inputSx}
+            />
+          </Box>
+
+          {/* Date Picker */}
+          <Box sx={{ ...containerSx, minWidth: 150, width: 150 }}>
+            <Calendar size={14} color={theme.palette.text.disabled} />
+            <Typography sx={labelSx}>DATE *</Typography>
+            <TextField
+              type="date"
+              fullWidth
+              variant="standard"
+              disabled={readOnly}
+              value={purchase.date}
+              onChange={(e) => handleChange("date", e.target.value)}
+              sx={inputSx}
+            />
+          </Box>
+
+          {/* Details Toggle Button */}
+          <Button
+            size="small"
+            onClick={() => setShowMore(!showMore)}
+            endIcon={
+              <ChevronUp
+                size={16}
+                style={{
+                  transform: showMore ? "rotate(0deg)" : "rotate(180deg)",
+                  transition: "transform 0.2s",
+                }}
+              />
+            }
+            sx={{
+              minWidth: 120,
+              fontWeight: 700,
+              textTransform: "none",
+              color: "text.secondary",
+              bgcolor: alpha(theme.palette.action.hover, 0.05),
+              borderRadius: "8px",
+              border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+              "&:hover": {
+                bgcolor: alpha(theme.palette.action.hover, 0.1),
+              },
+            }}
+          >
+            {showMore ? "Hide Details" : "Show Details"}
+          </Button>
+        </Box>
+
+        {/* Collapsed Extra Information Row */}
+        <Collapse in={showMore} timeout="auto" unmountOnExit>
+          <Box
+            sx={{
+              p: 1.5,
+              pt: 0,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 1.5,
+              borderTop: `1px dashed ${theme.palette.divider}`,
+              bgcolor: alpha(theme.palette.background.default, 0.5),
+            }}
+          >
+            {/* Note Section */}
+            <Box sx={{ ...containerSx, flexGrow: 1, minWidth: 200 }}>
+              <FileText size={14} color={theme.palette.text.disabled} />
+              <Typography sx={labelSx}>NOTES</Typography>
+              <TextField
+                fullWidth
+                variant="standard"
+                disabled={readOnly}
+                value={purchase.note || ""}
+                onChange={(e) => handleChange("note", e.target.value)}
+                placeholder="Internal memo or additional info"
+                sx={inputSx}
+              />
+            </Box>
+          </Box>
+        </Collapse>
+      </Stack>
     </Box>
   );
-};
-
-export default PurchaseHeaderSection;
+}

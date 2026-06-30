@@ -120,7 +120,7 @@ export default function NGSalesPos() {
       <Box
         sx={{
           flexShrink: 0,
-          backgroundColor: "#fff",
+          bgcolor: 'background.paper',
           borderTop: `1px solid ${theme.palette.divider}`,
           boxShadow: "0px -2px 10px rgba(0,0,0,0.05)",
           zIndex: 10,

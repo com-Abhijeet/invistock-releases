@@ -163,7 +163,7 @@ export default function CustomerAnalyticsPage() {
       p={2}
       pt={3}
       sx={{
-        backgroundColor: "#fff",
+        bgcolor: 'background.paper',
         borderTopLeftRadius: "36px",
         borderBottomLeftRadius: "36px",
         minHeight: "100vh",
@@ -222,7 +222,7 @@ export default function CustomerAnalyticsPage() {
                 title="Total Customers"
                 value={stats.totalCustomers}
                 icon={<Users />}
-                color="primary.main"
+                color="#111827"
               />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>

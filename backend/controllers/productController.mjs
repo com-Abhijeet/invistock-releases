@@ -7,9 +7,7 @@ export const createProduct = async (req, res) => {
     const product = await productService.create(req.body);
     sendResponse(res, 201, "Product created", product);
   } catch (error) {
-    console.error(
-      `[BACKEND] - PRODUCT CONTROLLER - ERROR IN GETTING ALL PRODUCTS CONTROLLER ${error}`,
-    );
+    console.error("createProduct -", error);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };
@@ -33,9 +31,7 @@ export const getProducts = async (req, res) => {
       data: products,
     });
   } catch (error) {
-    console.error(
-      `[BACKEND] - PRODUCT CONTROLLER - ERROR IN GETTING ALL PRODUCTS CONTROLLER ${error}`,
-    );
+    console.error("getProducts -", error);
 
     res.status(500).json({
       success: false,
@@ -57,9 +53,7 @@ export async function getProductHistoryController(req, res) {
     const data = productService.getProductHistoryById(Number(id));
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.error(
-      `[BACKEND] - PRODUCT CONTROLLER - ERROR IN GETTING PRODUCT HISTORY CONTROLLER ${error}`,
-    );
+    console.error("getProductHistoryController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -71,9 +65,7 @@ export const updateProduct = async (req, res) => {
     const updated = await productService.update(req.params.id, req.body);
     sendResponse(res, 200, "Product updated", updated);
   } catch (error) {
-    console.error(
-      `[BACKEND] - PRODUCT CONTROLLER - ERROR IN GETTING UPDATING PRODUCT CONTROLLER ${error}`,
-    );
+    console.error("updateProduct -", error);
     return res.status(500).json({ message: "Error in updating product" });
   }
 };
@@ -85,9 +77,7 @@ export const deleteProduct = async (req, res) => {
     productService.remove(req.params.id);
     sendResponse(res, 200, "Product deleted");
   } catch (error) {
-    console.error(
-      `[BACKEND] - PRODUCT CONTROLLER - ERROR IN DELETING PRODUCT CONTROLLER ${error}`,
-    );
+    console.error("deleteProduct -", error);
     sendResponse(res, 500, "Internal Server Error");
   }
 };
@@ -112,9 +102,7 @@ export const importProducts = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    console.error(
-      `[BACKEND] - PRODUCT CONTROLLER - ERROR IN IMPORTING ALL PRODUCTS CONTROLLER ${error}`,
-    );
+    console.error("importProducts -", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -137,9 +125,7 @@ export async function getNextProductCodeController(req, res) {
     );
     res.status(200).json({ success: true, code: nextCode });
   } catch (error) {
-    console.error(
-      `[BACKEND] - PRODUCT CONTROLLER - ERROR IN GETTING PRODUCT CODE CONTROLLER ${error}`,
-    );
+    console.error("getNextProductCodeController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -150,9 +136,7 @@ export async function getNextBarcodeController(req, res) {
     const nextBarcode = ProductRepo.getNextBarcode();
     res.status(200).json({ success: true, barcode: String(nextBarcode) });
   } catch (error) {
-    console.error(
-      `[BACKEND] - PRODUCT CONTROLLER - ERROR IN GETTING PRODUCT BARCODE CONTROLLER ${error}`,
-    );
+    console.error("getNextBarcodeController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -162,6 +146,7 @@ export async function getLowStockProductsController(req, res) {
     const products = ProductRepo.getLowStockProducts();
     res.status(200).json({ success: true, data: products });
   } catch (error) {
+    console.error("getLowStockProductsController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -171,6 +156,7 @@ export async function getLowStockCountController(req, res) {
     const count = ProductRepo.getLowStockCount();
     res.status(200).json({ success: true, data: count });
   } catch (error) {
+    console.error("getLowStockCountController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -195,6 +181,7 @@ export async function getProductsForMobileController(req, res) {
     const data = ProductRepo.getProductsForMobile(options);
     res.status(200).json(data); // Send back { records, totalRecords }
   } catch (error) {
+    console.error("getProductsForMobileController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -204,7 +191,7 @@ export const getMissingBatchesProductsController = async (req, res) => {
     const data = await productService.getMissingBatchesProducts();
     return res.status(200).json(data);
   } catch (error) {
-    console.log("ERROR in getting missing batch products", error);
+    console.error("getMissingBatchesProductsController -", error);
   }
 };
 
@@ -227,7 +214,7 @@ export const bulkUpdateProductsController = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    console.error(`[BACKEND] - PRODUCT CONTROLLER - ERROR IN BULK UPDATING PRODUCTS ${error}`);
+    console.error("bulkUpdateProductsController -", error);
     return res.status(500).json({ success: false, message: "Error in bulk updating products" });
   }
 };

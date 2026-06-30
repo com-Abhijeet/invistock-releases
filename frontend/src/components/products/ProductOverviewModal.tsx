@@ -223,7 +223,7 @@ export default function ProductOverviewModal({
                 >
                   Selling (MOP)
                 </Typography>
-                <Typography variant="h6" fontWeight={600} color="primary.main">
+                <Typography variant="h6" fontWeight={600} color="#111827">
                   ₹{product?.mop?.toLocaleString("en-IN") || 0}
                 </Typography>
               </Grid>

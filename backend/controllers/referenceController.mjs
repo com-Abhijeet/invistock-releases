@@ -28,7 +28,7 @@ export function generateReferenceController(req, res) {
       data: { reference_no: referenceNo },
     });
   } catch (error) {
-    console.error("❌ Error in generateReferenceController:", error);
+    console.error("generateReferenceController -", error);
     return res
       .status(500)
       .json({

@@ -50,7 +50,7 @@ export default function PurchaseCategoryPieChart() {
         borderRadius: "12px",
         border: "ActiveBorder",
         // boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-        backgroundColor: "#fff",
+        bgcolor: 'background.paper',
         height: "100%",
       }}
     >

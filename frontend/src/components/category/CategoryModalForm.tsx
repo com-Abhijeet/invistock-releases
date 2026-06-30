@@ -198,7 +198,7 @@ export default function CategoryModalForm({
               bgcolor: "primary.light",
               p: 0.8,
               borderRadius: 2,
-              color: "primary.main",
+              color: 'text.primary',
               opacity: 0.1,
             }}
           >
@@ -367,7 +367,7 @@ export default function CategoryModalForm({
                 "&:hover": {
                   borderWidth: 1.5,
                   borderColor: "primary.main",
-                  color: "primary.main",
+                  color: 'text.primary',
                   bgcolor: "primary.lighter",
                 },
               }}

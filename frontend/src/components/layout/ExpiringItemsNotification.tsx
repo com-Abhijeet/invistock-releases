@@ -128,7 +128,7 @@ export default function ExpiringItemsNotification() {
         <Box
           sx={{
             p: 2.5,
-            bgcolor: "white",
+            bgcolor: 'background.paper',
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
@@ -209,7 +209,7 @@ export default function ExpiringItemsNotification() {
                     key={batch.id}
                     disablePadding
                     divider
-                    sx={{ bgcolor: "white" }}
+                    sx={{ bgcolor: 'background.paper' }}
                   >
                     <ListItemButton
                       onClick={() => handleItemClick(batch.product_id)}
@@ -283,7 +283,7 @@ export default function ExpiringItemsNotification() {
         {count > 0 && (
           <Box
             sx={{
-              bgcolor: "white",
+              bgcolor: 'background.paper',
               borderTop: `1px solid ${theme.palette.divider}`,
               p: 1,
             }}

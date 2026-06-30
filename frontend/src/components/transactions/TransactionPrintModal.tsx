@@ -264,7 +264,7 @@ export default function TransactionPrintModal({
           sx={{
             width: { xs: "100%", md: "40%" },
             p: 3,
-            bgcolor: "#fff",
+            bgcolor: 'background.paper',
             borderRight: "1px solid",
             borderColor: "divider",
             overflowY: "auto",
@@ -453,7 +453,7 @@ export default function TransactionPrintModal({
             <Box
               sx={{
                 width: "280px",
-                bgcolor: "#fff",
+                bgcolor: 'background.paper',
                 p: 2,
                 fontFamily: "monospace",
                 color: "#000",
@@ -560,7 +560,7 @@ export default function TransactionPrintModal({
               sx={{
                 width: "100%",
                 maxWidth: orientation === "landscape" ? "800px" : "550px",
-                bgcolor: "#fff",
+                bgcolor: 'background.paper',
                 border: "1px solid #e5e7eb",
                 borderTop: `8px solid ${themeColor}`,
                 borderRadius: 2,
@@ -711,16 +711,16 @@ export default function TransactionPrintModal({
                     <TableRow>
                       <TableCell
                         width="35%"
-                        sx={{ fontWeight: 600, color: "#4b5563" }}
+                        sx={{ fontWeight: 600, color: 'text.secondary' }}
                       >
                         {entityLabel}:
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: "#111827" }}>
+                      <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>
                         {editedData.entityName || "Cash / Walk-in"}
                         {editedData.entityPhone && (
                           <span
                             style={{
-                              color: "#6b7280",
+                              color: 'text.secondary',
                               fontWeight: 500,
                               marginLeft: 8,
                             }}
@@ -731,7 +731,7 @@ export default function TransactionPrintModal({
                       </TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600, color: "#4b5563" }}>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>
                         Amount (₹):
                       </TableCell>
                       <TableCell>
@@ -754,7 +754,7 @@ export default function TransactionPrintModal({
                       </TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600, color: "#4b5563" }}>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>
                         Payment Mode:
                       </TableCell>
                       <TableCell>
@@ -777,24 +777,24 @@ export default function TransactionPrintModal({
                     </TableRow>
                     {linkedBill && (
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600, color: "#4b5563" }}>
+                        <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>
                           Adjusted Against Bill:
                         </TableCell>
-                        <TableCell sx={{ fontWeight: 700, color: "#111827" }}>
+                        <TableCell sx={{ fontWeight: 700, color: 'text.primary' }}>
                           {editedData.linkedBillRef || "-"}
                         </TableCell>
                       </TableRow>
                     )}
                     {editedData.note && (
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600, color: "#4b5563" }}>
+                        <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>
                           Remarks / Narration:
                         </TableCell>
                         <TableCell
                           sx={{
                             fontWeight: 500,
                             fontStyle: "italic",
-                            color: "#4b5563",
+                            color: 'text.secondary',
                           }}
                         >
                           {editedData.note}
@@ -854,7 +854,7 @@ export default function TransactionPrintModal({
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ p: 2, px: 3, bgcolor: "#fff" }}>
+      <DialogActions sx={{ p: 2, px: 3, bgcolor: 'background.paper' }}>
         <Button
           onClick={onClose}
           color="inherit"

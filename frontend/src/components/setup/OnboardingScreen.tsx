@@ -15,7 +15,7 @@ export default function OnboardingScreen({
         xs={12}
         md={4}
         sx={{
-          bgcolor: "primary.main",
+          bgcolor: 'text.primary',
           color: "primary.contrastText",
           p: { xs: 4, md: 6 },
           display: "flex",
@@ -29,7 +29,7 @@ export default function OnboardingScreen({
               sx={{
                 width: 48,
                 height: 48,
-                bgcolor: "white",
+                bgcolor: 'background.paper',
                 borderRadius: "12px",
                 display: "flex",
                 alignItems: "center",

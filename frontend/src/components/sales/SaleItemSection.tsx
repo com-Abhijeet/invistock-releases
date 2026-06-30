@@ -138,9 +138,12 @@ export default function SaleItemSection({
   );
   const [loading, setLoading] = useState(false);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const [quickBarcode, setQuickBarcode] = useState("");
+  const [quickBarcodeLoading, setQuickBarcodeLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [barcodeInputValue, setBarcodeInputValue] = useState("");
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  const quickBarcodeRef = useRef<HTMLInputElement | null>(null);
   const [shop, setShop] = useState<ShopSetupForm>();
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0);
   const [productCache, setProductCache] = useState<{ [id: number]: Product }>(
@@ -471,6 +474,128 @@ export default function SaleItemSection({
       addItemToTable(pendingItemIndex, pendingProduct, batch);
   };
 
+  const handleQuickBarcodeSubmit = async (e?: React.KeyboardEvent | React.FocusEvent) => {
+    if (e && 'key' in e && e.key !== 'Enter') return;
+    const code = quickBarcode.trim();
+    if (!code) return;
+
+    setQuickBarcodeLoading(true);
+    try {
+      const result = await scanBarcodeItem(code);
+      if (result.product) {
+        setProductCache((prev) => ({
+          ...prev,
+          [result.product.id]: result.product,
+        }));
+        
+        let batchInfo = null;
+        if (result.type === "batch") batchInfo = result.batch;
+        else if (result.type === "serial" && result.serial) {
+          batchInfo = {
+            ...result.batch,
+            id: result.serial.id,
+            batch_id: result.batch?.id,
+            serial_number: result.serial.serial_number,
+          };
+        }
+
+        const existingIndex = items.findIndex(i => 
+          i.product_id === result.product.id && 
+          (!batchInfo || i.batch_id === batchInfo.id)
+        );
+
+        if (existingIndex !== -1) {
+          // Increment quantity
+          const newItems = [...items];
+          newItems[existingIndex] = {
+            ...newItems[existingIndex],
+            quantity: (newItems[existingIndex].quantity || 0) + 1
+          };
+          newItems[existingIndex].price = calculateItemPrice(newItems[existingIndex]);
+          onItemsChange(newItems);
+          toast.success(`Incremented quantity: ${result.product.name}`);
+        } else {
+          // Add new item to the first empty row, or append a new one
+          let emptyIndex = items.findIndex(i => !i.product_id);
+          const newItems = [...items];
+          
+          if (emptyIndex === -1) {
+            emptyIndex = newItems.length;
+            newItems.push({ ...defaultItem(), price_type: globalPriceType });
+          }
+
+          // We pass emptyIndex to a modified addItem logic, but since addItemToTable 
+          // calls onItemsChange directly, let's just construct the item here to avoid conflicting states
+          const currentItem = newItems[emptyIndex];
+          const pType: PriceType = (currentItem.price_type as PriceType) || globalPriceType;
+          const strategy = currentItem.pricing_strategy || "batch_pricing";
+          const bMrp = batchInfo?.mrp ? Number(batchInfo.mrp) : undefined;
+          const bMop = batchInfo?.mop ? Number(batchInfo.mop) : undefined;
+          const bMfw = batchInfo?.mfw_price ? Number(batchInfo.mfw_price) : undefined;
+      
+          let baseRate = 0;
+          if (strategy === "batch_pricing") {
+            if (pType === "mrp" && bMrp) baseRate = bMrp;
+            else if (pType === "mop" && bMop) baseRate = bMop;
+            else if (pType === "mfw" && bMfw) baseRate = bMfw;
+          }
+          if (!baseRate)
+            baseRate = Number((result.product as any)[pType]) || Number((result.product as any).mrp) || 0;
+      
+          const defaultUnit = (result.product.base_unit || (result.product as any).unit || "pcs").toLowerCase();
+      
+          const newItem: SaleItemRow = {
+            ...currentItem,
+            product_id: result.product.id!,
+            product_name: result.product.name,
+            hsn: result.product.hsn || currentItem.hsn || "",
+            barcode: code || result.product.barcode || currentItem.barcode || "",
+            description: currentItem.description || result.product.description || "",
+            rate: baseRate,
+            gst_rate: result.product.gst_rate ?? 0,
+            quantity: 1,
+            unit: defaultUnit,
+            tracking_type: result.product.tracking_type,
+            batch_id: batchInfo?.id,
+            batch_number: batchInfo?.batch_number,
+            serial_number: batchInfo?.serial_number,
+            batch_mrp: bMrp,
+            batch_mop: bMop,
+            batch_mfw: bMfw,
+            price_type: pType,
+            pricing_strategy: strategy,
+          };
+      
+          if (result.product.tracking_type === "serial" && batchInfo) {
+            newItem.serial_id = batchInfo.id;
+            if (batchInfo.batch_id) newItem.batch_id = batchInfo.batch_id;
+          } else if (result.product.tracking_type === "batch" && batchInfo) {
+            newItem.batch_id = batchInfo.id;
+          }
+      
+          newItem.price = calculateItemPrice(newItem);
+          newItems[emptyIndex] = newItem;
+
+          // Always ensure there is an empty row at the bottom for manual entry
+          if (emptyIndex === newItems.length - 1) {
+            newItems.push({ ...defaultItem(), price_type: globalPriceType });
+          }
+
+          onItemsChange(newItems);
+          toast.success(`Added: ${result.product.name}`);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Item not found");
+    } finally {
+      setQuickBarcodeLoading(false);
+      setQuickBarcode("");
+      setTimeout(() => {
+        quickBarcodeRef.current?.focus();
+      }, 50);
+    }
+  };
+
   const handleFieldChange = (
     index: number,
     field: keyof SaleItemRow,
@@ -650,7 +775,7 @@ export default function SaleItemSection({
     "&:hover": { bgcolor: alpha(theme.palette.action.hover, 0.06) },
     "&:focus-within": {
       borderColor: theme.palette.primary.main,
-      bgcolor: "#fff",
+      bgcolor: 'background.paper',
     },
   });
 
@@ -707,7 +832,7 @@ export default function SaleItemSection({
               sx={{
                 fontWeight: 800,
                 fontSize: "0.75rem",
-                color: "primary.main",
+                color: 'text.primary',
                 bgcolor: alpha(theme.palette.primary.main, 0.05),
                 "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.1) },
               }}
@@ -746,6 +871,37 @@ export default function SaleItemSection({
               </Typography>
             }
           />
+          
+          <Divider
+            orientation="vertical"
+            flexItem
+            sx={{ height: 16, alignSelf: "center", mx: 1 }}
+          />
+
+          {/* Quick Barcode Billing Field */}
+          <Box sx={{ display: 'flex', alignItems: 'center', ml: 1 }}>
+            <ScanBarcode size={16} color={theme.palette.text.secondary} style={{ marginRight: 8 }} />
+            <input
+              ref={quickBarcodeRef}
+              type="text"
+              placeholder="Quick Barcode Scan..."
+              value={quickBarcode}
+              onChange={(e) => setQuickBarcode(e.target.value)}
+              onKeyDown={handleQuickBarcodeSubmit}
+              disabled={mode === "view" || quickBarcodeLoading}
+              style={{
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                fontSize: "0.85rem",
+                color: theme.palette.text.primary,
+                width: "200px",
+                borderBottom: `1px solid ${theme.palette.divider}`,
+                padding: "2px 4px",
+              }}
+              autoComplete="off"
+            />
+          </Box>
         </Stack>
 
         <Typography
@@ -1165,7 +1321,7 @@ export default function SaleItemSection({
                           variant="caption"
                           sx={{
                             fontWeight: 800,
-                            color: "primary.main",
+                            color: 'text.primary',
                             bgcolor: alpha(theme.palette.primary.main, 0.05),
                             px: 0.8,
                             py: 0.2,
@@ -1322,7 +1478,7 @@ export default function SaleItemSection({
             sx={{
               fontWeight: 800,
               textTransform: "none",
-              color: "primary.main",
+              color: 'text.primary',
               borderRadius: "6px",
             }}
           >

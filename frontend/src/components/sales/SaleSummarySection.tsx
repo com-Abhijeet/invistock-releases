@@ -483,7 +483,7 @@ const SaleSummarySection = ({
     transition: "all 0.2s",
     "&:focus-within": {
       borderColor: theme.palette.primary.main,
-      bgcolor: "#fff",
+      bgcolor: 'background.paper',
     },
   };
 
@@ -631,7 +631,7 @@ const SaleSummarySection = ({
                       sx={{
                         fontSize: "0.7rem",
                         fontWeight: 700,
-                        color: "primary.main",
+                        color: 'text.primary',
                       }}
                     >
                       Rnd: {displayRoundOff.toFixed(2)}

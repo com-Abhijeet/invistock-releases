@@ -224,7 +224,7 @@ export default function SettingsPage() {
             display: "flex",
             alignItems: "center",
             gap: 2,
-            backgroundColor: "#fff",
+            bgcolor: 'background.paper',
             border: "1px solid",
             borderColor: "divider",
           }}

@@ -10,10 +10,7 @@ export function getPredictiveRestock(req, res) {
     const data = getPredictiveRestockService();
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.log(
-      "[BACKEND] ERROR IN ANALYTICS CONTROLLER : Get predictive stock controller",
-      error
-    );
+    console.error("getPredictiveRestock -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -38,10 +35,7 @@ export function getDeadStock(req, res) {
       },
     });
   } catch (error) {
-    console.log(
-      "[BACKEND] ERROR IN ANALYTICS CONTROLLER : Get dead stock controller",
-      error
-    );
+    console.error("getDeadStock -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -52,10 +46,7 @@ export function getCustomerInsights(req, res) {
     const data = getCustomerInsightsService(dormantDays);
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.log(
-      "[BACKEND] ERROR IN ANALYTICS CONTROLLER : Get customer insights controller",
-      error
-    );
+    console.error("getCustomerInsights -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -66,10 +57,7 @@ export function getProductABC(req, res) {
     const data = getProductABCService(days);
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.log(
-      "[BACKEND] ERROR IN ANALYTICS CONTROLLER : Get product abc controller",
-      error
-    );
+    console.error("getProductABC -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

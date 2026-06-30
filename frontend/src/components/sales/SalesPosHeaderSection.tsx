@@ -125,7 +125,7 @@ export default function SalesPosHeaderSection({
     border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
     transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
     "&:focus-within": {
-      bgcolor: "#fff",
+      bgcolor: 'background.paper',
       borderColor: theme.palette.primary.main,
       boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.1)}`,
     },
@@ -179,7 +179,7 @@ export default function SalesPosHeaderSection({
               value={sale.is_quote || false}
               onChange={(newValue) => handleFieldChange("is_quote", newValue)}
               trueLabel="QUO"
-              falseLabel="TAX"
+              falseLabel="INV"
               disabled={mode === "view"}
             />
           </Box>
@@ -335,7 +335,7 @@ export default function SalesPosHeaderSection({
             }}
           >
             <ScanLine size={14} color={theme.palette.primary.main} />
-            <Typography sx={{ ...labelSx, color: "primary.main" }}>
+            <Typography sx={{ ...labelSx, color: 'text.primary' }}>
               REF
             </Typography>
             <TextField
@@ -479,7 +479,7 @@ export default function SalesPosHeaderSection({
                 },
               ].map((f, i) => (
                 <Grid item xs={12} sm={f.size} key={i}>
-                  <Box sx={{ ...containerSx, bgcolor: "#fff" }}>
+                  <Box sx={{ ...containerSx, bgcolor: 'background.paper' }}>
                     <Typography sx={labelSx}>{f.label}</Typography>
                     {f.isSelect ? (
                       <TextField

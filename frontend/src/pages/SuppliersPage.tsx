@@ -45,7 +45,7 @@ export default function SuppliersPage() {
       p={2}
       pt={3}
       sx={{
-        backgroundColor: "#fff",
+        bgcolor: 'background.paper',
       }}
       minHeight={"100vh"}
     >

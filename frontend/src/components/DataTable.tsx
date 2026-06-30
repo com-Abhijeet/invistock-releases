@@ -207,7 +207,7 @@ export default function DataTable({
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
-          <Typography variant="subtitle2" color="primary.main" fontWeight={700}>
+          <Typography variant="subtitle2" color="#111827" fontWeight={700}>
             {selectedItems.length} item{selectedItems.length !== 1 ? "s" : ""}{" "}
             selected
           </Typography>

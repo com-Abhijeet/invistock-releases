@@ -459,7 +459,7 @@ export default function GlobalCalculator() {
                     </Typography>
                     <Typography
                       variant="h6"
-                      color="primary.main"
+                      color="#111827"
                       fontWeight={900}
                     >
                       {item.result}

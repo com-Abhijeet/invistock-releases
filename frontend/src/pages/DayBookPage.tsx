@@ -168,7 +168,7 @@ export default function DayBookPage() {
     <Box
       p={2}
       pt={3}
-      sx={{ bgcolor: "#fff", borderTopLeftRadius: "36px", minHeight: "100vh" }}
+      sx={{ bgcolor: 'background.paper', borderTopLeftRadius: "36px", minHeight: "100vh" }}
     >
       <DashboardHeader
         title="Day Book"
@@ -213,7 +213,7 @@ export default function DayBookPage() {
               <DataCard
                 title="Opening Balance"
                 value={`₹${data.openingBalance.toLocaleString()}`}
-                color="primary.main"
+                color="#111827"
                 icon={<Calendar />}
               />
             </Grid>
@@ -237,7 +237,7 @@ export default function DayBookPage() {
               <DataCard
                 title="Closing Balance"
                 value={`₹${data.closingBalance.toLocaleString()}`}
-                color="secondary.main"
+                color="#111827"
                 icon={<Calendar />}
                 subtext="Cumulative Cash in Hand"
               />

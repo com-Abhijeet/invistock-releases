@@ -104,7 +104,7 @@ export default function BusinessSettings() {
                   p={1.5}
                   bgcolor={theme.palette.primary.light + "20"}
                   borderRadius={2}
-                  color="primary.main"
+                  color="#111827"
                 >
                   <Cloud size={28} />
                 </Box>

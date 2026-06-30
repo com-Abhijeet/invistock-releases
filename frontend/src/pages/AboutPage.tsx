@@ -99,7 +99,7 @@ export default function AboutPage() {
       desc: "Clear the checkout rush",
       icon: <CreditCard size={20} />,
       path: "/billing",
-      color: "#F0A500", // Amber Gold accent
+      color: 'secondary.main', // Amber Gold accent
       shortcut: "F2",
     },
     {
@@ -107,7 +107,7 @@ export default function AboutPage() {
       desc: "Track what's making money",
       icon: <Clock size={20} />,
       path: "/sales-history",
-      color: "#1A2744", // Deep Navy
+      color: 'text.primary', // Deep Navy
       shortcut: "F3",
     },
     {
@@ -115,7 +115,7 @@ export default function AboutPage() {
       desc: "Stock your shelves",
       icon: <FileText size={20} />,
       path: "/purchase",
-      color: "#1A2744",
+      color: 'text.primary',
       shortcut: "F4",
     },
     {
@@ -123,7 +123,7 @@ export default function AboutPage() {
       desc: "Unlock dead stock capital",
       icon: <Package size={20} />,
       path: "/inventory",
-      color: "#1A2744",
+      color: 'text.primary',
       shortcut: "F6",
     },
     {
@@ -131,7 +131,7 @@ export default function AboutPage() {
       desc: "Manage cashflow",
       icon: <IndianRupee size={20} />,
       path: "/transactions",
-      color: "#1A2744",
+      color: 'text.primary',
       shortcut: "F8",
     },
     {
@@ -139,7 +139,7 @@ export default function AboutPage() {
       desc: "Know who owes you",
       icon: <Users size={20} />,
       path: "/customers",
-      color: "#1A2744",
+      color: 'text.primary',
       shortcut: "F10",
     },
     {
@@ -147,7 +147,7 @@ export default function AboutPage() {
       desc: "One-click filing",
       icon: <Notebook size={20} />,
       path: "/gst",
-      color: "#1A2744",
+      color: 'text.primary',
       shortcut: null,
     },
     {
@@ -155,7 +155,7 @@ export default function AboutPage() {
       desc: "Setup aapka business",
       icon: <Settings size={20} />,
       path: "/settings",
-      color: "#1A2744",
+      color: 'text.primary',
       shortcut: "F12",
     },
   ];
@@ -174,7 +174,7 @@ export default function AboutPage() {
   };
 
   return (
-    <Box p={3} sx={{ backgroundColor: "#f8f9fa", minHeight: "100vh" }}>
+    <Box p={3} sx={{ bgcolor: 'background.default', minHeight: "100vh" }}>
       <Grid container spacing={3} sx={{ maxWidth: 1200, margin: '0 auto' }}>
         {/* Left Column: Branding & Features */}
         <Grid item xs={12} md={7}>
@@ -185,7 +185,7 @@ export default function AboutPage() {
               sx={{
                 borderRadius: 2,
                 border: 'none',
-                bgcolor: '#1A2744',
+                bgcolor: 'text.primary',
                 color: 'white',
               }}
             >
@@ -199,7 +199,7 @@ export default function AboutPage() {
                       width: 72,
                       height: 72,
                       objectFit: "contain",
-                      bgcolor: "white",
+                      bgcolor: 'background.paper',
                       borderRadius: 2,
                       p: 1
                     }}
@@ -215,7 +215,7 @@ export default function AboutPage() {
                     </Typography>
                     <Typography
                       variant="subtitle1"
-                      sx={{ color: '#F0A500', fontWeight: 'bold', mt: -0.5 }}
+                      sx={{ color: 'secondary.main', fontWeight: 'bold', mt: -0.5 }}
                     >
                       Tally tells your accountant. Kosh tells you.
                     </Typography>
@@ -249,7 +249,7 @@ export default function AboutPage() {
                   variant="body1"
                   sx={{ lineHeight: 1.6, color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}
                 >
-                  Business intelligence at counter speed. Know if you're making money today, not next month. <Box component="span" sx={{ color: '#F0A500', fontWeight: 'bold' }}>Made for Bharat.</Box>
+                  Business intelligence at counter speed. Know if you're making money today, not next month. <Box component="span" sx={{ color: 'secondary.main', fontWeight: 'bold' }}>Made for Bharat.</Box>
                 </Typography>
               </CardContent>
             </Card>
@@ -264,11 +264,11 @@ export default function AboutPage() {
                   display: "flex",
                   alignItems: "center",
                   gap: 1,
-                  color: "#1A2744",
+                  color: 'text.primary',
                   mb: 2,
                 }}
               >
-                <Zap size={18} color="#F0A500" fill="#F0A500" />
+                <Zap size={18} color="#111827" fill='secondary.main' />
                 Quick Navigation
               </Typography>
               <Grid container spacing={2}>
@@ -281,7 +281,7 @@ export default function AboutPage() {
                         borderRadius: 2,
                         border: "1px solid",
                         borderColor: "divider",
-                        bgcolor: "white",
+                        bgcolor: 'background.paper',
                         cursor: feature.path ? "pointer" : "default",
                         height: "100%",
                         "&:hover": feature.path
@@ -315,7 +315,7 @@ export default function AboutPage() {
                             />
                           )}
                         </Box>
-                        <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#1A2744' }}>
+                        <Typography variant="subtitle2" fontWeight="bold" sx={{ color: 'text.primary' }}>
                           {feature.title}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
@@ -335,7 +335,7 @@ export default function AboutPage() {
                 border: "1px solid",
                 borderColor: "divider",
                 borderRadius: 2,
-                bgcolor: "white",
+                bgcolor: 'background.paper',
               }}
             >
               <CardContent
@@ -349,9 +349,9 @@ export default function AboutPage() {
                 }}
               >
                 <Stack direction="row" spacing={2} alignItems="center">
-                  <HelpCircle size={24} color="#1A2744" />
+                  <HelpCircle size={24} color="#111827" />
                   <Box>
-                    <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#1A2744' }}>
+                    <Typography variant="subtitle2" fontWeight="bold" sx={{ color: 'text.primary' }}>
                       Made for Bharat
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -450,9 +450,9 @@ export default function AboutPage() {
               elevation={0}
               sx={{
                 border: "1px solid",
-                borderColor: updateStatus === "available" ? "#1A2744" : "divider",
+                borderColor: updateStatus === "available" ? 'primary.main' : "divider",
                 borderRadius: 2,
-                bgcolor: "white",
+                bgcolor: 'background.paper',
                 position: "relative",
               }}
             >
@@ -467,7 +467,7 @@ export default function AboutPage() {
               <CardContent sx={{ p: 3 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                   <Box>
-                    <Typography variant="subtitle1" fontWeight="bold" sx={{ color: '#1A2744' }}>
+                    <Typography variant="subtitle1" fontWeight="bold" sx={{ color: 'text.primary' }}>
                       Update Center
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -520,8 +520,8 @@ export default function AboutPage() {
 
                 {/* Latest Update Notes */}
                 <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: '#1A2744' }}>
-                    <FileText size={16} color="#1A2744" />
+                  <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: 'text.primary' }}>
+                    <FileText size={16} color="#111827" />
                     Latest Update (v{latestUpdate.version})
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
@@ -531,7 +531,7 @@ export default function AboutPage() {
                     size="small" 
                     variant="text" 
                     onClick={() => navigate(latestUpdate.actionPath)}
-                    sx={{ p: 0, fontWeight: 'bold', color: '#1A2744', '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}
+                    sx={{ p: 0, fontWeight: 'bold', color: 'text.primary', '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}
                     endIcon={<ArrowRight size={14} />}
                   >
                     {latestUpdate.actionLabel}
@@ -547,7 +547,7 @@ export default function AboutPage() {
                 border: '1px solid', 
                 borderColor: 'divider', 
                 borderRadius: '8px !important', 
-                bgcolor: 'white',
+                bgcolor: 'background.paper',
                 '&:before': { display: 'none' }
               }}
             >
@@ -563,12 +563,12 @@ export default function AboutPage() {
                 }}
               >
                 <Stack direction="row" spacing={1.5} alignItems="center">
-                  <Cpu size={20} color="#1A2744" />
-                  <Typography variant="subtitle2" fontWeight="bold" sx={{ color: '#1A2744' }}>
+                  <Cpu size={20} color="#111827" />
+                  <Typography variant="subtitle2" fontWeight="bold" sx={{ color: 'text.primary' }}>
                     Own your data, own your business
                   </Typography>
                 </Stack>
-                <Chip label="Private" size="small" sx={{ height: 20, fontSize: "0.65rem", fontWeight: "bold", bgcolor: '#F0A500', color: '#1A2744' }} />
+                <Chip label="Private" size="small" sx={{ height: 20, fontSize: "0.65rem", fontWeight: "bold", bgcolor: 'secondary.main', color: 'text.primary' }} />
               </AccordionSummary>
               <AccordionDetails sx={{ p: 0, borderTop: '1px solid', borderColor: 'divider' }}>
                 <Stack divider={<Divider />}>

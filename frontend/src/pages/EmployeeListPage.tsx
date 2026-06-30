@@ -239,7 +239,7 @@ export default function EmployeeListPage() {
   const activeStaffCount = employees.filter((e) => e.is_active).length;
 
   return (
-    <Box p={3} sx={{ backgroundColor: "#f8f9fa", minHeight: "100vh" }}>
+    <Box p={3} sx={{ bgcolor: 'background.default', minHeight: "100vh" }}>
       <DashboardHeader
         title="Employee Management"
         showDateFilters={true}
@@ -282,7 +282,7 @@ export default function EmployeeListPage() {
                   p={1.5}
                   bgcolor="primary.lighter"
                   borderRadius={3}
-                  color="primary.main"
+                  color="#111827"
                 >
                   <UserCheck size={24} />
                 </Box>
@@ -336,7 +336,7 @@ export default function EmployeeListPage() {
                   p={1.5}
                   bgcolor="secondary.lighter"
                   borderRadius={3}
-                  color="secondary.main"
+                  color="#111827"
                 >
                   <UserCheck size={24} />
                 </Box>
@@ -344,7 +344,7 @@ export default function EmployeeListPage() {
                   <Typography
                     variant="h4"
                     fontWeight={700}
-                    color="secondary.main"
+                    color="#111827"
                   >
                     ₹{stats.total_commission.toLocaleString("en-IN")}
                   </Typography>

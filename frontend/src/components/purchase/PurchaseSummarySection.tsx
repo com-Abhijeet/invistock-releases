@@ -35,6 +35,9 @@ interface Props {
   supplier?: SupplierType;
   mode: "new" | "view" | "edit";
   resetForm: () => void;
+  draftsModalOpen?: boolean;
+  setDraftsModalOpen?: (val: boolean) => void;
+  saveDraft?: () => void;
 }
 
 const PurchaseSummarySection = ({
@@ -44,6 +47,9 @@ const PurchaseSummarySection = ({
   supplier,
   mode,
   resetForm,
+  draftsModalOpen,
+  setDraftsModalOpen,
+  saveDraft,
 }: Props) => {
   const theme = useTheme();
   const [warningOpen, setWarningOpen] = useState(false);

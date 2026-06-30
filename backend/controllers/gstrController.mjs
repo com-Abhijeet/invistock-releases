@@ -44,7 +44,7 @@ export async function getGstr1ReportController(req, res) {
       data: reportData,
     });
   } catch (error) {
-    console.error("Error in getGstr1ReportController:", error.message);
+    console.error("getGstr1ReportController -", error);
     const statusCode = error.statusCode || 500;
     res
       .status(statusCode)
@@ -69,7 +69,7 @@ export async function getGstr2ReportController(req, res) {
       data: reportData,
     });
   } catch (error) {
-    console.error("Error in getGstr2ReportController:", error.message);
+    console.error("getGstr2ReportController -", error);
     const statusCode = error.statusCode || 500;
     res
       .status(statusCode)
@@ -94,7 +94,7 @@ export async function getGstr3bReportController(req, res) {
       data: reportData,
     });
   } catch (error) {
-    console.error("Error in getGstr3bReportController:", error);
+    console.error("getGstr3bReportController -", error);
     const statusCode = error.statusCode || 500;
     res
       .status(statusCode)

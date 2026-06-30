@@ -138,7 +138,7 @@ export default function StockAdjustmentsPage() {
       p={2}
       pt={3}
       sx={{
-        backgroundColor: "#fff",
+        bgcolor: 'background.paper',
 
         minHeight: "100vh",
       }}
@@ -177,7 +177,7 @@ export default function StockAdjustmentsPage() {
                 title="Total Adjustments"
                 value={adjustments.length}
                 icon={<ClipboardList />}
-                color="primary.main"
+                color="#111827"
                 subtext="Number of correction events"
               />
             </Grid>
