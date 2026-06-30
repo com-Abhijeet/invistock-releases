@@ -217,7 +217,7 @@ export default function AboutPage() {
                       variant="subtitle1"
                       sx={{ color: 'secondary.main', fontWeight: 'bold', mt: -0.5 }}
                     >
-                      Tally tells your accountant. Kosh tells you.
+                      Makes your business easy
                     </Typography>
                   </Box>
 

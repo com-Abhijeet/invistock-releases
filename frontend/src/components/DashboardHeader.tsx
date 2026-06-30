@@ -100,6 +100,12 @@ export default function DashboardHeader({
       toDate = end.toISOString().split("T")[0];
     }
 
+    // Cache the active filter setup
+    sessionStorage.setItem(
+      "dashboardFilter_v2",
+      JSON.stringify({ filterType: newType, year: selectedYear, from: fromDate, to: toDate })
+    );
+
     onFilterChange({ filter: newType, from: fromDate, to: toDate });
   };
 
@@ -118,6 +124,26 @@ export default function DashboardHeader({
   };
 
   const handleClose = () => setAnchorEl(null);
+
+  // Load from cache on mount
+  useEffect(() => {
+    const cached = sessionStorage.getItem("dashboardFilter_v2");
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        setFilterType(parsed.filterType);
+        if (parsed.year) setYear(parsed.year);
+        if (parsed.from) setFrom(parsed.from);
+        if (parsed.to) setTo(parsed.to);
+        
+        // Re-apply to let parent know and recalculate relative dates if needed
+        applyFilter(parsed.filterType, parsed.year, parsed.from, parsed.to);
+      } catch (e) {
+        console.error("Failed to parse cached dashboard filter", e);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (onSearch === undefined) return;
@@ -182,12 +208,12 @@ export default function DashboardHeader({
               width: 44,
               height: 44,
               borderRadius: "14px",
-              background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+              background: `linear-gradient(135deg, ${theme.palette.secondary.main} 0%, ${theme.palette.secondary.dark} 100%)`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               color: "white",
-              boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.3)}`,
+              boxShadow: `0 4px 12px ${alpha(theme.palette.secondary.main, 0.3)}`,
             }}
           >
             <CalendarDays size={22} />
@@ -236,7 +262,7 @@ export default function DashboardHeader({
                   fontWeight: filterType === item.id ? 700 : 500,
                   textTransform: "none",
                   color:
-                    filterType === item.id ? "primary.main" : "text.secondary",
+                    filterType === item.id ? "secondary.main" : "text.secondary",
                   backgroundColor:
                     filterType === item.id ? "#fff" : "transparent",
                   boxShadow:

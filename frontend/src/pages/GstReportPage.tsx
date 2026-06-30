@@ -116,7 +116,7 @@ export default function GstrReportsPage() {
           variant={isMobile ? "scrollable" : "fullWidth"}
           scrollButtons="auto"
           textColor="primary"
-          indicatorColor="primary"
+          indicatorColor="secondary"
           sx={{
             "& .MuiTab-root": {
               minHeight: 64,

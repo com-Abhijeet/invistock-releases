@@ -298,9 +298,9 @@ export default function TransactionsPage() {
               startIcon={<Download size={18} />}
             />
             <KbdButton
-              variant="primary"
-              label="Add Transaction"
-              underlineChar="A"
+              variant="accent"
+              label="New Entry"
+              underlineChar="N"
               shortcut="ctrl+a"
               onClick={() => handleOpenModal()}
               startIcon={<Plus size={18} />}

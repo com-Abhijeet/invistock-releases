@@ -121,7 +121,7 @@ export default function ProductOverviewModal({
       product.quantity <= (shop?.low_stock_threshold ?? 5)
     )
       return "error";
-    if (product.quantity <= 5) return "warning";
+    if (product.quantity <= 5) return "secondary";
     return "success";
   };
 

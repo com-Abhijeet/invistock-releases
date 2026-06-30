@@ -161,7 +161,7 @@ export default function ProductsPage() {
             />
 
             <KbdButton
-              variant="primary"
+              variant="accent"
               label="Add Product"
               underlineChar="A"
               shortcut="ctrl+a"

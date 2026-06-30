@@ -59,7 +59,7 @@ export default function SuppliersPage() {
         actions={
           <Button
             variant="contained"
-            color="primary"
+            color="secondary"
             startIcon={<Plus size={18} />}
             onClick={() => handleOpenModal()}
             sx={{

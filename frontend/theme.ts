@@ -28,8 +28,8 @@ const theme = createTheme({
       contrastText: "#ffffff",
     },
     background: {
-      default: "#F4F1EA", // Dull yellowish chalk / slate yellow (extremely easy on the eyes)
-      paper: "#F4F1EA", // Same as background for a flat, seamless component look
+      default: "#f5f3f0ff", // Dull yellowish chalk / slate yellow (extremely easy on the eyes)
+      paper: "#f5f3f0ff", // Same as background for a flat, seamless component look
     },
     text: {
       primary: "#111827", // "Deep Slate"

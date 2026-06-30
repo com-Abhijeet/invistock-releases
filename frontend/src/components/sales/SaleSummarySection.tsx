@@ -553,7 +553,7 @@ const SaleSummarySection = ({
                     color:
                       hasReturns && isViewMode
                         ? theme.palette.success.dark
-                        : theme.palette.primary.dark,
+                        : theme.palette.secondary.main,
                     fontFamily: '"JetBrains Mono", monospace',
                     letterSpacing: -0.5,
                   }}
@@ -801,6 +801,7 @@ const SaleSummarySection = ({
                       <MenuItem value="is_reverse_charge" dense>
                         <Checkbox
                           size="small"
+                          color="secondary"
                           checked={sale.is_reverse_charge}
                         />{" "}
                         <ListItemText
@@ -811,6 +812,7 @@ const SaleSummarySection = ({
                       <MenuItem value="is_ecommerce_sale" dense>
                         <Checkbox
                           size="small"
+                          color="secondary"
                           checked={sale.is_ecommerce_sale}
                         />{" "}
                         <ListItemText
@@ -888,6 +890,7 @@ const SaleSummarySection = ({
                     control={
                       <Checkbox
                         size="small"
+                        color="secondary"
                         checked={doPrint}
                         onChange={(e) => setDoPrint(e.target.checked)}
                         sx={{ p: 0.5 }}
@@ -904,6 +907,7 @@ const SaleSummarySection = ({
                     control={
                       <Checkbox
                         size="small"
+                        color="secondary"
                         checked={doWhatsApp}
                         onChange={(e) => setDoWhatsApp(e.target.checked)}
                         sx={{ p: 0.5 }}
@@ -918,6 +922,7 @@ const SaleSummarySection = ({
                   />
                 </Stack>
                 <Button
+                  color="secondary"
                   variant="contained"
                   fullWidth
                   onClick={() => handleSubmit()}

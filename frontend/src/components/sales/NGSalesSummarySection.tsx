@@ -186,7 +186,7 @@ export default function NGSaleSummarySection({
               >
                 Total Amount
               </Typography>
-              <Typography variant="h4" fontWeight={700} color="primary">
+              <Typography variant="h4" fontWeight={700} color="secondary.main">
                 {sale.total_amount.toLocaleString("en-IN", {
                   style: "currency",
                   currency: "INR",
@@ -317,6 +317,7 @@ export default function NGSaleSummarySection({
 
           <ButtonGroup
             variant="contained"
+            color="secondary"
             ref={anchorRef}
             sx={{ boxShadow: "none" }}
           >

@@ -855,6 +855,7 @@ export default function SaleItemSection({
             control={
               <Switch
                 size="small"
+                color="secondary"
                 checked={showDescriptionRow}
                 onChange={(e) => setShowDescriptionRow(e.target.checked)}
               />

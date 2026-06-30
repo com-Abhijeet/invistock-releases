@@ -260,7 +260,7 @@ const PurchaseSummarySection = ({
               <Typography
                 variant="h4"
                 fontWeight={800}
-                color="text.primary"
+                color="secondary.main"
                 lineHeight={1}
               >
                 {purchase.total_amount.toLocaleString("en-IN", {
@@ -422,11 +422,12 @@ const PurchaseSummarySection = ({
                     Balance
                   </Typography>
                   <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    color="text.secondary"
+                    variant="h4"
+                    fontWeight={800}
+                    color="secondary.main"
+                    sx={{ whiteSpace: "nowrap" }}
                   >
-                    {paymentSummary.balance?.toLocaleString("en-IN", {
+                    {Number(paymentSummary.balance).toLocaleString("en-IN", {
                       style: "currency",
                       currency: "INR",
                     })}
@@ -445,6 +446,7 @@ const PurchaseSummarySection = ({
                   control={
                     <Checkbox
                       size="small"
+                      color="secondary"
                       checked={purchase.is_reverse_charge}
                       onChange={(e) =>
                         handleFieldChange("is_reverse_charge", e.target.checked)
@@ -473,7 +475,7 @@ const PurchaseSummarySection = ({
                 <Tooltip title="Shortcut: Ctrl + S">
                   <Button
                     variant="contained"
-                    color="primary"
+                    color="secondary"
                     size="large"
                     onClick={() => handleSubmit()}
                     disabled={isSubmitting}
