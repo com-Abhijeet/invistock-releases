@@ -74,7 +74,7 @@ export default function MobileAccessTab() {
                 p: 2,
                 border: "1px solid #eee",
                 borderRadius: 3,
-                bgcolor: "#fff",
+                bgcolor: 'background.paper',
                 mb: 3,
                 boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
               }}

@@ -93,7 +93,7 @@ export default function DeadStockPage() {
     <Box
       p={2}
       pt={3}
-      sx={{ bgcolor: "#fff", borderTopLeftRadius: 36, minHeight: "100vh" }}
+      sx={{ bgcolor: 'background.paper', borderTopLeftRadius: 36, minHeight: "100vh" }}
     >
       <DashboardHeader
         title="Dead Stock Analysis"

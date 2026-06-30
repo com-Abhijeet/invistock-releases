@@ -5,6 +5,7 @@ export function getBusiness(req, res) {
     const data = businessService.getBusiness();
     res.json({ success: true, data });
   } catch (error) {
+    console.error("getBusiness -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -18,6 +19,7 @@ export function updateBusiness(req, res) {
       data,
     });
   } catch (error) {
+    console.error("updateBusiness -", error);
     // If a key is passed that doesn't exist in the DB schema, SQLite will throw an error here automatically
     res.status(500).json({ success: false, error: error.message });
   }

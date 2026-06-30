@@ -8,6 +8,7 @@ export function getPnL(req, res) {
     );
     res.json({ status: "success", data });
   } catch (error) {
+    console.error("getPnL -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -21,6 +22,7 @@ export function getCustomerLedger(req, res) {
     );
     res.json({ status: "success", data });
   } catch (error) {
+    console.error("getCustomerLedger -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -34,6 +36,7 @@ export function getSupplierLedger(req, res) {
     );
     res.json({ status: "success", data });
   } catch (error) {
+    console.error("getSupplierLedger -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -47,6 +50,7 @@ export function getCashBankBook(req, res) {
     );
     res.json({ status: "success", data });
   } catch (error) {
+    console.error("getCashBankBook -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -58,6 +62,7 @@ export function getStockValuation(req, res) {
       data: AccountingService.getStockValuation(),
     });
   } catch (error) {
+    console.error("getStockValuation -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -70,6 +75,7 @@ export function getStockSummary(req, res) {
     );
     res.json({ status: "success", data });
   } catch (error) {
+    console.error("getStockSummary -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -83,6 +89,7 @@ export function getReceivablesAging(req, res) {
       data: AccountingService.getReceivablesAging(),
     });
   } catch (error) {
+    console.error("getReceivablesAging -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -94,6 +101,7 @@ export function getCustomerBillByBill(req, res) {
       data: AccountingService.getCustomerBillByBill(req.params.id),
     });
   } catch (error) {
+    console.error("getCustomerBillByBill -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -102,6 +110,7 @@ export function getPayablesAging(req, res) {
   try {
     res.json({ status: "success", data: AccountingService.getPayablesAging() });
   } catch (error) {
+    console.error("getPayablesAging -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -113,6 +122,7 @@ export function getSupplierBillByBill(req, res) {
       data: AccountingService.getSupplierBillByBill(req.params.id),
     });
   } catch (error) {
+    console.error("getSupplierBillByBill -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }

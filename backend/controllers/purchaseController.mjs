@@ -56,10 +56,7 @@ export async function getPurchasesBySupplierIdController(req, res) {
     );
     return res.status(200).json({ status: "success", data: result });
   } catch (error) {
-    console.error(
-      "Error in getPurchasesBySupplierIdController:",
-      error.message
-    );
+    console.error("getPurchasesBySupplierIdController -", error);
     return res.status(500).json({
       status: "error",
       message: "Failed to fetch supplier purchases.",
@@ -73,6 +70,7 @@ export async function getPurchaseItemsForLabelsController(req, res) {
     const items = PurchaseRepo.getPurchaseItemsForLabels(Number(id));
     res.status(200).json({ success: true, data: items });
   } catch (error) {
+    console.error("getPurchaseItemsForLabelsController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -101,7 +99,7 @@ export async function getPurchaseSummary(req, res) {
     const data = await purchaseService.getPurchaseSummaryService(req.query);
     res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getPurchaseSummary:", err);
+    console.error("getPurchaseSummary -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -111,7 +109,7 @@ export async function getTopSuppliers(req, res) {
     const data = await purchaseService.getTopSuppliersService(req.query);
     res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getTopSuppliers:", err);
+    console.error("getTopSuppliers -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -121,7 +119,7 @@ export async function getCategorySpend(req, res) {
     const data = await purchaseService.getCategorySpendService(req.query);
     res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getCategorySpend:", err);
+    console.error("getCategorySpend -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -131,7 +129,7 @@ export async function getPurchaseTrend(req, res) {
     const data = await purchaseService.getPurchaseSummaryService(req.query); // reused from summary
     res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getPurchaseTrend:", err);
+    console.error("getPurchaseTrend -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -141,7 +139,7 @@ export async function getPurchaseStats(req, res) {
     const data = await purchaseService.getPurchaseStatsService();
     res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getPurchaseStats:", err);
+    console.error("getPurchaseStats -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -151,7 +149,7 @@ export async function getPurchaseOrderMetricsController(req, res) {
     const data = await purchaseService.getPurchaseOrderMetricsService(req.query);
     res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getPurchaseOrderMetrics:", err);
+    console.error("getPurchaseOrderMetricsController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -161,7 +159,7 @@ export async function getTopPurchasedProductsController(req, res) {
     const data = await purchaseService.getTopPurchasedProductsService(req.query);
     res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getTopPurchasedProducts:", err);
+    console.error("getTopPurchasedProductsController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -171,7 +169,7 @@ export async function getPurchasePaymentModeBreakdownController(req, res) {
     const data = await purchaseService.getPurchasePaymentModeBreakdownService(req.query);
     res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error("Error in getPurchasePaymentModeBreakdown:", err);
+    console.error("getPurchasePaymentModeBreakdownController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }

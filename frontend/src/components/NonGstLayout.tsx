@@ -47,7 +47,7 @@ export default function NonGstLayout() {
         p={2}
         pt={3}
         sx={{
-          backgroundColor: "#fff",
+          bgcolor: 'background.paper',
           borderTopLeftRadius: "36px",
           borderBottomLeftRadius: "36px",
           minHeight: "100vh",

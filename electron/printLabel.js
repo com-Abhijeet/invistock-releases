@@ -147,13 +147,11 @@ const createPrintWindow = async (payload) => {
     show: isPdf ? false : !isSilent,
   });
 
-  // ⚡ OPTIMIZED: Use blob URL instead of file + encodeURIComponent (saves 0.5s)
-  const blob = new (
-    require("electron").app.requestSingleInstanceLock ? Blob : class Blob {}
-  )([fullHtml], { type: "text/html;charset=utf-8" });
-  const blobUrl = `data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`;
+  // ⚡ OPTIMIZED: Use temp file instead of data URI to fix blank PDF bug
+  const tempFile = path.join(os.tmpdir(), `standard-label-${Date.now()}.html`);
+  fs.writeFileSync(tempFile, fullHtml);
 
-  await win.loadURL(blobUrl);
+  await win.loadFile(tempFile);
 
   // Wait for images
   await win.webContents.executeJavaScript(`
@@ -216,12 +214,14 @@ const createPrintWindow = async (payload) => {
           // ⚡ OPTIMIZED: Recycle window instead of closing (reuse for next print)
           setTimeout(() => {
             printWindowManager.recycleWindow("label");
+            fs.unlink(tempFile, () => {});
           }, 1000);
         });
       })
       .catch((err) => {
         console.error("❌ PDF generation failed:", err);
         printWindowManager.recycleWindow("label");
+        fs.unlink(tempFile, () => {});
       });
   } else {
     // Print to physical printer
@@ -234,6 +234,7 @@ const createPrintWindow = async (payload) => {
       setTimeout(
         () => {
           printWindowManager.recycleWindow("label");
+          fs.unlink(tempFile, () => {});
         },
         isSilent ? 400 : 1500,
       );

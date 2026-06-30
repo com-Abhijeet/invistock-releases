@@ -7,6 +7,7 @@ export const addStorageLocation = async (req, res) => {
       .status(201)
       .json({ status: "success", message: "Storage location added" });
   } catch (err) {
+    console.error("addStorageLocation -", err);
     res.status(400).json({ status: "error", message: err.message });
   }
 };

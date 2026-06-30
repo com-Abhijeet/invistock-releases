@@ -330,7 +330,7 @@ export default function SupplierLedgerPage() {
                       sx={{
                         fontWeight: "bold",
                         bgcolor: "grey.50",
-                        color: "primary.main",
+                        color: 'text.primary',
                       }}
                     >
                       Purchase Amt (₹)

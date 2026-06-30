@@ -84,9 +84,10 @@ export default function BooleanToggle({
           zIndex: 2,
           "&.Mui-selected": {
             backgroundColor: "transparent",
+            color: "primary.contrastText",
             "&:hover": { backgroundColor: "transparent" },
           },
-          color: value ? "text.primary" : "#fff",
+          color: "text.primary",
           transition: "color 0.3s ease-in-out",
         }}
       >
@@ -105,9 +106,10 @@ export default function BooleanToggle({
           zIndex: 2,
           "&.Mui-selected": {
             backgroundColor: "transparent",
+            color: "primary.contrastText",
             "&:hover": { backgroundColor: "transparent" },
           },
-          color: value ? "#fff" : "text.primary",
+          color: "text.primary",
           transition: "color 0.3s ease-in-out",
           // ✅ Centering styles added
           display: "flex",

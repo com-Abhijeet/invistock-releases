@@ -44,7 +44,7 @@ export default function NGSalesPosHeader({
         p: 1.5,
         borderRadius: 1,
         border: `1px solid ${theme.palette.divider}`,
-        backgroundColor: "#fff",
+        bgcolor: 'background.paper',
       }}
     >
       <Stack

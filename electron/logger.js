@@ -1,6 +1,7 @@
 const log = require("electron-log");
 const path = require("path");
 const { app } = require("electron");
+const fs = require("fs");
 
 /**
  * Configure a logger instance with specific file path and rotation settings.
@@ -35,6 +36,19 @@ const backendLogger = createLogger("backend", "backend.log");
 // 3. Renderer Logger (Frontend / React)
 const rendererLogger = createLogger("renderer", "renderer.log");
 
+// 4. Session Logger (API routes without body, cleared on restart)
+const sessionLogger = createLogger("session", "session.log");
+
+// Clear session log on app startup
+try {
+  const sessionLogPath = sessionLogger.transports.file.resolvePath();
+  if (fs.existsSync(sessionLogPath)) {
+    fs.writeFileSync(sessionLogPath, "");
+  }
+} catch (e) {
+  mainLogger.error("Failed to clear session log on startup:", e);
+}
+
 // Catch global errors and log them to main
 log.catchErrors({
   showDialog: false,
@@ -45,4 +59,5 @@ module.exports = {
   mainLogger,
   backendLogger,
   rendererLogger,
+  sessionLogger,
 };

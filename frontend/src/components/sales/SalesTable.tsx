@@ -387,7 +387,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
 
     switch (normalized) {
       case "pending":
-        color = "warning";
+        color = "secondary";
         break;
       case "paid":
         color = "success";
@@ -396,7 +396,7 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         color = "info";
         break;
       case "refunded":
-        color = "secondary";
+        color = "default";
         break;
       case "returned":
       case "partially_returned":

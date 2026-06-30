@@ -642,7 +642,7 @@ export default function ShopSetupWizard({ onSuccess }: Props) {
           <Typography variant="subtitle2" color="text.secondary">
             Default Password
           </Typography>
-          <Typography variant="h5" fontWeight="bold" color="primary.main">
+          <Typography variant="h5" fontWeight="bold" color="#111827">
             admin123
           </Typography>
         </Paper>

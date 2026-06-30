@@ -9,7 +9,7 @@ export function getEmployees(req, res) {
         : EmployeeService.getAllEmployees();
     res.json({ success: true, data });
   } catch (error) {
-    console.log("[Backend] - Error in employee controller", error);
+    console.error("getEmployees -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -23,7 +23,7 @@ export function getEmployeeById(req, res) {
         .json({ success: false, message: "Employee not found" });
     res.json({ success: true, data });
   } catch (error) {
-    console.log("[Backend] - Error in employee controller", error);
+    console.error("getEmployeeById -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -33,7 +33,7 @@ export function createEmployee(req, res) {
     const result = EmployeeService.createEmployee(req.body);
     res.status(201).json({ success: true, data: result });
   } catch (error) {
-    console.log("[Backend] - Error in employee controller", error);
+    console.error("createEmployee -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -47,7 +47,7 @@ export function updateEmployee(req, res) {
         .json({ success: false, message: "Employee not found" });
     res.json({ success: true, data: result });
   } catch (error) {
-    console.log("[Backend] - Error in employee controller", error);
+    console.error("updateEmployee -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -61,7 +61,7 @@ export function deleteEmployee(req, res) {
         .json({ success: false, message: "Employee not found" });
     res.json({ success: true, message: "Employee deactivated successfully" });
   } catch (error) {
-    console.log("[Backend] - Error in employee controller", error);
+    console.error("deleteEmployee -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -72,7 +72,7 @@ export function getEmployeeStats(req, res) {
     const stats = EmployeeService.getEmployeeStats(startDate, endDate);
     res.json({ success: true, data: stats });
   } catch (error) {
-    console.log("[Backend] - Error in employee controller", error);
+    console.error("getEmployeeStats -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

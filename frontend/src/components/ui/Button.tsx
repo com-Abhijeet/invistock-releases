@@ -11,7 +11,7 @@ import {
   Theme,
 } from "@mui/material";
 
-type KbdVariant = "primary" | "secondary" | "tertiary" | "ghost" | "danger";
+type KbdVariant = "primary" | "secondary" | "accent" | "tertiary" | "ghost" | "danger";
 
 interface KbdButtonProps extends Omit<ButtonProps, "variant"> {
   /** The 5 custom variants requested */
@@ -112,6 +112,17 @@ const KbdButton: React.FC<KbdButtonProps> = ({
           boxShadow: theme.shadows[2],
           "&:hover": {
             backgroundColor: theme.palette.primary.dark,
+            boxShadow: theme.shadows[4],
+          },
+        };
+      case "accent":
+        return {
+          ...base,
+          backgroundColor: theme.palette.secondary.main,
+          color: theme.palette.secondary.contrastText,
+          boxShadow: theme.shadows[2],
+          "&:hover": {
+            backgroundColor: theme.palette.secondary.dark,
             boxShadow: theme.shadows[4],
           },
         };

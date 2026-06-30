@@ -26,6 +26,7 @@ export const login = async (req, res) => {
     // Send token back to frontend
     res.json({ success: true, user, token });
   } catch (error) {
+    console.error("login -", error);
     res.status(401).json({ success: false, message: error.message });
   }
 };
@@ -36,6 +37,7 @@ export const logout = async (req, res) => {
     await userService.logout(userId, { type: machineType });
     res.json({ success: true });
   } catch (error) {
+    console.error("logout -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -46,6 +48,7 @@ export const createUser = async (req, res) => {
     const newUser = await userService.registerUser(req.body, adminUser);
     res.json({ success: true, userId: newUser.lastInsertRowid });
   } catch (error) {
+    console.error("createUser -", error);
     res.status(403).json({ success: false, message: error.message });
   }
 };
@@ -56,7 +59,7 @@ export const getUsers = async (req, res) => {
     const users = userService.getAllUsers(adminUser);
     res.json({ success: true, users });
   } catch (error) {
-    console.error("GetUsers Error:", error.message);
+    console.error("getUsers -", error);
     res.status(403).json({ success: false, message: error.message });
   }
 };
@@ -68,6 +71,7 @@ export const deleteUser = async (req, res) => {
     userService.deleteUser(id, adminUser);
     res.json({ success: true, message: "User deleted" });
   } catch (error) {
+    console.error("deleteUser -", error);
     res.status(403).json({ success: false, message: error.message });
   }
 };
@@ -97,6 +101,7 @@ export const getAccessLogs = async (req, res) => {
     // To keep it clean, ensure UserService has this method.
     res.json({ success: true, logs }); // Placeholder if not implemented
   } catch (error) {
+    console.error("getAccessLogs -", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -110,6 +115,7 @@ export const updateUser = async (req, res) => {
     await userService.updateUser(id, updates, adminUser);
     res.json({ success: true, message: "User updated successfully" });
   } catch (error) {
+    console.error("updateUser -", error);
     res.status(403).json({ success: false, message: error.message });
   }
 };

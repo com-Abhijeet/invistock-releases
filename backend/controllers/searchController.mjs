@@ -78,7 +78,7 @@ export const globalSearch = (req, res) => {
 
     res.json({ success: true, results });
   } catch (error) {
-    console.error("Global Search Error:", error);
+    console.error("globalSearch -", error);
     res.status(500).json({ success: false, message: "Search failed" });
   }
 };

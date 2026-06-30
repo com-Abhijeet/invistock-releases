@@ -297,7 +297,7 @@ export default function BulkLabelPrintModal({
 
       <Divider />
 
-      <DialogActions sx={{ px: 3, py: 2, bgcolor: "white" }}>
+      <DialogActions sx={{ px: 3, py: 2, bgcolor: 'background.paper' }}>
         <Stack
           direction="row"
           width="100%"
@@ -354,7 +354,7 @@ function BulkPrintItemCard({
     fontSize: "0.85rem",
     "&.Mui-selected": {
       bgcolor: "primary.soft",
-      color: "primary.main",
+      color: 'text.primary',
       borderColor: "primary.main",
     },
   };
@@ -375,7 +375,7 @@ function BulkPrintItemCard({
       }}
     >
       {/* Header Row */}
-      <Box sx={{ p: 2, bgcolor: "white" }}>
+      <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
         <Stack direction="row" alignItems="start" spacing={2}>
           {/* Icon Box */}
           <Box

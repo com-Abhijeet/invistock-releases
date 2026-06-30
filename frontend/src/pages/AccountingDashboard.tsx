@@ -735,7 +735,7 @@ export default function AccountingDashboard() {
                 </TableCell>
                 <TableCell
                   align="right"
-                  sx={{ fontWeight: 600, color: "primary.main" }}
+                  sx={{ fontWeight: 600, color: 'text.primary' }}
                 >
                   In (+)
                 </TableCell>
@@ -777,7 +777,7 @@ export default function AccountingDashboard() {
                   <TableCell align="right">{row.opening_qty}</TableCell>
                   <TableCell
                     align="right"
-                    sx={{ color: "primary.main", fontWeight: 500 }}
+                    sx={{ color: 'text.primary', fontWeight: 500 }}
                   >
                     {row.purchased_qty || "-"}
                   </TableCell>

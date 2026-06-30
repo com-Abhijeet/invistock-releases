@@ -182,7 +182,7 @@ export default function LabelInfoModal({ open, onClose }: Props) {
                   border: "1px solid #eee",
                   borderRadius: 1,
                   p: 0.5,
-                  bgcolor: "white",
+                  bgcolor: 'background.paper',
                 }}
               >
                 <Typography
@@ -210,7 +210,7 @@ export default function LabelInfoModal({ open, onClose }: Props) {
               <Typography
                 variant="subtitle2"
                 fontWeight="bold"
-                color="primary.main"
+                color="#111827"
               >
                 Secret Price Converter
               </Typography>
@@ -238,7 +238,7 @@ export default function LabelInfoModal({ open, onClose }: Props) {
                   onChange={(e) => handleConvert(e.target.value)}
                   type={mode === "encode" ? "number" : "text"}
                   InputProps={{
-                    sx: { bgcolor: "white" },
+                    sx: { bgcolor: 'background.paper' },
                   }}
                 />
               </Grid>
@@ -253,7 +253,7 @@ export default function LabelInfoModal({ open, onClose }: Props) {
                   value={resultVal}
                   InputProps={{
                     readOnly: true,
-                    sx: { bgcolor: "white", fontWeight: "bold" },
+                    sx: { bgcolor: 'background.paper', fontWeight: "bold" },
                   }}
                 />
               </Grid>

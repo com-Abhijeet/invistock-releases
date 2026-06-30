@@ -118,7 +118,7 @@ export default function TallySetupGuide() {
                   {LEDGERS.map((row) => (
                     <TableRow key={row.name}>
                       <TableCell
-                        sx={{ fontWeight: 600, color: "primary.main" }}
+                        sx={{ fontWeight: 600, color: 'text.primary' }}
                       >
                         {row.name}
                       </TableCell>

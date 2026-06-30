@@ -5,9 +5,7 @@ export async function getAllCategoriesController(req, res) {
     const data = await service.fetchAllCategories();
     res.status(200).json({ status: "success", data });
   } catch (err) {
-    console.error(
-      `[BACKEND] - CATEGORY CONTROLLER - ERROR IN GETTING ALL CATEGORIES ${err}`
-    );
+    console.error("getAllCategoriesController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }
@@ -17,9 +15,7 @@ export async function createCategoryController(req, res) {
     const result = await service.createCategoryWithSubcategories(req.body);
     res.status(201).json({ status: "success", data: result });
   } catch (err) {
-    console.error(
-      `[BACKEND] - CATEGORY CONTROLLER - ERROR IN CREATING CATEGORY  ${err}`
-    );
+    console.error("createCategoryController -", err);
     res.status(400).json({ status: "error", message: err.message });
   }
 }
@@ -32,9 +28,7 @@ export async function updateCategoryController(req, res) {
       .status(200)
       .json({ status: "success", message: "Updated successfully" });
   } catch (err) {
-    console.error(
-      `[BACKEND] - CATEGORY CONTROLLER - ERROR IN UPDATING CATEGORY ${err}`
-    );
+    console.error("updateCategoryController -", err);
     res.status(400).json({ status: "error", message: err.message });
   }
 }
@@ -47,9 +41,7 @@ export async function deleteCategoryController(req, res) {
       .status(200)
       .json({ status: "success", message: "Deleted successfully" });
   } catch (err) {
-    console.error(
-      `[BACKEND] - CATEGORY CONTROLLER - ERROR IN DELETING CATEGORY ${err}`
-    );
+    console.error("deleteCategoryController -", err);
     res.status(500).json({ status: "error", message: err.message });
   }
 }

@@ -269,14 +269,14 @@ const BulkBatchReviewModal = ({
           justifyContent: "space-between",
           alignItems: "center",
           borderBottom: `1px solid ${theme.palette.divider}`,
-          bgcolor: "#fff",
+          bgcolor: 'background.paper',
         }}
       >
         <Stack direction="row" spacing={1.5} alignItems="center">
           <Avatar
             sx={{
               bgcolor: alpha(theme.palette.primary.main, 0.1),
-              color: "primary.main",
+              color: 'text.primary',
               width: 40,
               height: 40,
             }}
@@ -314,7 +314,7 @@ const BulkBatchReviewModal = ({
         <Box
           sx={{
             p: 2,
-            bgcolor: "#fff",
+            bgcolor: 'background.paper',
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
@@ -371,7 +371,7 @@ const BulkBatchReviewModal = ({
                 type="number"
                 value={globalQty}
                 onChange={(e) => setGlobalQty(e.target.value)}
-                sx={{ width: 100, bgcolor: "#fff" }}
+                sx={{ width: 100, bgcolor: 'background.paper' }}
               />
               <TextField
                 size="small"
@@ -379,7 +379,7 @@ const BulkBatchReviewModal = ({
                 InputLabelProps={{ shrink: true }}
                 value={globalExp}
                 onChange={(e) => setGlobalExp(e.target.value)}
-                sx={{ width: 150, bgcolor: "#fff" }}
+                sx={{ width: 150, bgcolor: 'background.paper' }}
               />
               <Button
                 variant="contained"
@@ -561,7 +561,7 @@ const BulkBatchReviewModal = ({
           sx={{
             px: 3,
             py: 1.5,
-            bgcolor: "#fff",
+            bgcolor: 'background.paper',
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -569,7 +569,7 @@ const BulkBatchReviewModal = ({
         >
           <Typography variant="body2" color="text.secondary" fontWeight={600}>
             Pending Creation:{" "}
-            <Typography component="span" color="primary.main" fontWeight={800}>
+            <Typography component="span" color="#111827" fontWeight={800}>
               {gridData.length} Batches
             </Typography>
           </Typography>
@@ -805,7 +805,7 @@ export default function MissingBatchesPage() {
   ];
 
   return (
-    <Box p={2} pt={3} sx={{ backgroundColor: "#fff", minHeight: "100vh" }}>
+    <Box p={2} pt={3} sx={{ bgcolor: 'background.paper', minHeight: "100vh" }}>
       <DashboardHeader
         title="Missing Batch Configurations"
         showSearch={true}

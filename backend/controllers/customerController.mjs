@@ -17,9 +17,7 @@ export const createCustomer = async (req, res) => {
       .status(201)
       .json({ message: "Customer created successfully", data: customer });
   } catch (error) {
-    console.error(
-      `[BACKEND] - CUSTOMER CONTROLLER - ERROR IN CREATING CUSTOMER ${error}`
-    );
+    console.error("createCustomer -", error);
     const statusCode = error.statusCode || 500;
     res.status(statusCode).json({
       message:
@@ -57,9 +55,7 @@ export const getAllCustomersController = async (req, res) => {
       totalRecords: result.totalRecords,
     });
   } catch (error) {
-    console.error(
-      `[BACKEND] - CUSTOMER CONTROLLER - ERROR IN GETTING ALL CUSTOMERS ${error}`
-    );
+    console.error("getAllCustomersController -", error);
     return res
       .status(500)
       .json({ status: "error", message: "Failed to fetch customers." });
@@ -74,9 +70,7 @@ export const getCustomerById = async (req, res) => {
       .status(200)
       .json({ message: "Customer Fetched Successfully", data: customer });
   } catch (error) {
-    console.error(
-      `[BACKEND] - CUSTOMER CONTROLLER - ERROR IN GETTING CUSTOMER BY ID ${error}`
-    );
+    console.error("getCustomerById -", error);
     return res.status(500).json({ message: "Error Fetching Customer", error });
   }
 };
@@ -87,9 +81,7 @@ export const getCustomerByPhone = async (req, res) => {
     const customer = await customerService.getCustomerByPhone(phone);
     return res.status(200).json({ message: "customer fetched", customer });
   } catch (error) {
-    console.error(
-      `[BACKEND] - CUSTOMER CONTROLLER - ERROR IN GETTING CUSTOMER BY PHONE ${error}`
-    );
+    console.error("getCustomerByPhone -", error);
     return res.status(500).json({ message: "Error Fetching Customer", error });
   }
 };
@@ -102,9 +94,7 @@ export const updateCustomer = async (req, res) => {
       .status(200)
       .json({ message: "Customer Updated Successfully", customer });
   } catch (error) {
-    console.error(
-      `[BACKEND] - CUSTOMER CONTROLLER - ERROR IN UPDATING CUSTOMER ${error}`
-    );
+    console.error("updateCustomer -", error);
     return res.status(500).json({ message: "Error Updating Customer", error });
   }
 };
@@ -118,9 +108,7 @@ export const deleteCustomer = async (req, res) => {
     await customerService.deleteCustomer(id);
     return res.status(200).json({ message: "Customer Deleted Successfully" });
   } catch (error) {
-    console.error(
-      `[BACKEND] - CUSTOMER CONTROLLER - ERROR IN DELETING CUSTOMER ${error}`
-    );
+    console.error("deleteCustomer -", error);
     return res.status(500).json({ message: "Error Deleting Customer", error });
   }
 };
@@ -167,9 +155,7 @@ export async function importCustomersController(req, res) {
       message: `${result.changes} customers imported successfully!`,
     });
   } catch (error) {
-    console.error(
-      `[BACKEND] - CUSTOMER CONTROLLER - ERROR IN IMPORTING CUSTOMERS ${error}`
-    );
+    console.error("importCustomersController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -179,6 +165,7 @@ export async function getCustomerOverdueSummaryController(req, res) {
     const data = customerService.getOverdueSummary();
     res.status(200).json({ success: true, data });
   } catch (error) {
+    console.error("getCustomerOverdueSummaryController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -196,7 +183,7 @@ export const getCustomerLedger = async (req, res) => {
 
     res.json({ success: true, ...data });
   } catch (error) {
-    console.error("Error getting customer ledger:", error);
+    console.error("getCustomerLedger -", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -213,7 +200,7 @@ export async function getCustomersFinancials(req, res) {
       pagination: result.pagination, // The pagination metadata
     });
   } catch (error) {
-    console.error("Error fetching customer financials:", error);
+    console.error("getCustomersFinancials -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }

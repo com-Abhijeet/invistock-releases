@@ -5,6 +5,7 @@ export function createExpense(req, res) {
     const expense = ExpenseService.addExpenseService(req.body);
     res.status(201).json({ success: true, data: expense });
   } catch (error) {
+    console.error("createExpense -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -19,6 +20,7 @@ export function updateExpense(req, res) {
       res.status(404).json({ success: false, message: "Expense not found" });
     }
   } catch (error) {
+    console.error("updateExpense -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -33,6 +35,7 @@ export function deleteExpense(req, res) {
       res.status(404).json({ success: false, message: "Expense not found" });
     }
   } catch (error) {
+    console.error("deleteExpense -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -43,6 +46,7 @@ export function getExpenses(req, res) {
     const data = ExpenseService.getExpensesService(from, to);
     res.status(200).json({ success: true, data });
   } catch (error) {
+    console.error("getExpenses -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -53,6 +57,7 @@ export function getExpenseStats(req, res) {
     const stats = ExpenseService.getExpenseStatsService(from, to);
     res.status(200).json({ success: true, data: stats });
   } catch (error) {
+    console.error("getExpenseStats -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

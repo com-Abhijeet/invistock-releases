@@ -510,7 +510,7 @@ export default function SalesReturnModal({
               </TableCell>
               <TableCell
                 align="right"
-                sx={{ fontWeight: 800, width: 150, color: "primary.main" }}
+                sx={{ fontWeight: 800, width: 150, color: 'text.primary' }}
               >
                 Refund Amt
               </TableCell>
@@ -664,7 +664,7 @@ export default function SalesReturnModal({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 variant="outlined"
-                sx={{ bgcolor: "#fff" }}
+                sx={{ bgcolor: 'background.paper' }}
               />
             </Box>
 
@@ -675,7 +675,7 @@ export default function SalesReturnModal({
                 borderRadius: 2,
                 border: "2px solid",
                 borderColor: "divider",
-                bgcolor: "#fff",
+                bgcolor: 'background.paper',
               }}
             >
               <Stack spacing={2}>

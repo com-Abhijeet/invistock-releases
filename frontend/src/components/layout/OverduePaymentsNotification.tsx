@@ -106,7 +106,7 @@ export default function OverduePaymentsNotification() {
         <Box
           sx={{
             p: 2.5,
-            bgcolor: "white",
+            bgcolor: 'background.paper',
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
@@ -202,7 +202,7 @@ export default function OverduePaymentsNotification() {
                           key={customer.id}
                           disablePadding
                           divider
-                          sx={{ bgcolor: "white" }}
+                          sx={{ bgcolor: 'background.paper' }}
                         >
                           <ListItemButton
                             onClick={() => handleItemClick(customer.id)}
@@ -272,7 +272,7 @@ export default function OverduePaymentsNotification() {
         {badgeCount > 0 && (
           <Box
             sx={{
-              bgcolor: "white",
+              bgcolor: 'background.paper',
               borderTop: `1px solid ${theme.palette.divider}`,
               p: 1,
             }}

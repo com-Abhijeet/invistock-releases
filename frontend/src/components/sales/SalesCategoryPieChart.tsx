@@ -76,7 +76,7 @@ export default function SalesCategoryPieChart({ filters }: Props) {
       sx={{
         borderRadius: "12px",
         // border: "1px solid #ddd",
-        backgroundColor: "#fff",
+        bgcolor: 'background.paper',
         height: "100%",
       }}
     >

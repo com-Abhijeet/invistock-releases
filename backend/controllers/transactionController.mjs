@@ -46,6 +46,7 @@ export async function createTransactionController(req, res) {
       newTransaction,
     );
   } catch (error) {
+    console.error("createTransactionController -", error);
     // Distinguish between validation errors (400) and system errors (500)
     // If error message contains 'Overpayment', it's a 400 (Bad Request)
     const isValidation =
@@ -87,6 +88,7 @@ export async function getAllTransactionsController(req, res) {
       totalRecords: result.totalRecords,
     });
   } catch (error) {
+    console.error("getAllTransactionsController -", error);
     return sendResponse(res, 500, "error", error.message);
   }
 }
@@ -109,6 +111,7 @@ export async function getTransactionByIdController(req, res) {
       transaction,
     );
   } catch (error) {
+    console.error("getTransactionByIdController -", error);
     return sendResponse(res, 404, "error", error.message);
   }
 }
@@ -153,6 +156,7 @@ export async function getTransactionsByRelatedIdController(req, res) {
       transactions,
     );
   } catch (error) {
+    console.error("getTransactionsByRelatedIdController -", error);
     return sendResponse(res, 500, "error", error.message);
   }
 }
@@ -174,6 +178,7 @@ export async function updateTransactionController(req, res) {
     );
     return sendResponse(res, 200, "success", "Transaction updated.", updated);
   } catch (error) {
+    console.error("updateTransactionController -", error);
     return sendResponse(res, 400, "error", error.message);
   }
 }
@@ -190,6 +195,7 @@ export async function deleteTransactionController(req, res) {
     const result = await transactionsService.deleteTransactionService(id);
     return sendResponse(res, 200, "success", result.message);
   } catch (error) {
+    console.error("deleteTransactionController -", error);
     return sendResponse(res, 500, "error", error.message);
   }
 }
@@ -205,6 +211,7 @@ export async function getCustomerAccountSummaryController(req, res) {
     );
     return sendResponse(res, 200, "success", "Summary fetched", summary);
   } catch (error) {
+    console.error("getCustomerAccountSummaryController -", error);
     return sendResponse(res, 500, "error", error.message);
   }
 }
@@ -218,6 +225,7 @@ export async function getSupplierAccountSummaryController(req, res) {
     );
     return sendResponse(res, 200, "success", "Summary fetched", summary);
   } catch (error) {
+    console.error("getSupplierAccountSummaryController -", error);
     return sendResponse(res, 500, "error", error.message);
   }
 }
@@ -235,6 +243,7 @@ export async function getEntityTransactionsController(req, res) {
       await transactionsService.getEntityTransactionsService(filters);
     return res.status(200).json({ status: "success", data: result });
   } catch (error) {
+    console.error("getEntityTransactionsController -", error);
     return sendResponse(res, 500, "error", error.message);
   }
 }

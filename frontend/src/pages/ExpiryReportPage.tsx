@@ -325,7 +325,7 @@ export default function ExpiryReportPage() {
             variant="scrollable"
             scrollButtons="auto"
             textColor="primary"
-            indicatorColor="primary"
+            indicatorColor="secondary"
           >
             {TAB_KEYS.map((key, index) => {
               const count = reportData ? reportData[key].length : 0;

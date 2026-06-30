@@ -188,7 +188,7 @@ export default function SalesOrderPage() {
       <Box
         sx={{
           flexShrink: 0,
-          bgcolor: "white",
+          bgcolor: 'background.paper',
           borderTop: `1px solid ${theme.palette.divider}`,
           zIndex: 10,
         }}

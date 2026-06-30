@@ -207,7 +207,7 @@ export default function EmployeeDetailPage() {
   }
 
   return (
-    <Box p={3} sx={{ backgroundColor: "#f8f9fa", minHeight: "100vh" }}>
+    <Box p={3} sx={{ bgcolor: 'background.default', minHeight: "100vh" }}>
       {/* --- Top Bar --- */}
       <Stack
         direction={{ xs: "column", md: "row" }}
@@ -241,7 +241,7 @@ export default function EmployeeDetailPage() {
             alignItems: "center",
             borderRadius: "12px",
             border: `1px solid ${theme.palette.divider}`,
-            bgcolor: "#fff",
+            bgcolor: 'background.paper',
             gap: 2,
             boxShadow: theme.shadows[1],
           }}
@@ -334,7 +334,7 @@ export default function EmployeeDetailPage() {
                 borderRadius: "6px",
                 fontWeight: 600,
                 bgcolor: alpha(theme.palette.primary.main, 0.1),
-                color: "primary.main",
+                color: 'text.primary',
               }}
             />
           )}
@@ -463,7 +463,7 @@ export default function EmployeeDetailPage() {
                       display="flex"
                       alignItems="center"
                       justifyContent="center"
-                      color="primary.main"
+                      color="#111827"
                       mb={1}
                     >
                       <TrendingUp size={20} />
@@ -478,7 +478,7 @@ export default function EmployeeDetailPage() {
                     <Typography
                       variant="h3"
                       fontWeight={800}
-                      color="primary.main"
+                      color="#111827"
                       sx={{ letterSpacing: -1 }}
                     >
                       ₹{totalSales.toLocaleString("en-IN")}

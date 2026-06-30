@@ -279,14 +279,14 @@ export default function CheckPrintModal({
                   NUDGE CONTROLS (0.1mm increments)
                 </Typography>
                 <Stack direction="row" justifyContent="center" spacing={1} mb={2}>
-                  <IconButton size="small" onClick={() => handleNudge('top', -0.1)} sx={{ bgcolor: "white", border: "1px solid #cbd5e1" }}><ArrowUp size={16} /></IconButton>
+                  <IconButton size="small" onClick={() => handleNudge('top', -0.1)} sx={{ bgcolor: 'background.paper', border: "1px solid #cbd5e1" }}><ArrowUp size={16} /></IconButton>
                 </Stack>
                 <Stack direction="row" justifyContent="center" spacing={1} mb={2}>
-                  <IconButton size="small" onClick={() => handleNudge('left', -0.1)} sx={{ bgcolor: "white", border: "1px solid #cbd5e1" }}><ArrowLeft size={16} /></IconButton>
-                  <IconButton size="small" onClick={() => handleNudge('left', 0.1)} sx={{ bgcolor: "white", border: "1px solid #cbd5e1" }}><ArrowRight size={16} /></IconButton>
+                  <IconButton size="small" onClick={() => handleNudge('left', -0.1)} sx={{ bgcolor: 'background.paper', border: "1px solid #cbd5e1" }}><ArrowLeft size={16} /></IconButton>
+                  <IconButton size="small" onClick={() => handleNudge('left', 0.1)} sx={{ bgcolor: 'background.paper', border: "1px solid #cbd5e1" }}><ArrowRight size={16} /></IconButton>
                 </Stack>
                 <Stack direction="row" justifyContent="center" spacing={1}>
-                  <IconButton size="small" onClick={() => handleNudge('top', 0.1)} sx={{ bgcolor: "white", border: "1px solid #cbd5e1" }}><ArrowDown size={16} /></IconButton>
+                  <IconButton size="small" onClick={() => handleNudge('top', 0.1)} sx={{ bgcolor: 'background.paper', border: "1px solid #cbd5e1" }}><ArrowDown size={16} /></IconButton>
                 </Stack>
                 <Stack direction="row" spacing={2} mt={3}>
                   <TextField label="Top" type="number" size="small" value={config.fields[selectedField].top} onChange={(e) => updateFieldPos(selectedField, "top", Number(e.target.value))} />
@@ -309,7 +309,7 @@ export default function CheckPrintModal({
 
         {/* Right Panel: Live Preview */}
         <Box sx={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-           <Paper sx={{ p: 2, bgcolor: "#fff", borderRadius: 3, border: "1px solid #e2e8f0", flex: 1, position: 'relative', overflow: 'hidden' }}>
+           <Paper sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 3, border: "1px solid #e2e8f0", flex: 1, position: 'relative', overflow: 'hidden' }}>
               <Box sx={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
                 <Typography variant="caption" sx={{ bgcolor: "#1e293b", color: "white", px: 1, py: 0.5, borderRadius: 1, fontWeight: 700 }}>
                   LIVE CANVAS PREVIEW ({config.width}x{config.height}mm)
@@ -329,7 +329,7 @@ export default function CheckPrintModal({
                   height: `${config.height}mm`, 
                   border: "1px solid #94a3b8", 
                   position: "relative",
-                  bgcolor: "#fff",
+                  bgcolor: 'background.paper',
                   boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
                   backgroundImage: "url('https://bankingspirits.com/wp-content/uploads/2021/04/CTS-2010-Standard-Cheque-format.jpg')",
                   backgroundSize: "cover",
@@ -421,7 +421,7 @@ export default function CheckPrintModal({
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ p: 2.5, bgcolor: "#fff", gap: 2 }}>
+      <DialogActions sx={{ p: 2.5, bgcolor: 'background.paper', gap: 2 }}>
         <Button onClick={onClose} variant="outlined" color="inherit">Close Utility</Button>
         <Button 
           onClick={handlePrint} 

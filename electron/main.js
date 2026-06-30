@@ -99,10 +99,16 @@ ipcMain.on("log", (event, { level, data }) => {
         .join(" ")
     : data;
 
-  if (rendererLogger[level]) {
-    rendererLogger[level](message);
+  // Only write warn and error to the log file to prevent bloat
+  if (level === "error" || level === "warn") {
+    if (rendererLogger[level]) {
+      rendererLogger[level](message);
+    } else {
+      rendererLogger.error(message);
+    }
   } else {
-    rendererLogger.info(message);
+    // Just write to terminal for info/log
+    console.log(`[RENDERER] ${message}`);
   }
 });
 

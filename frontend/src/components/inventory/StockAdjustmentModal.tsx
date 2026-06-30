@@ -225,7 +225,7 @@ export default function StockAdjustmentModal({
                       <Typography
                         variant="h6"
                         fontWeight="bold"
-                        color="primary.main"
+                        color="#111827"
                       >
                         {newStockLevel}
                       </Typography>

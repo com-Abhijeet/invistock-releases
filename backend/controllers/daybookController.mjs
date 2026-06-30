@@ -13,7 +13,7 @@ export function getDayBookController(req, res) {
 
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.error("DayBook Error:", error);
+    console.error("getDayBookController -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

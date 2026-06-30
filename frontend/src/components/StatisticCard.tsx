@@ -32,7 +32,7 @@ const StatisticCard = ({ title, value, icon }: Props) => {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        backgroundColor: "#fff",
+        bgcolor: 'background.paper',
         border: "1px solid #ddd",
         height: "100%",
       }}

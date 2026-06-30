@@ -14,7 +14,7 @@ export function getProductBatchSuggestions(req, res) {
       return res.json({ status: "success", data: batches });
     }
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Error getting suggestions:", error);
+    console.error("getProductBatchSuggestions -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -32,7 +32,7 @@ export function traceSerialNumber(req, res) {
 
     res.json({ status: "success", data: history });
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Error tracing serial:", error);
+    console.error("traceSerialNumber -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -50,7 +50,7 @@ export function traceBatchNumber(req, res) {
 
     res.json({ status: "success", data: history });
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Error tracing batch:", error);
+    console.error("traceBatchNumber -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -73,7 +73,7 @@ export function assignStock(req, res) {
     const result = BatchService.assignUntrackedStock(data);
     res.json({ status: "success", data: result });
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Assign Stock Error:", error);
+    console.error("assignStock -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -103,7 +103,7 @@ export async function getPrintData(req, res) {
 
     res.json({ status: "success", data: printJobs });
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Print Error:", error);
+    console.error("getPrintData -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -122,7 +122,7 @@ export async function scanBarcode(req, res) {
     if (error.message === "Item not found") {
       return res.status(404).json({ status: "error", error: "Item not found" });
     }
-    console.error("[BATCH CONTROLLER] Scan Error:", error);
+    console.error("scanBarcode -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -138,7 +138,7 @@ export function getBatchAnalytics(req, res) {
     );
     res.json({ status: "success", data: analytics });
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Error getting analytics:", error);
+    console.error("getBatchAnalytics -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -157,7 +157,7 @@ export const getNotifications = async (req, res) => {
       data: notifications,
     });
   } catch (error) {
-    console.error("Error fetching expiry notifications:", error);
+    console.error("getNotifications -", error);
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
@@ -175,7 +175,7 @@ export const getFullReport = async (req, res) => {
       ...report,
     });
   } catch (error) {
-    console.error("Error fetching expiry report:", error);
+    console.error("getFullReport -", error);
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
@@ -190,7 +190,7 @@ export function checkBarcode(req, res) {
     const exists = BatchService.checkBarcodeExistence(code);
     res.json({ status: "success", exists });
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Check Barcode Error:", error);
+    console.error("checkBarcode -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -204,7 +204,7 @@ export function generateBarcode(req, res) {
     const barcode = BatchService.generateUniqueBarcode();
     res.json({ status: "success", barcode });
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Generate Barcode Error:", error);
+    console.error("generateBarcode -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -226,7 +226,7 @@ export function bulkCreateBatches(req, res) {
       message: `Successfully created ${count} batches`,
     });
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Bulk Create Error:", error);
+    console.error("bulkCreateBatches -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -245,7 +245,7 @@ export function bulkUntrackProducts(req, res) {
       message: `Successfully untracked ${count} products`,
     });
   } catch (error) {
-    console.error("[BATCH CONTROLLER] Bulk Untrack Error:", error);
+    console.error("bulkUntrackProducts -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }

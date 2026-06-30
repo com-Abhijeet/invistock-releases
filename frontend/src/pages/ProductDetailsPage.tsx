@@ -397,7 +397,7 @@ export default function ProductDetailPage() {
           sx={{
             py: 1.5,
             px: 2,
-            color: "primary.main",
+            color: 'text.primary',
             fontWeight: 600,
             borderBottom: `2px solid ${theme.palette.divider}`,
           }}

@@ -559,7 +559,7 @@ export default function SalesPos() {
       <Box
         sx={{
           flexShrink: 0,
-          backgroundColor: "#fff",
+          bgcolor: 'background.paper',
           borderTop: `1px solid ${theme.palette.divider}`,
           zIndex: 10,
         }}

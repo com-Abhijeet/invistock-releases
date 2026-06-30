@@ -110,7 +110,7 @@ export default function CustomersPage() {
   ];
 
   return (
-    <Box p={2} pt={3} sx={{ backgroundColor: "#fff", minHeight: "100vh" }}>
+    <Box p={2} pt={3} sx={{ bgcolor: 'background.paper', minHeight: "100vh" }}>
       <DashboardHeader
         title="Customers"
         showSearch={true}

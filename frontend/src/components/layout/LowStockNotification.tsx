@@ -101,7 +101,7 @@ export default function LowStockNotification() {
         <Box
           sx={{
             p: 2.5,
-            bgcolor: "white",
+            bgcolor: 'background.paper',
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
@@ -181,7 +181,7 @@ export default function LowStockNotification() {
                   key={product.id}
                   disablePadding
                   divider
-                  sx={{ bgcolor: "white" }}
+                  sx={{ bgcolor: 'background.paper' }}
                 >
                   <ListItemButton
                     onClick={() => handleItemClick(product.id)}
@@ -248,7 +248,7 @@ export default function LowStockNotification() {
         {count > 0 && (
           <Box
             sx={{
-              bgcolor: "white",
+              bgcolor: 'background.paper',
               borderTop: `1px solid ${theme.palette.divider}`,
               p: 1,
             }}

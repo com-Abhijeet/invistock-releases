@@ -735,7 +735,7 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
         <DialogContent
           sx={{
             p: 0,
-            bgcolor: "#ffffff", // Darker background to see paper edges
+            bgcolor: 'background.paper', // Darker background to see paper edges
             display: "flex",
             justifyContent: "center",
             alignItems: "center",

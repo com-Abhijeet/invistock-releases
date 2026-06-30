@@ -14,9 +14,7 @@ export async function getLicenseStatusController(req, res) {
     const licenseStatus = await checkAppLicense();
     res.status(200).json(licenseStatus);
   } catch (error) {
-    console.error(
-      `[BACKEND] - LICENSE CONTROLLER - ERROR IN GETTING LICENSE STATUS ${error}`
-    );
+    console.error("getLicenseStatusController -", error);
     res.status(500).json({
       status: "invalid",
       message: `Error checking license: ${error.message}`,
@@ -62,9 +60,7 @@ export async function saveLicenseController(req, res) {
     // 3. Return the successful result
     res.status(200).json(validationResult);
   } catch (error) {
-    console.error(
-      `[BACKEND] - LICENSE CONTROLLER - ERROR IN CREATING LICENSE ${error}`
-    );
+    console.error("saveLicenseController -", error);
     res.status(500).json({
       status: "invalid",
       message: `Failed to save license: ${error.message}`,

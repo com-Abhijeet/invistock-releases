@@ -144,7 +144,14 @@ async function verifyOnline(licenseKey) {
     });
 
     clearTimeout(timeoutId);
-    const data = await response.json();
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      // If server returns HTML (e.g. Cloudflare DOS protection / 502 Bad Gateway)
+      throw new Error("Invalid JSON response from server");
+    }
 
     // SUCCESS CASE (Even if subscription is cancelled, license might be valid)
     if (response.ok && data.success) {
@@ -177,7 +184,9 @@ async function verifyOnline(licenseKey) {
     }
 
     // SERVER REJECTED LICENSE (Revoked, Banned, IP Mismatch)
-    if (response.status === 403 || response.status === 401) {
+    // We only treat it as a ban if our API explicitly returns success === false.
+    // This prevents WAFs/Cloudflare from accidentally banning via a generic 403.
+    if ((response.status === 403 || response.status === 401) && data.success === false) {
       return {
         status: "banned",
         message: data.message || "License revoked or machine banned.",

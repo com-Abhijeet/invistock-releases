@@ -7,6 +7,7 @@ export const createShop = async (req, res) => {
       .status(201)
       .json({ status: "success", message: "Shop created", data: result });
   } catch (err) {
+    console.error("createShop -", err);
     res.status(400).json({ status: "error", message: err.message });
   }
 };
@@ -25,6 +26,7 @@ export const setupShop = async (req, res) => {
       data: result,
     });
   } catch (err) {
+    console.error("setupShop -", err);
     res.status(400).json({ status: "error", message: err.message });
   }
 };
@@ -53,7 +55,7 @@ export const updateShop = async (req, res) => {
       data: updatedShop,
     });
   } catch (error) {
-    console.error("Error in updateShop controller:", error);
+    console.error("updateShop -", error);
     res.status(500).json({
       success: false,
       message: "Failed to update shop settings.",

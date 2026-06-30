@@ -224,7 +224,7 @@ export function serveMobileHtml(req, res) {
         const json = await res.json();
         renderProducts(json.records);
         if (json.records.length >= 20) { document.getElementById('loadMoreBtn').classList.remove('hidden'); }
-      } catch (err) { console.error(err); } 
+      } catch (err) { console.error("serveMobileHtml -", e); } 
       finally { isLoading = false; document.getElementById('loading').classList.add('hidden'); }
     }
 

@@ -34,14 +34,6 @@ function registerCoreHandlers(
     return getLocalIps();
   });
 
-  ipcMain.on("log", (event, { level, data }) => {
-    if (mainWindow && mainWindow.webContents) {
-      // Mirror logs to main process console if needed
-      console[level] ? console[level](...data) : console.log(...data);
-    } else {
-      console.log(...data);
-    }
-  });
 }
 
 module.exports = { registerCoreHandlers };

@@ -45,7 +45,7 @@ export default function SuppliersPage() {
       p={2}
       pt={3}
       sx={{
-        backgroundColor: "#fff",
+        bgcolor: 'background.paper',
       }}
       minHeight={"100vh"}
     >
@@ -59,7 +59,7 @@ export default function SuppliersPage() {
         actions={
           <Button
             variant="contained"
-            color="primary"
+            color="secondary"
             startIcon={<Plus size={18} />}
             onClick={() => handleOpenModal()}
             sx={{

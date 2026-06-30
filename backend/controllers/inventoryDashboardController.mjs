@@ -7,9 +7,7 @@ export const getTopProductsController = (req, res) => {
       .status(200)
       .json({ status: "success", message: "Top products fetched", data });
   } catch (error) {
-    console.error(
-      `[BACKEND] - INVENTORY DASHBOARD CONTROLLER - ERROR IN GETTING TOP PRODUCTS CONTROLLER ${error}`
-    );
+    console.error("getTopProductsController -", error);
     res
       .status(500)
       .json({ status: "error", message: "Failed to fetch top products" });
@@ -25,9 +23,7 @@ export const getCategorySalesController = (req, res) => {
       data,
     });
   } catch (error) {
-    console.error(
-      `[BACKEND] - INVENTORY DASHBOARD CONTROLLER - ERROR IN GETTING CATEGORY SALES CONTROLLER ${error}`
-    );
+    console.error("getCategorySalesController -", error);
     res
       .status(500)
       .json({ status: "error", message: "Failed to fetch category sales" });
@@ -43,9 +39,7 @@ export const getFastMovingController = (req, res) => {
       data,
     });
   } catch (error) {
-    console.error(
-      `[BACKEND] - INVENTORY DASHBOARD CONTROLLER - ERROR IN GETTING FAST MOVING PRODUCTS CONTROLLER ${error}`
-    );
+    console.error("getFastMovingController -", error);
     res.status(500).json({
       status: "error",
       message: "Failed to fetch fast moving products",
@@ -62,9 +56,7 @@ export const getSlowMovingController = (req, res) => {
       data,
     });
   } catch (error) {
-    console.error(
-      `[BACKEND] - INVENTORY DASHBOARD CONTROLLER - ERROR IN GETTING SLOW PRODUCTS CONTROLLER ${error}`
-    );
+    console.error("getSlowMovingController -", error);
     res.status(500).json({
       status: "error",
       message: "Failed to fetch slow moving products",
@@ -82,9 +74,7 @@ export const getTotalStockSummaryController = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    console.error(
-      `[BACKEND] - INVENTORY DASHBOARD CONTROLLER - ERROR IN GETTING TOTAL STOCK SUMMARY CONTROLLER ${error}`
-    );
+    console.error("getTotalStockSummaryController -", error);
     return res.status(500).json({
       status: "error",
       message: "Failed to fetch total stock summary",
@@ -102,9 +92,7 @@ export const getInventoryHealthMetricsController = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    console.error(
-      `[BACKEND] - INVENTORY DASHBOARD CONTROLLER - ERROR IN GETTING HEALTH METRICS CONTROLLER ${error}`
-    );
+    console.error("getInventoryHealthMetricsController -", error);
     return res.status(500).json({
       status: "error",
       message: "Failed to fetch inventory health metrics",

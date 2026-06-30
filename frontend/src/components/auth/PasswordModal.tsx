@@ -114,7 +114,7 @@ export default function PasswordModal() {
                 width: 70,
                 height: 70,
                 mb: 2,
-                bgcolor: "primary.main",
+                bgcolor: 'text.primary',
                 fontSize: "1.75rem",
                 fontWeight: "bold",
                 boxShadow: "0 8px 16px rgba(0,0,0,0.15)",
@@ -127,7 +127,7 @@ export default function PasswordModal() {
             </Typography>
             <Typography
               variant="subtitle1"
-              color="primary.main"
+              color="#111827"
               fontWeight="600"
               mt={0.5}
             >
@@ -142,7 +142,7 @@ export default function PasswordModal() {
                 p: 2.5,
                 borderRadius: "50%",
                 bgcolor: "primary.lighter",
-                color: "primary.main",
+                color: 'text.primary',
                 mb: 2,
                 background: "linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)",
               }}
@@ -248,7 +248,7 @@ export default function PasswordModal() {
               textTransform: "none",
               color: "text.secondary",
               fontWeight: 500,
-              "&:hover": { color: "primary.main", bgcolor: "transparent" },
+              "&:hover": { color: 'text.primary', bgcolor: "transparent" },
             }}
           >
             Login as someone else

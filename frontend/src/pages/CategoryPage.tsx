@@ -125,7 +125,7 @@ export default function CategoriesPage() {
     <Box
       p={3}
       sx={{
-        backgroundColor: "#f8f9fa",
+        bgcolor: 'background.default',
         minHeight: "100vh",
       }}
     >
@@ -206,7 +206,7 @@ export default function CategoriesPage() {
                   p: 1.5,
                   borderRadius: "12px",
                   bgcolor: "#E3F2FD",
-                  color: "primary.main",
+                  color: 'text.primary',
                 }}
               >
                 <FolderTree size={24} />

@@ -504,7 +504,7 @@ export default function TallyDashboard() {
                                   <Typography
                                     variant="caption"
                                     fontWeight="bold"
-                                    color="primary.main"
+                                    color="#111827"
                                     display="block"
                                   >
                                     HOW TO FIX:

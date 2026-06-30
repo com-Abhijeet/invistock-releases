@@ -110,7 +110,7 @@ export default function ProductABCPage() {
       p={2}
       pt={3}
       sx={{
-        backgroundColor: "#fff",
+        bgcolor: 'background.paper',
         borderTopLeftRadius: "36px",
         borderBottomLeftRadius: "36px",
         minHeight: "100vh",

@@ -111,7 +111,7 @@ const SidebarNav = ({
             <Typography
               variant="h6"
               fontWeight={800}
-              color="primary.main"
+              color="#111827"
               sx={{ letterSpacing: "-0.5px" }}
             >
               KOSH

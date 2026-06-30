@@ -14,7 +14,7 @@ export async function getDashboardSummary(req, res) {
       data: { stats, charts },
     });
   } catch (error) {
-    console.error("Dashboard Error:", error);
+    console.error("getDashboardSummary -", error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

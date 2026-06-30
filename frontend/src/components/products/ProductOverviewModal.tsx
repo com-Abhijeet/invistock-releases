@@ -121,7 +121,7 @@ export default function ProductOverviewModal({
       product.quantity <= (shop?.low_stock_threshold ?? 5)
     )
       return "error";
-    if (product.quantity <= 5) return "warning";
+    if (product.quantity <= 5) return "secondary";
     return "success";
   };
 
@@ -223,7 +223,7 @@ export default function ProductOverviewModal({
                 >
                   Selling (MOP)
                 </Typography>
-                <Typography variant="h6" fontWeight={600} color="primary.main">
+                <Typography variant="h6" fontWeight={600} color="#111827">
                   ₹{product?.mop?.toLocaleString("en-IN") || 0}
                 </Typography>
               </Grid>

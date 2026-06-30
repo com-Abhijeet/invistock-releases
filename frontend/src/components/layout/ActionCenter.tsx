@@ -127,7 +127,7 @@ export default function ActionCenter() {
         <Box
           sx={{
             p: 2.5,
-            bgcolor: "white",
+            bgcolor: 'background.paper',
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
@@ -135,7 +135,7 @@ export default function ActionCenter() {
             <Avatar
               sx={{
                 bgcolor: alpha(theme.palette.primary.main, 0.1),
-                color: "primary.main",
+                color: 'text.primary',
                 width: 40,
                 height: 40,
               }}
@@ -210,7 +210,7 @@ export default function ActionCenter() {
                     border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
                     borderRadius: "12px",
                     overflow: "hidden",
-                    bgcolor: "white",
+                    bgcolor: 'background.paper',
                   }}
                 >
                   {/* Section Header */}

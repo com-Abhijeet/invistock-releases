@@ -24,9 +24,7 @@ export async function createNonGstSaleController(req, res) {
     const sale = createNonGstSaleWithItems(payload);
     res.status(201).json({ status: "success", data: sale });
   } catch (error) {
-    console.error(
-      `[BACKEND] - NG SALES CONTROLLER - ERROR IN CREATING NG SALES CONTROLLER ${error}`
-    );
+    console.error("createNonGstSaleController -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -43,9 +41,7 @@ export async function getNonGstSaleByIdController(req, res) {
     }
     res.status(200).json({ status: "success", data: sale });
   } catch (error) {
-    console.error(
-      `[BACKEND] - NG SALES CONTROLLER - ERROR IN GETTING NG SALE BY ID CONTROLLER ${error}`
-    );
+    console.error("getNonGstSaleByIdController -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -64,9 +60,7 @@ export async function getNonGstSalesController(req, res) {
     const data = NonGstRepo.getPaginatedNonGstSales(options);
     res.status(200).json(data); // Send back { records, totalRecords }
   } catch (error) {
-    console.error(
-      `[BACKEND] - NG SALES CONTROLLER - ERROR IN GETTING NG SALES CONTROLLER ${error}`
-    );
+    console.error("getNonGstSalesController -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }
@@ -79,9 +73,7 @@ export async function getUniqueProductNamesController(req, res) {
     const names = NonGstRepo.getUniqueProductNames();
     res.status(200).json({ status: "success", data: names });
   } catch (error) {
-    console.error(
-      `[BACKEND] - NG SALES CONTROLLER - ERROR IN GETTING UNIQUE PRODUCTS ${error}`
-    );
+    console.error("getUniqueProductNamesController -", error);
     res.status(500).json({ status: "error", error: error.message });
   }
 }

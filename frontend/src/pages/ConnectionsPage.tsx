@@ -227,7 +227,7 @@ export default function ConnectionsPage() {
                     <Typography
                       variant="h6"
                       fontFamily="monospace"
-                      color="primary.main"
+                      color="#111827"
                     >
                       http://{iface.address}:3000
                     </Typography>
