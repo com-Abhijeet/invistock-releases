@@ -2,7 +2,7 @@ import { getTallyDb } from "../db/tallyDb.mjs";
 import dbProxy from "../db/db.mjs";
 
 // --- TALLY FORMATTING UTILITIES ---
-function formatTallyDate(dateString) {
+function formatTallyDate(dateString, educational_mode = 1) {
   if (!dateString) return "";
 
   try {
@@ -14,12 +14,13 @@ function formatTallyDate(dateString) {
       const month = parts[1].padStart(2, "0");
       let day = parts[2].padStart(2, "0");
 
-      // ⚠️ TALLY EDUCATIONAL MODE OVERRIDE
-      if (day !== "01" && day !== "02" && day !== "31") {
-        console.warn(
-          `[TALLY] Educational Mode: Forcing date ${year}-${month}-${day} to ${year}-${month}-01`,
-        );
-        day = "01";
+      if (educational_mode === 1) {
+        if (day !== "01" && day !== "02" && day !== "31") {
+          console.warn(
+            `[TALLY] Educational Mode: Forcing date ${year}-${month}-${day} to ${year}-${month}-01`,
+          );
+          day = "01";
+        }
       }
 
       return `${year}${month}${day}`;
@@ -50,7 +51,7 @@ function escapeXML(unsafe) {
 }
 
 function wrapTallyXML(content, reportName = "Vouchers") {
-  return `<?xml version="1.0" encoding="utf-8"?>\n<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>${reportName}</REPORTNAME><STATICVARIABLES><IMPORTDUPS>@@IGNORECONFLICTS</IMPORTDUPS></STATICVARIABLES></REQUESTDESC><REQUESTDATA>\n${content}\n</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>`;
+  return `<?xml version="1.0" encoding="utf-8"?>\n<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>${reportName}</REPORTNAME><STATICVARIABLES><IMPORTDUPS>@@OVERWRITE</IMPORTDUPS></STATICVARIABLES></REQUESTDESC><REQUESTDATA>\n${content}\n</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>`;
 }
 
 // --- PHASE 1: SCAN FOR CHANGES ---
@@ -196,52 +197,95 @@ function buildSaleXML(id, actionType, settings) {
   if (!sale && actionType !== "Delete") return null;
 
   const partyName = escapeXML(sale.customer_name || settings.cash_ledger);
-  const date = formatTallyDate(sale.created_at);
+  const date = formatTallyDate(sale.created_at, settings.educational_mode);
   const ref = escapeXML(sale.reference_no);
 
   if (actionType === "Delete") {
-    return `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Sales" ACTION="Delete"><DATE>${date}</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER></VOUCHER></TALLYMESSAGE>`;
+    // KOSH doesn't delete, it cancels
+    return `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Sales" ACTION="Cancel"><DATE>${date}</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER></VOUCHER></TALLYMESSAGE>`;
   }
+
+  const shop = mainDb.prepare("SELECT state FROM shop WHERE id = 1").get();
+  const shopState = shop?.state?.trim().toLowerCase() || "";
+  const customerState = sale.state?.trim().toLowerCase() || "";
+  const isInterstate = customerState && shopState && customerState !== shopState;
 
   const items = mainDb
     .prepare("SELECT * FROM sales_items WHERE sale_id = ?")
     .all(id);
   let totalTaxableRaw = 0,
     totalCGSTRaw = 0,
-    totalSGSTRaw = 0;
+    totalSGSTRaw = 0,
+    totalIGSTRaw = 0;
 
-  // Accurately split row totals into Taxable and Tax
+  // Accurately split row totals into Taxable and Tax per item
   items.forEach((item) => {
     const gstRate = item.gst_rate || 0;
     const itemPrice = Number(item.price);
-    const taxable = itemPrice / (1 + gstRate / 100);
-    const tax = itemPrice - taxable;
+    const taxable = Number((itemPrice / (1 + gstRate / 100)).toFixed(2));
+    const tax = Number((itemPrice - taxable).toFixed(2));
 
     totalTaxableRaw += taxable;
-    totalCGSTRaw += tax / 2;
-    totalSGSTRaw += tax / 2;
+    if (isInterstate) {
+      totalIGSTRaw += tax;
+    } else {
+      totalCGSTRaw += Number((tax / 2).toFixed(2));
+      totalSGSTRaw += Number((tax / 2).toFixed(2));
+    }
   });
 
   // EXACT PRECISION MATCHING TO PREVENT TALLY REJECTION
   const xmlTaxable = Number(totalTaxableRaw.toFixed(2));
   const xmlCGST = Number(totalCGSTRaw.toFixed(2));
   const xmlSGST = Number(totalSGSTRaw.toFixed(2));
+  const xmlIGST = Number(totalIGSTRaw.toFixed(2));
   const xmlTotalAmount = Number(sale.total_amount.toFixed(2));
 
-  const calculatedTotal = Number((xmlTaxable + xmlCGST + xmlSGST).toFixed(2));
+  const calculatedTotal = Number((xmlTaxable + xmlCGST + xmlSGST + xmlIGST).toFixed(2));
   const diff = Number((xmlTotalAmount - calculatedTotal).toFixed(2));
 
-  let xml = `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Sales" ACTION="${actionType}">
-    <DATE>${date}</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER><PARTYLEDGERNAME>${partyName}</PARTYLEDGERNAME><PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW><ISINVOICE>No</ISINVOICE>
-    <!-- DEBIT PARTY -->
-    <ALLLEDGERENTRIES.LIST><LEDGERNAME>${partyName}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-${xmlTotalAmount.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>
-    <!-- CREDIT SALES -->
-    <ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.sales_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${xmlTaxable.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  const isItemized = settings.sync_mode === 'itemized';
 
-  if (xmlCGST > 0)
-    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.cgst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${xmlCGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
-  if (xmlSGST > 0)
-    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.sgst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${xmlSGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  let xml = `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Sales" ACTION="${actionType}">
+    <DATE>${date}</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER><PARTYLEDGERNAME>${partyName}</PARTYLEDGERNAME><PERSISTEDVIEW>${isItemized ? 'Invoice Voucher View' : 'Accounting Voucher View'}</PERSISTEDVIEW><ISINVOICE>${isItemized ? 'Yes' : 'No'}</ISINVOICE>
+    <!-- DEBIT PARTY -->
+    <ALLLEDGERENTRIES.LIST><LEDGERNAME>${partyName}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-${xmlTotalAmount.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+
+  if (isItemized) {
+    items.forEach((item) => {
+      const gstRate = item.gst_rate || 0;
+      const itemPrice = Number(item.price);
+      const qty = Number(item.quantity) || 1;
+      const unit = item.unit || "pcs";
+      const taxable = Number((itemPrice / (1 + gstRate / 100)).toFixed(2));
+      const rate = Number((taxable / qty).toFixed(2));
+      xml += `<INVENTORYENTRIES.LIST>
+        <STOCKITEMNAME>${escapeXML(item.product_name)}</STOCKITEMNAME>
+        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+        <RATE>${rate.toFixed(2)}/${escapeXML(unit)}</RATE>
+        <AMOUNT>${taxable.toFixed(2)}</AMOUNT>
+        <ACTUALQTY> ${qty} ${escapeXML(unit)}</ACTUALQTY>
+        <BILLEDQTY> ${qty} ${escapeXML(unit)}</BILLEDQTY>
+        <ACCOUNTINGALLOCATIONS.LIST>
+          <LEDGERNAME>${escapeXML(settings.sales_ledger)}</LEDGERNAME>
+          <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+          <AMOUNT>${taxable.toFixed(2)}</AMOUNT>
+        </ACCOUNTINGALLOCATIONS.LIST>
+      </INVENTORYENTRIES.LIST>`;
+    });
+  } else {
+    xml += `<!-- CREDIT SALES -->
+    <ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.sales_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${xmlTaxable.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  }
+
+  if (xmlIGST > 0) {
+    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.igst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${xmlIGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  } else {
+    if (xmlCGST > 0)
+      xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.cgst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${xmlCGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+    if (xmlSGST > 0)
+      xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.sgst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${xmlSGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  }
 
   // Automatically balance global discount / fractional round-offs exactly
   if (diff !== 0) {
@@ -249,8 +293,8 @@ function buildSaleXML(id, actionType, settings) {
     const ledger =
       diff < -2 ? settings.discount_ledger : settings.round_off_ledger;
     const formattedDiff =
-      isDebit === "Yes" ? diff.toFixed(2) : Math.abs(diff).toFixed(2);
-    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>${isDebit}</ISDEEMEDPOSITIVE><AMOUNT>${formattedDiff}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+      isDebit === "Yes" ? Math.abs(diff).toFixed(2) : Math.abs(diff).toFixed(2);
+    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>${isDebit}</ISDEEMEDPOSITIVE><AMOUNT>${isDebit === "Yes" ? "-" : ""}${formattedDiff}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
   }
 
   return xml + `</VOUCHER></TALLYMESSAGE>`;
@@ -260,65 +304,111 @@ function buildPurchaseXML(id, actionType, settings) {
   const mainDb = dbProxy;
   const pur = mainDb
     .prepare(
-      "SELECT p.*, s.name as supplier_name FROM purchases p LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.id = ?",
+      "SELECT p.*, s.name as supplier_name, s.state as supplier_state FROM purchases p LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.id = ?",
     )
     .get(id);
   if (!pur && actionType !== "Delete") return null;
 
   const partyName = escapeXML(pur.supplier_name || settings.cash_ledger);
-  const date = formatTallyDate(pur.date);
+  const date = formatTallyDate(pur.date, settings.educational_mode);
   const ref = escapeXML(pur.reference_no);
 
   if (actionType === "Delete")
-    return `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Purchase" ACTION="Delete"><DATE>${date}</DATE><VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER></VOUCHER></TALLYMESSAGE>`;
+    return `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Purchase" ACTION="Cancel"><DATE>${date}</DATE><VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER></VOUCHER></TALLYMESSAGE>`;
+
+  const shop = mainDb.prepare("SELECT state FROM shop WHERE id = 1").get();
+  const shopState = shop?.state?.trim().toLowerCase() || "";
+  const supplierState = pur.supplier_state?.trim().toLowerCase() || "";
+  const isInterstate = supplierState && shopState && supplierState !== shopState;
 
   const items = mainDb
     .prepare("SELECT * FROM purchase_items WHERE purchase_id = ?")
     .all(id);
   let totalTaxableRaw = 0,
     totalCGSTRaw = 0,
-    totalSGSTRaw = 0;
+    totalSGSTRaw = 0,
+    totalIGSTRaw = 0;
 
   items.forEach((item) => {
     const gstRate = item.gst_rate || 0;
     const itemPrice = Number(item.price);
-    const taxable = itemPrice / (1 + gstRate / 100);
-    const tax = itemPrice - taxable;
+    const taxable = Number((itemPrice / (1 + gstRate / 100)).toFixed(2));
+    const tax = Number((itemPrice - taxable).toFixed(2));
 
     totalTaxableRaw += taxable;
-    totalCGSTRaw += tax / 2;
-    totalSGSTRaw += tax / 2;
+    if (isInterstate) {
+      totalIGSTRaw += tax;
+    } else {
+      totalCGSTRaw += Number((tax / 2).toFixed(2));
+      totalSGSTRaw += Number((tax / 2).toFixed(2));
+    }
   });
 
   const xmlTaxable = Number(totalTaxableRaw.toFixed(2));
   const xmlCGST = Number(totalCGSTRaw.toFixed(2));
   const xmlSGST = Number(totalSGSTRaw.toFixed(2));
+  const xmlIGST = Number(totalIGSTRaw.toFixed(2));
   const xmlTotalAmount = Number(pur.total_amount.toFixed(2));
 
-  const calculatedTotal = Number((xmlTaxable + xmlCGST + xmlSGST).toFixed(2));
+  const calculatedTotal = Number((xmlTaxable + xmlCGST + xmlSGST + xmlIGST).toFixed(2));
   const diff = Number((xmlTotalAmount - calculatedTotal).toFixed(2));
 
-  let xml = `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Purchase" ACTION="${actionType}">
-    <DATE>${date}</DATE><VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER><PARTYLEDGERNAME>${partyName}</PARTYLEDGERNAME><PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW><ISINVOICE>No</ISINVOICE>
-    <!-- CREDIT PARTY -->
-    <ALLLEDGERENTRIES.LIST><LEDGERNAME>${partyName}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${xmlTotalAmount.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>
-    <!-- DEBIT PURCHASE -->
-    <ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.purchase_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-${xmlTaxable.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  const isItemized = settings.sync_mode === 'itemized';
 
-  if (xmlCGST > 0)
-    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.cgst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-${xmlCGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
-  if (xmlSGST > 0)
-    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.sgst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-${xmlSGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  let xml = `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Purchase" ACTION="${actionType}">
+    <DATE>${date}</DATE><VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER><PARTYLEDGERNAME>${partyName}</PARTYLEDGERNAME><PERSISTEDVIEW>${isItemized ? 'Invoice Voucher View' : 'Accounting Voucher View'}</PERSISTEDVIEW><ISINVOICE>${isItemized ? 'Yes' : 'No'}</ISINVOICE>
+    <!-- CREDIT PARTY -->
+    <ALLLEDGERENTRIES.LIST><LEDGERNAME>${partyName}</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><AMOUNT>${xmlTotalAmount.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+
+  if (isItemized) {
+    items.forEach((item) => {
+      const gstRate = item.gst_rate || 0;
+      const itemPrice = Number(item.price);
+      const qty = Number(item.quantity) || 1;
+      const unit = item.unit || "pcs";
+      const taxable = Number((itemPrice / (1 + gstRate / 100)).toFixed(2));
+      const rate = Number((taxable / qty).toFixed(2));
+      
+      let productName = item.product_name;
+      if (!productName) {
+         const p = mainDb.prepare("SELECT name FROM products WHERE id = ?").get(item.product_id);
+         productName = p ? p.name : `Item ${item.product_id}`;
+      }
+      
+      xml += `<INVENTORYENTRIES.LIST>
+        <STOCKITEMNAME>${escapeXML(productName)}</STOCKITEMNAME>
+        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+        <RATE>${rate.toFixed(2)}/${escapeXML(unit)}</RATE>
+        <AMOUNT>-${taxable.toFixed(2)}</AMOUNT>
+        <ACTUALQTY> ${qty} ${escapeXML(unit)}</ACTUALQTY>
+        <BILLEDQTY> ${qty} ${escapeXML(unit)}</BILLEDQTY>
+        <ACCOUNTINGALLOCATIONS.LIST>
+          <LEDGERNAME>${escapeXML(settings.purchase_ledger)}</LEDGERNAME>
+          <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+          <AMOUNT>-${taxable.toFixed(2)}</AMOUNT>
+        </ACCOUNTINGALLOCATIONS.LIST>
+      </INVENTORYENTRIES.LIST>`;
+    });
+  } else {
+    xml += `<!-- DEBIT PURCHASE -->
+    <ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.purchase_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-${xmlTaxable.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  }
+
+  if (xmlIGST > 0) {
+    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.igst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-${xmlIGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  } else {
+    if (xmlCGST > 0)
+      xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.cgst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-${xmlCGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+    if (xmlSGST > 0)
+      xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(settings.sgst_ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><AMOUNT>-${xmlSGST.toFixed(2)}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+  }
 
   if (diff !== 0) {
     const isDebit = diff > 0 ? "Yes" : "No";
     const ledger =
       diff < -2 ? settings.discount_ledger : settings.round_off_ledger;
-    const formattedDiff =
-      isDebit === "Yes"
-        ? (-Math.abs(diff)).toFixed(2)
-        : Math.abs(diff).toFixed(2);
-    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>${isDebit}</ISDEEMEDPOSITIVE><AMOUNT>${formattedDiff}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
+    const formattedDiff = Math.abs(diff).toFixed(2);
+    xml += `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${escapeXML(ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>${isDebit}</ISDEEMEDPOSITIVE><AMOUNT>${isDebit === "Yes" ? "-" : ""}${formattedDiff}</AMOUNT></ALLLEDGERENTRIES.LIST>`;
   }
 
   return xml + `</VOUCHER></TALLYMESSAGE>`;
@@ -331,11 +421,11 @@ function buildTransactionXML(id, actionType, settings) {
 
   const vchType = txn.type === "payment_in" ? "Receipt" : "Payment";
   const isReceipt = vchType === "Receipt";
-  const date = formatTallyDate(txn.transaction_date);
+  const date = formatTallyDate(txn.transaction_date, settings.educational_mode);
   const ref = escapeXML(txn.reference_no);
 
   if (actionType === "Delete")
-    return `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="${vchType}" ACTION="Delete"><DATE>${date}</DATE><VOUCHERTYPENAME>${vchType}</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER></VOUCHER></TALLYMESSAGE>`;
+    return `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="${vchType}" ACTION="Cancel"><DATE>${date}</DATE><VOUCHERTYPENAME>${vchType}</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER></VOUCHER></TALLYMESSAGE>`;
 
   let partyName = "Unknown";
   if (txn.entity_type === "customer") {
@@ -374,11 +464,11 @@ function buildExpenseXML(id, actionType, settings) {
   const exp = mainDb.prepare("SELECT * FROM expenses WHERE id = ?").get(id);
   if (!exp && actionType !== "Delete") return null;
 
-  const date = formatTallyDate(exp.date);
+  const date = formatTallyDate(exp.date, settings.educational_mode);
   const ref = escapeXML(`EXP-${id}`);
 
   if (actionType === "Delete")
-    return `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Payment" ACTION="Delete"><DATE>${date}</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER></VOUCHER></TALLYMESSAGE>`;
+    return `<TALLYMESSAGE xmlns:UDF="TallyUDF"><VOUCHER VCHTYPE="Payment" ACTION="Cancel"><DATE>${date}</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><VOUCHERNUMBER>${ref}</VOUCHERNUMBER></VOUCHER></TALLYMESSAGE>`;
 
   const cashBankLedger =
     exp.payment_mode?.toLowerCase() === "cash"
@@ -506,4 +596,102 @@ export async function processSyncQueue() {
     success: true,
     message: `Synced: ${successCount}. Failed: ${failCount}.`,
   };
+}
+
+export async function autoCreateLedgers() {
+  const tDb = getTallyDb();
+  const settings = tDb.prepare("SELECT * FROM tally_settings WHERE id = 1").get();
+  
+  const ledgersToCreate = [
+    { name: settings.sales_ledger, group: "Sales Accounts" },
+    { name: settings.purchase_ledger, group: "Purchase Accounts" },
+    { name: settings.cgst_ledger, group: "Duties & Taxes" },
+    { name: settings.sgst_ledger, group: "Duties & Taxes" },
+    { name: settings.igst_ledger, group: "Duties & Taxes" },
+    { name: settings.discount_ledger, group: "Indirect Expenses" },
+    { name: settings.round_off_ledger, group: "Indirect Expenses" }
+  ].filter(l => l.name);
+
+  let successCount = 0;
+  let lastError = "";
+
+  for (const l of ledgersToCreate) {
+    const content = `<TALLYMESSAGE xmlns:UDF="TallyUDF"><LEDGER NAME="${escapeXML(l.name)}" ACTION="Create"><NAME.LIST><NAME>${escapeXML(l.name)}</NAME></NAME.LIST><PARENT>${escapeXML(l.group)}</PARENT></LEDGER></TALLYMESSAGE>`;
+    const payload = wrapTallyXML(content, "All Masters");
+
+    try {
+      const response = await fetch(settings.tally_url, {
+        method: "POST",
+        headers: { "Content-Type": "application/xml" },
+        body: payload,
+      });
+      const responseText = await response.text();
+      
+      if (responseText.includes("<CREATED>1</CREATED>") || responseText.includes("<ALTERED>1</ALTERED>") || responseText.includes("<ERRORS>0</ERRORS>")) {
+         successCount++;
+      } else {
+         const errMatch = responseText.match(/<LINEERROR>([\s\S]*?)<\/LINEERROR>/) || responseText.match(/<DESC>([\s\S]*?)<\/DESC>/);
+         lastError = errMatch ? errMatch[1].trim() : responseText;
+         console.error(`[TALLY LEDGER CREATION FAILED for ${l.name}] Raw Response:`, responseText);
+      }
+    } catch(e) {
+      throw new Error("Could not connect to Tally. Is it open?");
+    }
+  }
+
+  if (successCount === ledgersToCreate.length) {
+    return { success: true, message: `Successfully created/verified ${successCount} ledgers in Tally.` };
+  } else {
+    if (lastError.length > 200) lastError = lastError.substring(0, 200) + "...";
+    return { success: false, message: `Failed on some ledgers. Tally says: ${lastError}` };
+  }
+}
+
+export async function autoCreateItems() {
+  const mainDb = dbProxy;
+  const tDb = getTallyDb();
+  const settings = tDb.prepare("SELECT * FROM tally_settings WHERE id = 1").get();
+  
+  const products = mainDb.prepare("SELECT name, base_unit FROM products WHERE is_active = 1").all();
+  
+  let successCount = 0;
+  let lastError = "";
+
+  for (const p of products) {
+    const itemName = escapeXML(p.name);
+    const unitName = escapeXML(p.base_unit || "pcs");
+
+    // First create Unit, then Stock Item
+    const content = `
+      <TALLYMESSAGE xmlns:UDF="TallyUDF"><UNIT NAME="${unitName}" ACTION="Create"><NAME>${unitName}</NAME><ISSIMPLEUNIT>Yes</ISSIMPLEUNIT></UNIT></TALLYMESSAGE>
+      <TALLYMESSAGE xmlns:UDF="TallyUDF"><STOCKITEM NAME="${itemName}" ACTION="Create"><NAME.LIST><NAME>${itemName}</NAME></NAME.LIST><BASEUNITS>${unitName}</BASEUNITS></STOCKITEM></TALLYMESSAGE>
+    `;
+    const payload = wrapTallyXML(content, "All Masters");
+
+    try {
+      const response = await fetch(settings.tally_url, {
+        method: "POST",
+        headers: { "Content-Type": "application/xml" },
+        body: payload,
+      });
+      const responseText = await response.text();
+      
+      if (responseText.includes("<CREATED>1</CREATED>") || responseText.includes("<ALTERED>1</ALTERED>") || responseText.includes("<ERRORS>0</ERRORS>")) {
+         successCount++;
+      } else {
+         const errMatch = responseText.match(/<LINEERROR>([\s\S]*?)<\/LINEERROR>/) || responseText.match(/<DESC>([\s\S]*?)<\/DESC>/);
+         lastError = errMatch ? errMatch[1].trim() : responseText;
+         console.error(`[TALLY ITEM CREATION FAILED for ${p.name}] Raw Response:`, responseText);
+      }
+    } catch(e) {
+      throw new Error("Could not connect to Tally. Is it open?");
+    }
+  }
+
+  if (successCount === products.length) {
+    return { success: true, message: `Successfully created/verified ${successCount} products in Tally.` };
+  } else {
+    if (lastError.length > 200) lastError = lastError.substring(0, 200) + "...";
+    return { success: false, message: `Failed on some items. Tally says: ${lastError}` };
+  }
 }

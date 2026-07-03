@@ -3,6 +3,7 @@ import { api } from "./api";
 export interface TallySettings {
   id?: number;
   sync_mode?: string;
+  educational_mode?: boolean;
   tally_url: string;
   company_name?: string;
   sales_ledger: string;
@@ -63,4 +64,19 @@ export const runManualSync = async (): Promise<{
 export const resetSyncQueue = async (): Promise<string> => {
   const response = await api.post("/api/tally/sync/reset");
   return response.data.message;
+};
+
+export const retrySpecificSync = async (entity_type: string, entity_id: number): Promise<string> => {
+  const response = await api.post("/api/tally/sync/retry", { entity_type, entity_id });
+  return response.data.message;
+};
+
+export const autoCreateLedgers = async (): Promise<{ success: boolean; message: string }> => {
+  const response = await api.post("/api/tally/auto-create-ledgers");
+  return response.data;
+};
+
+export const autoCreateItems = async (): Promise<any> => {
+  const response = await api.post("/api/tally/auto-create-items");
+  return response.data;
 };

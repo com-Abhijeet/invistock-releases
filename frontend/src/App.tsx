@@ -114,9 +114,55 @@ function GlobalShortcuts() {
       }
     };
 
+    // --- Global Number Input Fixes ---
+    // Fixes the Material UI / React issue where "0" persists and causes inputs like "0159".
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLInputElement;
+      if (target && target.tagName === "INPUT" && target.type === "number") {
+        if (target.value === "0") {
+          target.select();
+        }
+      }
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLInputElement;
+      if (target && target.tagName === "INPUT" && target.type === "number") {
+        if (target.value === "0") {
+          target.select();
+        }
+      }
+    };
+
+    const handleFocusOut = (e: FocusEvent) => {
+      const target = e.target as HTMLInputElement;
+      if (target && target.tagName === "INPUT" && target.type === "number") {
+        const val = target.value;
+        // Removes leading zeros if followed by another digit (e.g., "0159" -> "159", "00" -> "0")
+        if (val && /^0+(?=\d)/.test(val)) {
+          const cleaned = val.replace(/^0+(?=\d)/, "");
+          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,
+            "value",
+          )?.set;
+          if (nativeInputValueSetter) {
+            nativeInputValueSetter.call(target, cleaned);
+            target.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        }
+      }
+    };
+
     window.addEventListener("keydown", handleShortcut);
+    window.addEventListener("focusin", handleFocusIn);
+    window.addEventListener("click", handleClick);
+    window.addEventListener("focusout", handleFocusOut);
+    
     return () => {
       window.removeEventListener("keydown", handleShortcut);
+      window.removeEventListener("focusin", handleFocusIn);
+      window.removeEventListener("click", handleClick);
+      window.removeEventListener("focusout", handleFocusOut);
     };
   }, [navigate, toggleAppMode]);
 

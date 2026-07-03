@@ -86,7 +86,7 @@ export async function fetchTopCustomers(
 ): Promise<TopCustomer[]> {
   try {
     const res = await api.get(`${BASE_URL}/top-customers`, { params: filters });
-    return res.data?.data?.customers ?? [];
+    return res.data?.data ?? [];
   } catch (error: any) {
     console.error("❌ Error fetching top customers:", error);
     toast.error(

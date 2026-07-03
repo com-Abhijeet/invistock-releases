@@ -6,6 +6,9 @@ import PurchaseTable from "../components/purchase/PurchaseTable";
 import DashboardHeader from "../components/DashboardHeader";
 import type { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
 import theme from "../../theme";
+import toast from "react-hot-toast";
+import AddEditTransactionModal from "../components/transactions/AddEditTransactionModal";
+import type { Transaction } from "../lib/types/transactionTypes";
 
 const getInitialFilters = (): DashboardFilter => {
   const now = new Date();
@@ -34,6 +37,10 @@ const PurchaseTablePage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState("all");
 
+  const [transactionModalOpen, setTransactionModalOpen] = useState(false);
+  const [transactionInitialData, setTransactionInitialData] =
+    useState<Partial<Transaction> | null>(null);
+
   // ✅ ADDED: Stability wrapper
   const handleFilterChange = useCallback((newFilters: DashboardFilter) => {
     setActiveFilters((prev) => {
@@ -52,6 +59,27 @@ const PurchaseTablePage = () => {
     ...activeFilters,
     query: searchQuery,
     status: status,
+  };
+
+  const handleMarkPayment = (purchase: any) => {
+    const pending = (purchase.original_total || 0) - (purchase.original_paid || 0);
+
+    if (pending <= 0.9) {
+      toast("This bill is already fully paid.", { icon: "ℹ️" });
+    }
+
+    setTransactionInitialData({
+      type: "payment_out",
+      bill_type: "purchase",
+      entity_type: "supplier",
+      entity_id: purchase.supplier_id,
+      bill_id: purchase.id,
+      amount: pending > 0 ? pending : 0,
+      transaction_date: new Date().toISOString().split("T")[0],
+      status: "paid",
+      payment_mode: "cash",
+    });
+    setTransactionModalOpen(true);
   };
 
   return (
@@ -94,7 +122,21 @@ const PurchaseTablePage = () => {
         }
       />
 
-      <PurchaseTable filters={finalFilters} />
+      <PurchaseTable filters={finalFilters} onMarkPayment={handleMarkPayment} />
+
+      {/* CREATE / EDIT MODAL */}
+      <AddEditTransactionModal
+        open={transactionModalOpen}
+        onClose={() => {
+          setTransactionModalOpen(false);
+          setTransactionInitialData(null);
+        }}
+        onSuccess={() => {
+          // You can trigger a table refresh here by tweaking a state if needed
+          // For now, the user can manually refresh or we could pass a reload function from PurchaseTable
+        }}
+        initialData={transactionInitialData as Transaction}
+      />
     </Box>
   );
 };

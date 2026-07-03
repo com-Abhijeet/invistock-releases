@@ -159,6 +159,7 @@ export default function SaleItemSection({
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [scanningRowIndex, setScanningRowIndex] = useState<number | null>(null);
+  const [focusedBatchIndex, setFocusedBatchIndex] = useState(0);
 
   const prevItemsLength = useRef(items.length);
 
@@ -354,6 +355,7 @@ export default function SaleItemSection({
       setPendingProduct(product);
       setLoadingBatches(true);
       setBatchModalOpen(true);
+      setFocusedBatchIndex(0);
       try {
         const batchData = await getProductBatches(
           product.id!,
@@ -1553,6 +1555,20 @@ export default function SaleItemSection({
         onClose={() => setBatchModalOpen(false)}
         maxWidth="xs"
         fullWidth
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setFocusedBatchIndex((p) => Math.min(p + 1, availableBatches.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setFocusedBatchIndex((p) => Math.max(p - 1, 0));
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (availableBatches[focusedBatchIndex]) {
+              handleBatchSelect(availableBatches[focusedBatchIndex]);
+            }
+          }
+        }}
         PaperProps={{
           sx: { borderRadius: "12px", boxShadow: theme.shadows[10] },
         }}
@@ -1562,39 +1578,48 @@ export default function SaleItemSection({
         >
           SELECT BATCH / SERIAL
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 0 }}>
+        <DialogContent dividers sx={{ p: 0, maxHeight: 400, overflowY: "auto" }}>
           {loadingBatches ? (
             <Box p={4} textAlign="center">
               <CircularProgress size={24} />
             </Box>
           ) : (
             <List dense>
-              {availableBatches.map((b: any) => (
-                <ListItemButton
-                  key={b.id}
-                  onClick={() => handleBatchSelect(b)}
-                  sx={{ py: 1.5 }}
-                >
-                  <ListItemText
-                    primary={b.batch_number || b.serial_number}
-                    secondary={`Stock: ${b.quantity} | MRP: ₹${b.mrp}`}
-                    primaryTypographyProps={{
-                      fontWeight: 800,
-                      fontSize: "0.875rem",
+              {availableBatches.map((b: any, idx: number) => {
+                const isSerial = !!b.serial_number;
+                return (
+                  <ListItemButton
+                    key={b.id}
+                    selected={focusedBatchIndex === idx}
+                    onClick={() => handleBatchSelect(b)}
+                    sx={{ py: 1.5 }}
+                    ref={(el) => {
+                      if (el && focusedBatchIndex === idx) {
+                        el.scrollIntoView({ block: "nearest" });
+                      }
                     }}
-                    secondaryTypographyProps={{
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                    }}
-                  />
-                  <Chip
-                    label="Select"
-                    size="small"
-                    variant="outlined"
-                    sx={{ fontWeight: 800, fontSize: "0.65rem" }}
-                  />
-                </ListItemButton>
-              ))}
+                  >
+                    <ListItemText
+                      primary={isSerial ? `Serial: ${b.serial_number}` : `Batch: ${b.batch_number || "DEFAULT"}`}
+                      secondary={isSerial ? `Stock: 1 | MRP: ₹${b.mrp}` : `Stock: ${b.quantity} | MRP: ₹${b.mrp}`}
+                      primaryTypographyProps={{
+                        fontWeight: 800,
+                        fontSize: "0.875rem",
+                      }}
+                      secondaryTypographyProps={{
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                      }}
+                    />
+                    <Chip
+                      label="Select"
+                      size="small"
+                      variant="outlined"
+                      sx={{ fontWeight: 800, fontSize: "0.65rem" }}
+                    />
+                  </ListItemButton>
+                );
+              })}
             </List>
           )}
         </DialogContent>

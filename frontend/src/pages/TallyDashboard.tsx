@@ -18,6 +18,12 @@ import {
   LinearProgress,
   Chip,
   Divider,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Switch,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -44,6 +50,9 @@ import {
   getTallyStatus,
   runManualSync,
   resetSyncQueue,
+  retrySpecificSync,
+  autoCreateLedgers,
+  autoCreateItems,
   TallySettings,
   TallyStatus,
 } from "../lib/api/tallyService";
@@ -56,12 +65,16 @@ const getHumanReadableError = (rawError: string, _type: string) => {
   const errorLower = rawError.toLowerCase();
 
   if (errorLower.includes("does not exist") || errorLower.includes("ledger")) {
-    const match = rawError.match(/'([^']+)'/);
-    const ledgerName = match ? match[1] : "A required ledger";
+    const match = rawError.match(/['"]([^'"]+)['"]/);
+    const ledgerName = match ? match[1] : null;
     return {
       title: "Missing Tally Ledger",
-      detail: `Tally rejected this because the ledger "${ledgerName}" is missing.`,
-      fix: `Open Tally > Create Ledger > Name it exactly "${ledgerName}". (Or fix the spelling in Kosh Ledger Config).`,
+      detail: ledgerName 
+        ? `Tally rejected this because the ledger "${ledgerName}" is missing.`
+        : `Tally rejected this because a ledger is missing. Tally says: "${rawError}"`,
+      fix: ledgerName
+        ? `Open Tally > Create Ledger > Name it exactly "${ledgerName}". (Or fix the spelling in Kosh Ledger Config).`
+        : `Check the error above to see which ledger is missing. Then use the 'Auto-Create Ledgers' button in the config tab.`,
       severity: "error",
     };
   }
@@ -129,9 +142,13 @@ export default function TallyDashboard() {
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isCreatingLedgers, setIsCreatingLedgers] = useState(false);
+  const [isCreatingItems, setIsCreatingItems] = useState(false);
 
   const [settings, setSettings] = useState<TallySettings>({
     tally_url: "http://localhost:9000",
+    sync_mode: "accounting",
+    educational_mode: true,
     sales_ledger: "Sales Account",
     purchase_ledger: "Purchase Account",
     cash_ledger: "Cash",
@@ -153,8 +170,18 @@ export default function TallyDashboard() {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isSyncing) {
+      interval = setInterval(() => {
+        fetchData(false);
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [isSyncing]);
+
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [settingsRes, statusRes] = await Promise.all([
         getTallySettings(),
@@ -163,9 +190,9 @@ export default function TallyDashboard() {
       if (settingsRes) setSettings(settingsRes);
       if (statusRes) setStatus(statusRes);
     } catch (error: any) {
-      toast.error("Failed to load Tally data");
+      if (showLoading) toast.error("Failed to load Tally data");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -188,13 +215,60 @@ export default function TallyDashboard() {
       toast.success(res.details || "Sync completed successfully!", {
         id: loadId,
       });
-      await fetchData();
+      await fetchData(false);
     } catch (error: any) {
       toast.error(error.message || "Sync failed. Ensure Tally is open.", {
         id: loadId,
       });
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleRetrySpecific = async (type: string, id: number) => {
+    const loadId = toast.loading(`Retrying ${type} #${id}...`);
+    try {
+      const msg = await retrySpecificSync(type, id);
+      toast.success(msg, { id: loadId });
+      fetchData(false);
+    } catch (error: any) {
+      toast.error(error.message || "Retry failed", { id: loadId });
+    }
+  };
+
+  const handleAutoCreateLedgers = async () => {
+    if (!window.confirm("This will automatically create all mapped ledgers in your Tally company. Make sure Tally is open. Continue?")) return;
+    setIsCreatingLedgers(true);
+    const loadId = toast.loading("Creating ledgers in Tally...");
+    try {
+      const res = await autoCreateLedgers();
+      if (res.success) {
+        toast.success(res.message, { id: loadId });
+      } else {
+        toast.error(res.message, { id: loadId });
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to create ledgers", { id: loadId });
+    } finally {
+      setIsCreatingLedgers(false);
+    }
+  };
+
+  const handleAutoCreateItems = async () => {
+    if (!window.confirm("This will automatically create all missing Stock Items and Units in your Tally company. Continue?")) return;
+    setIsCreatingItems(true);
+    const loadId = toast.loading("Creating stock items in Tally...");
+    try {
+      const res = await autoCreateItems();
+      if (res.success) {
+        toast.success(res.message, { id: loadId });
+      } else {
+        toast.error(res.message, { id: loadId });
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to create items", { id: loadId });
+    } finally {
+      setIsCreatingItems(false);
     }
   };
 
@@ -215,7 +289,7 @@ export default function TallyDashboard() {
     }
   };
 
-  const handleSettingChange = (field: keyof TallySettings, value: string) => {
+  const handleSettingChange = (field: keyof TallySettings, value: any) => {
     setSettings((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -492,30 +566,40 @@ export default function TallyDashboard() {
                                 p={1.5}
                                 borderRadius={2}
                                 display="flex"
-                                alignItems="flex-start"
+                                flexDirection="column"
                                 gap={1.5}
                               >
-                                <Wrench
-                                  size={18}
-                                  color={theme.palette.primary.main}
-                                  style={{ marginTop: 2 }}
-                                />
-                                <Box>
-                                  <Typography
-                                    variant="caption"
-                                    fontWeight="bold"
-                                    color="#111827"
-                                    display="block"
-                                  >
-                                    HOW TO FIX:
-                                  </Typography>
-                                  <Typography
-                                    variant="caption"
-                                    color="text.primary"
-                                  >
-                                    {humanError.fix}
-                                  </Typography>
+                                <Box display="flex" gap={1.5} alignItems="flex-start">
+                                  <Wrench
+                                    size={18}
+                                    color={theme.palette.primary.main}
+                                    style={{ marginTop: 2 }}
+                                  />
+                                  <Box>
+                                    <Typography
+                                      variant="caption"
+                                      fontWeight="bold"
+                                      color="#111827"
+                                      display="block"
+                                    >
+                                      HOW TO FIX:
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.primary"
+                                    >
+                                      {humanError.fix}
+                                    </Typography>
+                                  </Box>
                                 </Box>
+                                <Button 
+                                  variant="contained" 
+                                  size="small" 
+                                  fullWidth
+                                  onClick={() => handleRetrySpecific(err.entity_type, err.entity_id)}
+                                >
+                                  Retry Sync
+                                </Button>
                               </Box>
                             </Grid>
                           </Grid>
@@ -571,6 +655,36 @@ export default function TallyDashboard() {
                     }
                     helperText="Default is http://localhost:9000. Ensure Tally F12 ODBC is enabled."
                   />
+                </Grid>
+                
+                <Grid item xs={12} md={12}>
+                  <FormControl component="fieldset" sx={{ mt: 2, mb: 1 }}>
+                    <FormLabel component="legend" sx={{ fontWeight: 'bold' }}>Tally Sync Mode</FormLabel>
+                    <RadioGroup
+                      row
+                      value={settings.sync_mode || 'accounting'}
+                      onChange={(e) => handleSettingChange('sync_mode', e.target.value)}
+                    >
+                      <FormControlLabel value="accounting" control={<Radio />} label="Accounting View (Financials & Ledgers only)" />
+                      <FormControlLabel value="itemized" control={<Radio />} label="Itemized View (Detailed products, qty, and rates)" />
+                    </RadioGroup>
+                  </FormControl>
+                  
+                  <Box mt={1} display="flex" alignItems="center">
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={settings.educational_mode !== false} // defaults to true
+                          onChange={(e) => handleSettingChange('educational_mode', e.target.checked)}
+                          color="primary"
+                        />
+                      }
+                      label="Educational Mode Compatibility"
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      (Forces all voucher dates to the 1st of the month so Educational Tally won't reject them)
+                    </Typography>
+                  </Box>
                 </Grid>
               </Grid>
 
@@ -698,8 +812,33 @@ export default function TallyDashboard() {
                 borderTop={1}
                 borderColor="divider"
                 display="flex"
-                justifyContent="flex-end"
+                justifyContent="space-between"
               >
+                <Box display="flex" gap={2}>
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    color="secondary"
+                    onClick={handleAutoCreateLedgers}
+                    disabled={isCreatingLedgers}
+                    startIcon={<Database size={18} />}
+                  >
+                    Auto-Create Ledgers
+                  </Button>
+                  {settings.sync_mode === 'itemized' && (
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      color="secondary"
+                      onClick={handleAutoCreateItems}
+                      disabled={isCreatingItems}
+                      startIcon={<ShoppingCart size={18} />}
+                    >
+                      Auto-Create Stock Items
+                    </Button>
+                  )}
+                </Box>
+                
                 <Button
                   type="submit"
                   variant="contained"

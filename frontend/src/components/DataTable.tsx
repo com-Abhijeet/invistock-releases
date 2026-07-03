@@ -39,6 +39,7 @@ export interface BulkAction {
 export type DataTableProps = BaseDataTableProps & {
   bulkActions?: boolean;
   bulkActionsList?: BulkAction[];
+  filterBar?: React.ReactNode;
 };
 
 export default function DataTable({
@@ -55,6 +56,7 @@ export default function DataTable({
   rowsPerPageOptions = [5, 10, 20, 50, 100],
   bulkActions = false,
   bulkActionsList = [],
+  filterBar,
 }: DataTableProps) {
   const theme = useTheme();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -194,6 +196,22 @@ export default function DataTable({
         backgroundColor: theme.palette.background.paper,
       }}
     >
+      {/* --- FILTER BAR --- */}
+      {filterBar && (
+        <Box
+          sx={{
+            p: 1.5,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            backgroundColor: theme.palette.background.paper,
+          }}
+        >
+          {filterBar}
+        </Box>
+      )}
+
       {/* --- BULK ACTIONS TOOLBAR --- */}
       {bulkActions && selectedItems.length > 0 && (
         <Box

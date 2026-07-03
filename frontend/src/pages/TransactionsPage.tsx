@@ -12,6 +12,9 @@ import {
   Stack,
   Typography,
   Button,
+  Select,
+  MenuItem,
+  FormControl,
 } from "@mui/material";
 import {
   Edit,
@@ -58,6 +61,7 @@ export default function TransactionsPage() {
   const [activeFilters, setActiveFilters] =
     useState<DashboardFilter>(getInitialFilters);
   const [searchQuery, setSearchQuery] = useState("");
+  const [transactionType, setTransactionType] = useState<string>("all");
 
   // Table States
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -91,6 +95,7 @@ export default function TransactionsPage() {
       const res = await getAllTransactions({
         ...activeFilters,
         query: searchQuery,
+        type: transactionType !== "all" ? transactionType : undefined,
         page: page + 1,
         limit: rowsPerPage,
       });
@@ -109,7 +114,7 @@ export default function TransactionsPage() {
       fetchTransactions();
     }, 500);
     return () => clearTimeout(debounceTimeout);
-  }, [activeFilters, searchQuery, page, rowsPerPage]);
+  }, [activeFilters, searchQuery, page, rowsPerPage, transactionType]);
 
   const handleOpenModal = (transaction?: Transaction) => {
     setSelectedTransaction(transaction ?? null);
@@ -203,6 +208,7 @@ export default function TransactionsPage() {
 
   const columns = [
     { key: "reference_no", label: "Ref No." },
+    { key: "bill_ref_no", label: "Bill No", format: (val: string) => val || "-" },
     {
       key: "type",
       label: "Type",
@@ -315,20 +321,44 @@ export default function TransactionsPage() {
           <CircularProgress />
         </Box>
       ) : (
-        <DataTable
-          rows={transactions}
-          columns={columns}
-          actions={actions}
-          loading={loading}
-          total={totalRecords}
-          page={page}
-          rowsPerPage={rowsPerPage}
-          onPageChange={setPage}
-          onRowsPerPageChange={(val) => {
-            setRowsPerPage(val);
-            setPage(0);
-          }}
-        />
+          <DataTable
+            rows={transactions}
+            columns={columns}
+            actions={actions}
+            loading={loading}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            total={totalRecords}
+            onPageChange={(newPage) => setPage(newPage)}
+            onRowsPerPageChange={(newRows) => {
+              setRowsPerPage(newRows);
+              setPage(0);
+            }}
+            filterBar={
+              <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+                <Typography variant="body2" color="text.secondary" fontWeight={600}>
+                  Filter:
+                </Typography>
+                <FormControl size="small" sx={{ minWidth: 250 }}>
+                  <Select
+                    value={transactionType}
+                    onChange={(e) => {
+                      setTransactionType(e.target.value as string);
+                      setPage(0);
+                    }}
+                    displayEmpty
+                    sx={{ borderRadius: 2, backgroundColor: "background.paper" }}
+                  >
+                    <MenuItem value="all">All Transactions</MenuItem>
+                    <MenuItem value="payment_in">Sale Related (Payment In)</MenuItem>
+                    <MenuItem value="payment_out">Purchase Related (Payment Out)</MenuItem>
+                    <MenuItem value="credit_note">Credit Notes</MenuItem>
+                    <MenuItem value="debit_note">Debit Notes</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            }
+          />
       )}
 
       {/* CREATE / EDIT MODAL */}

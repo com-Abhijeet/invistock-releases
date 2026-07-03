@@ -70,3 +70,21 @@ export function formatPackagingString(
 ) {
   return `1 ${secondaryUnit} = ${conversionFactor} ${baseUnit}`;
 }
+
+/**
+ * Get all valid unit options for a specific product.
+ */
+export function getUnitsForProduct(product?: { base_unit?: string; secondary_unit?: string | null } | null) {
+  if (!product) return ["pcs"];
+  const units = new Set<string>();
+  if (product.base_unit) units.add(product.base_unit);
+  if (product.secondary_unit) units.add(product.secondary_unit);
+  const baseFamily = Object.values(UNIT_FAMILIES).find((family) =>
+    family.units.some((u) => u.value === product.base_unit),
+  );
+  if (baseFamily) {
+    baseFamily.units.forEach((u) => units.add(u.value));
+  }
+  if (units.size === 0) units.add("pcs");
+  return Array.from(units);
+}
