@@ -28,7 +28,8 @@ export function initializeTallyDb(mainDbPath) {
       discount_ledger TEXT DEFAULT 'Discount Allow',
       round_off_ledger TEXT DEFAULT 'Round Off',
       default_expense_ledger TEXT DEFAULT 'Expense',
-      sync_mode TEXT,
+      sync_mode TEXT DEFAULT 'accounting',
+      educational_mode BOOLEAN DEFAULT 1,
       company_name TEXT DEFAULT 'My_company'
     );
 
@@ -47,9 +48,21 @@ export function initializeTallyDb(mainDbPath) {
 
   const hasSettings = tallyDb
     .prepare("SELECT count(*) as count FROM tally_settings")
-    .get().count;
   if (!hasSettings) {
     tallyDb.prepare("INSERT INTO tally_settings (id) VALUES (1)").run();
+  }
+
+  // Handle schema migrations for existing DBs safely
+  try {
+    tallyDb.prepare("ALTER TABLE tally_settings ADD COLUMN sync_mode TEXT DEFAULT 'accounting'").run();
+  } catch (e) {
+    // Column might already exist
+  }
+  
+  try {
+    tallyDb.prepare("ALTER TABLE tally_settings ADD COLUMN educational_mode BOOLEAN DEFAULT 1").run();
+  } catch (e) {
+    // Column might already exist
   }
 }
 

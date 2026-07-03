@@ -39,7 +39,7 @@ import { getAllProducts } from "../../lib/api/productService";
 import { getShopData } from "../../lib/api/shopService";
 import type { Product } from "../../lib/types/product";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
-import { UNIT_FAMILIES } from "../../lib/services/unitService";
+import { UNIT_FAMILIES, getUnitsForProduct } from "../../lib/services/unitService";
 import PurchaseBatchModal, { ExtendedPurchaseItem } from "./PurchaseBatchModal";
 
 interface Props {
@@ -341,21 +341,6 @@ const PurchaseItemSection = ({
     });
 
     setShowAutoGenerate(false); // hide panel after generation
-  };
-
-  const getUnitsForProduct = (product: Product | undefined) => {
-    if (!product) return [];
-    const units = new Set<string>();
-    if (product.base_unit) units.add(product.base_unit);
-    if (product.secondary_unit) units.add(product.secondary_unit);
-    const baseFamily = Object.values(UNIT_FAMILIES).find((family) =>
-      family.units.some((u) => u.value === product.base_unit),
-    );
-    if (baseFamily) {
-      baseFamily.units.forEach((u) => units.add(u.value));
-    }
-    if (units.size === 0) units.add("pcs");
-    return Array.from(units);
   };
 
   // const headerSx = {

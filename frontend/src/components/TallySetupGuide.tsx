@@ -94,12 +94,15 @@ export default function TallySetupGuide() {
           <StepContent>
             <Typography variant="body2" mb={2}>
               Our Sync Engine automatically creates your Customers and
-              Suppliers. However, you MUST manually create the core accounting
+              Suppliers. However, you MUST have the core accounting
               ledgers in Tally first.
               <br />
               <br />
-              In Tally, go to:{" "}
-              <strong>Gateway of Tally &gt; Create &gt; Ledger</strong>
+              <strong>OPTION A (Recommended):</strong> Go to the <strong>Ledger Configuration</strong> tab and click the <strong>"Auto-Create Ledgers in Tally"</strong> button. We will create all these for you.
+              <br />
+              <br />
+              <strong>OPTION B (Manual):</strong> In Tally, go to:{" "}
+              <strong>Gateway of Tally &gt; Create &gt; Ledger</strong> and create the following:
             </Typography>
 
             <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>

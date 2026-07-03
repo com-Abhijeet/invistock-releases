@@ -1,7 +1,7 @@
 "use client";
 
-import { Box } from "@mui/material";
-import { Edit, Delete, Eye, Tag } from "lucide-react"; // ✅ Import Tag icon
+import { Box, useTheme } from "@mui/material";
+import { Edit, Delete, Eye, Tag, Wallet } from "lucide-react"; // ✅ Import Tag icon
 import { useEffect, useState } from "react";
 import { getAllPurchases } from "../../lib/api/purchaseService";
 import DataTable from "../DataTable";
@@ -12,9 +12,11 @@ import { PurchasePayload } from "../../lib/types/purchaseTypes";
 
 interface PurchaseTableProps {
   filters: DashboardFilter & { query?: string; status?: string };
+  onMarkPayment?: (purchase: any) => void;
 }
 
-export default function PurchaseTable({ filters }: PurchaseTableProps) {
+export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableProps) {
+  const theme = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [purchases, setPurchases] = useState([]);
@@ -103,6 +105,13 @@ export default function PurchaseTable({ filters }: PurchaseTableProps) {
       onClick: (row: any) => {
         setSelectedPurchaseId(row.id);
         setPrintModalOpen(true);
+      },
+    },
+    {
+      label: "Mark Payment / View Txns",
+      icon: <Wallet size={16} color={theme.palette.success.main} />,
+      onClick: (row: any) => {
+        if (onMarkPayment) onMarkPayment(row);
       },
     },
     {

@@ -38,6 +38,7 @@ import {
   generateBarcode,
   checkBarcodeExists,
 } from "../../lib/api/batchService";
+import { getUnitsForProduct } from "../../lib/services/unitService";
 import toast from "react-hot-toast";
 
 // Extended Item Type used locally
@@ -81,6 +82,7 @@ export default function PurchaseBatchModal({
     location: "",
     rate: 0,
     quantity: 1,
+    unit: "",
     margin: 0,
     mrp: 0,
     mop: 0,
@@ -121,6 +123,7 @@ export default function PurchaseBatchModal({
           location: editItem.location || "",
           rate: editItem.rate || 0,
           quantity: editItem.quantity || 1,
+          unit: editItem.unit || "",
           margin: editItem.margin || 0,
           mrp: editItem.mrp || 0,
           mop: editItem.mop || 0,
@@ -141,6 +144,7 @@ export default function PurchaseBatchModal({
           location: "",
           rate: 0,
           quantity: 1,
+          unit: "",
           margin: 0,
           mrp: 0,
           mop: 0,
@@ -282,7 +286,7 @@ export default function PurchaseBatchModal({
           gst_rate: formData.gst_rate || prod.gst_rate || 0,
           discount: 0,
           price: finalPrice,
-          unit: prod.base_unit || "pcs",
+          unit: formData.unit || prod.base_unit || "pcs",
           tracking_type: prod.tracking_type || "none",
           batch_number: formData.batch_number,
           expiry_date: formData.expiry_date,
@@ -391,6 +395,16 @@ export default function PurchaseBatchModal({
     (p) => p.tracking_type !== "none",
   );
 
+  const availableUnits = selectedProducts.length === 1 
+    ? getUnitsForProduct(selectedProducts[0])
+    : selectedProducts.length > 1
+      ? selectedProducts.reduce((acc, p, idx) => {
+          const u = getUnitsForProduct(p);
+          if (idx === 0) return u;
+          return acc.filter((x) => u.includes(x));
+        }, [] as string[])
+      : ["pcs"];
+
   return (
     <Dialog
       open={open}
@@ -489,14 +503,9 @@ export default function PurchaseBatchModal({
               renderInput={(params) => (
                 <TextField
                   {...params}
+                  label="Select Products"
+                  autoFocus
                   inputRef={productInputRef}
-                  label={editItem ? "Product" : "Select Products"}
-                  placeholder="Search products..."
-                  onKeyDown={handleAutocompleteKeyDown}
-                  helperText={
-                    !editItem &&
-                    "Shift+↓ selects next. Shift+↑ deselects current. Enter confirms."
-                  }
                 />
               )}
             />
@@ -647,7 +656,7 @@ export default function PurchaseBatchModal({
             />
           </Grid>
 
-          {/* Quantity & Barcode */}
+          {/* Quantity, Unit & Barcode */}
           <Grid item xs={12} sm={6}>
             <Box display="flex" alignItems="center" gap={1}>
               <TextField
@@ -661,6 +670,27 @@ export default function PurchaseBatchModal({
                   setFormData({ ...formData, quantity: Number(e.target.value) })
                 }
               />
+              <TextField
+                select
+                label="Unit"
+                fullWidth
+                value={formData.unit}
+                onChange={(e) =>
+                  setFormData({ ...formData, unit: e.target.value })
+                }
+                SelectProps={{ native: true }}
+                disabled={availableUnits.length === 0}
+                InputLabelProps={{ shrink: true }}
+              >
+                <option value="" disabled>
+                  Base
+                </option>
+                {availableUnits.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </TextField>
               {!editItem && (
                 <FormControlLabel
                   control={
@@ -675,6 +705,7 @@ export default function PurchaseBatchModal({
                       Distribute <br /> Total
                     </Typography>
                   }
+                  sx={{ minWidth: 100 }}
                 />
               )}
             </Box>

@@ -42,6 +42,7 @@ export async function getPurchasesBySupplierIdController(req, res) {
       year: req.query.year || null,
       startDate: req.query.startDate || null,
       endDate: req.query.endDate || null,
+      all : req.query.all || null,
     };
 
     if (isNaN(supplierId) || supplierId <= 0) {

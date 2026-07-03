@@ -25,12 +25,13 @@ router.post("/settings", (req, res) => {
     tDb
       .prepare(
         `UPDATE tally_settings SET 
-      sync_mode = ?, tally_url = ?, company_name = ?, sales_ledger = ?, purchase_ledger = ?, 
+      sync_mode = ?, educational_mode = ?, tally_url = ?, company_name = ?, sales_ledger = ?, purchase_ledger = ?, 
       cash_ledger = ?, bank_ledger = ?, cgst_ledger = ?, sgst_ledger = ?, 
       igst_ledger = ?, discount_ledger = ?, default_expense_ledger = ?, round_off_ledger = ? WHERE id = 1`,
       )
       .run(
-        d.sync_mode,
+        d.sync_mode || 'accounting',
+        d.educational_mode !== undefined ? (d.educational_mode ? 1 : 0) : 1,
         d.tally_url,
         d.company_name,
         d.sales_ledger,
@@ -111,6 +112,41 @@ router.get("/status", (req, res) => {
       .all();
 
     res.json({ success: true, stats, recentFailed, breakdown });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// RETRY SPECIFIC SYNC
+router.post("/sync/retry", (req, res) => {
+  try {
+    const { entity_type, entity_id } = req.body;
+    if (!entity_type || !entity_id) {
+      return res.status(400).json({ success: false, message: "Missing entity details" });
+    }
+    const tDb = getTallyDb();
+    tDb.prepare("UPDATE sync_state SET status = 'pending', error_log = NULL, retry_count = 0 WHERE entity_type = ? AND entity_id = ?").run(entity_type, entity_id);
+    res.json({ success: true, message: "Record queued for retry." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// AUTO CREATE LEDGERS
+router.post("/auto-create-ledgers", async (req, res) => {
+  try {
+    const result = await tallyEngine.autoCreateLedgers();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// AUTO CREATE ITEMS
+router.post("/auto-create-items", async (req, res) => {
+  try {
+    const result = await tallyEngine.autoCreateItems();
+    res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
