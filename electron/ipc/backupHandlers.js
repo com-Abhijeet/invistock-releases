@@ -52,6 +52,24 @@ function registerBackupHandlers(ipcMain, { dbPath, app }) {
       return { success: false, message: "Restore failed." };
     }
   });
+
+  ipcMain.handle("dialog:open-directory", async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: "Select Backup Folder",
+        properties: ["openDirectory"],
+      });
+
+      if (canceled || filePaths.length === 0) {
+        return { success: false, message: "Folder selection cancelled." };
+      }
+
+      return { success: true, path: filePaths[0] };
+    } catch (error) {
+      console.error("Failed to open directory dialog:", error);
+      return { success: false, message: `Failed to select directory: ${error.message}` };
+    }
+  });
 }
 
 module.exports = { registerBackupHandlers };

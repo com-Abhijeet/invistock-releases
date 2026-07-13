@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Card,
@@ -24,6 +25,13 @@ import {
   FormControlLabel,
   Radio,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -41,6 +49,7 @@ import {
   ShoppingCart,
   CreditCard,
   Receipt,
+  ExternalLink,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -51,10 +60,14 @@ import {
   runManualSync,
   resetSyncQueue,
   retrySpecificSync,
+  retryAllFailedSync,
   autoCreateLedgers,
   autoCreateItems,
   TallySettings,
   TallyStatus,
+  pauseSync,
+  resumeSync,
+  stopSync,
 } from "../lib/api/tallyService";
 import DashboardHeader from "../components/DashboardHeader";
 import { DataCard as StatCard } from "../components/DataCard";
@@ -138,16 +151,75 @@ const getEntityIcon = (type: string) => {
 
 export default function TallyDashboard() {
   const theme = useTheme();
+  const navigate = useNavigate();
+
+  const getNavUrl = (entityType: string, id: number) => {
+    switch (entityType.toLowerCase()) {
+      case "sale": return `/view-sales-order/${id}`;
+      case "purchase": return `/purchase-history`;
+      case "transaction": return `/transactions`;
+      case "expense": return `/expenses`;
+      case "product": case "item": return `/product/${id}`;
+      case "customer": return `/customer/${id}`;
+      case "supplier": return `/viewSupplier/${id}`;
+      default: return null;
+    }
+  };
+  const [isPaused, setIsPaused] = useState(false);
+
+  const handlePauseSync = async () => {
+    try {
+      await pauseSync();
+      setIsPaused(true);
+      toast.success("Sync paused");
+    } catch (e) {
+      toast.error("Failed to pause sync");
+    }
+  };
+
+  const handleResumeSync = async () => {
+    try {
+      await resumeSync();
+      setIsPaused(false);
+      toast.success("Sync resumed");
+    } catch (e) {
+      toast.error("Failed to resume sync");
+    }
+  };
+
+  const handleStopSync = async () => {
+    try {
+      await stopSync();
+      setIsSyncing(false);
+      setIsPaused(false);
+      toast.success("Sync stopped");
+    } catch (e) {
+      toast.error("Failed to stop sync");
+    }
+  };
 
   const [activeTab, setActiveTab] = useState(0);
+  const [errorTab, setErrorTab] = useState("all");
   const [loading, setLoading] = useState(true);
+
+  const handleRetryAllSync = async () => {
+    try {
+      await retryAllFailedSync();
+      toast.success("All failed records queued for retry.");
+      await fetchData();
+      handleRunSync();
+    } catch (e) {
+      toast.error("Failed to queue records");
+    }
+  };
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCreatingLedgers, setIsCreatingLedgers] = useState(false);
   const [isCreatingItems, setIsCreatingItems] = useState(false);
 
   const [settings, setSettings] = useState<TallySettings>({
     tally_url: "http://localhost:9000",
-    sync_mode: "accounting",
+    company_name: "My_company",
+    sync_mode: "itemized",
     educational_mode: true,
     sales_ledger: "Sales Account",
     purchase_ledger: "Purchase Account",
@@ -166,6 +238,10 @@ export default function TallyDashboard() {
     breakdown: [],
   });
 
+  const [syncLogs, setSyncLogs] = useState<string[]>([]);
+  const [syncProgress, setSyncProgress] = useState<{current: number, total: number, item: string}>({current: 0, total: 0, item: ""});
+  const [showConsole, setShowConsole] = useState(false);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -179,6 +255,28 @@ export default function TallyDashboard() {
     }
     return () => clearInterval(interval);
   }, [isSyncing]);
+
+  useEffect(() => {
+    const eventSource = new EventSource("http://localhost:5000/api/tally/stream");
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'log') {
+          setSyncLogs((prev) => [...prev, data.message]);
+        } else if (data.type === 'progress') {
+          setSyncProgress({ current: data.current, total: data.total, item: data.item });
+        } else if (data.type === 'complete') {
+          setIsSyncing(false);
+          fetchData(false);
+        }
+      } catch (e) {}
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, []);
 
   const fetchData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -209,6 +307,8 @@ export default function TallyDashboard() {
 
   const handleRunSync = async () => {
     setIsSyncing(true);
+    setSyncLogs([]);
+    setSyncProgress({ current: 0, total: 0, item: "" });
     const loadId = toast.loading("Communicating with Tally Engine...");
     try {
       const res = await runManualSync();
@@ -225,20 +325,14 @@ export default function TallyDashboard() {
     }
   };
 
-  const handleRetrySpecific = async (type: string, id: number) => {
-    const loadId = toast.loading(`Retrying ${type} #${id}...`);
-    try {
-      const msg = await retrySpecificSync(type, id);
-      toast.success(msg, { id: loadId });
-      fetchData(false);
-    } catch (error: any) {
-      toast.error(error.message || "Retry failed", { id: loadId });
-    }
-  };
+
 
   const handleAutoCreateLedgers = async () => {
     if (!window.confirm("This will automatically create all mapped ledgers in your Tally company. Make sure Tally is open. Continue?")) return;
     setIsCreatingLedgers(true);
+    setIsSyncing(true); // Enable progress bar
+    setSyncLogs([]);
+    setSyncProgress({ current: 0, total: 0, item: "" });
     const loadId = toast.loading("Creating ledgers in Tally...");
     try {
       const res = await autoCreateLedgers();
@@ -251,12 +345,16 @@ export default function TallyDashboard() {
       toast.error(error.message || "Failed to create ledgers", { id: loadId });
     } finally {
       setIsCreatingLedgers(false);
+      setIsSyncing(false); // Stop progress bar
     }
   };
 
   const handleAutoCreateItems = async () => {
     if (!window.confirm("This will automatically create all missing Stock Items and Units in your Tally company. Continue?")) return;
     setIsCreatingItems(true);
+    setIsSyncing(true);
+    setSyncLogs([]);
+    setSyncProgress({ current: 0, total: 0, item: "" });
     const loadId = toast.loading("Creating stock items in Tally...");
     try {
       const res = await autoCreateItems();
@@ -269,6 +367,7 @@ export default function TallyDashboard() {
       toast.error(error.message || "Failed to create items", { id: loadId });
     } finally {
       setIsCreatingItems(false);
+      setIsSyncing(false);
     }
   };
 
@@ -399,10 +498,22 @@ export default function TallyDashboard() {
               transition: "0.3s",
             }}
           >
-            {isSyncing && (
-              <LinearProgress
-                sx={{ borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
-              />
+            {isSyncing && syncProgress.total > 0 && (
+              <Box sx={{ width: '100%', mb: 2, px: 2 }}>
+                <Box display="flex" justifyContent="space-between" mb={1}>
+                  <Typography variant="body2" color="text.secondary">
+                    Syncing: {syncProgress.item}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {syncProgress.current} / {syncProgress.total} ({Math.round((syncProgress.current / syncProgress.total) * 100)}%)
+                  </Typography>
+                </Box>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={(syncProgress.current / syncProgress.total) * 100} 
+                  sx={{ height: 8, borderRadius: 4 }}
+                />
+              </Box>
             )}
             <CardContent sx={{ textAlign: "center", py: 4 }}>
               <Typography
@@ -446,27 +557,53 @@ export default function TallyDashboard() {
                 </Box>
               )}
 
-              <Stack direction="row" spacing={2} justifyContent="center">
-                <Button
-                  variant="contained"
-                  size="large"
-                  color="primary"
-                  onClick={handleRunSync}
-                  disabled={
-                    isSyncing ||
-                    (status.stats.pending === 0 && status.stats.failed === 0)
-                  }
-                  startIcon={
-                    <RefreshCw className={isSyncing ? "animate-spin" : ""} />
-                  }
-                  sx={{ px: 4, py: 1.5, borderRadius: 2 }}
-                >
-                  {isSyncing
-                    ? "Executing..."
-                    : status.stats.pending === 0
-                      ? "Everything is up to date"
-                      : "Start Sync Process"}
-                </Button>
+              <Stack direction="row" spacing={2} justifyContent="center" mb={3}>
+                {!isSyncing ? (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    onClick={handleRunSync}
+                    startIcon={<RefreshCw />}
+                    sx={{ px: 4, py: 1.5, borderRadius: 2 }}
+                  >
+                    Start Full Sync
+                  </Button>
+                ) : (
+                  <>
+                    {!isPaused ? (
+                      <Button
+                        variant="contained"
+                        color="warning"
+                        size="large"
+                        onClick={handlePauseSync}
+                        sx={{ px: 3, py: 1.5, borderRadius: 2 }}
+                      >
+                        Pause
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="contained"
+                        color="success"
+                        size="large"
+                        onClick={handleResumeSync}
+                        sx={{ px: 3, py: 1.5, borderRadius: 2 }}
+                      >
+                        Resume
+                      </Button>
+                    )}
+                    <Button
+                      variant="contained"
+                      color="error"
+                      size="large"
+                      onClick={handleStopSync}
+                      sx={{ px: 3, py: 1.5, borderRadius: 2 }}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                )}
+                
                 <Button
                   variant="outlined"
                   size="large"
@@ -478,137 +615,164 @@ export default function TallyDashboard() {
                 >
                   Re-Scan Database
                 </Button>
+                <Button
+                  variant="text"
+                  color="secondary"
+                  onClick={() => setShowConsole(!showConsole)}
+                >
+                  {showConsole ? "Hide Console" : "Show Console"}
+                </Button>
               </Stack>
+
+              {showConsole && (
+                <Box 
+                  sx={{ 
+                    mt: 3, 
+                    p: 2, 
+                    bgcolor: '#1e1e1e', 
+                    color: '#00ff00', 
+                    fontFamily: 'monospace', 
+                    borderRadius: 2, 
+                    textAlign: 'left',
+                    maxHeight: 300,
+                    overflowY: 'auto'
+                  }}
+                >
+                  {syncLogs.length === 0 ? (
+                    <Typography variant="body2" sx={{ opacity: 0.5 }}>No logs available yet...</Typography>
+                  ) : (
+                    syncLogs.map((log, idx) => (
+                      <Typography key={idx} variant="body2" sx={{ fontSize: '0.85rem', mb: 0.5 }}>
+                        {log}
+                      </Typography>
+                    ))
+                  )}
+                </Box>
+              )}
             </CardContent>
           </Card>
 
           {/* Intelligent Error Log */}
           {status.recentFailed.length > 0 && (
             <Box mb={4}>
-              <Typography
-                variant="h6"
-                fontWeight="bold"
-                color="error.main"
-                sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}
-              >
-                <AlertTriangle size={24} /> Actions Required (
-                {status.recentFailed.length})
-              </Typography>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography
+                  variant="h6"
+                  fontWeight="bold"
+                  color="error.main"
+                  sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                >
+                  <AlertTriangle size={24} /> Actions Required (
+                  {status.recentFailed.length})
+                </Typography>
+                <Button variant="contained" color="primary" onClick={handleRetryAllSync} startIcon={<RefreshCw size={18} />}>
+                  Retry All Failed
+                </Button>
+              </Box>
 
-              <Grid container spacing={2}>
-                {status.recentFailed.map((err, idx) => {
-                  const humanError = getHumanReadableError(
-                    err.error_log,
-                    err.entity_type,
-                  );
+              <Tabs value={errorTab} onChange={(_e, val) => setErrorTab(val)} variant="scrollable" scrollButtons="auto" sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}>
+                <Tab label="All" value="all" />
+                <Tab label="Sales" value="sale" />
+                <Tab label="Purchases" value="purchase" />
+                <Tab label="Products" value="product" />
+                <Tab label="Customers" value="customer" />
+                <Tab label="Transactions" value="transaction" />
+              </Tabs>
 
-                  return (
-                    <Grid item xs={12} key={idx}>
-                      <Card
-                        variant="outlined"
-                        sx={{
-                          borderRadius: 2,
-                          borderLeft: `4px solid ${theme.palette.error.main}`,
-                        }}
-                      >
-                        <CardContent sx={{ p: 3, "&:last-child": { pb: 3 } }}>
-                          <Grid container spacing={3} alignItems="center">
-                            {/* Identity Column */}
-                            <Grid item xs={12} md={3}>
-                              <Box
-                                display="flex"
-                                alignItems="center"
-                                gap={1}
-                                mb={0.5}
-                              >
-                                <Chip
-                                  size="small"
-                                  icon={getEntityIcon(err.entity_type)}
-                                  label={err.entity_type.toUpperCase()}
-                                  sx={{ borderRadius: 1, fontWeight: "bold" }}
-                                />
-                                <Chip
-                                  size="small"
-                                  label={err.action_type}
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                <Table size="small">
+                  <TableHead sx={{ bgcolor: theme.palette.action.hover }}>
+                    <TableRow>
+                      <TableCell width="20%"><strong>Entity</strong></TableCell>
+                      <TableCell width="35%"><strong>Issue</strong></TableCell>
+                      <TableCell width="30%"><strong>How to Fix</strong></TableCell>
+                      <TableCell width="15%" align="center"><strong>Action</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {status.recentFailed
+                      .filter(err => errorTab === "all" || err.entity_type === errorTab)
+                      .map((err, idx) => {
+                      const humanError = getHumanReadableError(
+                        err.error_log,
+                        err.entity_type,
+                      );
+                      return (
+                        <TableRow key={idx} hover>
+                          <TableCell>
+                            <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+                              <Chip
+                                size="small"
+                                icon={getEntityIcon(err.entity_type)}
+                                label={err.entity_type.toUpperCase()}
+                                sx={{ borderRadius: 1, fontWeight: "bold" }}
+                              />
+                              <Chip
+                                size="small"
+                                label={err.action_type}
+                                variant="outlined"
+                                sx={{ borderRadius: 1 }}
+                              />
+                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              ID: #{err.entity_id}
+                            </Typography>
+                          </TableCell>
+                          
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="bold" color="error.main">
+                              {humanError.title}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {humanError.detail}
+                            </Typography>
+                          </TableCell>
+
+                          <TableCell>
+                            <Typography variant="caption" color="text.primary" sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                              <Wrench size={14} style={{ marginTop: 2, flexShrink: 0 }} color={theme.palette.primary.main} />
+                              {humanError.fix}
+                            </Typography>
+                          </TableCell>
+
+                          <TableCell align="center">
+                            <Stack direction="column" spacing={1}>
+                              {getNavUrl(err.entity_type, err.entity_id) && (
+                                <Button
                                   variant="outlined"
-                                  sx={{ borderRadius: 1 }}
-                                />
-                              </Box>
-                              <Typography
-                                variant="subtitle2"
-                                color="text.secondary"
-                              >
-                                Record ID: #{err.entity_id}
-                              </Typography>
-                            </Grid>
-
-                            {/* Error Translation Column */}
-                            <Grid item xs={12} md={5}>
-                              <Typography
-                                variant="subtitle1"
-                                fontWeight="bold"
-                                color="text.primary"
-                              >
-                                {humanError.title}
-                              </Typography>
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                {humanError.detail}
-                              </Typography>
-                            </Grid>
-
-                            {/* Fix Action Column */}
-                            <Grid item xs={12} md={4}>
-                              <Box
-                                bgcolor={theme.palette.primary.light + "15"}
-                                p={1.5}
-                                borderRadius={2}
-                                display="flex"
-                                flexDirection="column"
-                                gap={1.5}
-                              >
-                                <Box display="flex" gap={1.5} alignItems="flex-start">
-                                  <Wrench
-                                    size={18}
-                                    color={theme.palette.primary.main}
-                                    style={{ marginTop: 2 }}
-                                  />
-                                  <Box>
-                                    <Typography
-                                      variant="caption"
-                                      fontWeight="bold"
-                                      color="#111827"
-                                      display="block"
-                                    >
-                                      HOW TO FIX:
-                                    </Typography>
-                                    <Typography
-                                      variant="caption"
-                                      color="text.primary"
-                                    >
-                                      {humanError.fix}
-                                    </Typography>
-                                  </Box>
-                                </Box>
-                                <Button 
-                                  variant="contained" 
-                                  size="small" 
-                                  fullWidth
-                                  onClick={() => handleRetrySpecific(err.entity_type, err.entity_id)}
+                                  size="small"
+                                  color="secondary"
+                                  onClick={() => navigate(getNavUrl(err.entity_type, err.entity_id)!)}
+                                  startIcon={<ExternalLink size={14} />}
                                 >
-                                  Retry Sync
+                                  View Item
                                 </Button>
-                              </Box>
-                            </Grid>
-                          </Grid>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  );
-                })}
-              </Grid>
+                              )}
+                              <Button
+                                variant="contained"
+                                size="small"
+                                color="primary"
+                                onClick={async () => {
+                                  try {
+                                    await retrySpecificSync(err.entity_type, err.entity_id);
+                                    toast.success("Record queued for retry.");
+                                    await fetchData();
+                                    handleRunSync();
+                                  } catch (e) {
+                                    toast.error("Failed to queue record");
+                                  }
+                                }}
+                              >
+                                Retry Sync
+                              </Button>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </Box>
           )}
         </Box>
@@ -656,13 +820,24 @@ export default function TallyDashboard() {
                     helperText="Default is http://localhost:9000. Ensure Tally F12 ODBC is enabled."
                   />
                 </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Tally Company Name"
+                    value={settings.company_name || ""}
+                    onChange={(e) =>
+                      handleSettingChange("company_name", e.target.value)
+                    }
+                    helperText="Name of your active company in Tally (e.g., Kosh Enterprises)."
+                  />
+                </Grid>
                 
                 <Grid item xs={12} md={12}>
                   <FormControl component="fieldset" sx={{ mt: 2, mb: 1 }}>
                     <FormLabel component="legend" sx={{ fontWeight: 'bold' }}>Tally Sync Mode</FormLabel>
                     <RadioGroup
                       row
-                      value={settings.sync_mode || 'accounting'}
+                      value={settings.sync_mode || 'itemized'}
                       onChange={(e) => handleSettingChange('sync_mode', e.target.value)}
                     >
                       <FormControlLabel value="accounting" control={<Radio />} label="Accounting View (Financials & Ledgers only)" />
@@ -674,8 +849,8 @@ export default function TallyDashboard() {
                     <FormControlLabel
                       control={
                         <Switch
-                          checked={settings.educational_mode !== false} // defaults to true
-                          onChange={(e) => handleSettingChange('educational_mode', e.target.checked)}
+                          checked={settings.educational_mode === 1 || settings.educational_mode === true || settings.educational_mode === '1'}
+                          onChange={(e) => handleSettingChange('educational_mode', e.target.checked ? 1 : 0)}
                           color="primary"
                         />
                       }
@@ -806,39 +981,153 @@ export default function TallyDashboard() {
                 </Grid>
               </Grid>
 
+              <Divider sx={{ my: 4 }} />
+              
+              <Typography
+                variant="subtitle2"
+                color="primary"
+                fontWeight="bold"
+                sx={{
+                  mb: 2,
+                  textTransform: "uppercase",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                <CreditCard size={16} /> Transaction Ledgers Configuration
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mb={3}>
+                Map how standalone financial transactions (payments, receipts, credit/debit notes) are logged in Tally.
+              </Typography>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6} md={4}>
+                  <TextField
+                    fullWidth
+                    label="Payment Ledger A/C"
+                    value={settings.payment_ledger || ""}
+                    onChange={(e) =>
+                      handleSettingChange("payment_ledger", e.target.value)
+                    }
+                    placeholder="E.g., Bank Account"
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <TextField
+                    fullWidth
+                    label="Receipt Ledger A/C"
+                    value={settings.receipt_ledger || ""}
+                    onChange={(e) =>
+                      handleSettingChange("receipt_ledger", e.target.value)
+                    }
+                    placeholder="E.g., Bank Account"
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <TextField
+                    fullWidth
+                    label="Credit Note A/C"
+                    value={settings.credit_note_ledger || ""}
+                    onChange={(e) =>
+                      handleSettingChange("credit_note_ledger", e.target.value)
+                    }
+                    placeholder="E.g., Sales Returns"
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <TextField
+                    fullWidth
+                    label="Debit Note A/C"
+                    value={settings.debit_note_ledger || ""}
+                    onChange={(e) =>
+                      handleSettingChange("debit_note_ledger", e.target.value)
+                    }
+                    placeholder="E.g., Purchase Returns"
+                    required
+                  />
+                </Grid>
+              </Grid>
+
+              <Divider sx={{ my: 4 }} />
+
+              <Typography
+                variant="subtitle2"
+                color="primary"
+                fontWeight="bold"
+                sx={{
+                  mb: 2,
+                  textTransform: "uppercase",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                <Wrench size={16} /> Auto-Create Utilities
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mb={3}>
+                These utilities scan your entire Kosh database and automatically create any missing Ledgers, Stock Items, or Expense Categories directly in your Tally company to ensure a smooth sync.
+              </Typography>
+              
+              <Grid container spacing={3} mb={4}>
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined" sx={{ bgcolor: theme.palette.action.hover }}>
+                    <CardContent>
+                      <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                        Ledgers & Expenses
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" mb={2} sx={{ minHeight: 40 }}>
+                        Automatically create Customers (Sundry Debtors), Suppliers (Sundry Creditors), and Expense Categories (Indirect Expenses).
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={handleAutoCreateLedgers}
+                        disabled={isCreatingLedgers}
+                        startIcon={<Database size={18} />}
+                        fullWidth
+                      >
+                        {isCreatingLedgers ? "Creating..." : "Auto-Create Ledgers"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                {settings.sync_mode === 'itemized' && (
+                  <Grid item xs={12} md={6}>
+                    <Card variant="outlined" sx={{ bgcolor: theme.palette.action.hover }}>
+                      <CardContent>
+                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                          Stock Items & Units
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" mb={2} sx={{ minHeight: 40 }}>
+                          Automatically create Products (Stock Items) and Units of Measure (e.g., pcs, kg, ltr).
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          color="secondary"
+                          onClick={handleAutoCreateItems}
+                          disabled={isCreatingItems}
+                          startIcon={<ShoppingCart size={18} />}
+                          fullWidth
+                        >
+                          {isCreatingItems ? "Creating..." : "Auto-Create Items"}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+              </Grid>
+
               <Box
-                mt={4}
                 pt={3}
                 borderTop={1}
                 borderColor="divider"
                 display="flex"
-                justifyContent="space-between"
+                justifyContent="flex-end"
               >
-                <Box display="flex" gap={2}>
-                  <Button
-                    variant="outlined"
-                    size="large"
-                    color="secondary"
-                    onClick={handleAutoCreateLedgers}
-                    disabled={isCreatingLedgers}
-                    startIcon={<Database size={18} />}
-                  >
-                    Auto-Create Ledgers
-                  </Button>
-                  {settings.sync_mode === 'itemized' && (
-                    <Button
-                      variant="outlined"
-                      size="large"
-                      color="secondary"
-                      onClick={handleAutoCreateItems}
-                      disabled={isCreatingItems}
-                      startIcon={<ShoppingCart size={18} />}
-                    >
-                      Auto-Create Stock Items
-                    </Button>
-                  )}
-                </Box>
-                
                 <Button
                   type="submit"
                   variant="contained"

@@ -7,6 +7,7 @@
 // 1. MODULE IMPORTS
 // ===============================================================
 const { app, BrowserWindow, ipcMain, net, protocol } = require("electron");
+app.setName("Kosh");
 
 const os = require("os");
 const path = require("path");
@@ -69,6 +70,16 @@ protocol.registerSchemesAsPrivileged([
 ]);
 const config = require("./config.js");
 app.disableHardwareAcceleration();
+
+// ✅ Register custom URI scheme
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('kosh', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('kosh');
+}
+
 
 app.commandLine.appendSwitch("ignore-certificate-errors");
 app.commandLine.appendSwitch("allow-insecure-localhost", "true");
@@ -342,18 +353,39 @@ app.on("second-instance", (event, commandLine, workingDirectory) => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
+  } else if (licenseWin) {
+    if (licenseWin.isMinimized()) licenseWin.restore();
+    licenseWin.focus();
+  }
+
+  // ✅ Handle kosh:// URI scheme arguments from second instance
+  const uri = commandLine.find((arg) => arg.startsWith("kosh://"));
+  if (uri) {
+    handleKoshProtocol(uri);
   }
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    if (!config.isClientMode) {
-      try {
-        shutdownBackend();
-      } catch (e) {
-        mainLogger.error("[ELECTRON] : ERROR IN SHUTTING DOWN", e);
+// ✅ Handler for custom URI protocol
+function handleKoshProtocol(urlStr) {
+  try {
+    const parsedUrl = new URL(urlStr);
+    if (parsedUrl.host === "activate") {
+      const key = parsedUrl.searchParams.get("key");
+      if (key) {
+        if (licenseWin && !licenseWin.isDestroyed()) {
+          licenseWin.webContents.send("license-key-received", key);
+        } else if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("license-key-received", key);
+        }
       }
     }
+  } catch (error) {
+    mainLogger.error("Failed to parse kosh protocol URL:", error);
+  }
+}
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });
@@ -363,33 +395,47 @@ app.on("before-quit", async (event) => {
     return;
   }
   event.preventDefault();
-  isQuitting = true;
 
   if (!config.isClientMode) {
     mainLogger.info("--- Application Shutting Down ---");
 
+    // 1. Google Drive Auto Backup
     try {
       const { isConnected, uploadBackup } = require("./googleDriveService.js");
       if (isConnected()) {
         const date = new Date().toISOString().split("T")[0];
         const backupFileName = `KOSH-Backup-${date}.db`;
         mainLogger.info("[GDRIVE] Uploading backup...");
-        try {
-          await uploadBackup(dbPath, backupFileName);
-          mainLogger.info("[GDRIVE] Upload complete.");
-        } catch (backupError) {
-          mainLogger.error("[GDRIVE] Upload failed:", backupError.message);
-        }
+        await uploadBackup(dbPath, backupFileName);
+        mainLogger.info("[GDRIVE] Upload complete.");
       } else {
         mainLogger.info("[GDRIVE] Not connected. Skipping backup.");
       }
+    } catch (error) {
+      mainLogger.error("[GDRIVE] Error:", error.message || error);
+    }
+
+    // 2. Local Auto Backup
+    try {
+      const { runLocalAutoBackup } = require("./localBackupService.js");
+      await runLocalAutoBackup();
+    } catch (err) {
+      mainLogger.error("[LOCAL AUTO-BACKUP] Error:", err.message || err);
+    }
+
+
+
+    // Finally Shutdown Backend
+    try {
       shutdownBackend();
     } catch (error) {
       mainLogger.error("[SHUTDOWN] Error during shutdown:", error);
     } finally {
+      isQuitting = true;
       app.quit();
     }
   } else {
+    isQuitting = true;
     app.quit();
   }
 });

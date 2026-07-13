@@ -3,7 +3,7 @@ import { api } from "./api";
 export interface TallySettings {
   id?: number;
   sync_mode?: string;
-  educational_mode?: boolean;
+  educational_mode?: boolean | number | string;
   tally_url: string;
   company_name?: string;
   sales_ledger: string;
@@ -16,6 +16,10 @@ export interface TallySettings {
   discount_ledger: string;
   default_expense_ledger?: string;
   round_off_ledger: string;
+  payment_ledger?: string;
+  receipt_ledger?: string;
+  credit_note_ledger?: string;
+  debit_note_ledger?: string;
 }
 
 export interface TallyErrorLog {
@@ -61,13 +65,36 @@ export const runManualSync = async (): Promise<{
   return response.data;
 };
 
+export const pauseSync = async () => {
+  await api.post("/api/tally/sync/pause");
+};
+
+export const resumeSync = async () => {
+  await api.post("/api/tally/sync/resume");
+};
+
+export const stopSync = async () => {
+  await api.post("/api/tally/sync/stop");
+};
+
 export const resetSyncQueue = async (): Promise<string> => {
   const response = await api.post("/api/tally/sync/reset");
   return response.data.message;
 };
 
-export const retrySpecificSync = async (entity_type: string, entity_id: number): Promise<string> => {
-  const response = await api.post("/api/tally/sync/retry", { entity_type, entity_id });
+export const retrySpecificSync = async (
+  entity_type: string,
+  entity_id: number,
+): Promise<string> => {
+  const response = await api.post("/api/tally/sync/retry", {
+    entity_type,
+    entity_id,
+  });
+  return response.data.message;
+};
+
+export const retryAllFailedSync = async (): Promise<string> => {
+  const response = await api.post("/api/tally/sync/retry", {});
   return response.data.message;
 };
 

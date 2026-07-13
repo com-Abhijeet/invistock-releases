@@ -1,6 +1,9 @@
 import express from "express";
-import * as tallyEngine from "./tallySyncEngine.mjs";
 import { getTallyDb } from "../db/tallyDb.mjs";
+import { ComparisonEngine } from "./engine/ComparisonEngine.mjs";
+import { TallySyncOrchestrator } from "./engine/TallySyncOrchestrator.mjs";
+import { DependencyResolver } from "./engine/DependencyResolver.mjs";
+import { syncEventEmitter } from "./tallySseRoutes.mjs";
 
 const router = express.Router();
 
@@ -30,7 +33,7 @@ router.post("/settings", (req, res) => {
       igst_ledger = ?, discount_ledger = ?, default_expense_ledger = ?, round_off_ledger = ? WHERE id = 1`,
       )
       .run(
-        d.sync_mode || 'accounting',
+        d.sync_mode || 'itemized',
         d.educational_mode !== undefined ? (d.educational_mode ? 1 : 0) : 1,
         d.tally_url,
         d.company_name,
@@ -55,9 +58,15 @@ router.post("/settings", (req, res) => {
 // TRIGGER MANUAL SYNC
 router.post("/sync/manual", async (req, res) => {
   try {
-    // UPDATED: Using the new scanAllForChanges function
-    const changes = tallyEngine.scanAllForChanges();
-    const result = await tallyEngine.processSyncQueue();
+    const tDb = getTallyDb();
+    const settings = tDb.prepare("SELECT * FROM tally_settings WHERE id = 1").get();
+    
+    // Automatically retry all previously failed items when user clicks "Start Sync Process"
+    tDb.prepare("UPDATE sync_state SET status = 'pending', is_permanent_failure = 0 WHERE status = 'failed'").run();
+    
+    const changes = ComparisonEngine.scanAll();
+    const result = await TallySyncOrchestrator.processQueue(settings);
+    
     res.json({ success: true, changesFound: changes, details: result.message });
   } catch (err) {
     console.log("Error in syncing tally", err);
@@ -69,10 +78,8 @@ router.post("/sync/manual", async (req, res) => {
 router.post("/sync/reset", (req, res) => {
   try {
     const tDb = getTallyDb();
-    // Drop tracking history to force a fresh creation sync on next scan
     tDb.prepare("DELETE FROM sync_state").run();
-    // UPDATED: Using the new scanAllForChanges function
-    tallyEngine.scanAllForChanges();
+    ComparisonEngine.scanAll();
     res.json({
       success: true,
       message: "Queue reset. All data queued for fresh sync.",
@@ -92,7 +99,7 @@ router.get("/status", (req, res) => {
       SELECT 
         COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
         COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
-        COUNT(CASE WHEN status = 'synced' THEN 1 END) as synced
+        COUNT(CASE WHEN status = 'success' THEN 1 END) as synced
       FROM sync_state
     `,
       )
@@ -100,7 +107,7 @@ router.get("/status", (req, res) => {
 
     const recentFailed = tDb
       .prepare(
-        "SELECT * FROM sync_state WHERE status = 'failed' ORDER BY retry_count DESC LIMIT 20",
+        "SELECT * FROM sync_state WHERE status = 'failed' ORDER BY retry_count DESC LIMIT 1000",
       )
       .all();
 
@@ -121,35 +128,117 @@ router.get("/status", (req, res) => {
 router.post("/sync/retry", (req, res) => {
   try {
     const { entity_type, entity_id } = req.body;
-    if (!entity_type || !entity_id) {
-      return res.status(400).json({ success: false, message: "Missing entity details" });
-    }
     const tDb = getTallyDb();
-    tDb.prepare("UPDATE sync_state SET status = 'pending', error_log = NULL, retry_count = 0 WHERE entity_type = ? AND entity_id = ?").run(entity_type, entity_id);
-    res.json({ success: true, message: "Record queued for retry." });
+    
+    if (!entity_type || !entity_id) {
+      // If no specific entity provided, retry ALL failed
+      tDb.prepare("UPDATE sync_state SET status = 'pending', error_log = NULL, retry_count = 0, is_permanent_failure = 0 WHERE status = 'failed'").run();
+      res.json({ success: true, message: "All failed records queued for retry." });
+    } else {
+      tDb.prepare("UPDATE sync_state SET status = 'pending', error_log = NULL, retry_count = 0, is_permanent_failure = 0 WHERE entity_type = ? AND entity_id = ?").run(entity_type, entity_id);
+      res.json({ success: true, message: "Record queued for retry." });
+    }
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// AUTO CREATE LEDGERS
+// AUTO CREATE MASTERS (Legacy routes mapping to inline creation by orchestrator/resolver)
 router.post("/auto-create-ledgers", async (req, res) => {
   try {
-    const result = await tallyEngine.autoCreateLedgers();
-    res.json(result);
+    const tDb = getTallyDb();
+    const settings = tDb.prepare("SELECT * FROM tally_settings WHERE id = 1").get();
+    
+    // 1. Create Core Ledgers first
+    const coreLedgers = [
+      settings.sales_ledger,
+      settings.purchase_ledger,
+      settings.cash_ledger,
+      settings.bank_ledger,
+      settings.receipt_ledger,
+      settings.payment_ledger,
+      settings.credit_note_ledger,
+      settings.debit_note_ledger,
+      settings.cgst_ledger,
+      settings.sgst_ledger,
+      settings.igst_ledger,
+      settings.discount_ledger,
+      settings.round_off_ledger,
+      settings.default_expense_ledger
+    ].filter(Boolean); // Remove null/undefined/empty
+    
+    const totalCount = coreLedgers.length + 2;
+    let currentCount = 0;
+    
+    syncEventEmitter.emit("log", { message: "Starting auto-creation of ledgers..." });
+
+    for (const ledger of coreLedgers) {
+      currentCount++;
+      syncEventEmitter.emit("progress", { current: currentCount, total: totalCount, item: ledger });
+      await DependencyResolver.resolveLedger(ledger, settings);
+    }
+    
+    // 1.5 Configure Voucher Types
+    const voucherTypesToConfigure = [
+      { name: "Sales", parent: "Sales" },
+      { name: "Purchase", parent: "Purchase" },
+      { name: "Receipt", parent: "Receipt" },
+      { name: "Payment", parent: "Payment" },
+      { name: "Credit Note", parent: "Credit Note" },
+      { name: "Debit Note", parent: "Debit Note" }
+    ];
+    
+    for (const vt of voucherTypesToConfigure) {
+      currentCount++;
+      syncEventEmitter.emit("progress", { current: currentCount, total: totalCount + 4, item: `${vt.name} Voucher Type` });
+      await DependencyResolver.resolveVoucherType(vt.name, vt.parent, settings);
+    }
+    
+    syncEventEmitter.emit("log", { message: "Core ledgers checked. Queuing masters..." });
+
+    // 2. Scan masters specifically
+    let changes = 0;
+    changes += ComparisonEngine.scanTable("customers", "customer");
+    changes += ComparisonEngine.scanTable("suppliers", "supplier");
+    
+    // 3. Process only masters queue
+    await TallySyncOrchestrator.processQueue(settings);
+    
+    res.json({ success: true, message: `Created ${coreLedgers.length} core ledgers, and queued ${changes} customers/suppliers for sync.` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// AUTO CREATE ITEMS
 router.post("/auto-create-items", async (req, res) => {
   try {
-    const result = await tallyEngine.autoCreateItems();
-    res.json(result);
+    const tDb = getTallyDb();
+    const settings = tDb.prepare("SELECT * FROM tally_settings WHERE id = 1").get();
+    
+    let changes = 0;
+    changes += ComparisonEngine.scanTable("products", "product");
+    
+    await TallySyncOrchestrator.processQueue(settings);
+    
+    res.json({ success: true, message: `Scanned for missing stock items and queued ${changes} for sync.` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+// CONTROLS
+router.post("/sync/pause", (req, res) => {
+  global.tallySyncPaused = true;
+  res.json({ success: true, message: "Sync paused." });
+});
+
+router.post("/sync/resume", (req, res) => {
+  global.tallySyncPaused = false;
+  res.json({ success: true, message: "Sync resumed." });
+});
+
+router.post("/sync/stop", (req, res) => {
+  global.tallySyncStopped = true;
+  res.json({ success: true, message: "Sync stopped." });
 });
 
 export default router;

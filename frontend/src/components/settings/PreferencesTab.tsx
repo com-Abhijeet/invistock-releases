@@ -5,9 +5,6 @@ import {
   TextField,
   Switch,
   FormControlLabel,
-  InputAdornment,
-  IconButton,
-  Tooltip,
   Card,
   CardContent,
   Divider,
@@ -17,10 +14,7 @@ import {
 import Grid from "@mui/material/GridLegacy";
 import { FormField } from "../FormField";
 import { type ShopSetupForm } from "../../lib/types/shopTypes";
-import { FolderOpen, Settings2 } from "lucide-react";
-import toast from "react-hot-toast";
-
-const { ipcRenderer } = window.electron;
+import { Settings2 } from "lucide-react";
 
 interface Props {
   data: ShopSetupForm;
@@ -28,15 +22,6 @@ interface Props {
 }
 
 export default function PreferencesTab({ data, onChange }: Props) {
-  const handleSelectPath = async () => {
-    if (!ipcRenderer) return;
-    const result = await ipcRenderer.invoke("dialog:open-directory");
-    if (result.success && result.path) {
-      onChange("backup_path", result.path);
-    } else if (result.error) {
-      toast.error(`Failed to select path: ${result.error}`);
-    }
-  };
 
   return (
     <Box>
@@ -178,61 +163,7 @@ export default function PreferencesTab({ data, onChange }: Props) {
           </Card>
         </Grid>
 
-        {/* --- Right Column: System Backup --- */}
-        <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
-                <FolderOpen size={20} className="text-blue-600" />
-                <Typography variant="h6" fontWeight={600}>
-                  System Backup
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 3 }} />
 
-              <Stack spacing={2}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={Boolean(data.enable_auto_backup)}
-                      onChange={(e) =>
-                        onChange("enable_auto_backup", e.target.checked)
-                      }
-                    />
-                  }
-                  label="Auto-Backup on Exit"
-                />
-
-                <Typography variant="body2" color="text.secondary">
-                  Automatically save a copy of your database when closing the
-                  app to prevent data loss.
-                </Typography>
-
-                {data.enable_auto_backup && (
-                  <FormField label="Backup Location">
-                    <TextField
-                      fullWidth
-                      size="small"
-                      value={data.backup_path || "No folder selected"}
-                      InputProps={{
-                        readOnly: true,
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <Tooltip title="Select Backup Folder">
-                              <IconButton onClick={handleSelectPath} edge="end">
-                                <FolderOpen size={18} />
-                              </IconButton>
-                            </Tooltip>
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  </FormField>
-                )}
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
       </Grid>
     </Box>
   );

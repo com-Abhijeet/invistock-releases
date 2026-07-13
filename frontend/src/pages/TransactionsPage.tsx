@@ -95,7 +95,7 @@ export default function TransactionsPage() {
       const res = await getAllTransactions({
         ...activeFilters,
         query: searchQuery,
-        type: transactionType !== "all" ? transactionType : undefined,
+        type: (transactionType !== "all" ? transactionType : undefined) as any,
         page: page + 1,
         limit: rowsPerPage,
       });

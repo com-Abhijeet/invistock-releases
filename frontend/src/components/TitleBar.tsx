@@ -1,15 +1,72 @@
-import { Box, IconButton } from "@mui/material";
+import { Box, IconButton, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
 import CropSquareRoundedIcon from "@mui/icons-material/CropSquareRounded";
+import { useState } from "react";
+import toast from "react-hot-toast";
 
 const TitleBar = () => {
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
   const handleMinimize = () => window.electron?.minimizeApp();
   const handleMaximize = () => window.electron?.maximizeApp();
-  const handleClose = () => window.electron?.closeApp();
+  
+  const handleCloseClick = () => {
+    setShowPrompt(true);
+  };
+
+  const executeClose = () => {
+    setShowPrompt(false);
+    window.electron?.closeApp();
+  };
+
+  const handleBackupAndClose = async () => {
+    if (!window.electron?.ipcRenderer) {
+      executeClose();
+      return;
+    }
+    
+    setIsClosing(true);
+    toast.loading("Waiting for manual backup...");
+    try {
+      const result = await window.electron.ipcRenderer.invoke("backup-database");
+      toast.dismiss();
+      if (result.success) {
+        toast.success(result.message);
+      } else if (result.message && !result.message.includes("cancelled")) {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      toast.dismiss();
+      toast.error("Backup failed");
+    } finally {
+      setIsClosing(false);
+      executeClose();
+    }
+  };
 
   return (
-    <Box
+    <>
+      <Dialog open={showPrompt} onClose={isClosing ? undefined : executeClose}>
+        <DialogTitle>Manual Backup</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Would you like to create a manual backup before exiting? 
+            <br/><br/>
+            Automated backups (Google Drive & Local Folder) have already run if configured.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={executeClose} color="inherit" disabled={isClosing}>
+            No, just exit
+          </Button>
+          <Button onClick={handleBackupAndClose} variant="contained" color="primary" disabled={isClosing}>
+            Yes, create backup
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Box
       sx={{
         position: "fixed",
         top: 0,
@@ -108,7 +165,7 @@ const TitleBar = () => {
 
         <IconButton
           size="small"
-          onClick={handleClose}
+          onClick={handleCloseClick}
           sx={{
             ...glassBtnStyle,
             "&:hover": {
@@ -122,6 +179,7 @@ const TitleBar = () => {
         </IconButton>
       </Box>
     </Box>
+    </>
   );
 };
 

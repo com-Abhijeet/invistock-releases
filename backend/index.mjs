@@ -35,6 +35,7 @@ import employeeRoutes from "./routes/employeeRoutes.mjs";
 import employeeSalesRoutes from "./routes/employeeSalesRoutes.mjs";
 import accountingRoutes from "./routes/accountingRoutes.mjs";
 import tallyRoutes from "./tally/tallyRoutes.mjs";
+import tallySseRoutes from "./tally/tallySseRoutes.mjs";
 import businessRoutes from "./routes/businessRoutes.mjs";
 
 // ✅ NEW: Import the Sync Routes for Mobile
@@ -138,6 +139,7 @@ export function startServer(dbPath, userDataPath) {
   app.use("/api/employees", employeeRoutes);
   app.use("/api/employee-sales", employeeSalesRoutes);
   app.use("/api/accounting", accountingRoutes);
+  app.use("/api/tally", tallySseRoutes);
   app.use("/api/tally", tallyRoutes);
   app.use("/api/business", businessRoutes);
 

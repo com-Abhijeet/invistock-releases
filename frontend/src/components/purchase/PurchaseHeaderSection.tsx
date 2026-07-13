@@ -16,11 +16,9 @@ import {
 import {
   User,
   Hash,
-  MapPin,
   Calendar,
   ChevronUp,
   FileText,
-  ScanLine,
 } from "lucide-react";
 import { getSuppliers as getAllSuppliers } from "../../lib/api/supplierService";
 import type { PurchasePayload } from "../../lib/types/purchaseTypes";

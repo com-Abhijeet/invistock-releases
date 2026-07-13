@@ -39,7 +39,7 @@ import { getAllProducts } from "../../lib/api/productService";
 import { getShopData } from "../../lib/api/shopService";
 import type { Product } from "../../lib/types/product";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
-import { UNIT_FAMILIES, getUnitsForProduct } from "../../lib/services/unitService";
+import { getUnitsForProduct } from "../../lib/services/unitService";
 import PurchaseBatchModal, { ExtendedPurchaseItem } from "./PurchaseBatchModal";
 
 interface Props {

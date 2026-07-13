@@ -101,8 +101,9 @@ export default function LicensePage() {
     toast.success("Machine ID copied!");
   };
 
-  const handleSubmit = async () => {
-    if (!licenseKey.trim()) return toast.error("Please enter a license key.");
+  const handleSubmit = async (overrideKey?: string) => {
+    const keyToSubmit = overrideKey && typeof overrideKey === 'string' ? overrideKey : licenseKey;
+    if (!keyToSubmit.trim()) return toast.error("Please enter a license key.");
     setActivating(true);
     try {
       let result;
@@ -110,7 +111,7 @@ export default function LicensePage() {
       if (appMode === "client") {
         const response = await electron.ipcRenderer.invoke(
           "activate-client-license",
-          licenseKey,
+          keyToSubmit,
         );
         if (response.success) {
           result = response.status;
@@ -118,7 +119,7 @@ export default function LicensePage() {
           throw { response: { data: { error: response.error } } };
         }
       } else {
-        result = await activateLicense(licenseKey);
+        result = await activateLicense(keyToSubmit);
       }
 
       setStatus(result);
@@ -149,6 +150,21 @@ export default function LicensePage() {
       setActivating(false);
     }
   };
+
+  useEffect(() => {
+    if (electron && electron.onLicenseKeyReceived) {
+      electron.onLicenseKeyReceived((key: string) => {
+        setLicenseKey(key);
+        // Automatically submit when the key is received from URI
+        handleSubmit(key);
+      });
+    }
+    return () => {
+      if (electron && electron.ipcRenderer && electron.ipcRenderer.removeAllListeners) {
+        electron.ipcRenderer.removeAllListeners("license-key-received");
+      }
+    };
+  }, [appMode]);
 
   const StatusDisplay = () => {
     if (!status) return null;
@@ -382,12 +398,12 @@ export default function LicensePage() {
             />
           </Box>
 
-          <Button
-            fullWidth
-            variant="contained"
-            size="large"
-            onClick={handleSubmit}
-            disabled={
+            <Button
+              fullWidth
+              variant="contained"
+              size="large"
+              onClick={() => handleSubmit()}
+              disabled={
               activating ||
               !licenseKey ||
               status?.status === "valid" ||
@@ -425,7 +441,16 @@ export default function LicensePage() {
               variant="outlined"
               size="medium"
               startIcon={<CreditCard size={18} />}
-              onClick={() => navigate("/plans")}
+              onClick={() => {
+                const encodedId = btoa(machineId);
+                const url = `https://getkosh.co.in/checkout?m=${encodedId}`;
+                if (electron && electron.openExternalUrl) {
+                  electron.openExternalUrl(url);
+                } else {
+                  window.open(url, "_blank");
+                }
+              }}
+              disabled={machineId === "Loading..."}
               sx={{
                 mt: 1.5,
                 py: 1.2,
@@ -441,7 +466,7 @@ export default function LicensePage() {
                 },
               }}
             >
-              View Plans & Buy Now
+              Buy / Activate
             </Button>
           </Box>
         </CardContent>

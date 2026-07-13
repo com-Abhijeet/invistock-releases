@@ -32,6 +32,8 @@ import {
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../../lib/api/api";
+import { getShopData } from "../../lib/api/shopService";
+import { Database } from "lucide-react";
 
 export default function ActionCenter() {
   const theme = useTheme();
@@ -41,14 +43,22 @@ export default function ActionCenter() {
 
   // Action Data States
   const [missingBatches, setMissingBatches] = useState<any[]>([]);
+  const [backupConfigured, setBackupConfigured] = useState<boolean | null>(null);
 
   // Fetch all action items
   const fetchActionItems = useCallback(async () => {
     setLoading(true);
     try {
-      const [missingBatchesRes] = await Promise.all([
+      const [missingBatchesRes, shopData] = await Promise.all([
         api.get("/api/products/missing-batches").catch(() => ({ data: [] })),
+        getShopData().catch(() => null),
       ]);
+
+      if (shopData) {
+        setBackupConfigured(Boolean(shopData.enable_auto_backup && shopData.backup_path));
+      } else {
+        setBackupConfigured(null);
+      }
 
       const payload = missingBatchesRes?.data;
 
@@ -90,7 +100,7 @@ export default function ActionCenter() {
   const open = Boolean(anchorEl);
 
   // Aggregate total actions across all sections
-  const totalActions = missingBatches.length;
+  const totalActions = missingBatches.length + (backupConfigured === false ? 1 : 0);
 
   return (
     <>
@@ -202,6 +212,72 @@ export default function ActionCenter() {
             </Box>
           ) : (
             <Box display="flex" flexDirection="column" gap={2.5}>
+              {/* --- SECTION 0: BACKUP WARNING --- */}
+              {backupConfigured === false && (
+                <Card
+                  elevation={0}
+                  sx={{
+                    border: `1px solid ${alpha(theme.palette.warning.main, 0.4)}`,
+                    borderRadius: "12px",
+                    overflow: "hidden",
+                    bgcolor: 'background.paper',
+                  }}
+                >
+                  {/* Section Header */}
+                  <Box
+                    sx={{
+                      px: 2,
+                      py: 1.5,
+                      bgcolor: alpha(theme.palette.warning.main, 0.08),
+                      borderBottom: `1px solid ${alpha(theme.palette.warning.main, 0.2)}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Database size={18} color={theme.palette.warning.dark} />
+                      <Typography
+                        variant="subtitle2"
+                        fontWeight={800}
+                        color="warning.dark"
+                      >
+                        System Backup Risk
+                      </Typography>
+                    </Box>
+                    <Badge
+                      badgeContent={1}
+                      color="warning"
+                      sx={{ "& .MuiBadge-badge": { fontWeight: 800 } }}
+                    />
+                  </Box>
+
+                  {/* Section List */}
+                  <List disablePadding>
+                    <ListItem disablePadding>
+                      <ListItemButton
+                        onClick={() => handleNavigate("/settings")}
+                        sx={{ px: 2, py: 1.5 }}
+                      >
+                        <ListItemText
+                          primary={
+                            <Typography variant="body2" fontWeight={600} color="text.primary">
+                              Auto Local Backup Not Configured
+                            </Typography>
+                          }
+                          secondary={
+                            <Typography variant="caption" color="text.secondary">
+                              Please configure your local backup path in Settings to prevent data loss.
+                            </Typography>
+                          }
+                        />
+                        <ChevronRight size={16} color={theme.palette.text.secondary} />
+                      </ListItemButton>
+                    </ListItem>
+                  </List>
+                </Card>
+              )}
+
               {/* --- SECTION 1: MISSING BATCHES --- */}
               {missingBatches.length > 0 && (
                 <Card

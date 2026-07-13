@@ -9,6 +9,11 @@ import { normalizeBooleans } from "../utils/normalizeBooleans.mjs";
 import { calculateAveragePurchaseCost } from "../utils/updateAveragePurchaseCostForProduct.mjs";
 import { convertToStockQuantity } from "../services/unitService.mjs";
 
+function normalizeItemUnit(unit, fallback = "pcs") {
+  const normalized = unit ? unit.toString().trim() : "";
+  return normalized || fallback;
+}
+
 export function createPurchase(purchaseData, items) {
   try {
     const insertPurchaseStmt = db.prepare(
@@ -67,6 +72,7 @@ export function createPurchase(purchaseData, items) {
       if (!product) {
         throw new Error(`Product with id ${product_id} not found`);
       }
+      const itemUnit = normalizeItemUnit(unit, product.base_unit || "pcs");
 
       // Convert serial array to JSON string for storage in purchase_items
       const serialsString = Array.isArray(serial_numbers)
@@ -81,7 +87,7 @@ export function createPurchase(purchaseData, items) {
         gst_rate,
         discount,
         price,
-        unit || product.base_unit || null, // Store the unit used
+        itemUnit, // Store the unit used
         batch_uid || null,
         batch_number || null,
         barcode || null,
@@ -96,7 +102,7 @@ export function createPurchase(purchaseData, items) {
 
       // --- UNIT CONVERSION LOGIC ---
       // 1. Convert the Purchase Quantity (e.g., 10 Boxes) to Stock Quantity (e.g., 250 kg)
-      const stockQty = convertToStockQuantity(quantity, unit, product);
+      const stockQty = convertToStockQuantity(quantity, itemUnit, product);
 
       // 2. Calculate Effective Rate per Stock Unit
       // Total Cost = quantity * rate.
@@ -317,7 +323,7 @@ export function updatePurchase(id, data, newItems) {
         rate: item.rate,
         gst_rate: item.gst_rate,
         discount: item.discount || 0,
-        unit: item.unit || null,
+        unit: normalizeItemUnit(item.unit),
         batch_uid: item.batch_uid || null,
         batch_number: item.batch_number || null,
         barcode: item.barcode || null,

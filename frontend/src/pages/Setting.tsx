@@ -200,7 +200,9 @@ export default function SettingsPage() {
             {activeTab === 3 && shopData && (
               <PreferencesTab data={shopData} onChange={handleChange} />
             )}
-            {activeTab === 4 && <BackupRestoreTab />}
+            {activeTab === 4 && shopData && (
+              <BackupRestoreTab data={shopData} onChange={handleChange} />
+            )}
             {activeTab === 5 && <MobileAccessTab />}
             {activeTab === 6 && <WhatsAppTab />}
           </Box>
@@ -209,7 +211,7 @@ export default function SettingsPage() {
 
       {/* --- SAVE FOOTER --- */}
       {/* Show for tabs 0-3 (Profile, Tax, Print, Prefs) */}
-      {[0, 1, 2, 3].includes(activeTab) && (
+      {[0, 1, 2, 3, 4].includes(activeTab) && (
         <Paper
           elevation={5}
           sx={{

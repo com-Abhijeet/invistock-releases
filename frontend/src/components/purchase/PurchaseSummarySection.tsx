@@ -47,9 +47,6 @@ const PurchaseSummarySection = ({
   supplier,
   mode,
   resetForm,
-  draftsModalOpen,
-  setDraftsModalOpen,
-  saveDraft,
 }: Props) => {
   const theme = useTheme();
   const [warningOpen, setWarningOpen] = useState(false);

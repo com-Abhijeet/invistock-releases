@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Box, Typography, Card, CardContent, CircularProgress } from "@mui/material";
+import { Box, CircularProgress } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { AlertCircle, Clock, Activity } from "lucide-react";
 import theme from "../../../theme";

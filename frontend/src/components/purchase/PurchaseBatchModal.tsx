@@ -100,9 +100,7 @@ export default function PurchaseBatchModal({
 
   // Selection & Navigation State
   const [inputValue, setInputValue] = useState("");
-  const [highlightedOption, setHighlightedOption] = useState<Product | null>(
-    null,
-  );
+
 
   // Refs
   const productInputRef = useRef<HTMLInputElement>(null);
@@ -347,49 +345,8 @@ export default function PurchaseBatchModal({
   };
 
   // --- KEYBOARD HANDLING ---
-  const handleAutocompleteKeyDown = (e: React.KeyboardEvent) => {
-    if (!highlightedOption && e.shiftKey) return;
+  // The handleAutocompleteKeyDown has been removed because it was unused
 
-    // 1. Shift + ArrowDown: Select the *Next* item (Expand Selection Downwards)
-    if (e.shiftKey && e.key === "ArrowDown") {
-      const currentIndex = visibleOptionsRef.current.findIndex(
-        (p) => p.id === highlightedOption?.id,
-      );
-
-      if (
-        currentIndex !== -1 &&
-        currentIndex < visibleOptionsRef.current.length - 1
-      ) {
-        const nextItem = visibleOptionsRef.current[currentIndex + 1];
-
-        if (nextItem && !selectedProducts.some((p) => p.id === nextItem.id)) {
-          setSelectedProducts((prev) => [...prev, nextItem]);
-        }
-      }
-      return;
-    }
-
-    // 2. Shift + ArrowUp: Deselect the *Current* highlighted item (Contract Selection)
-    if (e.shiftKey && e.key === "ArrowUp") {
-      if (highlightedOption) {
-        setSelectedProducts((prev) =>
-          prev.filter((p) => p.id !== highlightedOption.id),
-        );
-      }
-      return;
-    }
-
-    // 3. Enter Key: Confirm selection and move focus if input is cleared/ready
-    if (e.key === "Enter") {
-      const val = (e.target as HTMLInputElement).value;
-
-      if (selectedProducts.length > 0 && val === "") {
-        e.preventDefault();
-        e.stopPropagation();
-        rateInputRef.current?.focus();
-      }
-    }
-  };
 
   const hasTrackedItems = selectedProducts.some(
     (p) => p.tracking_type !== "none",
@@ -472,9 +429,7 @@ export default function PurchaseBatchModal({
                   setSelectedProducts((newValue as Product[]) || []);
                 }
               }}
-              onHighlightChange={(_e, option) => {
-                setHighlightedOption(option);
-              }}
+
               filterOptions={(options, params) => {
                 const filtered = filter(options, params);
                 visibleOptionsRef.current = filtered;

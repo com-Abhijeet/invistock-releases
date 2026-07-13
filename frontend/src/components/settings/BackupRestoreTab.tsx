@@ -1,5 +1,8 @@
 "use client";
 
+import { type ShopSetupForm } from "../../lib/types/shopTypes";
+import { FormField } from "../FormField";
+
 import { useEffect, useState } from "react";
 import {
   Typography,
@@ -11,6 +14,12 @@ import {
   Divider,
   Box,
   CircularProgress,
+  Switch,
+  FormControlLabel,
+  TextField,
+  InputAdornment,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -23,18 +32,34 @@ import {
   Check,
   AlertCircle,
   RefreshCw,
+  FolderOpen,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const { electron } = window;
 const { ipcRenderer } = electron;
 
-export default function BackupRestoreTab() {
+interface Props {
+  data: ShopSetupForm;
+  onChange: (field: keyof ShopSetupForm, value: any) => void;
+}
+
+export default function BackupRestoreTab({ data, onChange }: Props) {
   const [gdriveConnected, setGdriveConnected] = useState(false);
   const [loadingGDrive, setLoadingGDrive] = useState(true);
   const [tokenExpiresAt, setTokenExpiresAt] = useState<Date | null>(null);
   const [isTokenExpired, setIsTokenExpired] = useState(false);
   const [reAuthLoading, setReAuthLoading] = useState(false);
+
+  const handleSelectPath = async () => {
+    if (!ipcRenderer) return;
+    const result = await ipcRenderer.invoke("dialog:open-directory");
+    if (result.success && result.path) {
+      onChange("backup_path", result.path);
+    } else if (result.message) {
+      toast.error(result.message);
+    }
+  };
 
   // Check Google Drive status on mount
   useEffect(() => {
@@ -145,7 +170,7 @@ export default function BackupRestoreTab() {
               <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
                 <Database size={20} color="#1976d2" />
                 <Typography variant="h6" fontWeight={600}>
-                  Local Backup
+                  Local Database Backups
                 </Typography>
               </Stack>
               <Divider sx={{ mb: 3 }} />
@@ -159,7 +184,49 @@ export default function BackupRestoreTab() {
                 storage regularly.
               </Typography>
 
-              <Box mt={4}>
+              <Box sx={{ bgcolor: "grey.50", p: 2, borderRadius: 2, border: "1px solid", borderColor: "divider", mb: 3 }}>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={Boolean(data.enable_auto_backup)}
+                        onChange={(e) =>
+                          onChange("enable_auto_backup", e.target.checked)
+                        }
+                      />
+                    }
+                    label={<Typography fontWeight={500}>Enable Auto-Backup</Typography>}
+                  />
+
+                  <Typography variant="body2" color="text.secondary">
+                    Automatically saves a rotating backup (last 30 copies) when you close the app.
+                  </Typography>
+
+                  {data.enable_auto_backup && (
+                    <FormField label="Backup Location">
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={data.backup_path || "No folder selected"}
+                        InputProps={{
+                          readOnly: true,
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <Tooltip title="Select Backup Folder">
+                                <IconButton onClick={handleSelectPath} edge="end">
+                                  <FolderOpen size={18} />
+                                </IconButton>
+                              </Tooltip>
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </FormField>
+                  )}
+                </Stack>
+              </Box>
+
+              <Box mt="auto">
                 <Button
                   variant="contained"
                   size="large"
@@ -168,7 +235,7 @@ export default function BackupRestoreTab() {
                   fullWidth
                   sx={{ borderRadius: 2 }}
                 >
-                  Create Local Backup
+                  Create Manual Backup
                 </Button>
               </Box>
             </CardContent>

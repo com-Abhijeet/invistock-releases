@@ -6,7 +6,6 @@ import { useParams } from "react-router-dom";
 import {
   Box,
   useTheme,
-  Tooltip,
   Typography,
   Dialog,
   DialogTitle,
@@ -112,19 +111,6 @@ const PurchasePage = () => {
     setDrafts(updatedDrafts);
     localStorage.setItem("purchase_drafts", JSON.stringify(updatedDrafts));
     toast.success("Draft saved");
-  };
-
-  const deleteDraft = (draftId: string) => {
-    const updatedDrafts = drafts.filter((d) => d.id !== draftId);
-    setDrafts(updatedDrafts);
-    localStorage.setItem("purchase_drafts", JSON.stringify(updatedDrafts));
-    toast.success("Draft deleted");
-  };
-
-  const loadDraft = (draft: SavedPurchaseDraft) => {
-    setPurchase(draft.purchasePayload);
-    setDraftsModalOpen(false);
-    toast.success("Draft loaded");
   };
 
   useEffect(() => {

@@ -29,7 +29,6 @@ import {
   Server,
   CreditCard,
   Package,
-  ShoppingCart,
   Users,
   ChevronRight,
   Database,

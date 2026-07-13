@@ -93,6 +93,7 @@ contextBridge.exposeInMainWorld("electron", {
         "gdrive-connected",
         "gdrive-token-expired",
         "gdrive-token-expiring",
+        "license-key-received",
         // ✅ Updater Events
         "update-available",
         "update-not-available",
@@ -110,6 +111,7 @@ contextBridge.exposeInMainWorld("electron", {
         "whatsapp-status",
         "whatsapp-restart",
         "gdrive-connected",
+        "license-key-received",
         "update-available",
         "update-not-available",
         "update-progress",
@@ -130,6 +132,9 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("set-server-url", (event, url) => {
       callback(url);
     });
+  },
+  onLicenseKeyReceived: (callback) => {
+    ipcRenderer.on("license-key-received", (event, key) => callback(key));
   },
   getAppMode: () => ipcRenderer.invoke("get-app-mode"),
   getServerUrl: () => ipcRenderer.invoke("get-server-url"),

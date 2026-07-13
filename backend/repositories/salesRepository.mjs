@@ -6,6 +6,11 @@ import * as AdjustmentRepo from "../repositories/stockAdjustmentRepository.mjs";
 import * as BatchRepo from "../repositories/batchRepository.mjs";
 import { convertToStockQuantity } from "../services/unitService.mjs"; // Import converter
 
+function normalizeItemUnit(unit, fallback = "pcs") {
+  const normalized = unit ? unit.toString().trim() : "";
+  return normalized || fallback;
+}
+
 /* -------------------------------------------------------------------------- */
 /* SALE REPOSITORY FUNCTIONS                                                  */
 /* -------------------------------------------------------------------------- */
@@ -97,7 +102,7 @@ export function createSale(saleData, items) {
             item.gst_rate,
             item.discount,
             item.price,
-            item.unit || null,
+            normalizeItemUnit(item.unit),
             item.batch_id || null,
             item.serial_id || null,
           );
@@ -476,7 +481,7 @@ export function replaceSaleItems(saleId, items) {
       item.price,
       item.batch_id || null,
       item.serial_id || null,
-      item.unit || null,
+      normalizeItemUnit(item.unit),
     );
   }
 }
@@ -569,7 +574,7 @@ export async function updateSaleById(id, saleData) {
           item.gst_rate,
           item.discount,
           item.price,
-          item.unit || null,
+          normalizeItemUnit(item.unit),
         ],
       );
     }

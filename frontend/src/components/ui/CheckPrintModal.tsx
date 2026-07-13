@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -14,7 +14,6 @@ import {
   IconButton,
   Tooltip,
   Paper,
-  Divider,
   MenuItem,
   Select,
   FormControl,
@@ -23,12 +22,7 @@ import {
 } from "@mui/material";
 import {
   Printer,
-  Move,
-  RotateCcw,
   Info,
-  Maximize2,
-  ChevronRight,
-  ChevronDown,
   Save,
   Trash2,
   Plus,
@@ -76,7 +70,6 @@ export default function CheckPrintModal({
   
   const [configs, setConfigs] = useState<any[]>([]);
   const [currentConfigIndex, setCurrentConfigIndex] = useState(0);
-  const [showInstructions, setShowInstructions] = useState(false);
   const [selectedField, setSelectedField] = useState<string | null>(null);
 
   // Load cached configs

@@ -8,7 +8,6 @@ import {
   Chip,
   CircularProgress,
   Stack,
-  Divider,
   useTheme,
   IconButton,
   Tooltip,
@@ -22,11 +21,9 @@ import {
 import Grid  from "@mui/material/GridLegacy"
 import { getLicenseStatus, activateLicense, LicenseStatus } from "../lib/api/LicenseService";
 import {
-  CheckCircle,
   XCircle,
   AlertTriangle,
   Info,
-  Lock,
   Phone,
   Monitor,
   Copy,
