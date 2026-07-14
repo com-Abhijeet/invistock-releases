@@ -4,6 +4,7 @@ const {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  Browsers,
 } = require("@whiskeysockets/baileys");
 const QRCode = require("qrcode");
 const fs = require("fs");
@@ -214,7 +215,7 @@ class WhatsAppService {
           ),
         },
         generateHighQualityLinkPreview: true,
-        browser: ["KOSH App", "Chrome", "111.0.0.0"], // Updated user agent
+        browser: Browsers.windows("Desktop"), // Use standard browser identity to avoid ban
         syncFullHistory: false, // CRITICAL: Stop history sync from crashing the socket
         markOnlineOnConnect: true,
         getMessage: async () => {
@@ -351,6 +352,18 @@ class WhatsAppService {
 
       try {
         let response;
+        
+        // Simulating human behavior to prevent account bans
+        try {
+          await this.sock.sendPresenceUpdate('composing', jid);
+          // Random delay to simulate typing time (2-5 seconds)
+          const typingDelay = Math.floor(Math.random() * 3000) + 2000; 
+          await new Promise((r) => setTimeout(r, typingDelay));
+          await this.sock.sendPresenceUpdate('paused', jid);
+        } catch (presenceErr) {
+          console.warn("[WHATSAPP] Failed to send presence update:", presenceErr.message);
+        }
+
         if (item.media) {
           const buffer = Buffer.from(item.media.data, "base64");
           if (item.media.mimetype === "application/pdf") {
@@ -376,8 +389,9 @@ class WhatsAppService {
         this.notifyUI();
 
         // Delay slightly between messages to prevent rate-limiting bans
-        // Increased from 500ms to 1500ms to give media payloads time to clear
-        await new Promise((r) => setTimeout(r, 1500));
+        // Uses randomized delay (5 to 12 seconds) to mimic human pacing and avoid 24h lockout
+        const postSendDelay = Math.floor(Math.random() * 7000) + 5000;
+        await new Promise((r) => setTimeout(r, postSendDelay));
       } catch (err) {
         console.error("[WHATSAPP] Send Error processing queue:", err);
 
