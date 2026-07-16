@@ -37,6 +37,73 @@ import toast from "react-hot-toast";
 
 const { electron } = window;
 
+const parseLicenseMessage = (message: string = "") => {
+  const msg = message.toLowerCase();
+  
+  if (msg.includes("banned") || msg.includes("suspicious")) {
+    return {
+      title: "Device Banned",
+      cause: "Suspicious activity or multiple failed activation attempts were detected from this device.",
+      action: "Please contact support to appeal the ban or investigate the issue.",
+    };
+  }
+  if (msg.includes("invalid license") || msg.includes("invalid key") || msg.includes("invalid")) {
+    return {
+      title: "Invalid License Key",
+      cause: "The key entered does not exist in our system or is incorrect.",
+      action: "Double-check the 16-digit key you entered. If you bought a new key, ensure it is typed correctly.",
+    };
+  }
+  if (msg.includes("revoked") || msg.includes("deactivated")) {
+    return {
+      title: "License Revoked",
+      cause: "This license key was manually disabled by an administrator or due to a refund/cancellation.",
+      action: "You will need to purchase a new license key to continue using the software.",
+    };
+  }
+  if (msg.includes("no plan")) {
+    return {
+      title: "No Subscription Plan",
+      cause: "The license is active but does not have a subscription or software plan linked to it.",
+      action: "Contact support to correctly map your purchase to a valid software plan.",
+    };
+  }
+  if (msg.includes("different device") || msg.includes("machine mismatch") || msg.includes("locked to a different")) {
+    return {
+      title: "Device Mismatch",
+      cause: "This license key is already registered and locked to another computer.",
+      action: "Use the key on the original computer, or request a license transfer from support.",
+    };
+  }
+  if (msg.includes("location mismatch") || msg.includes("network")) {
+    return {
+      title: "Network Mismatch",
+      cause: "This license is restricted to a specific office IP or network.",
+      action: "Ensure you are connected to the correct office WiFi or contact support to update your IP address.",
+    };
+  }
+  if (msg.includes("connection check failed") || msg.includes("could not load") || msg.includes("network error") || msg.includes("failed to fetch")) {
+    return {
+      title: "Connection Failed",
+      cause: "We couldn't reach the Kosh licensing server to verify your device.",
+      action: "Check your internet connection and try again.",
+    };
+  }
+  if (msg.includes("client activation required")) {
+      return {
+          title: "Client Activation Required",
+          cause: "This app is running in client mode and needs a license to connect to the server.",
+          action: "Enter your license key below.",
+      }
+  }
+
+  return {
+    title: message || "Unknown Status",
+    cause: "",
+    action: "",
+  };
+};
+
 export default function ViewLicensePage() {
   const [status, setStatus] = useState<LicenseStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,12 +181,14 @@ export default function ViewLicensePage() {
         toast.success("License activated successfully!");
         setLicenseKey("");
       } else {
-        toast.error(response.message || "Failed to activate license.");
+        const parsed = parseLicenseMessage(response.message);
+        toast.error(parsed.title || "Failed to activate license.");
       }
       setStatus(response);
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || "Error activating license. Please check your key.";
-      toast.error(errorMsg);
+      const parsed = parseLicenseMessage(errorMsg);
+      toast.error(parsed.title);
     } finally {
       setActivating(false);
     }
@@ -324,9 +393,32 @@ export default function ViewLicensePage() {
                       color={statusInfo.color as any}
                       sx={{ fontSize: "1.1rem", p: 2, fontWeight: "bold", mt: 1 }}
                     />
-                    <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
-                      {status?.message}
-                    </Typography>
+                    
+                    {(() => {
+                      const parsedMsg = parseLicenseMessage(status?.message);
+                      return (
+                        <Box sx={{ mt: 2, textAlign: 'center', maxWidth: '100%' }}>
+                          <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 'bold' }}>
+                            {parsedMsg.title}
+                          </Typography>
+                          
+                          {(parsedMsg.cause || parsedMsg.action) && (
+                            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 2, textAlign: 'left', border: '1px solid', borderColor: 'divider' }}>
+                              {parsedMsg.cause && (
+                                <Typography variant="body2" sx={{ mb: 1, color: 'text.secondary' }}>
+                                  <strong style={{ color: theme.palette.text.primary }}>Cause:</strong> {parsedMsg.cause}
+                                </Typography>
+                              )}
+                              {parsedMsg.action && (
+                                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                  <strong style={{ color: theme.palette.text.primary }}>What to do:</strong> {parsedMsg.action}
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
+                        </Box>
+                      );
+                    })()}
 
                     {status?.data?.expiryDate && (
                       <Box mt={4}>

@@ -13,7 +13,6 @@ import {
   Tooltip,
   Card,
   CardContent,
-  Divider,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { QRCodeCanvas } from "qrcode.react";
@@ -55,13 +54,30 @@ export default function MobileAccessTab() {
     <Grid container spacing={3}>
       {/* --- Left Column: QR Code & Connection --- */}
       <Grid item xs={12} md={6}>
-        <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-          <CardContent sx={{ textAlign: "center" }}>
-            <Typography variant="h6" fontWeight={600} gutterBottom>
-              Connect Mobile Device
+        <Card
+          elevation={2}
+          sx={{ height: "100%", borderRadius: 3, overflow: "hidden" }}
+        >
+          <Box
+            sx={{
+              p: 1.5,
+              px: 2.5,
+              bgcolor: "primary.main",
+              color: "white",
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+            }}
+          >
+            <Smartphone size={20} color="white" />
+            <Typography
+              variant="subtitle1"
+              sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+            >
+              CONNECT MOBILE DEVICE
             </Typography>
-            <Divider sx={{ mb: 3 }} />
-
+          </Box>
+          <CardContent sx={{ textAlign: "center", p: 3 }}>
             <Typography variant="body2" color="text.secondary" mb={3}>
               Scan this QR code with your phone's camera to instantly access the
               mobile stock checker.
@@ -74,7 +90,7 @@ export default function MobileAccessTab() {
                 p: 2,
                 border: "1px solid #eee",
                 borderRadius: 3,
-                bgcolor: 'background.paper',
+                bgcolor: "background.paper",
                 mb: 3,
                 boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
               }}
@@ -103,13 +119,27 @@ export default function MobileAccessTab() {
       <Grid item xs={12} md={6}>
         <Stack spacing={3} sx={{ height: "100%" }}>
           {/* Manual Connection Card */}
-          <Card variant="outlined" sx={{ borderRadius: 3 }}>
-            <CardContent>
-              <Typography variant="h6" fontWeight={600} gutterBottom>
-                Manual Connection
+          <Card elevation={2} sx={{ borderRadius: 3, overflow: "hidden" }}>
+            <Box
+              sx={{
+                p: 1.5,
+                px: 2.5,
+                bgcolor: "primary.main",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+              }}
+            >
+              <Wifi size={20} color="white" />
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+              >
+                MANUAL CONNECTION
               </Typography>
-              <Divider sx={{ mb: 3 }} />
-
+            </Box>
+            <CardContent sx={{ p: 3 }}>
               <Typography variant="body2" color="text.secondary" mb={1}>
                 If scanning fails, open your phone's browser (Chrome/Safari) and
                 type this address exactly:
@@ -142,16 +172,30 @@ export default function MobileAccessTab() {
           </Card>
 
           {/* Troubleshooting Card */}
-          <Card variant="outlined" sx={{ flexGrow: 1, borderRadius: 3 }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-                <HelpCircle size={20} color="#ed6c02" /> {/* Warning Color */}
-                <Typography variant="h6" fontWeight={600}>
-                  Troubleshooting
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 2 }} />
-
+          <Card
+            elevation={2}
+            sx={{ flexGrow: 1, borderRadius: 3, overflow: "hidden" }}
+          >
+            <Box
+              sx={{
+                p: 1.5,
+                px: 2.5,
+                bgcolor: "primary.main",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+              }}
+            >
+              <HelpCircle size={20} color="white" />
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+              >
+                TROUBLESHOOTING
+              </Typography>
+            </Box>
+            <CardContent sx={{ p: 3 }}>
               <Stack spacing={1.5}>
                 <Typography variant="body2" color="text.secondary">
                   <strong>1. Site Can't Be Reached?</strong>

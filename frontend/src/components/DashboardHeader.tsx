@@ -25,12 +25,12 @@ import {
   Search,
   RefreshCw,
   X,
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Filter,
   ArrowRight,
   Calendar as CalendarIcon,
+  Boxes,
 } from "lucide-react";
 import type { DashboardFilter } from "../lib/types/inventoryDashboardTypes";
 
@@ -216,7 +216,7 @@ export default function DashboardHeader({
               boxShadow: `0 4px 12px ${alpha(theme.palette.secondary.main, 0.3)}`,
             }}
           >
-            <CalendarDays size={22} />
+            <Boxes size={22} />
           </Box>
           <Box>
             <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.2 }}>

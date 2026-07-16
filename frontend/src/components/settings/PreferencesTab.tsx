@@ -7,7 +7,6 @@ import {
   FormControlLabel,
   Card,
   CardContent,
-  Divider,
   Box,
   Stack,
 } from "@mui/material";
@@ -22,22 +21,35 @@ interface Props {
 }
 
 export default function PreferencesTab({ data, onChange }: Props) {
-
   return (
     <Box>
       <Grid container spacing={3}>
         {/* --- Left Column: Invoicing Rules --- */}
         <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
-                <Settings2 size={20} className="text-gray-600" />
-                <Typography variant="h6" fontWeight={600}>
-                  Business Logic
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 3 }} />
-
+          <Card
+            elevation={2}
+            sx={{ height: "100%", borderRadius: 3, overflow: "hidden" }}
+          >
+            <Box
+              sx={{
+                p: 1.5,
+                px: 2.5,
+                bgcolor: "primary.main",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+              }}
+            >
+              <Settings2 size={20} color="white" />
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+              >
+                BUSINESS LOGIC
+              </Typography>
+            </Box>
+            <CardContent sx={{ p: 3 }}>
               <Stack spacing={3}>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
@@ -162,8 +174,6 @@ export default function PreferencesTab({ data, onChange }: Props) {
             </CardContent>
           </Card>
         </Grid>
-
-
       </Grid>
     </Box>
   );

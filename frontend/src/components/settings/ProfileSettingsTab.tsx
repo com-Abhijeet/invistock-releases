@@ -7,7 +7,6 @@ import {
   Switch,
   Card,
   CardContent,
-  Divider,
   Box,
   Stack,
 } from "@mui/material";
@@ -49,13 +48,18 @@ export default function ProfileSettingsTab({ data, onChange }: Props) {
       <Grid item xs={12} md={4}>
         <Stack spacing={3}>
           {/* Branding Card */}
-          <Card variant="outlined" sx={{ borderRadius: 3 }}>
-            <CardContent>
-              <Typography variant="h6" fontWeight={600} gutterBottom>
-                Branding
+          <Card elevation={2} sx={{ borderRadius: 3, overflow: "hidden" }}>
+            <Box
+              sx={{ p: 1.5, px: 2.5, bgcolor: "primary.main", color: "white" }}
+            >
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+              >
+                BRANDING
               </Typography>
-              <Divider sx={{ mb: 3 }} />
-
+            </Box>
+            <CardContent sx={{ p: 3 }}>
               <Box display="flex" flexDirection="column" alignItems="center">
                 <LogoPicker
                   // 🚨 THE MAGIC FIX: This key forces LogoPicker to refresh its internal
@@ -76,14 +80,19 @@ export default function ProfileSettingsTab({ data, onChange }: Props) {
             </CardContent>
           </Card>
 
-          {/* Contact Details Card (Moved here to balance height) */}
-          <Card variant="outlined" sx={{ borderRadius: 3 }}>
-            <CardContent>
-              <Typography variant="h6" fontWeight={600} gutterBottom>
-                Contact Details
+          {/* Contact Details Card */}
+          <Card elevation={2} sx={{ borderRadius: 3, overflow: "hidden" }}>
+            <Box
+              sx={{ p: 1.5, px: 2.5, bgcolor: "primary.main", color: "white" }}
+            >
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+              >
+                CONTACT DETAILS
               </Typography>
-              <Divider sx={{ mb: 2 }} />
-
+            </Box>
+            <CardContent sx={{ p: 3 }}>
               <Stack spacing={2}>
                 <FormField label="Owner Name">
                   <TextField
@@ -117,14 +126,21 @@ export default function ProfileSettingsTab({ data, onChange }: Props) {
 
       {/* --- Right Column: Shop Info & Address --- */}
       <Grid item xs={12} md={8}>
-        <Card variant="outlined" sx={{ borderRadius: 3, height: "100%" }}>
-          <CardContent>
-            {/* Business Identity Section */}
-            <Typography variant="h6" fontWeight={600} gutterBottom>
-              Shop Identity
+        <Card
+          elevation={2}
+          sx={{ borderRadius: 3, overflow: "hidden", height: "100%" }}
+        >
+          <Box
+            sx={{ p: 1.5, px: 2.5, bgcolor: "primary.main", color: "white" }}
+          >
+            <Typography
+              variant="subtitle1"
+              sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+            >
+              SHOP IDENTITY
             </Typography>
-            <Divider sx={{ mb: 3 }} />
-
+          </Box>
+          <CardContent sx={{ p: 3 }}>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
                 <FormField label="Shop Name *">
@@ -169,10 +185,23 @@ export default function ProfileSettingsTab({ data, onChange }: Props) {
 
             {/* Location Section */}
             <Box mt={4}>
-              <Typography variant="h6" fontWeight={600} gutterBottom>
-                Location & Address
-              </Typography>
-              <Divider sx={{ mb: 3 }} />
+              <Box
+                sx={{
+                  p: 1.5,
+                  px: 2.5,
+                  bgcolor: "primary.main",
+                  color: "white",
+                  borderRadius: 1.5,
+                  mb: 3,
+                }}
+              >
+                <Typography
+                  variant="subtitle1"
+                  sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+                >
+                  LOCATION & ADDRESS
+                </Typography>
+              </Box>
 
               <Grid container spacing={2}>
                 <Grid item xs={12}>

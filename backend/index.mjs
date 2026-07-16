@@ -34,9 +34,9 @@ import salesOrderRoutes from "./routes/salesOrderRoutes.mjs";
 import employeeRoutes from "./routes/employeeRoutes.mjs";
 import employeeSalesRoutes from "./routes/employeeSalesRoutes.mjs";
 import accountingRoutes from "./routes/accountingRoutes.mjs";
-import tallyRoutes from "./tally/tallyRoutes.mjs";
-import tallySseRoutes from "./tally/tallySseRoutes.mjs";
 import businessRoutes from "./routes/businessRoutes.mjs";
+import tallyRoutes from "./routes/tallyRoutes.mjs";
+import tallySseRoutes from "./routes/tallySseRoutes.mjs";
 
 // ✅ NEW: Import the Sync Routes for Mobile
 import syncRoutes from "./routes/syncRoutes.mjs";

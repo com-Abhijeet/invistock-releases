@@ -232,9 +232,14 @@ export const menuSections = [
         shortcut: "F12",
       },
       {
-        label: "Tallly Sync", // Tally reference
-        icon: <Settings size={20} />,
+        label: "Tally Sync", // Tally reference
+        icon: <CloudCheck size={20} />,
         path: "/tally",
+      },
+      {
+        label: "Tally Config",
+        icon: <Settings size={20} />,
+        path: "/tally-config",
       },
       {
         label: "Kosh Business", // Tally reference

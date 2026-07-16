@@ -53,6 +53,7 @@ import AboutPage from "./pages/AboutPage";
 import ExpensesPage from "./pages/ExpensePage";
 import StockAdjustmentsPage from "./pages/StockAdjustmentsPage";
 import { UpdateProvider } from "./context/UpdateContext";
+import { TallySyncProvider } from "./context/TallySyncContext";
 import KoshSpinningLoader from "./components/KoshSpinningLoader";
 import SmartRestockPage from "./pages/SmartRestockPage";
 import DeadStockPage from "./pages/DeadStockPage";
@@ -79,7 +80,8 @@ import EmployeeListPage from "./pages/EmployeeListPage";
 import EmployeeDetailPage from "./pages/EmployeeDetailPage";
 import AccountingDashboard from "./pages/AccountingDashboard";
 import ExpiryReportPage from "./pages/ExpiryReportPage";
-import TallyDashboard from "./pages/TallyDashboard";
+import TallyDashboard from "./pages/setup/TallyDashboard";
+import TallyLedgerConfig from "./pages/setup/TallyLedgerConfig";
 import BusinessSettings from "./pages/BusinessSettingsPage";
 import MissingBatchesPage from "./pages/MissingBatchesPage";
 
@@ -551,8 +553,16 @@ function AppLayout() {
                   <Route
                     path="/tally"
                     element={
-                      <PermissionGuard requiredPermission="">
+                      <PermissionGuard requiredPermission="settings">
                         <TallyDashboard />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/tally-config"
+                    element={
+                      <PermissionGuard requiredPermission="settings">
+                        <TallyLedgerConfig />
                       </PermissionGuard>
                     }
                   />
@@ -760,8 +770,10 @@ function AppInitializer() {
   return (
     <AuthProvider>
       <ModeProvider>
-        <GlobalShortcuts />
-        <AppLayout />
+        <TallySyncProvider>
+          <GlobalShortcuts />
+          <AppLayout />
+        </TallySyncProvider>
       </ModeProvider>
     </AuthProvider>
   );

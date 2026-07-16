@@ -18,7 +18,6 @@ import {
   DialogTitle,
   DialogContent,
   CircularProgress,
-  Paper,
   ListSubheader,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
@@ -251,15 +250,14 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
       <Grid container spacing={3}>
         {/* --- INVOICE SETTINGS --- */}
         <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
-                <Receipt size={20} className="text-blue-600" />
-                <Typography variant="h6" fontWeight={600}>
-                  Invoice Configuration
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 3 }} />
+          <Card elevation={2} sx={{ height: "100%", borderRadius: 3, overflow: 'hidden' }}>
+            <Box sx={{ p: 1.5, px: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Receipt size={20} color="white" />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                INVOICE CONFIGURATION
+              </Typography>
+            </Box>
+            <CardContent sx={{ p: 3 }}>
 
               <Stack spacing={3}>
                 <Grid container spacing={2}>
@@ -337,15 +335,14 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
 
         {/* --- LABEL SETTINGS --- */}
         <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
-                <Tag size={20} className="text-green-600" />
-                <Typography variant="h6" fontWeight={600}>
-                  Barcode Label Settings
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 3 }} />
+          <Card elevation={2} sx={{ height: "100%", borderRadius: 3, overflow: 'hidden' }}>
+            <Box sx={{ p: 1.5, px: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Tag size={20} color="white" />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                BARCODE LABEL SETTINGS
+              </Typography>
+            </Box>
+            <CardContent sx={{ p: 3 }}>
 
               <Stack spacing={3}>
                 <Grid container spacing={2}>
@@ -434,20 +431,14 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
         {isSettingsLoaded && (
           <>
             <Grid item xs={12} md={6}>
-              <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-                <CardContent>
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    spacing={1.5}
-                    mb={2}
-                  >
-                    <Columns size={20} className="text-purple-600" />
-                    <Typography variant="h6" fontWeight={600}>
-                      Invoice Layout & Columns
-                    </Typography>
-                  </Stack>
-                  <Divider sx={{ mb: 3 }} />
+              <Card elevation={2} sx={{ height: "100%", borderRadius: 3, overflow: 'hidden' }}>
+                <Box sx={{ p: 1.5, px: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Columns size={20} color="white" />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                    INVOICE LAYOUT & COLUMNS
+                  </Typography>
+                </Box>
+                <CardContent sx={{ p: 3 }}>
 
                   <Grid container spacing={2}>
                     <Grid item xs={12} sm={6}>
@@ -561,20 +552,14 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
 
             {/* --- LEGAL & TERMS SETTINGS --- */}
             <Grid item xs={12} md={6}>
-              <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-                <CardContent>
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    spacing={1.5}
-                    mb={2}
-                  >
-                    <Scale size={20} className="text-gray-700" />
-                    <Typography variant="h6" fontWeight={600}>
-                      Legal & Terms
-                    </Typography>
-                  </Stack>
-                  <Divider sx={{ mb: 3 }} />
+              <Card elevation={2} sx={{ height: "100%", borderRadius: 3, overflow: 'hidden' }}>
+                <Box sx={{ p: 1.5, px: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Scale size={20} color="white" />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                    LEGAL & TERMS
+                  </Typography>
+                </Box>
+                <CardContent sx={{ p: 3 }}>
 
                   <Stack spacing={3}>
                     <FormField label="Jurisdiction">
@@ -635,17 +620,14 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
 
         {/* --- PRINT BEHAVIOR --- */}
         <Grid item xs={12}>
-          <Paper
-            variant="outlined"
-            sx={{ p: 3, borderRadius: 3, bgcolor: "grey.50" }}
-          >
-            <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
-              <Printer size={20} className="text-orange-600" />
-              <Typography variant="h6" fontWeight={600}>
-                Automation & Behavior
+          <Card elevation={2} sx={{ borderRadius: 3, overflow: 'hidden' }}>
+            <Box sx={{ p: 1.5, px: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Printer size={20} color="white" />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                AUTOMATION & BEHAVIOR
               </Typography>
-            </Stack>
-            <Divider sx={{ mb: 2 }} />
+            </Box>
+            <CardContent sx={{ p: 3 }}>
 
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
@@ -692,8 +674,9 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
                   }
                 />
               </Grid>
-            </Grid>
-          </Paper>
+              </Grid>
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
 

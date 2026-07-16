@@ -96,117 +96,96 @@ export default function SettingsPage() {
       }}
     >
       <Container maxWidth="lg" sx={{ pt: 2 }}>
-        {/* --- FLOATING PILL NAVIGATION --- */}
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "center",
-            mb: 4,
-          }}
-        >
-          <Paper
-            elevation={0}
-            sx={{
-              p: 0.5,
-              backgroundColor: "rgba(0, 0, 0, 0.04)",
-              borderRadius: 3,
-              display: "inline-flex",
-            }}
-          >
+        {/* --- FOLDER STYLE NAVIGATION --- */}
+        <Box sx={{ position: "relative", zIndex: 1, display: "flex", px: 2, pt: 2, borderBottom: "none" }}>
             <Tabs
               value={activeTab}
               onChange={(_, v) => setActiveTab(v)}
               variant="scrollable"
               scrollButtons="auto"
               sx={{
-                minHeight: "auto",
+                minHeight: 48,
                 "& .MuiTabs-indicator": { display: "none" },
+                "& .MuiTabs-flexContainer": {
+                  gap: 0.5,
+                },
                 "& .MuiTab-root": {
                   textTransform: "none",
-                  fontWeight: 600,
-                  fontSize: "0.9rem",
-                  minHeight: 40,
+                  fontWeight: 700,
+                  fontSize: "0.95rem",
+                  minHeight: 48,
                   minWidth: "auto",
-                  borderRadius: 2.5,
-                  px: 2.5,
-                  py: 1,
-                  mx: 0.5,
+                  borderTopLeftRadius: 12,
+                  borderTopRightRadius: 12,
+                  borderBottomLeftRadius: 0,
+                  borderBottomRightRadius: 0,
+                  px: 3,
+                  py: 1.5,
                   color: "text.secondary",
+                  backgroundColor: "rgba(0,0,0,0.04)",
                   transition: "all 0.2s ease",
+                  border: "1px solid transparent",
+                  borderBottom: "none",
                   "&.Mui-selected": {
-                    color: "text.primary",
-                    backgroundColor: "background.paper",
-                    boxShadow: "0px 2px 8px rgba(0,0,0,0.08)",
+                    color: "primary.contrastText",
+                    backgroundColor: "primary.main",
+                    boxShadow: "0px -4px 12px rgba(0,0,0,0.1)",
+                    zIndex: 2,
+                    position: "relative",
                   },
                   "&:hover:not(.Mui-selected)": {
-                    backgroundColor: "rgba(0,0,0,0.04)",
+                    backgroundColor: "rgba(0,0,0,0.08)",
                   },
                 },
               }}
             >
-              <Tab
-                icon={<User size={18} />}
-                iconPosition="start"
-                label="Profile"
-              />
-              <Tab
-                icon={<FileText size={18} />}
-                iconPosition="start"
-                label="Tax"
-              />
-              {/* ✅ New Print Tab */}
-              <Tab
-                icon={<Printer size={18} />}
-                iconPosition="start"
-                label="Print"
-              />
-              <Tab
-                icon={<SettingsIcon size={18} />}
-                iconPosition="start"
-                label="Preferences"
-              />
-              <Tab
-                icon={<DatabaseBackup size={18} />}
-                iconPosition="start"
-                label="Backup"
-              />
-              <Tab
-                icon={<Smartphone size={18} />}
-                iconPosition="start"
-                label="Mobile"
-              />
-              <Tab
-                icon={<MessageCircle size={18} />}
-                iconPosition="start"
-                label="WhatsApp"
-              />
+              <Tab icon={<User size={18} />} iconPosition="start" label="Profile" />
+              <Tab icon={<FileText size={18} />} iconPosition="start" label="Tax" />
+              <Tab icon={<Printer size={18} />} iconPosition="start" label="Print" />
+              <Tab icon={<SettingsIcon size={18} />} iconPosition="start" label="Preferences" />
+              <Tab icon={<DatabaseBackup size={18} />} iconPosition="start" label="Backup" />
+              <Tab icon={<Smartphone size={18} />} iconPosition="start" label="Mobile" />
+              <Tab icon={<MessageCircle size={18} />} iconPosition="start" label="WhatsApp" />
             </Tabs>
-          </Paper>
         </Box>
 
         {/* --- CONTENT AREA --- */}
-        <Fade in={true} key={activeTab} timeout={300}>
-          <Box>
-            {activeTab === 0 && shopData && (
-              <ProfileSettingsTab data={shopData} onChange={handleChange} />
-            )}
-            {activeTab === 1 && shopData && (
-              <TaxBankSettingsTab data={shopData} onChange={handleChange} />
-            )}
-            {/* ✅ New Print Tab Content */}
-            {activeTab === 2 && shopData && (
-              <PrintSettingsTab data={shopData} onChange={handleChange} />
-            )}
-            {activeTab === 3 && shopData && (
-              <PreferencesTab data={shopData} onChange={handleChange} />
-            )}
-            {activeTab === 4 && shopData && (
-              <BackupRestoreTab data={shopData} onChange={handleChange} />
-            )}
-            {activeTab === 5 && <MobileAccessTab />}
-            {activeTab === 6 && <WhatsAppTab />}
+        <Box 
+          sx={{ 
+            position: "relative", 
+            zIndex: 0, 
+            borderRadius: 3, 
+            borderTopLeftRadius: activeTab === 0 ? 0 : 3,
+            backgroundColor: "background.paper", 
+            p: { xs: 2, md: 4 }, 
+            minHeight: "50vh",
+            boxShadow: "0px 8px 24px rgba(0,0,0,0.05)",
+            borderTop: (theme) => `8px solid ${theme.palette.primary.main}`
+          }}
+        >
+          <Fade in={true} key={activeTab} timeout={300}>
+            <Box>
+              {activeTab === 0 && shopData && (
+                <ProfileSettingsTab data={shopData} onChange={handleChange} />
+              )}
+              {activeTab === 1 && shopData && (
+                <TaxBankSettingsTab data={shopData} onChange={handleChange} />
+              )}
+              {activeTab === 2 && shopData && (
+                <PrintSettingsTab data={shopData} onChange={handleChange} />
+              )}
+              {activeTab === 3 && shopData && (
+                <PreferencesTab data={shopData} onChange={handleChange} />
+              )}
+              {activeTab === 4 && shopData && (
+                <BackupRestoreTab data={shopData} onChange={handleChange} />
+              )}
+              {activeTab === 5 && <MobileAccessTab />}
+              {activeTab === 6 && <WhatsAppTab />}
+            </Box>
+          </Fade>
           </Box>
-        </Fade>
+
       </Container>
 
       {/* --- SAVE FOOTER --- */}

@@ -4,7 +4,6 @@ import {
   MenuItem,
   Card,
   CardContent,
-  Divider,
   Box,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
@@ -20,13 +19,16 @@ export default function TaxBankSettingsTab({ data, onChange }: Props) {
   return (
     <Box>
       {/* --- Section 1: Tax Details --- */}
-      <Card variant="outlined" sx={{ mb: 3, borderRadius: 3 }}>
-        <CardContent>
-          <Typography variant="h6" fontWeight={600} gutterBottom>
-            Tax Information
+      <Card elevation={2} sx={{ mb: 3, borderRadius: 3, overflow: "hidden" }}>
+        <Box sx={{ p: 1.5, px: 2.5, bgcolor: "primary.main", color: "white" }}>
+          <Typography
+            variant="subtitle1"
+            sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+          >
+            TAX INFORMATION
           </Typography>
-          <Divider sx={{ mb: 3 }} />
-
+        </Box>
+        <CardContent sx={{ p: 3 }}>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={4}>
               <FormField label="GST Registration Type">
@@ -75,13 +77,21 @@ export default function TaxBankSettingsTab({ data, onChange }: Props) {
       <Grid container spacing={3}>
         {/* Left Column: Bank Account */}
         <Grid item xs={12} md={8}>
-          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-            <CardContent>
-              <Typography variant="h6" fontWeight={600} gutterBottom>
-                Bank Account Details
+          <Card
+            elevation={2}
+            sx={{ height: "100%", borderRadius: 3, overflow: "hidden" }}
+          >
+            <Box
+              sx={{ p: 1.5, px: 2.5, bgcolor: "primary.main", color: "white" }}
+            >
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+              >
+                BANK ACCOUNT DETAILS
               </Typography>
-              <Divider sx={{ mb: 3 }} />
-
+            </Box>
+            <CardContent sx={{ p: 3 }}>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <FormField label="Bank Name">
@@ -167,13 +177,21 @@ export default function TaxBankSettingsTab({ data, onChange }: Props) {
 
         {/* Right Column: UPI / Digital Payments */}
         <Grid item xs={12} md={4}>
-          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-            <CardContent>
-              <Typography variant="h6" fontWeight={600} gutterBottom>
-                Digital Payments (UPI)
+          <Card
+            elevation={2}
+            sx={{ height: "100%", borderRadius: 3, overflow: "hidden" }}
+          >
+            <Box
+              sx={{ p: 1.5, px: 2.5, bgcolor: "primary.main", color: "white" }}
+            >
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+              >
+                DIGITAL PAYMENTS (UPI)
               </Typography>
-              <Divider sx={{ mb: 3 }} />
-
+            </Box>
+            <CardContent sx={{ p: 3 }}>
               <Box display="flex" flexDirection="column" gap={2}>
                 <FormField label="UPI ID (VPA)">
                   <TextField
