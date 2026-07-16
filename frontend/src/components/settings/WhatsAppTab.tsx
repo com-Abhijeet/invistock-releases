@@ -9,7 +9,6 @@ import {
   Stack,
   Card,
   CardContent,
-  Divider,
   Alert,
   Button,
 } from "@mui/material";
@@ -73,22 +72,30 @@ export default function WhatsAppTab() {
     <Grid container spacing={3}>
       {/* --- Left Column: Connection Status & QR --- */}
       <Grid item xs={12} md={6}>
-        <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-          <CardContent sx={{ textAlign: "center" }}>
-            <Stack
-              direction="row"
-              alignItems="center"
-              justifyContent="center"
-              spacing={1.5}
-              mb={1}
+        <Card
+          elevation={2}
+          sx={{ height: "100%", borderRadius: 3, overflow: "hidden" }}
+        >
+          <Box
+            sx={{
+              p: 1.5,
+              px: 2.5,
+              bgcolor: "primary.main",
+              color: "white",
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+            }}
+          >
+            <QrCode size={20} color="white" />
+            <Typography
+              variant="subtitle1"
+              sx={{ fontWeight: 600, letterSpacing: 0.5 }}
             >
-              <QrCode size={20} color="#25D366" />
-              <Typography variant="h6" fontWeight={600}>
-                Connection Status
-              </Typography>
-            </Stack>
-            <Divider sx={{ mb: 3 }} />
-
+              CONNECTION STATUS
+            </Typography>
+          </Box>
+          <CardContent sx={{ textAlign: "center", p: 3 }}>
             {status === "ready" ? (
               <Box
                 sx={{
@@ -191,16 +198,27 @@ export default function WhatsAppTab() {
       <Grid item xs={12} md={6}>
         <Stack spacing={3} sx={{ height: "100%" }}>
           {/* Instructions Card */}
-          <Card variant="outlined" sx={{ borderRadius: 3 }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
-                <Smartphone size={20} color="#1976d2" />
-                <Typography variant="h6" fontWeight={600}>
-                  How to Connect
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 2 }} />
-
+          <Card elevation={2} sx={{ borderRadius: 3, overflow: "hidden" }}>
+            <Box
+              sx={{
+                p: 1.5,
+                px: 2.5,
+                bgcolor: "primary.main",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+              }}
+            >
+              <Smartphone size={20} color="white" />
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+              >
+                HOW TO CONNECT
+              </Typography>
+            </Box>
+            <CardContent sx={{ p: 3 }}>
               <Typography variant="body2" color="text.secondary" paragraph>
                 Link this application to your WhatsApp account to enable
                 automatic invoice sending.
@@ -237,16 +255,30 @@ export default function WhatsAppTab() {
           </Card>
 
           {/* Troubleshooting Card */}
-          <Card variant="outlined" sx={{ flexGrow: 1, borderRadius: 3 }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
-                <HelpCircle size={20} color="#ed6c02" />
-                <Typography variant="h6" fontWeight={600}>
-                  Troubleshooting
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 2 }} />
-
+          <Card
+            elevation={2}
+            sx={{ flexGrow: 1, borderRadius: 3, overflow: "hidden" }}
+          >
+            <Box
+              sx={{
+                p: 1.5,
+                px: 2.5,
+                bgcolor: "primary.main",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+              }}
+            >
+              <HelpCircle size={20} color="white" />
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600, letterSpacing: 0.5 }}
+              >
+                TROUBLESHOOTING
+              </Typography>
+            </Box>
+            <CardContent sx={{ p: 3 }}>
               <Stack spacing={1.5}>
                 <Typography variant="body2" color="text.secondary">
                   <strong>QR Code not loading?</strong>

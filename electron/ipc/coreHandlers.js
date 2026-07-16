@@ -1,5 +1,7 @@
 const os = require("os");
 const { machineIdSync } = require("node-machine-id");
+const Store = require('electron-store');
+const store = new Store();
 
 function getLocalIps() {
   const interfaces = os.networkInterfaces();
@@ -33,6 +35,9 @@ function registerCoreHandlers(
   ipcMain.handle("get-local-ip", () => {
     return getLocalIps();
   });
+
+  ipcMain.handle("get-store-val", (e, key) => store.get(key));
+  ipcMain.handle("set-store-val", (e, key, val) => store.set(key, val));
 
 }
 

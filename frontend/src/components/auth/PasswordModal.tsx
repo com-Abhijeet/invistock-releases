@@ -42,6 +42,24 @@ export default function PasswordModal() {
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
+  // Fetch username from electron-store for reliable persistence
+  useEffect(() => {
+    const fetchSavedUser = async () => {
+      if (window.electron?.getStoreValue) {
+        try {
+          const storedUser = await window.electron.getStoreValue("lastUsername");
+          if (storedUser) {
+            setUsername(storedUser);
+            setIsRelogin(true);
+          }
+        } catch (e) {
+          console.error("Failed to load lastUsername from store", e);
+        }
+      }
+    };
+    fetchSavedUser();
+  }, []);
+
   // Auto focus logic
   useEffect(() => {
     const timer = setTimeout(() => {

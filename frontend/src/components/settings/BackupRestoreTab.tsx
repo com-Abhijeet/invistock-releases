@@ -11,7 +11,7 @@ import {
   Card,
   CardContent,
   Alert,
-  Divider,
+
   Box,
   CircularProgress,
   Switch,
@@ -165,15 +165,14 @@ export default function BackupRestoreTab({ data, onChange }: Props) {
       <Grid container spacing={3}>
         {/* --- Section 1: Local Backup --- */}
         <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
-                <Database size={20} color="#1976d2" />
-                <Typography variant="h6" fontWeight={600}>
-                  Local Database Backups
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 3 }} />
+          <Card elevation={2} sx={{ height: "100%", borderRadius: 3, overflow: 'hidden' }}>
+            <Box sx={{ p: 1.5, px: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Database size={20} color="white" />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                LOCAL DATABASE BACKUPS
+              </Typography>
+            </Box>
+            <CardContent sx={{ p: 3 }}>
 
               <Typography variant="body2" color="text.secondary" paragraph>
                 Generate a snapshot of your entire application database. This
@@ -244,15 +243,14 @@ export default function BackupRestoreTab({ data, onChange }: Props) {
 
         {/* --- Section 2: Restore --- */}
         <Grid item xs={12} md={6}>
-          <Card variant="outlined" sx={{ height: "100%", borderRadius: 3 }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
-                <ArchiveRestore size={20} color="#d32f2f" />
-                <Typography variant="h6" fontWeight={600}>
-                  Restore Data
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 3 }} />
+          <Card elevation={2} sx={{ height: "100%", borderRadius: 3, overflow: 'hidden' }}>
+            <Box sx={{ p: 1.5, px: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <ArchiveRestore size={20} color="white" />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                RESTORE DATA
+              </Typography>
+            </Box>
+            <CardContent sx={{ p: 3 }}>
 
               <Typography variant="body2" color="text.secondary" paragraph>
                 Restore your application data from a previously saved backup
@@ -293,21 +291,22 @@ export default function BackupRestoreTab({ data, onChange }: Props) {
         {/* --- Section 3: Cloud Backup (Google Drive) --- */}
         <Grid item xs={12}>
           <Card
-            variant="outlined"
+            elevation={2}
             sx={{
-              borderColor: isTokenExpired ? "#d32f2f" : "inherit",
-              borderWidth: isTokenExpired ? 2 : 1,
+              borderColor: isTokenExpired ? "#d32f2f" : "transparent",
+              borderWidth: isTokenExpired ? 2 : 0,
+              borderStyle: "solid",
               borderRadius: 3,
+              overflow: 'hidden'
             }}
           >
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1.5} mb={1}>
-                <Cloud size={20} color="#0F9D58" />
-                <Typography variant="h6" fontWeight={600}>
-                  Google Drive Backup
-                </Typography>
-              </Stack>
-              <Divider sx={{ mb: 3 }} />
+            <Box sx={{ p: 1.5, px: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Cloud size={20} color="white" />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, letterSpacing: 0.5 }}>
+                GOOGLE DRIVE BACKUP
+              </Typography>
+            </Box>
+            <CardContent sx={{ p: 3 }}>
 
               {/* ✅ Token Expiry Status */}
               {gdriveConnected && tokenExpiresAt && (

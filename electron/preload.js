@@ -79,6 +79,9 @@ contextBridge.exposeInMainWorld("electron", {
 
         "get-app-mode",
         "get-server-url",
+        "get-local-ip",
+        "get-store-val",
+        "set-store-val",
       ];
       if (validInvokeChannels.includes(channel)) {
         return ipcRenderer.invoke(channel, ...args);
@@ -139,6 +142,8 @@ contextBridge.exposeInMainWorld("electron", {
   getAppMode: () => ipcRenderer.invoke("get-app-mode"),
   getServerUrl: () => ipcRenderer.invoke("get-server-url"),
   getLocalIp: () => ipcRenderer.invoke("get-local-ip"),
+  getStoreValue: (key) => ipcRenderer.invoke("get-store-val", key),
+  setStoreValue: (key, val) => ipcRenderer.invoke("set-store-val", key, val),
 
   // ✅ NEW CONNECTION METHODS
   getNetworkDetails: () => ipcRenderer.invoke("get-network-details"),

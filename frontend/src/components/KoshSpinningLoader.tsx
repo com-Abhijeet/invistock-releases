@@ -1,192 +1,183 @@
-import { Box, useTheme, Typography } from "@mui/material";
+import { Box, useTheme, Typography, alpha } from "@mui/material";
 import { keyframes } from "@emotion/react";
 
 // --- ANIMATIONS ---
 
-// 1. Truck Entry & Exit
-const truckAnim = keyframes`
-  0% { transform: translateX(-60px); opacity: 0; }
-  10% { transform: translateX(0); opacity: 1; }
-  30% { transform: translateX(0); opacity: 1; }
-  40% { transform: translateX(60px); opacity: 0; }
-  100% { transform: translateX(60px); opacity: 0; }
+const float = keyframes`
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
 `;
 
-// 2. Stock Appearance (Box drops in)
-const stockAnim = keyframes`
-  0%, 30% { transform: scale(0); opacity: 0; }
-  35% { transform: scale(1.1); opacity: 1; }
-  40% { transform: scale(1); opacity: 1; }
-  60% { transform: scale(1); opacity: 1; }
-  65% { transform: scale(0); opacity: 0; }
-  100% { transform: scale(0); opacity: 0; }
+const shadowPulse = keyframes`
+  0%, 100% { opacity: 0.15; transform: scale(0.8) rotateX(70deg); }
+  50% { opacity: 0.4; transform: scale(1.2) rotateX(70deg); }
 `;
 
-// 3. Sale/Money Exit
-const saleAnim = keyframes`
-  0%, 60% { transform: translateX(0) scale(0.5); opacity: 0; }
-  65% { transform: translateX(0) scale(1.1); opacity: 1; }
-  70% { transform: translateX(0) scale(1); opacity: 1; }
-  90% { transform: translateX(0); opacity: 1; }
-  100% { transform: translateX(60px); opacity: 0; }
+const expandTop = keyframes`
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(0, -18px); }
 `;
 
-// 4. Text Fader
-const textFade1 = keyframes`0%, 30% { opacity: 1; } 35%, 100% { opacity: 0; }`;
-const textFade2 = keyframes`0%, 30% { opacity: 0; } 35%, 60% { opacity: 1; } 65%, 100% { opacity: 0; }`;
-const textFade3 = keyframes`0%, 60% { opacity: 0; } 65%, 95% { opacity: 1; } 100% { opacity: 0; }`;
+const expandLeft = keyframes`
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-15.5px, 9px); }
+`;
 
-export default function KoshBusinessLoader({ size = 80 }: { size?: number }) {
+const expandRight = keyframes`
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(15.5px, 9px); }
+`;
+
+const corePulse = keyframes`
+  0%, 100% { transform: scale(0.7); opacity: 0.4; }
+  50% { transform: scale(1.3); opacity: 1; }
+`;
+
+const textPulse = keyframes`
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+`;
+
+export default function KoshBusinessLoader({ size = 120 }: { size?: number }) {
   const theme = useTheme();
-  const primaryColor = theme.palette.primary.main;
-  const accentColor =
-    theme.palette.secondary.main || theme.palette.success.main;
-  const iconSize = size * 0.5;
-
-  // Total cycle duration
-  const duration = "4s";
+  
+  // Theme colors matching Kosh aesthetics
+  const primary = theme.palette.primary.main;
+  const primaryLight = theme.palette.primary.light || "#4b9afa";
+  const primaryDark = theme.palette.primary.dark || "#0a4b9c";
+  const secondary = theme.palette.secondary.main || "#f59e0b";
 
   return (
     <Box
       sx={{
-        width: size,
-        height: size,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        position: "relative",
-        borderRadius: "12px",
-        border: `1px solid ${theme.palette.divider}`,
-        backgroundColor: "white",
-        boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-        overflow: "hidden",
+        width: "100%",
+        minHeight: size * 1.5,
+        p: 2,
       }}
     >
-      {/* --- ICONS --- */}
       <Box
-        sx={{ position: "relative", width: iconSize, height: iconSize, mb: 1 }}
+        sx={{
+          position: "relative",
+          width: size,
+          height: size,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          mb: 1,
+        }}
       >
-        {/* 1. TRUCK (Inbound) */}
+        {/* Floor Shadow */}
         <Box
           sx={{
             position: "absolute",
-            width: "100%",
-            height: "100%",
-            animation: `${truckAnim} ${duration} ease-in-out infinite`,
+            width: size * 0.7,
+            height: size * 0.7,
+            background: `radial-gradient(circle, ${alpha(primaryDark, 1)} 0%, transparent 60%)`,
+            animation: `${shadowPulse} 3s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
+            bottom: -size * 0.2,
+            zIndex: 0,
           }}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={primaryColor}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="1" y="3" width="15" height="13"></rect>
-            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
-            <circle cx="5.5" cy="18.5" r="2.5"></circle>
-            <circle cx="18.5" cy="18.5" r="2.5"></circle>
-          </svg>
-        </Box>
+        />
 
-        {/* 2. BOX (Stock) */}
+        {/* Animated Floating Cube */}
         <Box
           sx={{
-            position: "absolute",
             width: "100%",
             height: "100%",
-            animation: `${stockAnim} ${duration} ease-in-out infinite`,
+            animation: `${float} 3s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
+            zIndex: 1,
           }}
         >
           <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={primaryColor}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            viewBox="0 0 100 100"
+            width="100%"
+            height="100%"
+            style={{ overflow: "visible" }}
           >
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-            <line x1="12" y1="22.08" x2="12" y2="12"></line>
-          </svg>
-        </Box>
+            <g transform="translate(50, 50)">
+              {/* Inner Glowing Core (Treasure/Data) - Blur Layer */}
+              <circle
+                cx="0"
+                cy="0"
+                r="16"
+                fill={secondary}
+                style={{
+                  animation: `${corePulse} 3s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
+                  filter: "blur(6px)",
+                  opacity: 0.8
+                }}
+              />
+              {/* Inner Glowing Core - Solid Layer */}
+              <circle
+                cx="0"
+                cy="0"
+                r="10"
+                fill={secondary}
+                style={{
+                  animation: `${corePulse} 3s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
+                }}
+              />
 
-        {/* 3. SHOPPING BAG (Sold) */}
-        <Box
-          sx={{
-            position: "absolute",
-            width: "100%",
-            height: "100%",
-            animation: `${saleAnim} ${duration} ease-in-out infinite`,
-          }}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={accentColor}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path>
-            <path d="M3 6h18"></path>
-            <path d="M16 10a4 4 0 0 1-8 0"></path>
+              {/* Top Face */}
+              <polygon
+                points="0,-30 25.98,-15 0,0 -25.98,-15"
+                fill={primaryLight}
+                stroke={primaryLight}
+                strokeWidth="0.5"
+                style={{ animation: `${expandTop} 3s cubic-bezier(0.4, 0, 0.2, 1) infinite` }}
+              />
+              {/* Left Face */}
+              <polygon
+                points="-25.98,-15 0,0 0,30 -25.98,15"
+                fill={primary}
+                stroke={primary}
+                strokeWidth="0.5"
+                style={{ animation: `${expandLeft} 3s cubic-bezier(0.4, 0, 0.2, 1) infinite` }}
+              />
+              {/* Right Face */}
+              <polygon
+                points="0,0 25.98,-15 25.98,15 0,30"
+                fill={primaryDark}
+                stroke={primaryDark}
+                strokeWidth="0.5"
+                style={{ animation: `${expandRight} 3s cubic-bezier(0.4, 0, 0.2, 1) infinite` }}
+              />
+            </g>
           </svg>
         </Box>
       </Box>
 
-      {/* --- LABELS --- */}
-      <Box
-        sx={{
-          position: "relative",
-          height: "1.2em",
-          width: "100%",
-          textAlign: "center",
-        }}
-      >
+      {/* Loading Text */}
+      <Box sx={{ mt: 3, textAlign: "center" }}>
         <Typography
-          variant="caption"
-          fontWeight="bold"
-          color="text.secondary"
+          variant="h6"
           sx={{
-            position: "absolute",
-            width: "100%",
-            left: 0,
-            animation: `${textFade1} ${duration} linear infinite`,
+            fontWeight: 800,
+            background: `linear-gradient(90deg, ${primary}, ${secondary})`,
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            letterSpacing: 4,
+            mb: 0.5,
+            fontFamily: "'Nunito', 'Plus Jakarta Sans', sans-serif"
           }}
         >
-          Purchase
+          KOSH
         </Typography>
         <Typography
           variant="caption"
-          fontWeight="bold"
-          color="primary"
           sx={{
-            position: "absolute",
-            width: "100%",
-            left: 0,
-            opacity: 0,
-            animation: `${textFade2} ${duration} linear infinite`,
+            color: "text.secondary",
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            fontWeight: 700,
+            animation: `${textPulse} 1.5s ease-in-out infinite`,
           }}
         >
-          Inventory
-        </Typography>
-        <Typography
-          variant="caption"
-          fontWeight="bold"
-          color="success.main"
-          sx={{
-            position: "absolute",
-            width: "100%",
-            left: 0,
-            opacity: 0,
-            animation: `${textFade3} ${duration} linear infinite`,
-          }}
-        >
-          Sale
+          Loading Workspace
         </Typography>
       </Box>
     </Box>

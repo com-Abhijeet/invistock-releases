@@ -154,6 +154,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           localStorage.setItem("authToken", response.token);
         }
         localStorage.setItem("lastUsername", username);
+        if (window.electron?.setStoreValue) {
+          window.electron.setStoreValue("lastUsername", username);
+        }
 
         setUser(response.user);
         toast.success(`Welcome, ${response.user.name}`);

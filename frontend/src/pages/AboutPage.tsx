@@ -163,15 +163,6 @@ export default function AboutPage() {
     if (path) navigate(path);
   };
 
-  // Latest Update Notes
-  const latestUpdate = {
-    version: "v1.2.0",
-    date: "Oct 25, 2026",
-    details: "Added bulk update functionality for products.",
-    actionPath: "/products",
-    actionLabel: "View Products",
-  };
-
   return (
     <Box p={3} sx={{ bgcolor: 'background.default', minHeight: "100vh" }}>
       <Grid container spacing={3} sx={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -192,7 +183,7 @@ export default function AboutPage() {
                 <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={3}>
                   <Box
                     component="img"
-                    src="/icon.png"
+                    src="./icon.png"
                     alt="KOSH Logo"
                     sx={{
                       width: 72,
@@ -515,26 +506,6 @@ export default function AboutPage() {
                       fullWidth
                     />
                   ) : null}
-                </Box>
-
-                {/* Latest Update Notes */}
-                <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: 'text.primary' }}>
-                    <FileText size={16} color="#111827" />
-                    Latest Update (v{latestUpdate.version})
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                    {latestUpdate.details}
-                  </Typography>
-                  <Button 
-                    size="small" 
-                    variant="text" 
-                    onClick={() => navigate(latestUpdate.actionPath)}
-                    sx={{ p: 0, fontWeight: 'bold', color: 'text.primary', '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' } }}
-                    endIcon={<ArrowRight size={14} />}
-                  >
-                    {latestUpdate.actionLabel}
-                  </Button>
                 </Box>
               </CardContent>
             </Card>
