@@ -20,12 +20,10 @@ import {
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
-  KeyRound,
   ShieldCheck,
   Lock,
   Copy,
   Monitor,
-  CreditCard,
   Ban,
   AlertTriangle,
   WifiOff,
@@ -47,62 +45,88 @@ const { electron } = window;
 
 const parseLicenseMessage = (message: string = "") => {
   const msg = message.toLowerCase();
-  
+
   if (msg.includes("banned") || msg.includes("suspicious")) {
     return {
       title: "Device Banned",
-      cause: "Suspicious activity or multiple failed activation attempts were detected from this device.",
-      action: "Please contact support to appeal the ban or investigate the issue.",
+      cause:
+        "Suspicious activity or multiple failed activation attempts were detected from this device.",
+      action:
+        "Please contact support to appeal the ban or investigate the issue.",
     };
   }
-  if (msg.includes("invalid license") || msg.includes("invalid key") || msg.includes("invalid")) {
+  if (
+    msg.includes("invalid license") ||
+    msg.includes("invalid key") ||
+    msg.includes("invalid")
+  ) {
     return {
       title: "Invalid License Signature",
-      cause: "The signature entered does not exist in our system or is incorrect.",
-      action: "Double-check the data you entered. If you bought a new license, ensure it is copied correctly.",
+      cause:
+        "The signature entered does not exist in our system or is incorrect.",
+      action:
+        "Double-check the data you entered. If you bought a new license, ensure it is copied correctly.",
     };
   }
   if (msg.includes("revoked") || msg.includes("deactivated")) {
     return {
       title: "License Revoked",
-      cause: "This license key was manually disabled by an administrator or due to a refund/cancellation.",
-      action: "You will need to purchase a new license key to continue using the software.",
+      cause:
+        "This license key was manually disabled by an administrator or due to a refund/cancellation.",
+      action:
+        "You will need to purchase a new license key to continue using the software.",
     };
   }
   if (msg.includes("no plan")) {
     return {
       title: "No Subscription Plan",
-      cause: "The license is active but does not have a subscription or software plan linked to it.",
-      action: "Contact support to correctly map your purchase to a valid software plan.",
+      cause:
+        "The license is active but does not have a subscription or software plan linked to it.",
+      action:
+        "Contact support to correctly map your purchase to a valid software plan.",
     };
   }
-  if (msg.includes("different device") || msg.includes("machine mismatch") || msg.includes("locked to a different")) {
+  if (
+    msg.includes("different device") ||
+    msg.includes("machine mismatch") ||
+    msg.includes("locked to a different")
+  ) {
     return {
       title: "Device Mismatch",
-      cause: "This license signature is already registered and locked to another computer.",
-      action: "Use the license on the original computer, or request a license transfer from support.",
+      cause:
+        "This license signature is already registered and locked to another computer.",
+      action:
+        "Use the license on the original computer, or request a license transfer from support.",
     };
   }
   if (msg.includes("location mismatch") || msg.includes("network")) {
     return {
       title: "Network Mismatch",
       cause: "This license is restricted to a specific office IP or network.",
-      action: "Ensure you are connected to the correct office WiFi or contact support to update your IP address.",
+      action:
+        "Ensure you are connected to the correct office WiFi or contact support to update your IP address.",
     };
   }
-  if (msg.includes("connection check failed") || msg.includes("could not load") || msg.includes("network error") || msg.includes("failed to fetch")) {
+  if (
+    msg.includes("connection check failed") ||
+    msg.includes("could not load") ||
+    msg.includes("network error") ||
+    msg.includes("failed to fetch")
+  ) {
     return {
       title: "Connection Failed",
-      cause: "We couldn't reach the Kosh licensing server to verify your device.",
+      cause:
+        "We couldn't reach the Kosh licensing server to verify your device.",
       action: "Check your internet connection and try again.",
     };
   }
   if (msg.includes("client activation required")) {
-      return {
-          title: "Client Activation Required",
-          cause: "This app is running in client mode and needs a license to connect to the server.",
-          action: "Enter your license signature below.",
-      }
+    return {
+      title: "Client Activation Required",
+      cause:
+        "This app is running in client mode and needs a license to connect to the server.",
+      action: "Enter your license signature below.",
+    };
   }
 
   return {
@@ -170,8 +194,10 @@ export default function LicensePage() {
   };
 
   const handleSubmit = async (overrideKey?: string) => {
-    const keyToSubmit = overrideKey && typeof overrideKey === 'string' ? overrideKey : licenseKey;
-    if (!keyToSubmit.trim()) return toast.error("Please enter your license signature.");
+    const keyToSubmit =
+      overrideKey && typeof overrideKey === "string" ? overrideKey : licenseKey;
+    if (!keyToSubmit.trim())
+      return toast.error("Please enter your license signature.");
     setActivating(true);
     try {
       let result;
@@ -230,7 +256,11 @@ export default function LicensePage() {
       });
     }
     return () => {
-      if (electron && electron.ipcRenderer && electron.ipcRenderer.removeAllListeners) {
+      if (
+        electron &&
+        electron.ipcRenderer &&
+        electron.ipcRenderer.removeAllListeners
+      ) {
         electron.ipcRenderer.removeAllListeners("license-key-received");
       }
     };
@@ -296,7 +326,12 @@ export default function LicensePage() {
       <Alert
         severity={severity}
         icon={icon}
-        sx={{ mb: 3, textAlign: "left", alignItems: "flex-start", borderRadius: 2 }}
+        sx={{
+          mb: 3,
+          textAlign: "left",
+          alignItems: "flex-start",
+          borderRadius: 2,
+        }}
       >
         <Typography variant="subtitle2" fontWeight={700}>
           {parsedMsg.title}
@@ -312,7 +347,12 @@ export default function LicensePage() {
           </Typography>
         )}
         {status.data?.expiryDate && (
-          <Typography variant="caption" display="block" mt={1} fontWeight="bold">
+          <Typography
+            variant="caption"
+            display="block"
+            mt={1}
+            fontWeight="bold"
+          >
             Expires on:{" "}
             {new Date(status.data.expiryDate).toLocaleDateString("en-GB", {
               day: "numeric",
@@ -345,24 +385,42 @@ export default function LicensePage() {
     status?.message?.toLowerCase().includes("denied");
 
   return (
-    <Box p={{ xs: 2, md: 4 }} sx={{ bgcolor: 'background.default', minHeight: "100vh", display: 'flex', alignItems: 'center' }}>
-      <Grid container spacing={4} sx={{ maxWidth: 1200, margin: '0 auto', alignItems: 'stretch' }}>
-        
+    <Box
+      p={{ xs: 2, md: 4 }}
+      sx={{
+        bgcolor: "background.default",
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+      }}
+    >
+      <Grid
+        container
+        spacing={4}
+        sx={{ maxWidth: 1200, margin: "0 auto", alignItems: "stretch" }}
+      >
         {/* Left Column: Branding & Machine ID */}
-        <Grid item xs={12} md={5} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md={5} sx={{ display: "flex" }}>
           <Card
             elevation={0}
             sx={{
               borderRadius: 4,
-              border: 'none',
-              bgcolor: 'primary.main',
-              color: 'white',
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'column'
+              border: "none",
+              bgcolor: "primary.main",
+              color: "white",
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            <CardContent sx={{ p: { xs: 3, md: 4 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <CardContent
+              sx={{
+                p: { xs: 3, md: 4 },
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
               <Box mb={4}>
                 <Box
                   component="img"
@@ -372,22 +430,48 @@ export default function LicensePage() {
                     width: 64,
                     height: 64,
                     objectFit: "contain",
-                    bgcolor: 'background.paper',
+                    bgcolor: "background.paper",
                     borderRadius: 2,
                     p: 1,
-                    mb: 2
+                    mb: 2,
                   }}
                 />
-                <Typography variant="h4" fontWeight="800" color="white" gutterBottom sx={{ fontFamily: "'Nunito', 'Plus Jakarta Sans', sans-serif" }}>
+                <Typography
+                  variant="h4"
+                  fontWeight="800"
+                  color="white"
+                  gutterBottom
+                  sx={{
+                    fontFamily: "'Nunito', 'Plus Jakarta Sans', sans-serif",
+                  }}
+                >
                   KOSH
                 </Typography>
-                <Typography variant="subtitle1" sx={{ color: 'secondary.main', fontWeight: 'bold' }}>
+                <Typography
+                  variant="subtitle1"
+                  sx={{ color: "secondary.main", fontWeight: "bold" }}
+                >
                   Makes your business easy
                 </Typography>
               </Box>
 
-              <Typography variant="body1" sx={{ lineHeight: 1.6, color: 'rgba(255,255,255,0.9)', fontWeight: 500, mb: 4 }}>
-                Activate your product to unlock the full potential of your inventory management system. <Box component="span" sx={{ color: 'secondary.main', fontWeight: 'bold' }}>Made for Bharat.</Box>
+              <Typography
+                variant="body1"
+                sx={{
+                  lineHeight: 1.6,
+                  color: "rgba(255,255,255,0.9)",
+                  fontWeight: 500,
+                  mb: 4,
+                }}
+              >
+                Activate your product to unlock the full potential of your
+                inventory management system.{" "}
+                <Box
+                  component="span"
+                  sx={{ color: "secondary.main", fontWeight: "bold" }}
+                >
+                  Made for Bharat.
+                </Box>
               </Typography>
 
               <Box mt="auto">
@@ -399,23 +483,40 @@ export default function LicensePage() {
                     sx={{
                       fontWeight: "bold",
                       textTransform: "capitalize",
-                      bgcolor: 'rgba(255,255,255,0.1)',
-                      color: 'white',
-                      mb: 2
+                      bgcolor: "rgba(255,255,255,0.1)",
+                      color: "white",
+                      mb: 2,
                     }}
                   />
                 )}
                 <Box bgcolor="rgba(0,0,0,0.2)" p={2} borderRadius={3}>
-                  <Typography variant="caption" fontWeight="bold" color="rgba(255,255,255,0.6)" letterSpacing={1} display="block" gutterBottom>
+                  <Typography
+                    variant="caption"
+                    fontWeight="bold"
+                    color="rgba(255,255,255,0.6)"
+                    letterSpacing={1}
+                    display="block"
+                    gutterBottom
+                  >
                     YOUR MACHINE ID
                   </Typography>
                   <Stack direction="row" alignItems="center" spacing={1}>
                     <Monitor size={16} color="rgba(255,255,255,0.8)" />
-                    <Typography variant="body2" fontFamily="monospace" fontWeight="bold" color="white" sx={{ flexGrow: 1, wordBreak: "break-all" }}>
+                    <Typography
+                      variant="body2"
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                      color="white"
+                      sx={{ flexGrow: 1, wordBreak: "break-all" }}
+                    >
                       {machineId}
                     </Typography>
                     <Tooltip title="Copy ID">
-                      <IconButton size="small" onClick={handleCopyId} sx={{ color: 'white', p: 0.5 }}>
+                      <IconButton
+                        size="small"
+                        onClick={handleCopyId}
+                        sx={{ color: "white", p: 0.5 }}
+                      >
                         <Copy size={16} />
                       </IconButton>
                     </Tooltip>
@@ -427,22 +528,34 @@ export default function LicensePage() {
         </Grid>
 
         {/* Right Column: Activation & Support */}
-        <Grid item xs={12} md={7} sx={{ display: 'flex' }}>
+        <Grid item xs={12} md={7} sx={{ display: "flex" }}>
           <Card
             elevation={0}
             sx={{
               borderRadius: 4,
               border: "1px solid",
               borderColor: "divider",
-              bgcolor: 'background.paper',
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'column'
+              bgcolor: "background.paper",
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            <CardContent sx={{ p: { xs: 3, md: 5 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <CardContent
+              sx={{
+                p: { xs: 3, md: 5 },
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
               <Box mb={4}>
-                <Typography variant="h4" fontWeight="800" color="text.primary" gutterBottom>
+                <Typography
+                  variant="h4"
+                  fontWeight="800"
+                  color="text.primary"
+                  gutterBottom
+                >
                   {isBanned ? "Access Denied" : "Activate KOSH"}
                 </Typography>
                 <Typography variant="body1" color="text.secondary">
@@ -491,19 +604,38 @@ export default function LicensePage() {
               {!isBanned && (
                 <>
                   <Box textAlign="center" my={2}>
-                    <Button 
-                      variant="text" 
-                      color="inherit" 
+                    <Button
+                      variant="text"
+                      color="inherit"
                       onClick={() => setShowManual(!showManual)}
-                      sx={{ textTransform: 'none', color: 'text.secondary', fontWeight: 'bold' }}
+                      sx={{
+                        textTransform: "none",
+                        color: "text.secondary",
+                        fontWeight: "bold",
+                      }}
                     >
-                      {showManual ? "Hide manual activation" : "Have an offline activation signature? Enter manually"}
+                      {showManual
+                        ? "Hide manual activation"
+                        : "Have an offline activation signature? Enter manually"}
                     </Button>
                   </Box>
 
                   <Collapse in={showManual}>
-                    <Box p={3} bgcolor="background.default" borderRadius={3} border="1px dashed" borderColor="divider" mb={2}>
-                      <Typography variant="subtitle2" fontWeight="bold" color="text.primary" mb={1} ml={0.5}>
+                    <Box
+                      p={3}
+                      bgcolor="background.default"
+                      borderRadius={3}
+                      border="1px dashed"
+                      borderColor="divider"
+                      mb={2}
+                    >
+                      <Typography
+                        variant="subtitle2"
+                        fontWeight="bold"
+                        color="text.primary"
+                        mb={1}
+                        ml={0.5}
+                      >
                         Activation Signature
                       </Typography>
                       <TextField
@@ -518,7 +650,7 @@ export default function LicensePage() {
                         sx={{
                           "& .MuiOutlinedInput-root": {
                             borderRadius: 2,
-                            bgcolor: 'background.paper',
+                            bgcolor: "background.paper",
                             "&.Mui-focused fieldset": {
                               borderColor: theme.palette.primary.main,
                             },
@@ -529,7 +661,11 @@ export default function LicensePage() {
                         fullWidth
                         variant="outlined"
                         onClick={() => handleSubmit()}
-                        disabled={activating || !licenseKey || status?.status === "valid"}
+                        disabled={
+                          activating ||
+                          !licenseKey ||
+                          status?.status === "valid"
+                        }
                         sx={{
                           mt: 2,
                           py: 1.2,
@@ -540,7 +676,11 @@ export default function LicensePage() {
                           color: theme.palette.primary.main,
                         }}
                       >
-                        {activating ? <CircularProgress size={24} color="inherit" /> : "Verify Signature"}
+                        {activating ? (
+                          <CircularProgress size={24} color="inherit" />
+                        ) : (
+                          "Verify Signature"
+                        )}
                       </Button>
                     </Box>
                   </Collapse>
@@ -550,24 +690,40 @@ export default function LicensePage() {
               {/* Push support to bottom */}
               <Box mt="auto" pt={3}>
                 <Divider sx={{ mb: 3 }} />
-                <Typography variant="subtitle2" fontWeight="bold" color="text.secondary" gutterBottom textAlign="center">
+                <Typography
+                  variant="subtitle2"
+                  fontWeight="bold"
+                  color="text.secondary"
+                  gutterBottom
+                  textAlign="center"
+                >
                   Need Help? Contact Support
                 </Typography>
-                <Stack direction="row" spacing={2} justifyContent="center" flexWrap="wrap" useFlexGap>
+                <Stack
+                  direction="row"
+                  spacing={2}
+                  justifyContent="center"
+                  flexWrap="wrap"
+                  useFlexGap
+                >
                   <Button
                     variant="text"
                     size="small"
                     startIcon={<MessageCircle size={16} />}
                     onClick={() => {
-                        const msg = `Hello, please activate the copy of software on my hardware with ID: ${machineId}`;
-                        const url = `https://wa.me/918180904072?text=${encodeURIComponent(msg)}`;
-                        if (electron && electron.openExternalUrl) {
-                            electron.openExternalUrl(url);
-                        } else {
-                            window.open(url, '_blank');
-                        }
+                      const msg = `Hello, please activate the copy of software on my hardware with ID: ${machineId}`;
+                      const url = `https://wa.me/918180904072?text=${encodeURIComponent(msg)}`;
+                      if (electron && electron.openExternalUrl) {
+                        electron.openExternalUrl(url);
+                      } else {
+                        window.open(url, "_blank");
+                      }
                     }}
-                    sx={{ textTransform: 'none', color: '#047857', fontWeight: 600 }}
+                    sx={{
+                      textTransform: "none",
+                      color: "#047857",
+                      fontWeight: 600,
+                    }}
                   >
                     WhatsApp Support
                   </Button>
@@ -576,7 +732,11 @@ export default function LicensePage() {
                     size="small"
                     startIcon={<Phone size={16} />}
                     href="tel:+918180904072"
-                    sx={{ textTransform: 'none', color: 'text.primary', fontWeight: 600 }}
+                    sx={{
+                      textTransform: "none",
+                      color: "text.primary",
+                      fontWeight: 600,
+                    }}
                   >
                     +91 8180904072
                   </Button>
@@ -585,13 +745,16 @@ export default function LicensePage() {
                     size="small"
                     startIcon={<Mail size={16} />}
                     href="mailto:contact@getkosh.co.in"
-                    sx={{ textTransform: 'none', color: 'text.primary', fontWeight: 600 }}
+                    sx={{
+                      textTransform: "none",
+                      color: "text.primary",
+                      fontWeight: 600,
+                    }}
                   >
                     contact@getkosh.co.in
                   </Button>
                 </Stack>
               </Box>
-
             </CardContent>
           </Card>
         </Grid>
