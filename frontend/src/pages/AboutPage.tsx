@@ -94,7 +94,7 @@ export default function AboutPage() {
   const features = [
     {
       title: "Billing (POS)",
-      desc: "Clear the checkout rush",
+      desc: "Efficient point-of-sale invoicing",
       icon: <CreditCard size={20} />,
       path: "/billing",
       color: "secondary.main", // Amber Gold accent
@@ -102,7 +102,7 @@ export default function AboutPage() {
     },
     {
       title: "Sales Register",
-      desc: "Track what's making money",
+      desc: "Comprehensive sales analytics and tracking",
       icon: <Clock size={20} />,
       path: "/sales-history",
       color: "text.primary", // Deep Navy
@@ -110,7 +110,7 @@ export default function AboutPage() {
     },
     {
       title: "Purchase Voucher",
-      desc: "Stock your shelves",
+      desc: "Streamlined procurement and inward supply",
       icon: <FileText size={20} />,
       path: "/purchase",
       color: "text.primary",
@@ -118,7 +118,7 @@ export default function AboutPage() {
     },
     {
       title: "Stock Summary",
-      desc: "Unlock dead stock capital",
+      desc: "Real-time inventory valuation and tracking",
       icon: <Package size={20} />,
       path: "/inventory",
       color: "text.primary",
@@ -126,7 +126,7 @@ export default function AboutPage() {
     },
     {
       title: "Payment / Receipt",
-      desc: "Manage cashflow",
+      desc: "Centralized cash and bank management",
       icon: <IndianRupee size={20} />,
       path: "/transactions",
       color: "text.primary",
@@ -134,7 +134,7 @@ export default function AboutPage() {
     },
     {
       title: "Debtors (Customers)",
-      desc: "Know who owes you",
+      desc: "Account receivables and ledger tracking",
       icon: <Users size={20} />,
       path: "/customers",
       color: "text.primary",
@@ -142,7 +142,7 @@ export default function AboutPage() {
     },
     {
       title: "GST Reports",
-      desc: "One-click filing",
+      desc: "Automated tax compliance and filing",
       icon: <Notebook size={20} />,
       path: "/gst",
       color: "text.primary",
@@ -150,7 +150,7 @@ export default function AboutPage() {
     },
     {
       title: "Features / Settings",
-      desc: "Setup aapka business",
+      desc: "System configuration and preferences",
       icon: <Settings size={20} />,
       path: "/settings",
       color: "text.primary",
@@ -386,7 +386,7 @@ export default function AboutPage() {
                       Made for Bharat
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Aapka business, humari zimmedari.
+                      Support Hours: Monday to Saturday, 10 AM to 6 PM
                     </Typography>
                   </Box>
                 </Stack>
