@@ -181,6 +181,34 @@ export default function SalesPos() {
     };
     fetchEmployees();
 
+    const initWalkInCustomer = async () => {
+      try {
+        const res = await getCustomers({ query: "Walk-in Customer", all: true });
+        let walkIn = res.records.find((c: any) => c.name.toLowerCase() === "walk-in customer");
+        
+        if (!walkIn) {
+          // Create Walk-in if not exists
+          const newCustomer = await api.post("/api/customers", { name: "Walk-in Customer", phone: "" });
+          if (newCustomer.data.success) {
+            walkIn = newCustomer.data.data;
+          }
+        }
+        
+        if (walkIn) {
+          setCustomerId(walkIn.id);
+          setCustomerName(walkIn.name);
+          setCustomerPhone(walkIn.phone || "");
+          setCustomerGstNo(walkIn.gst_no || "");
+          setAddress(walkIn.address || "");
+          setCity(walkIn.city || "");
+          setState(walkIn.state || "");
+          setPincode(walkIn.pincode || "");
+        }
+      } catch (e) {
+        console.error("Failed to initialize walk-in customer:", e);
+      }
+    };
+
     const init = async () => {
       if (id && (action === "view" || action === "edit")) {
         setMode(action === "view" ? "view" : "edit");
@@ -251,6 +279,7 @@ export default function SalesPos() {
       } else {
         setMode("new");
         if (sale.id) resetForm();
+        initWalkInCustomer();
       }
     };
     init();

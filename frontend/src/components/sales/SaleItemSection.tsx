@@ -144,6 +144,7 @@ export default function SaleItemSection({
   const [barcodeInputValue, setBarcodeInputValue] = useState("");
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const quickBarcodeRef = useRef<HTMLInputElement | null>(null);
+  const isQuickBarcodeScan = useRef(false);
   const [shop, setShop] = useState<ShopSetupForm>();
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0);
   const [productCache, setProductCache] = useState<{ [id: number]: Product }>(
@@ -283,9 +284,13 @@ export default function SaleItemSection({
 
         // Only trigger auto-focus if it's a completely newly generated blank row
         if (items[lastIndex].product_id === 0) {
-          setTimeout(() => {
-            focusInput(lastIndex, "product");
-          }, 100); // slight delay to allow the new row to render in DOM
+          if (!isQuickBarcodeScan.current) {
+            setTimeout(() => {
+              focusInput(lastIndex, "product");
+            }, 100); // slight delay to allow the new row to render in DOM
+          } else {
+            isQuickBarcodeScan.current = false;
+          }
         }
       }
     }
@@ -477,11 +482,15 @@ export default function SaleItemSection({
   };
 
   const handleQuickBarcodeSubmit = async (e?: React.KeyboardEvent | React.FocusEvent) => {
-    if (e && 'key' in e && e.key !== 'Enter') return;
+    if (e && 'key' in e) {
+      if (e.key !== 'Enter') return;
+      e.preventDefault(); // Prevent form submission or focus loss
+    }
     const code = quickBarcode.trim();
     if (!code) return;
 
     setQuickBarcodeLoading(true);
+    isQuickBarcodeScan.current = true;
     try {
       const result = await scanBarcodeItem(code);
       if (result.product) {

@@ -227,6 +227,9 @@ export default function SalesPosHeaderSection({
                 if (reason === "input") {
                   setCustomerName(val);
                   setQuery(val);
+                  if (customerId !== 0) setCustomerId(0);
+                } else if (reason === "clear") {
+                  handleSelect(null);
                 }
               }}
               onChange={(_, val, reason) => {
@@ -291,7 +294,10 @@ export default function SalesPosHeaderSection({
               variant="standard"
               disabled={mode === "view"}
               value={selectedPhone}
-              onChange={(e) => setSelectedPhone(e.target.value)}
+              onChange={(e) => {
+                setSelectedPhone(e.target.value);
+                if (customerId !== 0) setCustomerId(0);
+              }}
               placeholder="99..."
               sx={inputSx}
             />

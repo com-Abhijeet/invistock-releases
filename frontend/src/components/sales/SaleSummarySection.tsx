@@ -223,7 +223,33 @@ const SaleSummarySection = ({
     phone?: string;
     name?: string;
   }) => {
-    if (!sale.customer_id || sale.customer_id === 0) {
+    let finalCustomerId = sale.customer_id;
+    let finalCustomerName = sale.customer_name;
+    const hasManualName = !!customer?.name || !!resolvedCustomer?.name;
+
+    // Only fallback to Walk-in if no customer ID is set AND no manual name was provided
+    if ((!finalCustomerId || finalCustomerId === 0) && !hasManualName) {
+      try {
+        // Query backend for Walk-in Customer
+        const { getCustomers } = await import("../../lib/api/customerService");
+        const res = await getCustomers({ query: "Walk-in Customer", all: true });
+        let walkIn = res.records.find((c: any) => c.name.toLowerCase() === "walk-in customer");
+        
+        if (!walkIn) {
+          const { createCustomer } = await import("../../lib/api/customerService");
+          walkIn = await createCustomer({ name: "Walk-in Customer", phone: "", address: "", city: "", state: "", pincode: "", gst_no: "" });
+        }
+        
+        if (walkIn && walkIn.id) {
+          finalCustomerId = walkIn.id;
+          finalCustomerName = walkIn.name;
+        }
+      } catch (e) {
+        console.error("Failed to auto-assign Walk-in Customer:", e);
+      }
+    }
+
+    if (!finalCustomerId || finalCustomerId === 0) {
       if (!customer?.name || (!customer?.phone && !resolvedCustomer?.phone)) {
         toast.error("Customer Name and Phone Number are required.");
         return;
@@ -245,7 +271,13 @@ const SaleSummarySection = ({
         saleDataWithCustomer = {
           ...saleDataWithCustomer,
           customer_id: resolvedCustomer.id,
-          customer_name: resolvedCustomer.name || sale.customer_name,
+          customer_name: resolvedCustomer.name || finalCustomerName,
+        };
+      } else if (finalCustomerId && finalCustomerId !== 0) {
+        saleDataWithCustomer = {
+          ...saleDataWithCustomer,
+          customer_id: finalCustomerId,
+          customer_name: finalCustomerName,
         };
       } else if (!sale.customer_id || sale.customer_id === 0) {
         const phoneToUse = resolvedCustomer?.phone || customer?.phone!;
