@@ -12,11 +12,13 @@ import {
   updateSupplierController,
   deleteSupplierController,
   getSupplierLedger,
+  getSuppliersFinancials
 } from "../controllers/suppplierController.mjs";
 
 const supplierRoutes = express.Router();
 
 // Specific routes first to avoid ID collision
+supplierRoutes.get("/financials", getSuppliersFinancials);
 supplierRoutes.get("/:id/ledger", getSupplierLedger);
 
 supplierRoutes.post(

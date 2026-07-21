@@ -15,6 +15,7 @@ import { ModeProvider, useAppMode } from "./context/ModeContext";
 
 // --- API ---
 import { setApiBaseUrl } from "./lib/api/api";
+import { getBusinessProfile, updateBusinessProfile } from "./lib/api/businessService";
 
 // --- Layouts ---
 import SidebarLayout from "./components/SidebarLayout";
@@ -626,6 +627,43 @@ function AppInitializer() {
             console.log("Setting status server");
             setStatus("server");
           }
+
+          // Cloud Sync initialization
+          try {
+            const profile = await getBusinessProfile();
+            let businessId = profile?.kosh_business_id;
+
+            if (!businessId) {
+              const machineId = await window.electron.getMachineId();
+              try {
+                // Attempt to fetch from kosh platform by machineId
+                const res = await fetch(`https://api.getkosh.co.in/api/v1/business/machine/${machineId}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data && data.businessId) {
+                    businessId = data.businessId;
+                    await updateBusinessProfile({ ...profile, kosh_business_id: businessId });
+                  }
+                }
+              } catch (e) {
+                console.error("[INIT] Failed to fetch business id from platform:", e);
+              }
+            }
+
+            if (businessId) {
+              window.electron.connectCloudSync(businessId);
+              // Clear any missing business id warning if we use global state, 
+              // for now we use localStorage to pass state to Action Center
+              localStorage.removeItem("kosh_missing_business_id");
+            } else {
+              localStorage.setItem("kosh_missing_business_id", "true");
+              // Dispatch an event so Action Center can re-render immediately
+              window.dispatchEvent(new Event("kosh_missing_business_id_event"));
+            }
+          } catch (e) {
+            console.error("[INIT] Cloud sync setup failed:", e);
+          }
+
           return true;
         }
 

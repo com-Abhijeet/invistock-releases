@@ -10,6 +10,7 @@ router.post("/", validateRequest(productSchema), controller.createProduct);
 router.get("/", controller.getProducts);
 
 // --- ✅ SPECIFIC ROUTES (Must come BEFORE dynamic /:id routes) ---
+router.post("/upload-image", controller.uploadProductImageController);
 router.get("/mobile-view", controller.getProductsForMobileController);
 router.get("/next-barcode", controller.getNextBarcodeController);
 router.get("/next-code", controller.getNextProductCodeController);

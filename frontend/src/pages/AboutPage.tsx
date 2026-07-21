@@ -46,6 +46,7 @@ import {
 import { useUpdate } from "../context/UpdateContext";
 import { useNavigate } from "react-router-dom";
 import { getLicenseStatus, LicenseStatus } from "../lib/api/LicenseService";
+import { getBusinessProfile } from "../lib/api/businessService";
 import KbdButton from "../components/ui/Button";
 
 // Import Logo
@@ -70,6 +71,11 @@ export default function AboutPage() {
   const [license, setLicense] = useState<LicenseStatus | null>(null);
   const [_loadingLicense, setLoadingLicense] = useState(true);
 
+  // Cloud Sync
+  const [syncStatus, setSyncStatus] = useState<boolean>(false);
+  const [businessId, setBusinessId] = useState<string>("");
+  const [reconnecting, setReconnecting] = useState(false);
+
   useEffect(() => {
     if (electron?.getAppMode) {
       electron
@@ -85,7 +91,39 @@ export default function AboutPage() {
         setLoadingLicense(false);
       })
       .catch(() => setLoadingLicense(false));
+
+    // Fetch Business Profile & Sync Status
+    getBusinessProfile().then((res) => {
+      if (res?.kosh_business_id) {
+        setBusinessId(res.kosh_business_id);
+      }
+    }).catch(console.error);
+
+    if (electron?.getCloudSyncStatus) {
+      electron.getCloudSyncStatus().then(setSyncStatus);
+    }
+    
+    if (electron?.onCloudSyncStatus) {
+      electron.onCloudSyncStatus((status: boolean) => {
+        setSyncStatus(status);
+        setReconnecting(false);
+      });
+    }
   }, []);
+
+  const handleManualReconnect = async () => {
+    if (!businessId || !electron?.connectCloudSync) return;
+    setReconnecting(true);
+    try {
+      await electron.connectCloudSync(businessId);
+      // Let the onCloudSyncStatus event handle updating the state, 
+      // but timeout the loading state just in case
+      setTimeout(() => setReconnecting(false), 5000);
+    } catch (error) {
+      console.error(error);
+      setReconnecting(false);
+    }
+  };
 
   const isLicenseWarning =
     license?.status === "expired" || license?.status === "grace_period";
@@ -410,6 +448,73 @@ export default function AboutPage() {
                   >
                     Email Us
                   </Button>
+                </Stack>
+              </CardContent>
+            </Card>
+
+            {/* Mobile App Sync Status */}
+            <Card
+              sx={{
+                bgcolor: "background.paper",
+                borderRadius: 2,
+                boxShadow: "none",
+                border: "1px solid",
+                borderColor: "divider",
+              }}
+            >
+              <CardContent sx={{ p: 2.5 }}>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 2,
+                        bgcolor: syncStatus ? "success.soft" : "error.soft",
+                        color: syncStatus ? "success.main" : "error.main",
+                      }}
+                    >
+                      <Wifi size={24} />
+                    </Box>
+                    <Box>
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        Mobile App Sync
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {syncStatus
+                          ? "Connected to Kosh Cloud"
+                          : "Disconnected from Kosh Cloud"}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip
+                      label={syncStatus ? "Online" : "Offline"}
+                      color={syncStatus ? "success" : "error"}
+                      size="small"
+                      variant={syncStatus ? "filled" : "outlined"}
+                    />
+                    {!syncStatus && businessId && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        disabled={reconnecting}
+                        onClick={handleManualReconnect}
+                        startIcon={
+                          reconnecting ? (
+                            <CircularProgress size={14} />
+                          ) : (
+                            <RotateCw size={14} />
+                          )
+                        }
+                      >
+                        Reconnect
+                      </Button>
+                    )}
+                  </Stack>
                 </Stack>
               </CardContent>
             </Card>

@@ -336,7 +336,7 @@ app.whenReady().then(async () => {
   });
 
   // ✅ Register the new Connection Handlers
-  registerConnectionHandlers(ipcMain);
+  registerConnectionHandlers(ipcMain, mainWindow);
 
   registerGDriveHandlers(ipcMain, { mainWindow });
   registerFileDialogHandlers(ipcMain, { mainWindow });

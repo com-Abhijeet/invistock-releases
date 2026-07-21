@@ -29,7 +29,7 @@ function getDetailedNetworkInterfaces() {
   return results;
 }
 
-function registerConnectionHandlers(ipcMain) {
+function registerConnectionHandlers(ipcMain, mainWindow) {
   // Save Manual Connection String
   ipcMain.handle("set-manual-server", async (event, url) => {
     try {
@@ -74,6 +74,47 @@ function registerConnectionHandlers(ipcMain) {
   ipcMain.handle("get-network-details", () => {
     return getDetailedNetworkInterfaces();
   });
+
+  // Cloud Sync Handlers
+  ipcMain.handle("connect-cloud-sync", async (event, businessId) => {
+    try {
+      const { connectCloudSync } = await import("../../backend/services/cloudSyncClient.mjs");
+      connectCloudSync(businessId);
+      return { success: true };
+    } catch (error) {
+      console.error("Failed to connect cloud sync:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("disconnect-cloud-sync", async (event) => {
+    try {
+      const { disconnectCloudSync } = await import("../../backend/services/cloudSyncClient.mjs");
+      disconnectCloudSync();
+      return { success: true };
+    } catch (error) {
+      console.error("Failed to disconnect cloud sync:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("get-cloud-sync-status", async () => {
+    try {
+      const { getCloudSyncStatus } = await import("../../backend/services/cloudSyncClient.mjs");
+      return getCloudSyncStatus();
+    } catch (error) {
+      return false;
+    }
+  });
+
+  // Setup emitter once
+  import("../../backend/services/cloudSyncClient.mjs").then(({ cloudSyncEmitter }) => {
+    cloudSyncEmitter.on("status-changed", (status) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("cloud-sync-status-changed", status);
+      }
+    });
+  }).catch(console.error);
 }
 
 // Helper to read config synchronously (for main.js initialization)

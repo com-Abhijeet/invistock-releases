@@ -83,3 +83,21 @@ export const getSupplierLedger = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const getSuppliersFinancials = async (req, res) => {
+  try {
+    const result = await supplierService.getSupplierFinancialsList(req.query);
+    res.status(200).json({ 
+      success: true, 
+      data: result.data,
+      pagination: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit
+      }
+    });
+  } catch (error) {
+    console.error("getSuppliersFinancials -", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

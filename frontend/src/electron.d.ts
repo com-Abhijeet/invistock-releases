@@ -46,6 +46,10 @@ declare global {
       onSetAppMode: (callback: (mode: "server" | "client") => void) => void;
       onSetServerUrl(arg0: (url: string) => void): unknown;
       getLocalIp: () => Promise<string>;
+      connectCloudSync: (businessId: string) => Promise<{ success: boolean; error?: string }>;
+      disconnectCloudSync: () => Promise<{ success: boolean; error?: string }>;
+      getCloudSyncStatus: () => Promise<boolean>;
+      onCloudSyncStatus: (callback: (status: boolean) => void) => void;
       ipcRenderer: {
         on(
           arg0: string,

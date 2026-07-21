@@ -166,3 +166,80 @@ export function getSupplierLedger(supplierId, filters) {
 
   return { supplier, ledger };
 }
+
+export async function getSuppliersWithFinancials({
+  page = 1,
+  limit = 20,
+  query = "",
+  sortBy = "name",
+  sortOrder = "asc",
+}) {
+  const offset = (page - 1) * limit;
+  let whereClause = "1=1";
+  const params = [];
+
+  if (query) {
+    whereClause += " AND (s.name LIKE ? OR s.phone LIKE ?)";
+    params.push(`%${query}%`, `%${query}%`);
+  }
+
+  const purchasesSubquery = `
+    SELECT 
+      supplier_id,
+      COUNT(id) as total_bills,
+      COALESCE(SUM(total_amount), 0) as total_purchased,
+      SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as total_bills_paid
+    FROM purchases
+    WHERE status != 'cancelled'
+    GROUP BY supplier_id
+  `;
+
+  const transSubquery = `
+    SELECT 
+      entity_id,
+      COALESCE(SUM(CASE WHEN type = 'payment_out' THEN amount WHEN type = 'payment_in' THEN -amount ELSE 0 END), 0) as total_amount_paid,
+      COALESCE(SUM(CASE WHEN type = 'debit_note' THEN amount ELSE 0 END), 0) as total_debit_notes
+    FROM transactions
+    WHERE entity_type = 'supplier' 
+      AND status != 'deleted' 
+      AND type IN ('payment_in', 'payment_out', 'debit_note')
+    GROUP BY entity_id
+  `;
+
+  const sql = `
+    SELECT 
+      s.id, 
+      s.name, 
+      s.phone, 
+      s.city,
+      COALESCE(p_stats.total_bills, 0) as total_bills,
+      COALESCE(p_stats.total_purchased, 0) as total_purchased,
+      COALESCE(p_stats.total_bills_paid, 0) as total_bills_paid,
+      COALESCE(t_stats.total_amount_paid, 0) as total_amount_paid,
+      ((COALESCE(p_stats.total_purchased, 0) - COALESCE(t_stats.total_debit_notes, 0)) - COALESCE(t_stats.total_amount_paid, 0)) as total_overdue,
+      CASE 
+        WHEN (COALESCE(p_stats.total_purchased, 0) - COALESCE(t_stats.total_debit_notes, 0)) <= 0 THEN 0
+        ELSE ROUND((COALESCE(t_stats.total_amount_paid, 0) * 100.0) / (COALESCE(p_stats.total_purchased, 0) - COALESCE(t_stats.total_debit_notes, 0)), 2)
+      END as payment_percentage
+    FROM suppliers s
+    LEFT JOIN (${purchasesSubquery}) p_stats ON s.id = p_stats.supplier_id
+    LEFT JOIN (${transSubquery}) t_stats ON s.id = t_stats.entity_id
+    WHERE ${whereClause}
+    ORDER BY ${sortBy} ${sortOrder}
+    LIMIT ? OFFSET ?
+  `;
+
+  params.push(limit, offset);
+
+  const countSql = `SELECT COUNT(*) as count FROM suppliers s WHERE ${whereClause}`;
+  const totalRecords = db.prepare(countSql).get(...params.slice(0, -2)).count;
+  const suppliers = db.prepare(sql).all(...params);
+
+  return {
+    data: suppliers,
+    total: totalRecords,
+    page: parseInt(page),
+    limit: parseInt(limit),
+  };
+}
+

@@ -5,6 +5,7 @@ import {
   updateSupplier,
   deleteSupplier,
   getSupplierLedger,
+  getSuppliersWithFinancials
 } from "../repositories/supplierRepository.mjs";
 
 /**
@@ -107,3 +108,22 @@ export function removeSupplier(id) {
 export const getSupplierLedgerService = async (supplierId, filters) => {
   return getSupplierLedger(supplierId, filters);
 };
+
+export async function getSupplierFinancialsList(params) {
+  const { page, limit, query, sortBy, sortOrder } = params;
+  const validSortColumns = [
+    "name",
+    "total_purchased",
+    "total_overdue",
+    "payment_percentage",
+  ];
+  const safeSortBy = validSortColumns.includes(sortBy) ? sortBy : "name";
+  const safeSortOrder = sortOrder === "desc" ? "DESC" : "ASC";
+  return await getSuppliersWithFinancials({
+    page: Number(page) || 1,
+    limit: Number(limit) || 20,
+    query: query || "",
+    sortBy: safeSortBy,
+    sortOrder: safeSortOrder,
+  });
+}

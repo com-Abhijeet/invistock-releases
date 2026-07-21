@@ -218,3 +218,45 @@ export const bulkUpdateProductsController = async (req, res) => {
     return res.status(500).json({ success: false, message: "Error in bulk updating products" });
   }
 };
+
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+import { createRequire } from "module";
+
+export const uploadProductImageController = async (req, res) => {
+  try {
+    const { base64Image } = req.body;
+    if (!base64Image) {
+      return res.status(400).json({ success: false, message: "No image provided" });
+    }
+
+    const requireConfig = createRequire(import.meta.url);
+    const config = requireConfig("../../electron/config.js");
+    
+    // Extract base64 data and extension
+    const matches = base64Image.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return res.status(400).json({ success: false, message: "Invalid base64 string" });
+    }
+
+    let ext = matches[1].toLowerCase();
+    if (ext === 'jpeg') ext = 'jpg';
+    const buffer = Buffer.from(matches[2], 'base64');
+    
+    const fileName = `product_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
+    const targetDir = path.join(config.userDataPath, "images", "products");
+    
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    
+    const targetPath = path.join(targetDir, fileName);
+    fs.writeFileSync(targetPath, buffer);
+    
+    res.status(200).json({ success: true, data: fileName });
+  } catch (error) {
+    console.error("uploadProductImageController -", error);
+    res.status(500).json({ success: false, message: "Failed to upload image" });
+  }
+};

@@ -70,6 +70,10 @@ contextBridge.exposeInMainWorld("electron", {
         "check-for-updates",
         "get-app-version",
         "restart-app",
+        
+        // ✅ Cloud Sync Channels
+        "connect-cloud-sync",
+        "disconnect-cloud-sync",
 
         "license-updated-restart-app",
         "launch-main-app",
@@ -149,6 +153,12 @@ contextBridge.exposeInMainWorld("electron", {
   getNetworkDetails: () => ipcRenderer.invoke("get-network-details"),
   setManualServer: (url) => ipcRenderer.invoke("set-manual-server", url),
   getManualServer: () => ipcRenderer.invoke("get-manual-server"),
+  
+  // ✅ CLOUD SYNC
+  connectCloudSync: (businessId) => ipcRenderer.invoke("connect-cloud-sync", businessId),
+  disconnectCloudSync: () => ipcRenderer.invoke("disconnect-cloud-sync"),
+  getCloudSyncStatus: () => ipcRenderer.invoke("get-cloud-sync-status"),
+  onCloudSyncStatus: (callback) => ipcRenderer.on("cloud-sync-status-changed", (event, status) => callback(status)),
 
   // --- WHATSAPP ---
   openExternalUrl: (url) => ipcRenderer.invoke("open-external-url", url),
