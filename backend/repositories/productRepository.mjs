@@ -1,4 +1,5 @@
 import db from "../db/db.mjs";
+import { createNewBatch } from "../services/batchService.mjs";
 
 // --- Helper: Get ID or Create New Category/Subcategory ---
 function resolveEntity(db, table, identifier, parentId = null) {
@@ -167,8 +168,39 @@ export const createProduct = (product) => {
       product.secondary_unit || null,
       product.conversion_factor || 1,
     );
+
+    const productId = info.lastInsertRowid;
+    const openingQty = Number(product.quantity) || 0;
+    const trackingType = product.tracking_type || "none";
+
+    if (openingQty > 0 && ["batch", "serial"].includes(trackingType)) {
+      const serialList = Array.isArray(product.serial_numbers)
+        ? product.serial_numbers
+        : typeof product.serial_numbers === "string"
+          ? product.serial_numbers
+              .split(/[\n,]+/)
+              .map((value) => value.trim())
+              .filter(Boolean)
+          : [];
+
+      createNewBatch({
+        productId,
+        purchaseId: null,
+        batchNumber: "Opening stock",
+        expiryDate: null,
+        mfgDate: null,
+        mrp: Number(product.mrp) || 0,
+        costPrice: Number(product.mop) || 0,
+        quantity: openingQty,
+        serialNumbers: serialList,
+        location: product.storage_location || "Store",
+        barcode: product.barcode || null,
+        margin: 0,
+      });
+    }
+
     return {
-      id: info.lastInsertRowid,
+      id: productId,
       ...product,
       product_code: finalProductCode,
       category: categoryId,
@@ -664,16 +696,16 @@ export const getBatchTrackedProductsWithNoBatches = () => {
 
 export function bulkUpdateProducts(productIds, updateData) {
   if (!productIds || productIds.length === 0) return { changes: 0 };
-  
+
   const fields = Object.keys(updateData);
   if (fields.length === 0) return { changes: 0 };
 
-  const setClause = fields.map(field => `${field} = ?`).join(', ');
-  const values = fields.map(field => updateData[field]);
+  const setClause = fields.map((field) => `${field} = ?`).join(", ");
+  const values = fields.map((field) => updateData[field]);
 
   // Create placeholders for the IN clause
-  const placeholders = productIds.map(() => '?').join(', ');
-  
+  const placeholders = productIds.map(() => "?").join(", ");
+
   const query = `UPDATE products SET ${setClause}, updated_at = datetime('now') WHERE id IN (${placeholders})`;
 
   try {

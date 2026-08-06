@@ -167,6 +167,7 @@ export default function SalesPos() {
     setPincode("");
     setMode("new");
     setSalesOrderId(null);
+
     if (id) navigate("/billing");
   };
 
@@ -183,17 +184,25 @@ export default function SalesPos() {
 
     const initWalkInCustomer = async () => {
       try {
-        const res = await getCustomers({ query: "Walk-in Customer", all: true });
-        let walkIn = res.records.find((c: any) => c.name.toLowerCase() === "walk-in customer");
-        
+        const res = await getCustomers({
+          query: "Walk-in Customer",
+          all: true,
+        });
+        let walkIn = res.records.find(
+          (c: any) => c.name.toLowerCase() === "walk-in customer",
+        );
+
         if (!walkIn) {
           // Create Walk-in if not exists
-          const newCustomer = await api.post("/api/customers", { name: "Walk-in Customer", phone: "" });
+          const newCustomer = await api.post("/api/customers", {
+            name: "Walk-in Customer",
+            phone: "0000000000",
+          });
           if (newCustomer.data.success) {
             walkIn = newCustomer.data.data;
           }
         }
-        
+
         if (walkIn) {
           setCustomerId(walkIn.id);
           setCustomerName(walkIn.name);
@@ -575,7 +584,7 @@ export default function SalesPos() {
       </Box>
       <Box sx={{ flexGrow: 1, overflowY: "auto", px: 2, pb: 2 }}>
         <SaleItemSection
-          items={sale.items.map(item => ({
+          items={sale.items.map((item) => ({
             ...item,
             batch_id: item.batch_id ?? undefined,
             serial_id: item.serial_id ?? undefined,
@@ -588,7 +597,7 @@ export default function SalesPos() {
       <Box
         sx={{
           flexShrink: 0,
-          bgcolor: 'background.paper',
+          bgcolor: "background.paper",
           borderTop: `1px solid ${theme.palette.divider}`,
           zIndex: 10,
         }}

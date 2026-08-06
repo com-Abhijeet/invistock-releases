@@ -23,7 +23,7 @@ import {
   Alert,
   Autocomplete,
   ListSubheader,
-  Divider,
+  CircularProgress,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -36,15 +36,14 @@ import {
   updateProduct,
   fetchNextBarcode,
   fetchNextProductCode,
+  lookupBarcodeProduct,
 } from "../../lib/api/productService";
 import { generateProductCode } from "../../utils/generateProductCode";
 import {
   PackagePlus,
   Hash,
   Percent,
-  Boxes,
   Tag,
-  Warehouse,
   Image as ImageIcon,
   Save,
   Barcode,
@@ -52,10 +51,6 @@ import {
   AlertTriangle,
   Scale,
   Ruler,
-  Layers,
-  ScanBarcode,
-  Package,
-  ArrowRightLeft,
 } from "lucide-react";
 import { FormField } from "../FormField";
 import { UNIT_FAMILIES, getUnitFamily } from "../../lib/services/unitService";
@@ -97,7 +92,7 @@ const defaultForm: Partial<Product> = {
   conversion_factor: 1,
 };
 
-const steps = ["Essential Details", "Inventory & Tracking", "Additional Info"];
+const steps = ["Required details", "Optional details"];
 
 // Helper to get conversion multiplier for pricing
 // e.g. If tracking in 'g' but pricing in 'kg', multiplier is 1000
@@ -132,6 +127,16 @@ export default function AddEditProductModal({
   const [availableCategories, setAvailableCategories] = useState<Category[]>(
     [],
   );
+  const [cachedPreferences, setCachedPreferences] = useState(() => {
+    if (typeof window === "undefined") return {} as Record<string, string>;
+    try {
+      return JSON.parse(
+        localStorage.getItem("product_modal_preferences") || "{}",
+      ) as Record<string, string>;
+    } catch {
+      return {} as Record<string, string>;
+    }
+  });
   const [filteredSubcategories, setFilteredSubcategories] = useState<
     Subcategory[]
   >([]);
@@ -140,6 +145,10 @@ export default function AddEditProductModal({
   // State for Unit Toggle
   const [hasSecondaryUnit, setHasSecondaryUnit] = useState(false);
   const [pricingUnit, setPricingUnit] = useState<string>("pcs");
+  const [lookupBarcode, setLookupBarcode] = useState("");
+  const [barcodeLookupStatus, setBarcodeLookupStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
 
   // Ref map for keyboard navigation
   const fieldRefs = useRef<{
@@ -176,6 +185,32 @@ export default function AddEditProductModal({
     }
   }, [form.base_unit, pricingUnit]);
 
+  const fieldOrder = [
+    "name",
+    "category",
+    "subcategory",
+    "tracking_type",
+    "barcode",
+    "quantity",
+    "storage_location",
+    "base_unit",
+    "pricing_unit",
+    "mrp",
+    "mop",
+    "mfw_price",
+    "hsn",
+    "gst_rate",
+    "secondary_unit",
+    "conversion_factor",
+    "brand",
+    "size",
+    "weight",
+    "average_purchase_price",
+    "image_url",
+    "description",
+    "low_stock_threshold",
+  ];
+
   const focusField = (id: string) => {
     const el = fieldRefs.current[id];
     if (el) {
@@ -188,21 +223,52 @@ export default function AddEditProductModal({
     }
   };
 
+  const getFieldNavigationTarget = (
+    currentId: string,
+    direction: "next" | "prev",
+  ) => {
+    const currentIndex = fieldOrder.indexOf(currentId);
+    if (currentIndex === -1) return null;
+    const targetIndex =
+      direction === "next" ? currentIndex + 1 : currentIndex - 1;
+    return fieldOrder[targetIndex] || null;
+  };
+
   const handleKeyDown = (
     e: React.KeyboardEvent,
-    _currentId: string,
+    currentId: string,
     nextId: string | null,
   ) => {
-    if (e.key === "Enter") {
-      // Don't move if it's a multiline textarea unless we want specifically that
-      if ((e.target as HTMLElement).tagName === "TEXTAREA") return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === "TEXTAREA") return;
 
+    if (e.key === "Enter") {
       e.preventDefault();
       if (nextId) {
         focusField(nextId);
-      } else if (activeStep < steps.length - 1) {
-        handleNext();
+      } else {
+        const fallbackTarget = getFieldNavigationTarget(currentId, "next");
+        if (fallbackTarget) {
+          focusField(fallbackTarget);
+        } else if (activeStep < steps.length - 1) {
+          handleNext();
+        }
       }
+      return;
+    }
+
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const fallbackTarget =
+        nextId || getFieldNavigationTarget(currentId, "next");
+      if (fallbackTarget) focusField(fallbackTarget);
+      return;
+    }
+
+    if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const fallbackTarget = getFieldNavigationTarget(currentId, "prev");
+      if (fallbackTarget) focusField(fallbackTarget);
     }
   };
 
@@ -210,9 +276,31 @@ export default function AddEditProductModal({
     if (open) {
       setActiveStep(0);
       setError(null);
-      setForm(
-        mode === "edit" ? { ...defaultForm, ...initialData } : defaultForm,
-      );
+      setLookupBarcode("");
+      setBarcodeLookupStatus("idle");
+      const preferences: Record<string, string> = {
+        tracking_type: cachedPreferences.tracking_type || "batch",
+        storage_location: cachedPreferences.storage_location || "Store",
+        gst_rate: cachedPreferences.gst_rate || "0",
+      };
+      const baseForm =
+        mode === "edit"
+          ? { ...defaultForm, ...initialData }
+          : { ...defaultForm };
+      const mergedForm = {
+        ...baseForm,
+        tracking_type: (initialData?.tracking_type ||
+          preferences.tracking_type ||
+          baseForm.tracking_type ||
+          "batch") as any,
+        storage_location: (initialData?.storage_location ||
+          preferences.storage_location ||
+          baseForm.storage_location ||
+          "Store") as any,
+        gst_rate: (initialData?.gst_rate ??
+          Number(preferences.gst_rate ?? baseForm.gst_rate ?? 0)) as any,
+      };
+      setForm(mergedForm);
 
       // Check if secondary unit exists to toggle switch
       if (initialData?.secondary_unit) {
@@ -246,6 +334,13 @@ export default function AddEditProductModal({
         if (form.category && typeof form.category === "number") {
           const selected = categories.find(
             (cat: { id: number }) => cat.id === Number(form.category),
+          );
+          setFilteredSubcategories(selected?.subcategories || []);
+        } else if (typeof form.category === "string") {
+          const normalizedCategoryName = form.category.trim().toLowerCase();
+          const selected = categories.find(
+            (cat: { name: string }) =>
+              cat.name.toLowerCase() === normalizedCategoryName,
           );
           setFilteredSubcategories(selected?.subcategories || []);
         } else {
@@ -303,9 +398,101 @@ export default function AddEditProductModal({
     isNewSubcategory,
   ]);
 
+  const persistPreference = (
+    key: "tracking_type" | "storage_location" | "gst_rate",
+    value: string | number,
+  ) => {
+    const nextPreferences = { ...cachedPreferences, [key]: String(value) };
+    setCachedPreferences(nextPreferences);
+    localStorage.setItem(
+      "product_modal_preferences",
+      JSON.stringify(nextPreferences),
+    );
+  };
+
+  const ensureCategoryOption = (
+    categoryName?: string | null,
+    subcategoryName?: string | null,
+  ) => {
+    const safeCategory = categoryName?.trim();
+    const safeSubcategory = subcategoryName?.trim() || "Misc";
+    if (!safeCategory) return;
+
+    setAvailableCategories((prev) => {
+      const existingCategoryIndex = prev.findIndex(
+        (entry) => entry.name.toLowerCase() === safeCategory.toLowerCase(),
+      );
+      if (existingCategoryIndex >= 0) {
+        const nextCategories = [...prev];
+        const existingCategory = nextCategories[existingCategoryIndex];
+        const subExists = existingCategory.subcategories.some(
+          (entry) =>
+            entry.name.toLowerCase() === safeSubcategory?.toLowerCase(),
+        );
+        if (safeSubcategory && !subExists) {
+          nextCategories[existingCategoryIndex] = {
+            ...existingCategory,
+            subcategories: [
+              ...existingCategory.subcategories,
+              {
+                name: safeSubcategory,
+                code:
+                  safeSubcategory
+                    .slice(0, 3)
+                    .toUpperCase()
+                    .replace(/[^A-Z]/g, "X") + "001",
+              },
+            ],
+          };
+        }
+        return nextCategories;
+      }
+
+      return [
+        ...prev,
+        {
+          name: safeCategory,
+          code:
+            safeCategory
+              .slice(0, 3)
+              .toUpperCase()
+              .replace(/[^A-Z]/g, "X") + "001",
+          subcategories: safeSubcategory
+            ? [
+                {
+                  name: safeSubcategory,
+                  code:
+                    safeSubcategory
+                      .slice(0, 3)
+                      .toUpperCase()
+                      .replace(/[^A-Z]/g, "X") + "001",
+                },
+              ]
+            : [],
+        },
+      ];
+    });
+  };
+
   const handleChange = (key: keyof Product, value: any) => {
     setForm((prev) => {
       const newForm = { ...prev, [key]: value };
+      if (key === "tracking_type" && value) {
+        persistPreference("tracking_type", value as string);
+      }
+      if (key === "storage_location" && value) {
+        persistPreference("storage_location", value as string);
+      }
+      if (key === "gst_rate" && value !== undefined && value !== null) {
+        persistPreference("gst_rate", value as number);
+      }
+      if (key === "category") {
+        if (typeof value === "string") {
+          newForm.subcategory = value;
+        } else {
+          newForm.subcategory = null;
+        }
+      }
       if (
         !isNewCategory &&
         !isNewSubcategory &&
@@ -317,11 +504,98 @@ export default function AddEditProductModal({
           availableCategories,
           products,
         );
-        newForm.product_code = newCode;
+        newCode && (newForm.product_code = newCode);
       }
       return newForm;
     });
     if (error) setError(null);
+  };
+
+  const normalizeNumericValue = (value: any) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const cleaned = value.replace(/[^0-9.]/g, "");
+      const parsed = Number(cleaned);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
+
+  const inferCategoryHints = (data: any) => {
+    const rawCategory =
+      data?.category || data?.category_name || data?.product_type || "";
+    const rawSubcategory = data?.subcategory || data?.product_subcategory || "";
+
+    const parts = String(rawCategory)
+      .split(/[>:/|]/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    return {
+      category: parts[0] || "",
+      subcategory: parts[1] || rawSubcategory || "",
+    };
+  };
+
+  const handleBarcodeLookup = async (providedCode?: string) => {
+    const barcode = (providedCode ?? lookupBarcode ?? form.barcode ?? "")
+      .toString()
+      .trim();
+    if (!barcode) {
+      toast.error("Enter a barcode first.");
+      return;
+    }
+
+    setLookupBarcode(barcode);
+    setBarcodeLookupStatus("loading");
+    try {
+      const data = await lookupBarcodeProduct(barcode);
+      if (!data) {
+        setBarcodeLookupStatus("error");
+        toast.error("No product matched that barcode.");
+        return;
+      }
+
+      const categoryHints = inferCategoryHints(data);
+      const mrpValue = normalizeNumericValue(
+        data?.mrp ?? data?.price ?? data?.retail_price ?? data?.retailPrice,
+      );
+      const gstValue = normalizeNumericValue(
+        data?.gst_rate ?? data?.gst ?? data?.tax_rate ?? data?.tax,
+      );
+      const hsnValue =
+        data?.hsn ||
+        data?.hsn_code ||
+        data?.hsn_sac ||
+        data?.hsn_code_sac ||
+        "";
+
+      if (categoryHints.category || categoryHints.subcategory) {
+        ensureCategoryOption(categoryHints.category, categoryHints.subcategory);
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        barcode,
+        name: data.name || prev.name || "",
+        brand: data.brand || prev.brand || "",
+        description: data.description || prev.description || "",
+        image_url: data.image_url || prev.image_url || "",
+        size: data.size || prev.size || "",
+        weight: data.weight || prev.weight || "",
+        mrp: mrpValue ?? prev.mrp ?? 0,
+        hsn: hsnValue || prev.hsn || "",
+        gst_rate: gstValue ?? prev.gst_rate ?? 0,
+        category: categoryHints.category || (prev.category as any) || null,
+        subcategory:
+          categoryHints.subcategory || (prev.subcategory as any) || null,
+      }));
+      setBarcodeLookupStatus("success");
+      toast.success("Product details filled in.");
+    } catch (err: any) {
+      setBarcodeLookupStatus("error");
+      toast.error(err?.message || "Unable to look up barcode");
+    }
   };
 
   // Wrapper for price changes to handle multiplier
@@ -347,10 +621,6 @@ export default function AddEditProductModal({
         return "Category is required.";
       if (form.gst_rate === undefined || form.gst_rate === null)
         return "GST Rate is required.";
-      if (!isNewCategory && !isNewSubcategory && !form.product_code)
-        return "Product Code is required.";
-
-      // MOVED UNIT VALIDATION TO STEP 0
       if (!form.base_unit) return "Base Unit is required.";
       if (hasSecondaryUnit) {
         if (!form.secondary_unit) return "Secondary Unit name is required.";
@@ -358,7 +628,6 @@ export default function AddEditProductModal({
           return "Valid conversion factor is required.";
       }
     }
-    // Step 1 now only handles inventory/tracking
     return null;
   };
 
@@ -369,10 +638,9 @@ export default function AddEditProductModal({
       return;
     }
     setActiveStep((prev) => prev + 1);
-    // Focus first field of next step
     setTimeout(() => {
-      if (activeStep === 0) focusField("tracking_type");
-      if (activeStep === 1) focusField("brand");
+      if (activeStep === 0) focusField("low_stock_threshold");
+      if (activeStep === 1) focusField("low_stock_threshold");
     }, 50);
   };
 
@@ -381,6 +649,11 @@ export default function AddEditProductModal({
   };
 
   const handleSubmit = async () => {
+    const err = validateStep(activeStep);
+    if (err) {
+      setError(err);
+      return;
+    }
     setLoading(true);
     try {
       const finalPayload: any = {
@@ -449,6 +722,12 @@ export default function AddEditProductModal({
     form.category !== null &&
     form.category !== undefined &&
     form.category !== "";
+  const isTrackedProduct =
+    form.tracking_type === "batch" || form.tracking_type === "serial";
+  const showTrackedOpeningWarning =
+    isTrackedProduct && Number(form.quantity || 0) > 0;
+  const shouldShowPricingFields =
+    !isTrackedProduct || Number(form.quantity || 0) > 0;
 
   // Helper to get allowed pricing units based on selected base unit family
   const getAllowedPricingUnits = () => {
@@ -460,8 +739,14 @@ export default function AddEditProductModal({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle sx={{ bgcolor: 'text.primary', color: "white", pb: 3 }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="xl"
+      PaperProps={{ sx: { maxHeight: { md: "calc(100vh - 32px)" } } }}
+    >
+      <DialogTitle sx={{ bgcolor: "text.primary", color: "white", py: 1.5 }}>
         <Stack direction="row" alignItems="center" spacing={1.5}>
           <PackagePlus color="white" />
           <Typography variant="h6" color="white">
@@ -470,7 +755,7 @@ export default function AddEditProductModal({
         </Stack>
       </DialogTitle>
 
-      <Box sx={{ width: "100%", px: 3, mt: 3 }}>
+      <Box sx={{ width: "100%", px: 3, mt: 1.5 }}>
         <Stepper activeStep={activeStep} alternativeLabel>
           {steps.map((label) => (
             <Step key={label}>
@@ -480,16 +765,91 @@ export default function AddEditProductModal({
         </Stepper>
       </Box>
 
-      <DialogContent sx={{ mt: 2, minHeight: "350px" }}>
+      <DialogContent
+        sx={{
+          mt: 1,
+          minHeight: { md: "390px" },
+          overflowY: { xs: "auto", md: "hidden" },
+          px: { xs: 2, md: 3 },
+          py: 1,
+        }}
+      >
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
 
-        <Grid container spacing={2.5} mt={0.5}>
+        <Alert
+          severity="info"
+          sx={{
+            mb: 1,
+            borderRadius: 2,
+            bgcolor: "background.paper",
+            border: "1px solid",
+            borderColor: "divider",
+            color: "text.primary",
+            "& .MuiAlert-icon": { color: "info.main" },
+          }}
+        >
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            alignItems={{ xs: "flex-start", sm: "center" }}
+            justifyContent="space-between"
+          >
+            <Typography variant="body2" sx={{ whiteSpace: { sm: "nowrap" } }}>
+              Scan a barcode to fill details
+            </Typography>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1}
+              sx={{ flex: 1, minWidth: { sm: 360 } }}
+            >
+              <TextField
+                size="small"
+                placeholder="Lookup barcode"
+                value={lookupBarcode}
+                onChange={(e) => setLookupBarcode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleBarcodeLookup(lookupBarcode);
+                  }
+                }}
+                sx={{ flex: 1 }}
+              />
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => void handleBarcodeLookup(lookupBarcode)}
+                disabled={barcodeLookupStatus === "loading"}
+                startIcon={
+                  barcodeLookupStatus === "loading" ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : (
+                    <Barcode size={16} />
+                  )
+                }
+              >
+                {barcodeLookupStatus === "loading" ? "Looking up..." : "Lookup"}
+              </Button>
+            </Stack>
+          </Stack>
+        </Alert>
+
+        <Grid container spacing={1.5} mt={0.5}>
           {activeStep === 0 && (
             <>
+              <Grid item xs={12}>
+                <Typography
+                  variant="subtitle2"
+                  fontWeight={700}
+                  color="text.secondary"
+                >
+                  Product details
+                </Typography>
+              </Grid>
               <Grid item xs={12} sm={4}>
                 <FormField label="Product Name *">
                   <TextField
@@ -557,9 +917,23 @@ export default function AddEditProductModal({
                         size="small"
                         placeholder="Select or Type New"
                         inputRef={(el) => (fieldRefs.current["category"] = el)}
-                        onKeyDown={(e) =>
-                          handleKeyDown(e, "category", "subcategory")
-                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleKeyDown(e, "category", "subcategory");
+                            return;
+                          }
+                          if (
+                            e.key === "ArrowDown" ||
+                            e.key === "ArrowUp" ||
+                            e.key === "ArrowRight" ||
+                            e.key === "ArrowLeft"
+                          ) {
+                            e.stopPropagation();
+                            return;
+                          }
+                          handleKeyDown(e, "category", "subcategory");
+                        }}
                       />
                     )}
                   />
@@ -621,48 +995,67 @@ export default function AddEditProductModal({
                         inputRef={(el) =>
                           (fieldRefs.current["subcategory"] = el)
                         }
-                        onKeyDown={(e) =>
-                          handleKeyDown(e, "subcategory", "hsn")
-                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleKeyDown(e, "subcategory", "tracking_type");
+                            return;
+                          }
+                          if (
+                            e.key === "ArrowDown" ||
+                            e.key === "ArrowUp" ||
+                            e.key === "ArrowRight" ||
+                            e.key === "ArrowLeft"
+                          ) {
+                            e.stopPropagation();
+                            return;
+                          }
+                          handleKeyDown(e, "subcategory", "tracking_type");
+                        }}
                       />
                     )}
                   />
                 </FormField>
               </Grid>
 
-              <Grid item xs={12} sm={4}>
-                <FormField label="Product Code *">
+              <Grid item xs={12}>
+                <Typography
+                  variant="subtitle2"
+                  fontWeight={700}
+                  color="text.secondary"
+                >
+                  Inventory
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormField label="Batch Tracking">
                   <TextField
+                    select
                     fullWidth
                     size="small"
-                    value={form.product_code || ""}
-                    placeholder={mode === "add" ? "Select category first" : ""}
-                    helperText={
-                      isNewCategory || isNewSubcategory
-                        ? "Will be auto-generated by system"
-                        : ""
+                    value={form.tracking_type || "none"}
+                    inputRef={(el) => (fieldRefs.current["tracking_type"] = el)}
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "tracking_type", "barcode")
                     }
-                    InputProps={{
-                      readOnly:
-                        mode === "add" && !isNewCategory && !isNewSubcategory,
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Hash size={18} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
+                    onChange={(e) =>
+                      handleChange("tracking_type", e.target.value)
+                    }
+                  >
+                    <MenuItem value="none">Standard</MenuItem>
+                    <MenuItem value="batch">Batch Tracking</MenuItem>
+                    <MenuItem value="serial">Serialized</MenuItem>
+                  </TextField>
                 </FormField>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={3}>
                 <FormField label="HSN Code">
                   <TextField
                     fullWidth
                     size="small"
-                    variant="outlined"
                     value={form.hsn || ""}
                     inputRef={(el) => (fieldRefs.current["hsn"] = el)}
-                    onKeyDown={(e) => handleKeyDown(e, "hsn", "base_unit")}
+                    onKeyDown={(e) => handleKeyDown(e, "hsn", "barcode")}
                     onChange={(e) => handleChange("hsn", e.target.value)}
                     placeholder="Enter HSN/SAC code"
                     InputProps={{
@@ -675,15 +1068,25 @@ export default function AddEditProductModal({
                   />
                 </FormField>
               </Grid>
-              <Grid item xs={12} sm={4}>
-                <FormField label="Barcode (EAN)">
+              <Grid item xs={12} sm={3}>
+                <FormField label="Barcode (EAN/UPC)">
                   <TextField
                     fullWidth
                     size="small"
                     value={form.barcode || ""}
-                    placeholder="Auto-generated"
+                    inputRef={(el) => (fieldRefs.current["barcode"] = el)}
+                    placeholder="Scan or type barcode"
+                    onChange={(e) => handleChange("barcode", e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleBarcodeLookup();
+                        focusField("quantity");
+                        return;
+                      }
+                      handleKeyDown(e, "barcode", "quantity");
+                    }}
                     InputProps={{
-                      readOnly: true,
                       startAdornment: (
                         <InputAdornment position="start">
                           <Barcode size={18} />
@@ -694,236 +1097,202 @@ export default function AddEditProductModal({
                 </FormField>
               </Grid>
 
-              {/* --- UNIT SECTION START --- */}
-              <Grid
-                item
-                xs={12}
-                container
-                spacing={2}
-                sx={{
-                  my: 1,
-                  p: 2,
-                  bgcolor: "background.default",
-                  borderRadius: 2,
-                }}
-              >
-                <Grid item xs={12}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <ArrowRightLeft size={18} />
-                    <Typography variant="subtitle2" fontWeight="bold">
-                      Unit Configuration
-                    </Typography>
-                  </Stack>
-                  <Divider sx={{ my: 1 }} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormField label="Stock Tracking Unit (Smallest) *">
-                    <TextField
-                      select
-                      fullWidth
-                      size="small"
-                      value={form.base_unit || "pcs"}
-                      onChange={(e) =>
-                        handleChange("base_unit", e.target.value)
-                      }
-                      inputRef={(el) => (fieldRefs.current["base_unit"] = el)}
-                      onKeyDown={(e) =>
-                        handleKeyDown(e, "base_unit", "pricing_unit")
-                      }
-                      helperText="The unit you will count stock in (e.g. g for grams)"
-                    >
-                      {Object.entries(UNIT_FAMILIES).map(([key, family]) => [
-                        <ListSubheader
-                          key={`header-${key}`}
-                          sx={{ fontWeight: "bold", color: "text.primary" }}
-                        >
-                          {family.label}
-                        </ListSubheader>,
-                        ...family.units.map((unit) => (
-                          <MenuItem
-                            key={unit.value}
-                            value={unit.value}
-                            sx={{ pl: 4 }}
-                          >
-                            {unit.label}
-                          </MenuItem>
-                        )),
-                      ])}
-                    </TextField>
-                  </FormField>
-                </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormField
+                  label={`Opening Quantity (${form.base_unit || "pcs"})`}
+                >
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    type="number"
+                    value={form.quantity ?? ""}
+                    inputRef={(el) => (fieldRefs.current["quantity"] = el)}
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "quantity", "storage_location")
+                    }
+                    onChange={(e) =>
+                      handleChange("quantity", Number(e.target.value))
+                    }
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          {form.base_unit || "pcs"}
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormField>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormField label="Storage Location">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    value={form.storage_location || ""}
+                    inputRef={(el) =>
+                      (fieldRefs.current["storage_location"] = el)
+                    }
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "storage_location", "base_unit")
+                    }
+                    onChange={(e) =>
+                      handleChange("storage_location", e.target.value)
+                    }
+                    placeholder="e.g., Shelf A"
+                  />
+                </FormField>
+              </Grid>
 
-                {/* PRICING UNIT SELECTOR */}
-                <Grid item xs={12} sm={6}>
-                  <FormField label="Price Input Unit *">
-                    <TextField
-                      select
-                      fullWidth
-                      size="small"
-                      value={pricingUnit}
-                      onChange={(e) => setPricingUnit(e.target.value)}
-                      inputRef={(el) =>
-                        (fieldRefs.current["pricing_unit"] = el)
-                      }
-                      helperText="The unit you use for MRP (e.g. kg)"
-                    >
-                      {getAllowedPricingUnits().map((unit) => (
-                        <MenuItem key={unit.value} value={unit.value}>
+              <Grid item xs={12} sm={3}>
+                <FormField label="Stock Tracking Unit (Smallest) *">
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    value={form.base_unit || "pcs"}
+                    onChange={(e) => handleChange("base_unit", e.target.value)}
+                    inputRef={(el) => (fieldRefs.current["base_unit"] = el)}
+                    onKeyDown={(e) =>
+                      handleKeyDown(e, "base_unit", "pricing_unit")
+                    }
+                  >
+                    {Object.entries(UNIT_FAMILIES).map(([key, family]) => [
+                      <ListSubheader
+                        key={`header-${key}`}
+                        sx={{ fontWeight: "bold", color: "text.primary" }}
+                      >
+                        {family.label}
+                      </ListSubheader>,
+                      ...family.units.map((unit) => (
+                        <MenuItem
+                          key={unit.value}
+                          value={unit.value}
+                          sx={{ pl: 4 }}
+                        >
                           {unit.label}
                         </MenuItem>
-                      ))}
-                    </TextField>
-                  </FormField>
+                      )),
+                    ])}
+                  </TextField>
+                </FormField>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography
+                  variant="subtitle2"
+                  fontWeight={700}
+                  color="text.secondary"
+                >
+                  Pricing
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormField label="Price Input Unit *">
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    value={pricingUnit}
+                    onChange={(e) => setPricingUnit(e.target.value)}
+                    inputRef={(el) => (fieldRefs.current["pricing_unit"] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, "pricing_unit", "mrp")}
+                  >
+                    {getAllowedPricingUnits().map((unit) => (
+                      <MenuItem key={unit.value} value={unit.value}>
+                        {unit.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </FormField>
+              </Grid>
+
+              {showTrackedOpeningWarning && (
+                <Grid item xs={12}>
+                  <Alert
+                    severity="warning"
+                    sx={{
+                      bgcolor: "background.paper",
+                      border: "1px solid",
+                      borderColor: "warning.main",
+                      color: "text.primary",
+                      "& .MuiAlert-icon": { color: "warning.main" },
+                    }}
+                  >
+                    Tracked products with opening stock are best managed through
+                    purchase vouchers so batch and serial history stays
+                    accurate.
+                  </Alert>
                 </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <FormField label="Has Bulk Packaging?">
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={hasSecondaryUnit}
-                          onChange={(e) => {
-                            setHasSecondaryUnit(e.target.checked);
-                            if (!e.target.checked) {
-                              handleChange("secondary_unit", null);
-                              handleChange("conversion_factor", 1);
-                            } else {
-                              setTimeout(
-                                () => focusField("secondary_unit"),
-                                100,
-                              );
-                            }
-                          }}
-                        />
-                      }
-                      label={
-                        hasSecondaryUnit
-                          ? "Yes, sell in bulk too"
-                          : "No, single unit only"
-                      }
-                    />
-                  </FormField>
-                </Grid>
-
-                {hasSecondaryUnit && (
-                  <>
-                    <Grid item xs={12} sm={3}>
-                      <FormField label="Secondary Unit Name *">
-                        <TextField
-                          fullWidth
-                          size="small"
-                          placeholder="e.g. Box"
-                          value={form.secondary_unit || ""}
-                          onChange={(e) =>
-                            handleChange("secondary_unit", e.target.value)
-                          }
-                          inputRef={(el) =>
-                            (fieldRefs.current["secondary_unit"] = el)
-                          }
-                          onKeyDown={(e) =>
-                            handleKeyDown(
-                              e,
-                              "secondary_unit",
-                              "conversion_factor",
-                            )
-                          }
-                        />
-                      </FormField>
-                    </Grid>
-                    <Grid item xs={12} sm={3}>
-                      <FormField
-                        label={`Qty in 1 ${form.secondary_unit || "Pack"}`}
-                      >
-                        <TextField
-                          fullWidth
-                          size="small"
-                          type="number"
-                          placeholder="e.g. 25"
-                          value={form.conversion_factor || ""}
-                          onChange={(e) =>
-                            handleChange(
-                              "conversion_factor",
-                              Number(e.target.value),
-                            )
-                          }
-                          inputRef={(el) =>
-                            (fieldRefs.current["conversion_factor"] = el)
-                          }
-                          onKeyDown={(e) =>
-                            handleKeyDown(e, "conversion_factor", "mrp")
-                          }
-                          InputProps={{
-                            endAdornment: (
-                              <InputAdornment position="end">
-                                {form.base_unit || "pcs"}
-                              </InputAdornment>
-                            ),
-                          }}
-                        />
-                      </FormField>
-                    </Grid>
-                  </>
-                )}
-              </Grid>
-              {/* --- UNIT SECTION END --- */}
-
-              <Grid item xs={12} sm={3}>
-                <FormField label={`MRP (per ${pricingUnit})`}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    type="number"
-                    // Display Value = Stored Value * Multiplier
-                    value={form.mrp ? form.mrp * pricingMultiplier : ""}
-                    inputRef={(el) => (fieldRefs.current["mrp"] = el)}
-                    onKeyDown={(e) => handleKeyDown(e, "mrp", "mop")}
-                    onChange={(e) => handlePriceChange("mrp", e.target.value)}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">₹</InputAdornment>
-                      ),
-                    }}
-                  />
-                </FormField>
-              </Grid>
-              <Grid item xs={12} sm={3}>
-                <FormField label={`MOP (per ${pricingUnit})`}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    type="number"
-                    value={form.mop ? form.mop * pricingMultiplier : ""}
-                    inputRef={(el) => (fieldRefs.current["mop"] = el)}
-                    onKeyDown={(e) => handleKeyDown(e, "mop", "mfw_price")}
-                    onChange={(e) => handlePriceChange("mop", e.target.value)}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">₹</InputAdornment>
-                      ),
-                    }}
-                  />
-                </FormField>
-              </Grid>
-              <Grid item xs={12} sm={3}>
-                <FormField label="MF/W Price">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="text"
-                    value={form.mfw_price ?? ""}
-                    inputRef={(el) => (fieldRefs.current["mfw_price"] = el)}
-                    onKeyDown={(e) => handleKeyDown(e, "mfw_price", "gst_rate")}
-                    onChange={(e) => handleChange("mfw_price", e.target.value)}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">₹</InputAdornment>
-                      ),
-                    }}
-                  />
-                </FormField>
-              </Grid>
+              )}
+              {shouldShowPricingFields && (
+                <>
+                  <Grid item xs={12} sm={3}>
+                    <FormField label={`MRP (per ${pricingUnit})`}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        variant="outlined"
+                        type="number"
+                        value={form.mrp ? form.mrp * pricingMultiplier : ""}
+                        inputRef={(el) => (fieldRefs.current["mrp"] = el)}
+                        onKeyDown={(e) => handleKeyDown(e, "mrp", "mop")}
+                        onChange={(e) =>
+                          handlePriceChange("mrp", e.target.value)
+                        }
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">₹</InputAdornment>
+                          ),
+                        }}
+                      />
+                    </FormField>
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <FormField label={`MOP (per ${pricingUnit})`}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        variant="outlined"
+                        type="number"
+                        value={form.mop ? form.mop * pricingMultiplier : ""}
+                        inputRef={(el) => (fieldRefs.current["mop"] = el)}
+                        onKeyDown={(e) => handleKeyDown(e, "mop", "gst_rate")}
+                        onChange={(e) =>
+                          handlePriceChange("mop", e.target.value)
+                        }
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">₹</InputAdornment>
+                          ),
+                        }}
+                      />
+                    </FormField>
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <FormField label="MF/W Price">
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="text"
+                        value={form.mfw_price ?? ""}
+                        inputRef={(el) => (fieldRefs.current["mfw_price"] = el)}
+                        onKeyDown={(e) =>
+                          handleKeyDown(e, "mfw_price", "gst_rate")
+                        }
+                        onChange={(e) =>
+                          handleChange("mfw_price", e.target.value)
+                        }
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">₹</InputAdornment>
+                          ),
+                        }}
+                      />
+                    </FormField>
+                  </Grid>
+                </>
+              )}
               <Grid item xs={12} sm={3}>
                 <FormField label="GST Rate (%) *">
                   <TextField
@@ -952,108 +1321,96 @@ export default function AddEditProductModal({
 
           {activeStep === 1 && (
             <>
-              <Grid item xs={12} md={6}>
-                <FormField label="Tracking Type">
-                  <TextField
-                    select
-                    fullWidth
-                    size="small"
-                    value={form.tracking_type || "none"}
-                    inputRef={(el) => (fieldRefs.current["tracking_type"] = el)}
-                    onKeyDown={(e) =>
-                      handleKeyDown(e, "tracking_type", "storage_location")
-                    }
-                    onChange={(e) =>
-                      handleChange("tracking_type", e.target.value)
-                    }
-                    helperText="How do you want to track this item?"
-                  >
-                    <MenuItem value="none">
-                      <Box
-                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                      >
-                        <Layers size={16} /> Standard
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="batch">
-                      <Box
-                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                      >
-                        <Package size={16} /> Batch Tracking
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="serial">
-                      <Box
-                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                      >
-                        <ScanBarcode size={16} /> Serialized
-                      </Box>
-                    </MenuItem>
-                  </TextField>
-                </FormField>
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <FormField label="Storage Location">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    value={form.storage_location || ""}
-                    inputRef={(el) =>
-                      (fieldRefs.current["storage_location"] = el)
-                    }
-                    onKeyDown={(e) =>
-                      handleKeyDown(e, "storage_location", "quantity")
-                    }
-                    onChange={(e) =>
-                      handleChange("storage_location", e.target.value)
-                    }
-                    placeholder="e.g., Shelf A, Rack 2"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Warehouse size={18} />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </FormField>
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <FormField
-                  label={`Opening Quantity (${form.base_unit || "pcs"})`}
+              <Grid item xs={12}>
+                <Typography
+                  variant="subtitle2"
+                  fontWeight={700}
+                  color="text.secondary"
                 >
-                  <TextField
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    type="number"
-                    value={form.quantity ?? ""}
-                    inputRef={(el) => (fieldRefs.current["quantity"] = el)}
-                    onKeyDown={(e) =>
-                      handleKeyDown(e, "quantity", "low_stock_threshold")
+                  Packaging & additional details
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <FormField label="Has Bulk Packaging?">
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={hasSecondaryUnit}
+                        onChange={(e) => {
+                          setHasSecondaryUnit(e.target.checked);
+                          if (!e.target.checked) {
+                            handleChange("secondary_unit", null);
+                            handleChange("conversion_factor", 1);
+                          } else {
+                            setTimeout(() => focusField("secondary_unit"), 100);
+                          }
+                        }}
+                      />
                     }
-                    onChange={(e) =>
-                      handleChange("quantity", Number(e.target.value))
+                    label={
+                      hasSecondaryUnit
+                        ? "Yes, sell in bulk too"
+                        : "No, single unit only"
                     }
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Boxes size={18} />
-                        </InputAdornment>
-                      ),
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          {form.base_unit}
-                        </InputAdornment>
-                      ),
-                    }}
                   />
                 </FormField>
               </Grid>
-
+              {hasSecondaryUnit && (
+                <>
+                  <Grid item xs={12} sm={4}>
+                    <FormField label="Secondary Unit Name *">
+                      <TextField
+                        fullWidth
+                        size="small"
+                        placeholder="e.g. Box"
+                        value={form.secondary_unit || ""}
+                        onChange={(e) =>
+                          handleChange("secondary_unit", e.target.value)
+                        }
+                        inputRef={(el) =>
+                          (fieldRefs.current["secondary_unit"] = el)
+                        }
+                        onKeyDown={(e) =>
+                          handleKeyDown(
+                            e,
+                            "secondary_unit",
+                            "conversion_factor",
+                          )
+                        }
+                      />
+                    </FormField>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <FormField
+                      label={`Qty in 1 ${form.secondary_unit || "Pack"}`}
+                    >
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="number"
+                        placeholder="e.g. 25"
+                        value={form.conversion_factor || ""}
+                        onChange={(e) =>
+                          handleChange(
+                            "conversion_factor",
+                            Number(e.target.value),
+                          )
+                        }
+                        inputRef={(el) =>
+                          (fieldRefs.current["conversion_factor"] = el)
+                        }
+                        onKeyDown={(e) =>
+                          handleKeyDown(
+                            e,
+                            "conversion_factor",
+                            "low_stock_threshold",
+                          )
+                        }
+                      />
+                    </FormField>
+                  </Grid>
+                </>
+              )}
               <Grid item xs={12} sm={6}>
                 <FormField label="Low Stock Threshold">
                   <TextField
@@ -1065,7 +1422,7 @@ export default function AddEditProductModal({
                       (fieldRefs.current["low_stock_threshold"] = el)
                     }
                     onKeyDown={(e) =>
-                      handleKeyDown(e, "low_stock_threshold", null)
+                      handleKeyDown(e, "low_stock_threshold", "brand")
                     }
                     onChange={(e) =>
                       handleChange(
@@ -1083,11 +1440,6 @@ export default function AddEditProductModal({
                   />
                 </FormField>
               </Grid>
-            </>
-          )}
-
-          {activeStep === 2 && (
-            <>
               <Grid item xs={12} sm={4}>
                 <FormField label="Brand">
                   <TextField
@@ -1256,9 +1608,11 @@ export default function AddEditProductModal({
           Cancel
         </Button>
         <Box sx={{ flex: "1 1 auto" }} />
-        <Button disabled={activeStep === 0} onClick={handleBack} sx={{ mr: 1 }}>
-          Back
-        </Button>
+        {activeStep === 1 ? (
+          <Button onClick={handleBack} sx={{ mr: 1 }}>
+            Back
+          </Button>
+        ) : null}
         {activeStep === steps.length - 1 ? (
           <Button
             onClick={handleSubmit}
@@ -1274,9 +1628,14 @@ export default function AddEditProductModal({
                 : "Finish & Update"}
           </Button>
         ) : (
-          <Button onClick={handleNext} variant="contained">
-            Next
-          </Button>
+          <>
+            <Button onClick={handleSubmit} variant="outlined" sx={{ mr: 1 }}>
+              Save now
+            </Button>
+            <Button onClick={handleNext} variant="contained">
+              Next
+            </Button>
+          </>
         )}
       </DialogActions>
     </Dialog>
