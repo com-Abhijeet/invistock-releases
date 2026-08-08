@@ -218,11 +218,24 @@ const SaleSummarySection = ({
     onSaleChange({ ...sale, paid_amount: sale.total_amount, status: "paid" });
   };
 
-  const handleSubmit = async (resolvedCustomer?: {
-    id?: number;
-    phone?: string;
-    name?: string;
-  }) => {
+  //   UPDATED: Handler for changing paid_amount to automatically update status
+  const handlePaidAmountChange = (val: number) => {
+    const newStatus = val >= sale.total_amount ? "paid" : "pending";
+    onSaleChange({
+      ...sale,
+      paid_amount: val,
+      status: newStatus,
+    });
+  };
+
+  const handleSubmit = async (
+    resolvedCustomer?: {
+      id?: number;
+      phone?: string;
+      name?: string;
+    },
+    skipWarning = false,
+  ) => {
     let finalCustomerId = sale.customer_id;
     let finalCustomerName = sale.customer_name;
     const hasManualName = !!customer?.name || !!resolvedCustomer?.name;
@@ -232,14 +245,28 @@ const SaleSummarySection = ({
       try {
         // Query backend for Walk-in Customer
         const { getCustomers } = await import("../../lib/api/customerService");
-        const res = await getCustomers({ query: "Walk-in Customer", all: true });
-        let walkIn = res.records.find((c: any) => c.name.toLowerCase() === "walk-in customer");
-        
+        const res = await getCustomers({
+          query: "Walk-in Customer",
+          all: true,
+        });
+        let walkIn = res.records.find(
+          (c: any) => c.name.toLowerCase() === "walk-in customer",
+        );
+
         if (!walkIn) {
-          const { createCustomer } = await import("../../lib/api/customerService");
-          walkIn = await createCustomer({ name: "Walk-in Customer", phone: "", address: "", city: "", state: "", pincode: "", gst_no: "" });
+          const { createCustomer } =
+            await import("../../lib/api/customerService");
+          walkIn = await createCustomer({
+            name: "Walk-in Customer",
+            phone: "",
+            address: "",
+            city: "",
+            state: "",
+            pincode: "",
+            gst_no: "",
+          });
         }
-        
+
         if (walkIn && walkIn.id) {
           finalCustomerId = walkIn.id;
           finalCustomerName = walkIn.name;
@@ -256,9 +283,9 @@ const SaleSummarySection = ({
       }
     }
 
-    // Check for paid status with small tolerance (0.01) to handle floating point issues
+    // Check for paid status with small tolerance (0.01) unless bypass flag is active
     const isActuallyPaid = sale.paid_amount + 0.01 >= sale.total_amount;
-    if (sale.status === "paid" && !isActuallyPaid) {
+    if (!skipWarning && sale.status === "paid" && !isActuallyPaid) {
       setWarningOpen(true);
       return;
     }
@@ -315,7 +342,7 @@ const SaleSummarySection = ({
       // Explicitly construct the final payload verifying all fields
       const payload: SalePayload = {
         ...saleDataWithCustomer,
-        round_off: Number(sale.round_off) || 0, // Enforce newly added snapshot field
+        round_off: Number(sale.round_off) || 0, // Enforce snapshot field
         items: saleDataWithCustomer.items.filter((item) => item.product_id > 0),
       };
 
@@ -347,8 +374,8 @@ const SaleSummarySection = ({
         try {
           // 1. Construct Invoice Data for Cloud Web-Renderer
           const invoiceData = {
-            business_id: businessId, // Keeping as requested
-            shopName: shopName, // Keeping as requested
+            business_id: businessId,
+            shopName: shopName,
             shopAddress: savedSale.bill_address || "",
             gstin: savedSale.gstin || "",
             invoiceNo: savedSale.reference_no,
@@ -370,7 +397,6 @@ const SaleSummarySection = ({
                 gst_rate: any;
                 hsn: any;
               }) => {
-                // Calculate amount after item-level percentage discount
                 const itemRate = parseFloat(item.rate);
                 const itemQty = parseFloat(item.quantity);
                 const itemDiscountPercent = parseFloat(item.discount || 0);
@@ -399,10 +425,10 @@ const SaleSummarySection = ({
               0,
             ),
 
-            taxAmount: savedSale.total_tax || 0, // Ensure this field exists in your full object
-            discount: savedSale.discount || 0, // Overall bill discount percentage
+            taxAmount: savedSale.total_tax || 0,
+            discount: savedSale.discount || 0,
             totalAmount: savedSale.total_amount,
-            roundoff: savedSale.round_off, // Fixed casing from roundOff to round_off
+            roundoff: savedSale.round_off,
             paymentMode: savedSale.payment_mode,
             paymentStatus:
               savedSale.payment_summary?.status || savedSale.status,
@@ -413,10 +439,8 @@ const SaleSummarySection = ({
             await window.electron?.uploadInvoiceToDrive(invoiceData);
 
           if (uploadRes && uploadRes.success) {
-            // 3A. Success! Send BOTH itemised message + Web Link
-
+            // 3A. Success! Send itemised message + Web Link
             const nl = "\n";
-
             const itemsList = savedSale.items
               .map(
                 (item: any, index: number) =>
@@ -438,7 +462,7 @@ const SaleSummarySection = ({
             uploadError,
           );
 
-          // 3B. Fallback: Send standard text message if Drive isn't connected
+          // 3B. Fallback: Clean string formatting without unintended indentation gaps
           const nl = "\n";
           const itemsList = savedSale.items
             .map(
@@ -447,25 +471,15 @@ const SaleSummarySection = ({
             )
             .join(nl);
 
-          message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}
-          ${nl}Hello ${customer?.name || "Customer"},
-          ${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}
-          ${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}
-          ${nl}${nl}*Items Purchased:*${nl}${itemsList}
-          ${nl}${nl}———————————————
-          ${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}
-          ${nl}———————————————${nl}
-          ${nl}Thank you for shopping with us 🙏
-          ${nl}Please find your invoice PDF attached.
-          ${nl}✨ Powered by Kosh`;
+          message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}Hello ${customer?.name || "Customer"},${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}*Items Purchased:*${nl}${itemsList}${nl}${nl}———————————————${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}${nl}Thank you for shopping with us 🙏${nl}Please find your invoice PDF attached.${nl}✨ Powered by Kosh`;
         }
 
-        // 4. Send the WhatsApp Text Message (with or without link)
+        // 4. Send WhatsApp Text Message
         if (window.electron?.sendWhatsAppMessage) {
           window.electron.sendWhatsAppMessage(customer.phone, message);
         }
 
-        // 5. ALWAYS attach the PDF Invoice (Removed the 'isCloudLinkSent' condition)
+        // 5. Send PDF Invoice via WhatsApp
         window.electron
           ?.sendWhatsAppInvoicePdf({
             sale: savedSale,
@@ -515,7 +529,7 @@ const SaleSummarySection = ({
     transition: "all 0.2s",
     "&:focus-within": {
       borderColor: theme.palette.primary.main,
-      bgcolor: 'background.paper',
+      bgcolor: "background.paper",
     },
   };
 
@@ -663,7 +677,7 @@ const SaleSummarySection = ({
                       sx={{
                         fontSize: "0.7rem",
                         fontWeight: 700,
-                        color: 'text.primary',
+                        color: "text.primary",
                       }}
                     >
                       Rnd: {displayRoundOff.toFixed(2)}
@@ -744,10 +758,7 @@ const SaleSummarySection = ({
                       variant="standard"
                       value={sale.paid_amount ?? ""}
                       onChange={(e) =>
-                        handleFieldChange(
-                          "paid_amount",
-                          parseFloat(e.target.value) || 0,
-                        )
+                        handlePaidAmountChange(parseFloat(e.target.value) || 0)
                       }
                       sx={{
                         ...inputSx,
@@ -991,23 +1002,27 @@ const SaleSummarySection = ({
         PaperProps={{ sx: { borderRadius: "8px" } }}
       >
         <DialogTitle sx={{ fontWeight: 800, fontSize: "1rem" }}>
-          Partial Payment?
+          Partial Payment Warning
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" fontWeight={600}>
-            Saving ₹{sale.paid_amount} against ₹{sale.total_amount}. Proceed?
+            You are saving a payment of ₹{sale.paid_amount} against a total bill
+            of ₹{sale.total_amount}. Do you want to adjust status to Partial and
+            save?
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setWarningOpen(false)}>Edit</Button>
+          <Button onClick={() => setWarningOpen(false)}>Edit Amount</Button>
           <Button
             variant="contained"
             onClick={() => {
               setWarningOpen(false);
-              handleSubmit();
+              // Automatically set status to partial and skip warning check
+              onSaleChange({ ...sale, status: "pending" });
+              handleSubmit(undefined, true);
             }}
           >
-            Save
+            Save as Partial
           </Button>
         </DialogActions>
       </Dialog>

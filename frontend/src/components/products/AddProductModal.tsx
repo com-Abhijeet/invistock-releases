@@ -917,23 +917,23 @@ export default function AddEditProductModal({
                         size="small"
                         placeholder="Select or Type New"
                         inputRef={(el) => (fieldRefs.current["category"] = el)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleKeyDown(e, "category", "subcategory");
-                            return;
-                          }
-                          if (
-                            e.key === "ArrowDown" ||
-                            e.key === "ArrowUp" ||
-                            e.key === "ArrowRight" ||
-                            e.key === "ArrowLeft"
-                          ) {
-                            e.stopPropagation();
-                            return;
-                          }
-                          handleKeyDown(e, "category", "subcategory");
-                        }}
+                        // onKeyDown={(e) => {
+                        //   // Intercept Enter to move to subcategory
+                        //   if (e.key === "Enter") {
+                        //     e.preventDefault();
+                        //     handleKeyDown(e, "category", "subcategory");
+                        //     return;
+                        //   }
+                        //   // Prevent custom form navigation when using Arrow keys inside the dropdown list
+                        //   if (
+                        //     e.key === "ArrowDown" ||
+                        //     e.key === "ArrowUp" ||
+                        //     e.key === "ArrowRight" ||
+                        //     e.key === "ArrowLeft"
+                        //   ) {
+                        //     e.stopPropagation();
+                        //   }
+                        // }}
                       />
                     )}
                   />
@@ -995,23 +995,23 @@ export default function AddEditProductModal({
                         inputRef={(el) =>
                           (fieldRefs.current["subcategory"] = el)
                         }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleKeyDown(e, "subcategory", "tracking_type");
-                            return;
-                          }
-                          if (
-                            e.key === "ArrowDown" ||
-                            e.key === "ArrowUp" ||
-                            e.key === "ArrowRight" ||
-                            e.key === "ArrowLeft"
-                          ) {
-                            e.stopPropagation();
-                            return;
-                          }
-                          handleKeyDown(e, "subcategory", "tracking_type");
-                        }}
+                        // onKeyDown={(e) => {
+                        //   // Intercept Enter to move to tracking_type
+                        //   if (e.key === "Enter") {
+                        //     e.preventDefault();
+                        //     handleKeyDown(e, "subcategory", "tracking_type");
+                        //     return;
+                        //   }
+                        //   // Prevent custom form navigation when using Arrow keys inside the dropdown list
+                        //   if (
+                        //     e.key === "ArrowDown" ||
+                        //     e.key === "ArrowUp" ||
+                        //     e.key === "ArrowRight" ||
+                        //     e.key === "ArrowLeft"
+                        //   ) {
+                        //     e.stopPropagation();
+                        //   }
+                        // }}
                       />
                     )}
                   />

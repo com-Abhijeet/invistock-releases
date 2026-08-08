@@ -554,10 +554,14 @@ export function bulkInsertProducts(products) {
   }
 }
 
+// productRepository.mjs
 export function getNextBarcode() {
   try {
+    // Only look at internal 8-digit sequence barcodes (10000000 - 99999999)
     const stmt = db.prepare(
-      "SELECT MAX(CAST(barcode AS INTEGER)) as lastBarcode FROM products",
+      `SELECT MAX(CAST(barcode AS INTEGER)) as lastBarcode 
+       FROM products 
+       WHERE LENGTH(barcode) = 8 AND barcode LIKE '1%'`,
     );
     const result = stmt.get();
     const nextBarcode =

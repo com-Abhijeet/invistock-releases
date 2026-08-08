@@ -47,7 +47,7 @@ const defaultSalePayload = {
   paid_amount: 0,
   total_amount: 0,
   round_off: 0,
-  status: "pending" as const,
+  status: "paid" as const,
   items: [],
   customer_id: null,
   customer_name: "",
@@ -122,6 +122,7 @@ export default function SalesPos() {
     null,
   );
 
+  const [walkInCustomer, setWalkInCustomer] = useState<any>(null);
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<CustomerType[]>([]);
   const [customerId, setCustomerId] = useState(0);
@@ -153,20 +154,73 @@ export default function SalesPos() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [sale.items.length, mode]);
 
+  // Helper function to apply Walk-in customer details to state and sale payload
+  const setWalkInCustomerData = (walkIn: any) => {
+    if (!walkIn) return;
+
+    setCustomerId(walkIn.id);
+    setCustomerName(walkIn.name || "Walk-in Customer");
+    setCustomerPhone(walkIn.phone || "");
+    setCustomerGstNo(walkIn.gst_no || "");
+    setAddress(walkIn.address || "");
+    setCity(walkIn.city || "");
+    setState(walkIn.state || "");
+    setPincode(walkIn.pincode || "");
+
+    setSale((prev) => ({
+      ...prev,
+      customer_id: walkIn.id,
+      customer_name: walkIn.name || "Walk-in Customer",
+      bill_address: walkIn.address || "",
+      state: walkIn.state || "",
+      pincode: walkIn.pincode || "",
+      customer_gst_no: walkIn.gst_no || "",
+      gstin: walkIn.gst_no || "",
+    }));
+  };
+
+  // Extracted Walk-in Fetcher
+  const fetchAndSetWalkIn = async () => {
+    try {
+      const res = await getCustomers({
+        query: "Walk-in Customer",
+        all: true,
+      });
+      let walkIn = res.records.find(
+        (c: any) => c.name.toLowerCase() === "walk-in customer",
+      );
+
+      if (!walkIn) {
+        const newCustomer = await api.post("/api/customers", {
+          name: "Walk-in Customer",
+          phone: "0000000000",
+        });
+        if (newCustomer.data.success) {
+          walkIn = newCustomer.data.data;
+        }
+      }
+
+      if (walkIn) {
+        setWalkInCustomer(walkIn);
+        setWalkInCustomerData(walkIn);
+      }
+    } catch (e) {
+      console.error("Failed to initialize walk-in customer:", e);
+    }
+  };
+
   const resetForm = () => {
     setSale(defaultSalePayload);
     setQuery("");
     setOptions([]);
-    setCustomerId(0);
-    setCustomerName("");
-    setCustomerPhone("");
-    setCustomerGstNo("");
-    setAddress("");
-    setCity("");
-    setState("");
-    setPincode("");
     setMode("new");
     setSalesOrderId(null);
+
+    if (walkInCustomer) {
+      setWalkInCustomerData(walkInCustomer);
+    } else {
+      fetchAndSetWalkIn();
+    }
 
     if (id) navigate("/billing");
   };
@@ -182,41 +236,41 @@ export default function SalesPos() {
     };
     fetchEmployees();
 
-    const initWalkInCustomer = async () => {
-      try {
-        const res = await getCustomers({
-          query: "Walk-in Customer",
-          all: true,
-        });
-        let walkIn = res.records.find(
-          (c: any) => c.name.toLowerCase() === "walk-in customer",
-        );
+    // const initWalkInCustomer = async () => {
+    //   try {
+    //     const res = await getCustomers({
+    //       query: "Walk-in Customer",
+    //       all: true,
+    //     });
+    //     let walkIn = res.records.find(
+    //       (c: any) => c.name.toLowerCase() === "walk-in customer",
+    //     );
 
-        if (!walkIn) {
-          // Create Walk-in if not exists
-          const newCustomer = await api.post("/api/customers", {
-            name: "Walk-in Customer",
-            phone: "0000000000",
-          });
-          if (newCustomer.data.success) {
-            walkIn = newCustomer.data.data;
-          }
-        }
+    //     if (!walkIn) {
+    //       // Create Walk-in if not exists
+    //       const newCustomer = await api.post("/api/customers", {
+    //         name: "Walk-in Customer",
+    //         phone: "0000000000",
+    //       });
+    //       if (newCustomer.data.success) {
+    //         walkIn = newCustomer.data.data;
+    //       }
+    //     }
 
-        if (walkIn) {
-          setCustomerId(walkIn.id);
-          setCustomerName(walkIn.name);
-          setCustomerPhone(walkIn.phone || "");
-          setCustomerGstNo(walkIn.gst_no || "");
-          setAddress(walkIn.address || "");
-          setCity(walkIn.city || "");
-          setState(walkIn.state || "");
-          setPincode(walkIn.pincode || "");
-        }
-      } catch (e) {
-        console.error("Failed to initialize walk-in customer:", e);
-      }
-    };
+    //     if (walkIn) {
+    //       setCustomerId(walkIn.id);
+    //       setCustomerName(walkIn.name);
+    //       setCustomerPhone(walkIn.phone || "");
+    //       setCustomerGstNo(walkIn.gst_no || "");
+    //       setAddress(walkIn.address || "");
+    //       setCity(walkIn.city || "");
+    //       setState(walkIn.state || "");
+    //       setPincode(walkIn.pincode || "");
+    //     }
+    //   } catch (e) {
+    //     console.error("Failed to initialize walk-in customer:", e);
+    //   }
+    // };
 
     const init = async () => {
       if (id && (action === "view" || action === "edit")) {
@@ -288,7 +342,7 @@ export default function SalesPos() {
       } else {
         setMode("new");
         if (sale.id) resetForm();
-        initWalkInCustomer();
+        fetchAndSetWalkIn();
       }
     };
     init();
@@ -296,10 +350,12 @@ export default function SalesPos() {
   }, [id, action]);
 
   const handleItemsChange = (updatedItems: SaleItemPayload[]) => {
+    const newTotal = updatedItems.reduce((acc, item) => acc + item.price, 0);
     setSale((prev) => ({
       ...prev,
       items: updatedItems,
       total_amount: updatedItems.reduce((acc, item) => acc + item.price, 0),
+      paid_amount: newTotal,
     }));
   };
 
