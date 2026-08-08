@@ -10,16 +10,11 @@ import {
   TextField,
   Autocomplete,
   Box,
-  Typography,
   Chip,
-  Switch,
-  FormControlLabel,
   InputAdornment,
   CircularProgress,
   IconButton,
   Tooltip,
-  createFilterOptions,
-  Checkbox,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -28,9 +23,6 @@ import {
   RefreshCw,
   CheckCircle,
   AlertCircle,
-  ArrowDown,
-  CheckSquare,
-  Square,
 } from "lucide-react";
 import type { Product } from "../../lib/types/product";
 import type { PurchaseItem } from "../../lib/types/purchaseTypes";
@@ -65,7 +57,10 @@ interface Props {
   editItem?: ExtendedPurchaseItem | null;
 }
 
-const filter = createFilterOptions<Product>();
+const generateBatchNumber = (productId?: number) => {
+  const stamp = Date.now().toString().slice(-6);
+  return productId ? `${productId}-${stamp}` : `BT-${stamp}`;
+};
 
 export default function PurchaseBatchModal({
   open,
@@ -89,9 +84,9 @@ export default function PurchaseBatchModal({
     mfw_price: "",
     barcode: "",
     gst_rate: 0,
+    serial_numbers: "",
   });
 
-  const [distributeQty, setDistributeQty] = useState(false);
   const [mrpGap, setMrpGap] = useState<number | "">(0);
   const [loading, setLoading] = useState(false);
   const [barcodeStatus, setBarcodeStatus] = useState<
@@ -101,11 +96,9 @@ export default function PurchaseBatchModal({
   // Selection & Navigation State
   const [inputValue, setInputValue] = useState("");
 
-
   // Refs
   const productInputRef = useRef<HTMLInputElement>(null);
   const rateInputRef = useRef<HTMLInputElement>(null);
-  const visibleOptionsRef = useRef<Product[]>([]);
 
   // Initialize form
   useEffect(() => {
@@ -128,6 +121,7 @@ export default function PurchaseBatchModal({
           mfw_price: editItem.mfw_price || "",
           barcode: editItem.barcode || "",
           gst_rate: editItem.gst_rate || 0,
+          serial_numbers: editItem.serial_numbers?.join("\n") || "",
         });
         setMrpGap(0);
         if (editItem.barcode) checkBarcode(editItem.barcode, true);
@@ -149,6 +143,7 @@ export default function PurchaseBatchModal({
           mfw_price: "",
           barcode: "",
           gst_rate: 0,
+          serial_numbers: "",
         });
         setMrpGap(0);
         setBarcodeStatus("idle");
@@ -243,21 +238,23 @@ export default function PurchaseBatchModal({
     setLoading(true);
     try {
       const itemPromises = selectedProducts.map(async (prod, index) => {
-        let qty = formData.quantity;
-        if (distributeQty && selectedProducts.length > 0) {
-          qty = parseFloat(
-            (formData.quantity / selectedProducts.length).toFixed(2),
-          );
-        }
+        const qty = formData.quantity;
 
-        let itemBarcode = formData.barcode;
+        let itemBarcode = formData.barcode || "";
         if (!editItem) {
           if (prod.tracking_type === "none") {
             itemBarcode = prod.barcode || "";
-          } else {
+          } else if (!itemBarcode) {
             itemBarcode = await generateBarcode();
           }
         }
+
+        const generatedBatchNumber =
+          formData.batch_number || generateBatchNumber(prod.id);
+        const serialNumbers = formData.serial_numbers
+          .split(/\r?\n|,/)
+          .map((value) => value.trim())
+          .filter(Boolean);
 
         // Apply MRP Increment Gap logic
         const currentMrp =
@@ -286,7 +283,7 @@ export default function PurchaseBatchModal({
           price: finalPrice,
           unit: formData.unit || prod.base_unit || "pcs",
           tracking_type: prod.tracking_type || "none",
-          batch_number: formData.batch_number,
+          batch_number: generatedBatchNumber,
           expiry_date: formData.expiry_date,
           mfg_date: formData.mfg_date,
           location: formData.location,
@@ -295,7 +292,7 @@ export default function PurchaseBatchModal({
           mop: formData.mop,
           mfw_price: formData.mfw_price,
           barcode: itemBarcode,
-          serial_numbers: editItem?.serial_numbers || [],
+          serial_numbers: serialNumbers,
         } as ExtendedPurchaseItem;
       });
 
@@ -313,6 +310,7 @@ export default function PurchaseBatchModal({
           mop: 0,
           quantity: 1,
           barcode: "",
+          serial_numbers: "",
         }));
         setMrpGap(0);
         setBarcodeStatus("idle");
@@ -347,20 +345,16 @@ export default function PurchaseBatchModal({
   // --- KEYBOARD HANDLING ---
   // The handleAutocompleteKeyDown has been removed because it was unused
 
-
-  const hasTrackedItems = selectedProducts.some(
-    (p) => p.tracking_type !== "none",
-  );
-
-  const availableUnits = selectedProducts.length === 1 
-    ? getUnitsForProduct(selectedProducts[0])
-    : selectedProducts.length > 1
-      ? selectedProducts.reduce((acc, p, idx) => {
-          const u = getUnitsForProduct(p);
-          if (idx === 0) return u;
-          return acc.filter((x) => u.includes(x));
-        }, [] as string[])
-      : ["pcs"];
+  const availableUnits =
+    selectedProducts.length === 1
+      ? getUnitsForProduct(selectedProducts[0])
+      : selectedProducts.length > 1
+        ? selectedProducts.reduce((acc, p, idx) => {
+            const u = getUnitsForProduct(p);
+            if (idx === 0) return u;
+            return acc.filter((x) => u.includes(x));
+          }, [] as string[])
+        : ["pcs"];
 
   return (
     <Dialog
@@ -384,10 +378,10 @@ export default function PurchaseBatchModal({
         }}
       >
         <Box display="flex" alignItems="center" gap={2}>
-          {editItem ? "Edit Batch Details" : "Bulk Add Products"}
+          {editItem ? "Edit Batch Details" : "Add Product Entry"}
           {!editItem && (
             <Chip
-              label="Persistent Mode"
+              label="Single product"
               size="small"
               color="success"
               variant="outlined"
@@ -396,8 +390,8 @@ export default function PurchaseBatchModal({
         </Box>
         <Box display="flex" gap={1} alignItems="center">
           <Chip
-            icon={<ArrowDown size={14} />}
-            label="Shift+↓: Bulk Select"
+            icon={<ScanBarcode size={14} />}
+            label="Editable barcode"
             size="small"
             variant="outlined"
             sx={{ opacity: 0.7 }}
@@ -410,55 +404,24 @@ export default function PurchaseBatchModal({
           {/* Product Selection */}
           <Grid item xs={12}>
             <Autocomplete
-              multiple={!editItem}
               options={products}
               autoHighlight
-              disableCloseOnSelect={!editItem}
               getOptionLabel={(option) =>
                 `${option.name} (${option.product_code})`
               }
-              value={editItem ? selectedProducts[0] || null : selectedProducts}
+              value={selectedProducts[0] || null}
               inputValue={inputValue}
               onInputChange={(_, newInputValue) => {
                 setInputValue(newInputValue);
               }}
               onChange={(_, newValue) => {
-                if (editItem) {
-                  setSelectedProducts(newValue ? [newValue as Product] : []);
-                } else {
-                  setSelectedProducts((newValue as Product[]) || []);
-                }
+                setSelectedProducts(newValue ? [newValue as Product] : []);
               }}
-
-              filterOptions={(options, params) => {
-                const filtered = filter(options, params);
-                visibleOptionsRef.current = filtered;
-                return filtered;
-              }}
-              disabled={!!editItem || loading}
-              renderOption={(props, option, { selected }) => (
-                <li {...props}>
-                  {!editItem && (
-                    <Checkbox
-                      icon={<Square size={18} />}
-                      checkedIcon={<CheckSquare size={18} />}
-                      style={{ marginRight: 8, padding: 0 }}
-                      checked={selected}
-                    />
-                  )}
-                  <Box>
-                    <Typography variant="body2">{option.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {option.product_code}{" "}
-                      {option.barcode ? `| ${option.barcode}` : ""}
-                    </Typography>
-                  </Box>
-                </li>
-              )}
+              disabled={loading}
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Select Products"
+                  label="Select Product"
                   autoFocus
                   inputRef={productInputRef}
                 />
@@ -508,30 +471,6 @@ export default function PurchaseBatchModal({
               }}
             />
           </Grid>
-
-          {/* The Incremental MRP Gap feature */}
-          {!editItem && (
-            <Grid item xs={12}>
-              <Box display="flex" alignItems="center" gap={2}>
-                <TextField
-                  label="MRP Increment Gap (Rs.)"
-                  type="number"
-                  size="small"
-                  sx={{ width: 250 }}
-                  value={mrpGap}
-                  onChange={(e) => setMrpGap(Number(e.target.value))}
-                  helperText="Added to MRP for each subsequent item"
-                />
-                {Number(mrpGap) > 0 && selectedProducts.length > 1 && (
-                  <Typography variant="caption" color="primary">
-                    Preview: Item 1 (₹{Number(formData.mrp)}), Item 2 (₹
-                    {Number(formData.mrp) + Number(mrpGap)}), Item 3 (₹
-                    {Number(formData.mrp) + Number(mrpGap) * 2})...
-                  </Typography>
-                )}
-              </Box>
-            </Grid>
-          )}
 
           {/* Secondary Prices */}
           <Grid item xs={6} sm={3}>
@@ -615,9 +554,7 @@ export default function PurchaseBatchModal({
           <Grid item xs={12} sm={6}>
             <Box display="flex" alignItems="center" gap={1}>
               <TextField
-                label={
-                  distributeQty ? "Total Quantity" : "Quantity Per Product"
-                }
+                label="Quantity"
                 type="number"
                 fullWidth
                 value={formData.quantity}
@@ -646,119 +583,76 @@ export default function PurchaseBatchModal({
                   </option>
                 ))}
               </TextField>
-              {!editItem && (
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={distributeQty}
-                      onChange={(e) => setDistributeQty(e.target.checked)}
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="caption">
-                      Distribute <br /> Total
-                    </Typography>
-                  }
-                  sx={{ minWidth: 100 }}
-                />
-              )}
             </Box>
           </Grid>
 
           <Grid item xs={12} sm={6}>
-            {editItem ? (
-              <TextField
-                label="Barcode"
-                fullWidth
-                value={formData.barcode}
-                onChange={(e) => handleManualBarcodeChange(e.target.value)}
-                error={barcodeStatus === "duplicate"}
-                helperText={
-                  barcodeStatus === "duplicate"
-                    ? "Barcode already exists"
-                    : barcodeStatus === "available"
-                      ? "Available"
-                      : ""
-                }
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <ScanBarcode size={18} />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      {barcodeStatus === "checking" && (
-                        <CircularProgress size={16} />
-                      )}
-                      {barcodeStatus === "available" && (
-                        <CheckCircle size={16} color="green" />
-                      )}
-                      {barcodeStatus === "duplicate" && (
-                        <AlertCircle size={16} color="red" />
-                      )}
-                      <Tooltip title="Generate New Barcode">
-                        <span>
-                          <IconButton
-                            onClick={handleGenerateSingleBarcode}
-                            size="small"
-                            sx={{ ml: 1 }}
-                            disabled={
-                              selectedProducts[0]?.tracking_type === "none"
-                            }
-                          >
-                            <RefreshCw size={16} />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            ) : (
-              <Box
-                sx={{
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  border: "1px dashed #ccc",
-                  borderRadius: 1,
-                  px: 2,
-                  bgcolor: "action.hover",
-                }}
-              >
-                <Box display="flex" alignItems="center" mb={0.5}>
-                  <ScanBarcode
-                    size={20}
-                    style={{ opacity: 0.5, marginRight: 8 }}
-                  />
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    fontWeight="bold"
-                  >
-                    Barcode Handling:
-                  </Typography>
-                </Box>
-                {selectedProducts.length === 0 ? (
-                  <Typography variant="caption" color="text.secondary">
-                    Select products to see status.
-                  </Typography>
-                ) : hasTrackedItems ? (
-                  <Typography variant="caption" color="primary">
-                    Unique batch barcodes will be auto-generated for tracked
-                    items.
-                  </Typography>
-                ) : (
-                  <Typography variant="caption" color="text.secondary">
-                    Using existing master barcodes (Non-tracked items).
-                  </Typography>
-                )}
-              </Box>
-            )}
+            <TextField
+              label="Barcode"
+              fullWidth
+              value={formData.barcode}
+              onChange={(e) => handleManualBarcodeChange(e.target.value)}
+              error={barcodeStatus === "duplicate"}
+              helperText={
+                barcodeStatus === "duplicate"
+                  ? "Barcode already exists"
+                  : barcodeStatus === "available"
+                    ? "Available"
+                    : ""
+              }
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <ScanBarcode size={18} />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    {barcodeStatus === "checking" && (
+                      <CircularProgress size={16} />
+                    )}
+                    {barcodeStatus === "available" && (
+                      <CheckCircle size={16} color="green" />
+                    )}
+                    {barcodeStatus === "duplicate" && (
+                      <AlertCircle size={16} color="red" />
+                    )}
+                    <Tooltip title="Generate New Barcode">
+                      <span>
+                        <IconButton
+                          onClick={handleGenerateSingleBarcode}
+                          size="small"
+                          sx={{ ml: 1 }}
+                          disabled={
+                            selectedProducts[0]?.tracking_type === "none"
+                          }
+                        >
+                          <RefreshCw size={16} />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </InputAdornment>
+                ),
+              }}
+            />
           </Grid>
+
+          {selectedProducts[0]?.tracking_type === "serial" && (
+            <Grid item xs={12}>
+              <TextField
+                label="Serial Numbers"
+                fullWidth
+                multiline
+                minRows={3}
+                value={formData.serial_numbers}
+                onChange={(e) =>
+                  setFormData({ ...formData, serial_numbers: e.target.value })
+                }
+                placeholder="Enter one serial number per line or comma-separated"
+                helperText="These will be attached to the batch when saved."
+              />
+            </Grid>
+          )}
         </Grid>
       </DialogContent>
       <DialogActions sx={{ p: 2 }}>
@@ -782,11 +676,7 @@ export default function PurchaseBatchModal({
             )
           }
         >
-          {loading
-            ? "Processing..."
-            : editItem
-              ? "Update Item"
-              : `Add ${selectedProducts.length} Item(s)`}
+          {loading ? "Processing..." : editItem ? "Update Item" : "Add Item"}
         </Button>
       </DialogActions>
     </Dialog>

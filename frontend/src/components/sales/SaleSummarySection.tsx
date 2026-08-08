@@ -11,7 +11,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   Checkbox,
   CircularProgress,
   useTheme,
@@ -33,10 +32,12 @@ import { updateSalesOrder } from "../../lib/api/salesOrderService";
 import { handlePrint } from "../../lib/handleInvoicePrint";
 import { createCustomer } from "../../lib/api/customerService";
 import type { CustomerType } from "../../lib/types/customerTypes";
-import { Settings, Save, X, Receipt, Info } from "lucide-react";
+import { Settings, Save, X, Receipt, Info, SlidersHorizontal, SplitSquareHorizontal, Clock } from "lucide-react";
 import toast from "react-hot-toast";
 import { getShopData } from "../../lib/api/shopService";
 import { getBusinessProfile } from "../../lib/api/businessService";
+import SalesPosConfigModal, { PosConfigSettings } from "./SalesPosConfigModal";
+import PostSaleTransactionModal from "./PostSaleTransactionModal";
 
 interface Props {
   sale: SalePayload;
@@ -63,22 +64,40 @@ const SaleSummarySection = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [businessId, setBusinessId] = useState("");
 
-  const [doPrint, setDoPrint] = useState(true);
-  const [doWhatsApp, setDoWhatsApp] = useState<boolean>(() => {
-    // 1. Read from localStorage on initial load
+  const [configOpen, setConfigOpen] = useState(false);
+  const [configSettings, setConfigSettings] = useState<PosConfigSettings>(() => {
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("do_whatsapp");
-      if (stored !== null) {
-        return stored === "true"; // Convert string back to boolean
+      const stored = localStorage.getItem("kosh_pos_config");
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch (e) {
+          console.error(e);
+        }
       }
     }
-    return true; // Default to true if nothing is saved yet
+    return {
+      doPrint: true,
+      doWhatsApp: true,
+      paymentTiming: "before_save",
+      doSplit: false,
+    };
   });
 
-  // 2. Update localStorage whenever the toggle changes
-  useEffect(() => {
-    localStorage.setItem("do_whatsapp", doWhatsApp.toString());
-  }, [doWhatsApp]);
+  const [splitModalOpen, setSplitModalOpen] = useState(false);
+  const [savedSaleForSplit, setSavedSaleForSplit] = useState<any>(null);
+
+  const handleUpdateConfig = (newSettings: PosConfigSettings) => {
+    setConfigSettings(newSettings);
+    setDoPrint(newSettings.doPrint);
+    setDoWhatsApp(newSettings.doWhatsApp);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("kosh_pos_config", JSON.stringify(newSettings));
+    }
+  };
+
+  const [doPrint, setDoPrint] = useState(configSettings.doPrint);
+  const [doWhatsApp, setDoWhatsApp] = useState(configSettings.doWhatsApp);
 
   const [conflictDialog, setConflictDialog] = useState<{
     open: boolean;
@@ -218,21 +237,74 @@ const SaleSummarySection = ({
     onSaleChange({ ...sale, paid_amount: sale.total_amount, status: "paid" });
   };
 
-  const handleSubmit = async (resolvedCustomer?: {
-    id?: number;
-    phone?: string;
-    name?: string;
-  }) => {
-    if (!sale.customer_id || sale.customer_id === 0) {
+  //   UPDATED: Handler for changing paid_amount to automatically update status
+  const handlePaidAmountChange = (val: number) => {
+    const newStatus = val >= sale.total_amount ? "paid" : "pending";
+    onSaleChange({
+      ...sale,
+      paid_amount: val,
+      status: newStatus,
+    });
+  };
+
+  const handleSubmit = async (
+    resolvedCustomer?: {
+      id?: number;
+      phone?: string;
+      name?: string;
+    },
+    skipWarning = false,
+  ) => {
+    let finalCustomerId = sale.customer_id;
+    let finalCustomerName = sale.customer_name;
+    const hasManualName = !!customer?.name || !!resolvedCustomer?.name;
+
+    // Only fallback to Walk-in if no customer ID is set AND no manual name was provided
+    if ((!finalCustomerId || finalCustomerId === 0) && !hasManualName) {
+      try {
+        // Query backend for Walk-in Customer
+        const { getCustomers } = await import("../../lib/api/customerService");
+        const res = await getCustomers({
+          query: "Walk-in Customer",
+          all: true,
+        });
+        let walkIn = res.records.find(
+          (c: any) => c.name.toLowerCase() === "walk-in customer",
+        );
+
+        if (!walkIn) {
+          const { createCustomer } =
+            await import("../../lib/api/customerService");
+          walkIn = await createCustomer({
+            name: "Walk-in Customer",
+            phone: "",
+            address: "",
+            city: "",
+            state: "",
+            pincode: "",
+            gst_no: "",
+          });
+        }
+
+        if (walkIn && walkIn.id) {
+          finalCustomerId = walkIn.id;
+          finalCustomerName = walkIn.name;
+        }
+      } catch (e) {
+        console.error("Failed to auto-assign Walk-in Customer:", e);
+      }
+    }
+
+    if (!finalCustomerId || finalCustomerId === 0) {
       if (!customer?.name || (!customer?.phone && !resolvedCustomer?.phone)) {
         toast.error("Customer Name and Phone Number are required.");
         return;
       }
     }
 
-    // Check for paid status with small tolerance (0.01) to handle floating point issues
+    // Check for paid status with small tolerance (0.01) unless bypass flag is active
     const isActuallyPaid = sale.paid_amount + 0.01 >= sale.total_amount;
-    if (sale.status === "paid" && !isActuallyPaid) {
+    if (!skipWarning && sale.status === "paid" && !isActuallyPaid) {
       setWarningOpen(true);
       return;
     }
@@ -245,7 +317,13 @@ const SaleSummarySection = ({
         saleDataWithCustomer = {
           ...saleDataWithCustomer,
           customer_id: resolvedCustomer.id,
-          customer_name: resolvedCustomer.name || sale.customer_name,
+          customer_name: resolvedCustomer.name || finalCustomerName,
+        };
+      } else if (finalCustomerId && finalCustomerId !== 0) {
+        saleDataWithCustomer = {
+          ...saleDataWithCustomer,
+          customer_id: finalCustomerId,
+          customer_name: finalCustomerName,
         };
       } else if (!sale.customer_id || sale.customer_id === 0) {
         const phoneToUse = resolvedCustomer?.phone || customer?.phone!;
@@ -287,6 +365,12 @@ const SaleSummarySection = ({
         items: saleDataWithCustomer.items.filter((item) => item.product_id > 0),
       };
 
+      // If Post-Sale payment mode is enabled: force paid_amount = 0 and status = pending
+      if (configSettings.paymentTiming === "post_save" && mode !== "edit") {
+        payload.paid_amount = 0;
+        payload.status = "pending";
+      }
+
       let savedSale;
       if (mode === "edit" && sale.id) {
         savedSale = (await updateSale(Number(sale.id), payload)).data;
@@ -307,6 +391,12 @@ const SaleSummarySection = ({
       toast.success(mode === "edit" ? "Sale Updated!" : "Sale Saved!");
       if (doPrint) handlePrint(savedSale);
 
+      // If Post-Sale payment mode is enabled: open post sale modal right after save
+      if (configSettings.paymentTiming === "post_save" && mode !== "edit") {
+        setSavedSaleForSplit(savedSale);
+        setSplitModalOpen(true);
+      }
+
       // --- CLOUD INVOICE / WHATSAPP LOGIC ---
       if (doWhatsApp && customer?.phone) {
         const shopName = shop?.shop_name || "Our Shop";
@@ -315,8 +405,8 @@ const SaleSummarySection = ({
         try {
           // 1. Construct Invoice Data for Cloud Web-Renderer
           const invoiceData = {
-            business_id: businessId, // Keeping as requested
-            shopName: shopName, // Keeping as requested
+            business_id: businessId,
+            shopName: shopName,
             shopAddress: savedSale.bill_address || "",
             gstin: savedSale.gstin || "",
             invoiceNo: savedSale.reference_no,
@@ -338,7 +428,6 @@ const SaleSummarySection = ({
                 gst_rate: any;
                 hsn: any;
               }) => {
-                // Calculate amount after item-level percentage discount
                 const itemRate = parseFloat(item.rate);
                 const itemQty = parseFloat(item.quantity);
                 const itemDiscountPercent = parseFloat(item.discount || 0);
@@ -367,10 +456,10 @@ const SaleSummarySection = ({
               0,
             ),
 
-            taxAmount: savedSale.total_tax || 0, // Ensure this field exists in your full object
-            discount: savedSale.discount || 0, // Overall bill discount percentage
+            taxAmount: savedSale.total_tax || 0,
+            discount: savedSale.discount || 0,
             totalAmount: savedSale.total_amount,
-            roundoff: savedSale.round_off, // Fixed casing from roundOff to round_off
+            roundoff: savedSale.round_off,
             paymentMode: savedSale.payment_mode,
             paymentStatus:
               savedSale.payment_summary?.status || savedSale.status,
@@ -381,10 +470,8 @@ const SaleSummarySection = ({
             await window.electron?.uploadInvoiceToDrive(invoiceData);
 
           if (uploadRes && uploadRes.success) {
-            // 3A. Success! Send BOTH itemised message + Web Link
-
+            // 3A. Success! Send itemised message + Web Link
             const nl = "\n";
-
             const itemsList = savedSale.items
               .map(
                 (item: any, index: number) =>
@@ -406,7 +493,7 @@ const SaleSummarySection = ({
             uploadError,
           );
 
-          // 3B. Fallback: Send standard text message if Drive isn't connected
+          // 3B. Fallback: Clean string formatting without unintended indentation gaps
           const nl = "\n";
           const itemsList = savedSale.items
             .map(
@@ -415,25 +502,15 @@ const SaleSummarySection = ({
             )
             .join(nl);
 
-          message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}
-          ${nl}Hello ${customer?.name || "Customer"},
-          ${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}
-          ${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}
-          ${nl}${nl}*Items Purchased:*${nl}${itemsList}
-          ${nl}${nl}———————————————
-          ${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}
-          ${nl}———————————————${nl}
-          ${nl}Thank you for shopping with us 🙏
-          ${nl}Please find your invoice PDF attached.
-          ${nl}✨ Powered by Kosh`;
+          message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}Hello ${customer?.name || "Customer"},${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}*Items Purchased:*${nl}${itemsList}${nl}${nl}———————————————${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}${nl}Thank you for shopping with us 🙏${nl}Please find your invoice PDF attached.${nl}✨ Powered by Kosh`;
         }
 
-        // 4. Send the WhatsApp Text Message (with or without link)
+        // 4. Send WhatsApp Text Message
         if (window.electron?.sendWhatsAppMessage) {
           window.electron.sendWhatsAppMessage(customer.phone, message);
         }
 
-        // 5. ALWAYS attach the PDF Invoice (Removed the 'isCloudLinkSent' condition)
+        // 5. Send PDF Invoice via WhatsApp
         window.electron
           ?.sendWhatsAppInvoicePdf({
             sale: savedSale,
@@ -451,12 +528,20 @@ const SaleSummarySection = ({
         console.log("sale reference in frontend", sale.reference_no);
       }
 
-      resetForm();
+      if (configSettings.paymentTiming !== "post_save") {
+        resetForm();
+      }
     } catch (err: any) {
       toast.error(err.message || "Error during submission.");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSplitModalClose = () => {
+    setSplitModalOpen(false);
+    setSavedSaleForSplit(null);
+    resetForm();
   };
 
   const isViewMode = mode === "view";
@@ -483,7 +568,7 @@ const SaleSummarySection = ({
     transition: "all 0.2s",
     "&:focus-within": {
       borderColor: theme.palette.primary.main,
-      bgcolor: 'background.paper',
+      bgcolor: "background.paper",
     },
   };
 
@@ -631,7 +716,7 @@ const SaleSummarySection = ({
                       sx={{
                         fontSize: "0.7rem",
                         fontWeight: 700,
-                        color: 'text.primary',
+                        color: "text.primary",
                       }}
                     >
                       Rnd: {displayRoundOff.toFixed(2)}
@@ -677,7 +762,8 @@ const SaleSummarySection = ({
                     />
                   </Box>
                 </Grid> */}
-                <Grid item xs={2.5}>
+                {/* 1. Round Off */}
+                <Grid item xs={configSettings.paymentTiming === "post_save" ? 2.5 : 2}>
                   <Typography {...labelStyle}>Round Off</Typography>
                   <Box sx={fieldBoxSx}>
                     <TextField
@@ -698,75 +784,9 @@ const SaleSummarySection = ({
                     />
                   </Box>
                 </Grid>
-                <Grid item xs={3.5}>
-                  <Typography {...labelStyle}>Paid (Ctrl+U)</Typography>
-                  <Box
-                    sx={{
-                      ...fieldBoxSx,
-                      borderColor: alpha(theme.palette.success.main, 0.3),
-                    }}
-                  >
-                    <TextField
-                      fullWidth
-                      type="number"
-                      variant="standard"
-                      value={sale.paid_amount ?? ""}
-                      onChange={(e) =>
-                        handleFieldChange(
-                          "paid_amount",
-                          parseFloat(e.target.value) || 0,
-                        )
-                      }
-                      sx={{
-                        ...inputSx,
-                        "& input": { color: theme.palette.success.dark },
-                      }}
-                      InputProps={{
-                        endAdornment: (
-                          <Button
-                            size="small"
-                            onClick={handlePaidInFull}
-                            disabled={sale.paid_amount >= sale.total_amount}
-                            sx={{
-                              fontSize: "0.6rem",
-                              fontWeight: 900,
-                              minWidth: 0,
-                              p: 0,
-                            }}
-                          >
-                            FULL
-                          </Button>
-                        ),
-                      }}
-                    />
-                  </Box>
-                </Grid>
-                <Grid item xs={2}>
-                  <Typography {...labelStyle}>Mode</Typography>
-                  <Box sx={fieldBoxSx}>
-                    <TextField
-                      select
-                      fullWidth
-                      variant="standard"
-                      value={sale.payment_mode || "cash"}
-                      onChange={(e) =>
-                        handleFieldChange("payment_mode", e.target.value)
-                      }
-                      sx={inputSx}
-                    >
-                      {["cash", "upi", "card", "credit"].map((m) => (
-                        <MenuItem
-                          key={m}
-                          value={m}
-                          sx={{ fontSize: "0.75rem", fontWeight: 700 }}
-                        >
-                          {m.toUpperCase()}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Box>
-                </Grid>
-                <Grid item xs={2}>
+
+                {/* 2. GST Opt (moved right beside Round Off) */}
+                <Grid item xs={configSettings.paymentTiming === "post_save" ? 2.5 : 2}>
                   <Typography {...labelStyle}>GST Opt</Typography>
                   <FormControl size="small" fullWidth>
                     <Select
@@ -823,6 +843,90 @@ const SaleSummarySection = ({
                     </Select>
                   </FormControl>
                 </Grid>
+
+                {/* 3. Payment Info / Inputs (placed beside GST Opt) */}
+                {configSettings.paymentTiming === "post_save" ? (
+                  <Grid item xs={7}>
+                    <Box sx={{ display: "flex", alignItems: "center", height: "100%", pt: 1.5 }}>
+                      <Chip
+                        icon={<Clock size={14} />}
+                        label="Post-Sale Payment (Modal opens on Save)"
+                        color="secondary"
+                        variant="outlined"
+                        size="small"
+                        sx={{ fontWeight: 700, fontSize: "0.75rem" }}
+                      />
+                    </Box>
+                  </Grid>
+                ) : (
+                  <>
+                    <Grid item xs={4.5}>
+                      <Typography {...labelStyle}>Paid (Ctrl+U)</Typography>
+                      <Box
+                        sx={{
+                          ...fieldBoxSx,
+                          borderColor: alpha(theme.palette.success.main, 0.3),
+                        }}
+                      >
+                        <TextField
+                          fullWidth
+                          type="number"
+                          variant="standard"
+                          value={sale.paid_amount ?? ""}
+                          onChange={(e) =>
+                            handlePaidAmountChange(parseFloat(e.target.value) || 0)
+                          }
+                          sx={{
+                            ...inputSx,
+                            "& input": { color: theme.palette.success.dark },
+                          }}
+                          InputProps={{
+                            endAdornment: (
+                              <Button
+                                size="small"
+                                onClick={handlePaidInFull}
+                                disabled={sale.paid_amount >= sale.total_amount}
+                                sx={{
+                                  fontSize: "0.6rem",
+                                  fontWeight: 900,
+                                  minWidth: 0,
+                                  p: 0,
+                                }}
+                              >
+                                FULL
+                              </Button>
+                            ),
+                          }}
+                        />
+                      </Box>
+                    </Grid>
+                    <Grid item xs={3.5}>
+                      <Typography {...labelStyle}>Mode</Typography>
+                      <Box sx={fieldBoxSx}>
+                        <TextField
+                          select
+                          fullWidth
+                          variant="standard"
+                          value={sale.payment_mode || "cash"}
+                          onChange={(e) =>
+                            handleFieldChange("payment_mode", e.target.value)
+                          }
+                          sx={inputSx}
+                        >
+                          {["cash", "upi", "card", "credit"].map((m) => (
+                            <MenuItem
+                              key={m}
+                              value={m}
+                              sx={{ fontSize: "0.75rem", fontWeight: 700 }}
+                            >
+                              {m.toUpperCase()}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Box>
+                    </Grid>
+                  </>
+                )}
               </Grid>
             ) : (
               <Stack
@@ -870,6 +974,21 @@ const SaleSummarySection = ({
                     >
                       ₹{paymentSummary.balance.toLocaleString()}
                     </Typography>
+                    {paymentSummary.balance > 0 && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="secondary"
+                        startIcon={<SplitSquareHorizontal size={12} />}
+                        onClick={() => {
+                          setSavedSaleForSplit(sale);
+                          setSplitModalOpen(true);
+                        }}
+                        sx={{ fontSize: "0.65rem", fontWeight: 800, py: 0.25, px: 1, minWidth: 0 }}
+                      >
+                        Record Payment
+                      </Button>
+                    )}
                     {hasReturns && (
                       <Tooltip title="Balance is Net Amount minus Paid Amount.">
                         <Info size={12} color={theme.palette.text.disabled} />
@@ -885,42 +1004,23 @@ const SaleSummarySection = ({
           {!isViewMode && (
             <Grid item xs={12} md={2.5}>
               <Stack direction="row" spacing={1} alignItems="center">
-                <Stack>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        size="small"
-                        color="secondary"
-                        checked={doPrint}
-                        onChange={(e) => setDoPrint(e.target.checked)}
-                        sx={{ p: 0.5 }}
-                      />
-                    }
-                    label={
-                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 700 }}>
-                        Print
-                      </Typography>
-                    }
-                    sx={{ m: 0 }}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        size="small"
-                        color="secondary"
-                        checked={doWhatsApp}
-                        onChange={(e) => setDoWhatsApp(e.target.checked)}
-                        sx={{ p: 0.5 }}
-                      />
-                    }
-                    label={
-                      <Typography sx={{ fontSize: "0.65rem", fontWeight: 700 }}>
-                        Whatsapp
-                      </Typography>
-                    }
-                    sx={{ m: 0 }}
-                  />
-                </Stack>
+                <Button
+                  onClick={() => setConfigOpen(true)}
+                  color="primary"
+                  variant="outlined"
+                  size="small"
+                  startIcon={<SlidersHorizontal size={16} />}
+                  sx={{
+                    height: 38,
+                    fontWeight: 800,
+                    borderRadius: "6px",
+                    fontSize: "0.75rem",
+                    px: 1.5,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  CONFIG
+                </Button>
                 <Button
                   color="secondary"
                   variant="contained"
@@ -959,23 +1059,27 @@ const SaleSummarySection = ({
         PaperProps={{ sx: { borderRadius: "8px" } }}
       >
         <DialogTitle sx={{ fontWeight: 800, fontSize: "1rem" }}>
-          Partial Payment?
+          Partial Payment Warning
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" fontWeight={600}>
-            Saving ₹{sale.paid_amount} against ₹{sale.total_amount}. Proceed?
+            You are saving a payment of ₹{sale.paid_amount} against a total bill
+            of ₹{sale.total_amount}. Do you want to adjust status to Partial and
+            save?
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setWarningOpen(false)}>Edit</Button>
+          <Button onClick={() => setWarningOpen(false)}>Edit Amount</Button>
           <Button
             variant="contained"
             onClick={() => {
               setWarningOpen(false);
-              handleSubmit();
+              // Automatically set status to partial and skip warning check
+              onSaleChange({ ...sale, status: "pending" });
+              handleSubmit(undefined, true);
             }}
           >
-            Save
+            Save as Partial
           </Button>
         </DialogActions>
       </Dialog>
@@ -1050,6 +1154,26 @@ const SaleSummarySection = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Sales POS Configuration Modal */}
+      <SalesPosConfigModal
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+        settings={configSettings}
+        onSaveSettings={handleUpdateConfig}
+      />
+
+      {/* Post Sale Split Payment Modal */}
+      {savedSaleForSplit && (
+        <PostSaleTransactionModal
+          open={splitModalOpen}
+          onClose={handleSplitModalClose}
+          saleId={savedSaleForSplit.id}
+          customerId={savedSaleForSplit.customer_id || customer?.id || 0}
+          totalAmount={savedSaleForSplit.payment_summary?.balance || savedSaleForSplit.total_amount || 0}
+          referenceNo={savedSaleForSplit.reference_no || ""}
+        />
+      )}
     </Box>
   );
 };

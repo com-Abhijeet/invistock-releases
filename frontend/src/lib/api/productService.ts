@@ -131,11 +131,18 @@ export async function bulkUpdateProducts(
   updateData: Partial<Product>,
 ): Promise<any> {
   try {
-    const response = await api.put(`${API_BASE}/bulk-update`, { productIds, updateData });
-    toast.success(`${response.data.data.changes} products updated successfully.`);
+    const response = await api.put(`${API_BASE}/bulk-update`, {
+      productIds,
+      updateData,
+    });
+    toast.success(
+      `${response.data.data.changes} products updated successfully.`,
+    );
     return response.data.data;
   } catch (err: any) {
-    toast.error(err?.response?.data?.message || "Failed to bulk update products.");
+    toast.error(
+      err?.response?.data?.message || "Failed to bulk update products.",
+    );
     return err;
   }
 }
@@ -170,6 +177,13 @@ export async function importProducts(payload: {
 export async function fetchNextBarcode(): Promise<string> {
   const response = await api.get(`${API_BASE}/next-barcode`);
   return response.data.barcode;
+}
+
+export async function lookupBarcodeProduct(barcode: string) {
+  const response = await api.get(`${API_BASE}/barcode/lookup`, {
+    params: { barcode },
+  });
+  return response.data.data;
 }
 
 // This function is now updated to accept codes

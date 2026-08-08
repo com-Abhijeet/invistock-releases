@@ -13,6 +13,7 @@ router.get("/", controller.getProducts);
 router.post("/upload-image", controller.uploadProductImageController);
 router.get("/mobile-view", controller.getProductsForMobileController);
 router.get("/next-barcode", controller.getNextBarcodeController);
+router.get("/barcode/lookup", controller.lookupBarcodeProductController);
 router.get("/next-code", controller.getNextProductCodeController);
 router.get("/low-stock/count", controller.getLowStockCountController);
 router.get("/low-stock/list", controller.getLowStockProductsController);

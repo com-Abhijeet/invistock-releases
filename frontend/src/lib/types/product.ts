@@ -32,6 +32,7 @@ export interface Product {
 
   // Added to support Batch/Serial logic
   tracking_type?: "none" | "batch" | "serial";
+  serial_numbers?: string[];
 
   created_at?: string;
   updated_at?: string;

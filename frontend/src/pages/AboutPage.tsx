@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Box,
   Typography,
@@ -16,6 +17,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Alert,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -42,6 +44,7 @@ import {
   Clock,
   IndianRupee,
   Notebook,
+  QrCode,
 } from "lucide-react";
 import { useUpdate } from "../context/UpdateContext";
 import { useNavigate } from "react-router-dom";
@@ -49,7 +52,9 @@ import { getLicenseStatus, LicenseStatus } from "../lib/api/LicenseService";
 import { getBusinessProfile } from "../lib/api/businessService";
 import KbdButton from "../components/ui/Button";
 
-// Import Logo
+// EAS Testing Build URL
+const EAS_BUILD_URL =
+  "https://expo.dev/accounts/com.abhijeet/projects/kosh-mobile/builds/d273b76d-1bd7-4e34-a2d0-ad792914fbce";
 
 // Safely access electron
 const electron =
@@ -93,16 +98,18 @@ export default function AboutPage() {
       .catch(() => setLoadingLicense(false));
 
     // Fetch Business Profile & Sync Status
-    getBusinessProfile().then((res) => {
-      if (res?.kosh_business_id) {
-        setBusinessId(res.kosh_business_id);
-      }
-    }).catch(console.error);
+    getBusinessProfile()
+      .then((res) => {
+        if (res?.kosh_business_id) {
+          setBusinessId(res.kosh_business_id);
+        }
+      })
+      .catch(console.error);
 
     if (electron?.getCloudSyncStatus) {
       electron.getCloudSyncStatus().then(setSyncStatus);
     }
-    
+
     if (electron?.onCloudSyncStatus) {
       electron.onCloudSyncStatus((status: boolean) => {
         setSyncStatus(status);
@@ -116,8 +123,6 @@ export default function AboutPage() {
     setReconnecting(true);
     try {
       await electron.connectCloudSync(businessId);
-      // Let the onCloudSyncStatus event handle updating the state, 
-      // but timeout the loading state just in case
       setTimeout(() => setReconnecting(false), 5000);
     } catch (error) {
       console.error(error);
@@ -135,7 +140,7 @@ export default function AboutPage() {
       desc: "Efficient point-of-sale invoicing",
       icon: <CreditCard size={20} />,
       path: "/billing",
-      color: "secondary.main", // Amber Gold accent
+      color: "secondary.main",
       shortcut: "F2",
     },
     {
@@ -143,7 +148,7 @@ export default function AboutPage() {
       desc: "Comprehensive sales analytics and tracking",
       icon: <Clock size={20} />,
       path: "/sales-history",
-      color: "text.primary", // Deep Navy
+      color: "text.primary",
       shortcut: "F3",
     },
     {
@@ -203,7 +208,7 @@ export default function AboutPage() {
   return (
     <Box p={3} sx={{ bgcolor: "background.default", minHeight: "100vh" }}>
       <Grid container spacing={3} sx={{ maxWidth: 1200, margin: "0 auto" }}>
-        {/* Left Column: Branding & Features */}
+        {/* Left Column: Branding, Features & Support */}
         <Grid item xs={12} md={7}>
           <Stack spacing={3}>
             {/* Professional Branding Card - Deep Navy */}
@@ -451,77 +456,10 @@ export default function AboutPage() {
                 </Stack>
               </CardContent>
             </Card>
-
-            {/* Mobile App Sync Status */}
-            <Card
-              sx={{
-                bgcolor: "background.paper",
-                borderRadius: 2,
-                boxShadow: "none",
-                border: "1px solid",
-                borderColor: "divider",
-              }}
-            >
-              <CardContent sx={{ p: 2.5 }}>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                >
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Box
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: syncStatus ? "success.soft" : "error.soft",
-                        color: syncStatus ? "success.main" : "error.main",
-                      }}
-                    >
-                      <Wifi size={24} />
-                    </Box>
-                    <Box>
-                      <Typography variant="subtitle2" fontWeight="bold">
-                        Mobile App Sync
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {syncStatus
-                          ? "Connected to Kosh Cloud"
-                          : "Disconnected from Kosh Cloud"}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip
-                      label={syncStatus ? "Online" : "Offline"}
-                      color={syncStatus ? "success" : "error"}
-                      size="small"
-                      variant={syncStatus ? "filled" : "outlined"}
-                    />
-                    {!syncStatus && businessId && (
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        disabled={reconnecting}
-                        onClick={handleManualReconnect}
-                        startIcon={
-                          reconnecting ? (
-                            <CircularProgress size={14} />
-                          ) : (
-                            <RotateCw size={14} />
-                          )
-                        }
-                      >
-                        Reconnect
-                      </Button>
-                    )}
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
           </Stack>
         </Grid>
 
-        {/* Right Column: License, Update, System Environment */}
+        {/* Right Column: License, Sync & QR Testing, Update, System Environment */}
         <Grid item xs={12} md={5}>
           <Stack spacing={3}>
             {/* 🛡️ LICENSE CARD */}
@@ -597,6 +535,151 @@ export default function AboutPage() {
                       View License Details
                     </Button>
                   </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+
+            {/* 📱 MOBILE APP SYNC & DOWNLOAD CARD */}
+            <Card
+              sx={{
+                bgcolor: "background.paper",
+                borderRadius: 2,
+                boxShadow: "none",
+                border: "1px solid",
+                borderColor: "divider",
+              }}
+            >
+              <CardContent sx={{ p: 2.5 }}>
+                <Stack spacing={2.5}>
+                  {/* Status Header */}
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
+                    <Stack direction="row" spacing={2} alignItems="center">
+                      <Box
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 2,
+                          bgcolor: syncStatus ? "success.soft" : "error.soft",
+                          color: syncStatus ? "success.main" : "error.main",
+                        }}
+                      >
+                        <Wifi size={24} />
+                      </Box>
+                      <Box>
+                        <Typography variant="subtitle2" fontWeight="bold">
+                          Mobile App Sync
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {syncStatus
+                            ? "Connected to Kosh Cloud"
+                            : "Disconnected from Kosh Cloud"}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Chip
+                        label={syncStatus ? "Online" : "Offline"}
+                        color={syncStatus ? "success" : "error"}
+                        size="small"
+                        variant={syncStatus ? "filled" : "outlined"}
+                      />
+                      {!syncStatus && businessId && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          disabled={reconnecting}
+                          onClick={handleManualReconnect}
+                          startIcon={
+                            reconnecting ? (
+                              <CircularProgress size={14} />
+                            ) : (
+                              <RotateCw size={14} />
+                            )
+                          }
+                        >
+                          Reconnect
+                        </Button>
+                      )}
+                    </Stack>
+                  </Stack>
+
+                  <Divider />
+
+                  {/* QR Code Section */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      bgcolor: "grey.50",
+                      p: 2,
+                      borderRadius: 2,
+                      border: "1px dashed",
+                      borderColor: "divider",
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      fontWeight="bold"
+                      color="text.secondary"
+                      sx={{
+                        mb: 1.5,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 0.5,
+                      }}
+                    >
+                      <QrCode size={14} /> Scan to Test Mobile App
+                    </Typography>
+
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        bgcolor: "white",
+                        borderRadius: 1.5,
+                        boxShadow: "0px 2px 4px rgba(0,0,0,0.05)",
+                        border: "1px solid",
+                        borderColor: "divider",
+                      }}
+                    >
+                      <QRCodeSVG
+                        value={EAS_BUILD_URL}
+                        size={140}
+                        level="M"
+                        includeMargin={false}
+                      />
+                    </Box>
+
+                    {/* <Button
+                      size="small"
+                      variant="text"
+                      href={EAS_BUILD_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      endIcon={<ExternalLink size={12} />}
+                      sx={{ mt: 1, textTransform: "none", fontSize: "0.75rem" }}
+                    >
+                      Open EAS Build Page
+                    </Button> */}
+                  </Box>
+
+                  {/* Testing Warning Banner */}
+                  <Alert
+                    severity="warning"
+                    icon={<AlertTriangle size={18} />}
+                    sx={{
+                      borderRadius: 1.5,
+                      fontSize: "0.75rem",
+                      "& .MuiAlert-message": { p: 0 },
+                    }}
+                  >
+                    <strong>Testing Build Notice:</strong> This QR code links to
+                    an internal testing APK. Ensure "Install from Unknown
+                    Sources" is enabled on your Android device.
+                  </Alert>
                 </Stack>
               </CardContent>
             </Card>

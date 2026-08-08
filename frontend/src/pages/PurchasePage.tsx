@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -14,7 +13,12 @@ import {
   Chip,
   Button,
 } from "@mui/material";
-import { Close as CloseIcon, FolderOpen as FolderIcon, Save as SaveIcon, Keyboard as KeyboardIcon } from "@mui/icons-material";
+import {
+  Close as CloseIcon,
+  FolderOpen as FolderIcon,
+  Save as SaveIcon,
+  Keyboard as KeyboardIcon,
+} from "@mui/icons-material";
 import toast from "react-hot-toast";
 import Grid from "@mui/material/GridLegacy";
 
@@ -23,7 +27,6 @@ import PurchaseItemSection from "../components/purchase/PurchaseItemSection";
 import PurchaseSummarySection from "../components/purchase/PurchaseSummarySection";
 import { getPurchaseById } from "../lib/api/purchaseService";
 import type { PurchaseItem, PurchasePayload } from "../lib/types/purchaseTypes";
-
 
 interface SavedPurchaseDraft {
   id: string;
@@ -126,7 +129,6 @@ const PurchasePage = () => {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [purchase, isView, isEdit]);
-
 
   useEffect(() => {
     if ((isEdit || isView) && id) {
@@ -282,7 +284,7 @@ const PurchasePage = () => {
       <Box
         sx={{
           flexShrink: 0,
-          bgcolor: 'background.paper',
+          bgcolor: "background.paper",
           borderTop: `1px solid ${theme.palette.divider}`,
           zIndex: 10,
         }}

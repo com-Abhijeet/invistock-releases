@@ -32,4 +32,5 @@ export const productSchema = z.object({
   size: z.string().optional().nullable(),
   weight: z.string().optional().nullable(),
   tracking_type: z.enum(["none", "batch", "serial"]).optional().default("none"),
+  serial_numbers: z.array(z.string()).optional().nullable(),
 });

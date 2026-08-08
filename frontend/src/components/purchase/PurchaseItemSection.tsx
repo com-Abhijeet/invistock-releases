@@ -34,6 +34,7 @@ import {
   AlertCircle,
   ListOrdered,
   Wand2,
+  PlusCircle,
 } from "lucide-react";
 import { getAllProducts } from "../../lib/api/productService";
 import { getShopData } from "../../lib/api/shopService";
@@ -41,6 +42,7 @@ import type { Product } from "../../lib/types/product";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
 import { getUnitsForProduct } from "../../lib/services/unitService";
 import PurchaseBatchModal, { ExtendedPurchaseItem } from "./PurchaseBatchModal";
+import AddProductModal from "../products/AddProductModal";
 
 interface Props {
   items: ExtendedPurchaseItem[];
@@ -102,7 +104,7 @@ const PurchaseItemSection = ({
       textAlign: "right",
     },
   };
-  
+
   const textLeftInputSx = {
     ...inputSx,
     "& .MuiInputBase-input": {
@@ -113,6 +115,7 @@ const PurchaseItemSection = ({
   // Modal State
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const [addProductModalOpen, setAddProductModalOpen] = useState(false);
 
   // Bulk Serial Modal State
   const [serialModalOpen, setSerialModalOpen] = useState(false);
@@ -378,10 +381,18 @@ const PurchaseItemSection = ({
               color="primary"
               startIcon={<Layers size={18} />}
             >
-              Bulk Add Items
+              Add Item
+            </Button>
+            <Button
+              onClick={() => setAddProductModalOpen(true)}
+              variant="outlined"
+              color="primary"
+              startIcon={<PlusCircle size={18} />}
+            >
+              Quick Add Product
             </Button>
             <Typography variant="caption" color="text.secondary">
-              Add multiple items with batch info.
+              Add a product and keep it available for this purchase.
             </Typography>
           </Box>
           <Box display="flex" gap={1}>
@@ -417,7 +428,10 @@ const PurchaseItemSection = ({
               <TableCell sx={{ ...headerSx, width: "10%" }}>COST</TableCell>
               <TableCell sx={{ ...headerSx, width: "8%" }}>MARGIN%</TableCell>
               <TableCell sx={{ ...headerSx, width: "10%" }}>MRP</TableCell>
-              <TableCell sx={{ ...headerSx, width: "15%", pr: 2 }} align="right">
+              <TableCell
+                sx={{ ...headerSx, width: "15%", pr: 2 }}
+                align="right"
+              >
                 AMOUNT
               </TableCell>
               <TableCell sx={{ ...headerSx, width: "5%" }}></TableCell>
@@ -443,16 +457,20 @@ const PurchaseItemSection = ({
                   onClick={() => setActiveRowIndex(idx)}
                   sx={{
                     "& > td": { border: 0, py: 0.5 },
-                    bgcolor: activeRowIndex === idx
-                      ? alpha(theme.palette.primary.main, 0.01)
-                      : "transparent",
+                    bgcolor:
+                      activeRowIndex === idx
+                        ? alpha(theme.palette.primary.main, 0.01)
+                        : "transparent",
                   }}
                 >
-                  <TableCell align="center" sx={{
-                        color: "text.disabled",
-                        fontWeight: 800,
-                        fontSize: "0.7rem",
-                      }}>
+                  <TableCell
+                    align="center"
+                    sx={{
+                      color: "text.disabled",
+                      fontWeight: 800,
+                      fontSize: "0.7rem",
+                    }}
+                  >
                     {item.sr_no}
                   </TableCell>
 
@@ -564,7 +582,9 @@ const PurchaseItemSection = ({
                   <TableCell sx={{ p: 1 }}>
                     <Box sx={fieldBoxSx(activeRowIndex === idx)}>
                       <TextField
-                        inputRef={(el) => (gridRefs.current[`${idx}-unit`] = el)}
+                        inputRef={(el) =>
+                          (gridRefs.current[`${idx}-unit`] = el)
+                        }
                         select
                         variant="standard"
                         fullWidth
@@ -589,7 +609,9 @@ const PurchaseItemSection = ({
                   <TableCell sx={{ p: 1 }}>
                     <Box sx={fieldBoxSx(activeRowIndex === idx)}>
                       <TextField
-                        inputRef={(el) => (gridRefs.current[`${idx}-rate`] = el)}
+                        inputRef={(el) =>
+                          (gridRefs.current[`${idx}-rate`] = el)
+                        }
                         type="number"
                         variant="standard"
                         fullWidth
@@ -695,6 +717,16 @@ const PurchaseItemSection = ({
         products={products}
         onAddItems={handleModalAddItems}
         editItem={editingItemIndex !== null ? items[editingItemIndex] : null}
+      />
+
+      <AddProductModal
+        open={addProductModalOpen}
+        onClose={() => setAddProductModalOpen(false)}
+        onSuccess={(product) => {
+          setProducts((prev) => [product, ...prev]);
+          setAddProductModalOpen(false);
+        }}
+        mode="add"
       />
 
       {/* BULK SERIAL ENTRY MODAL */}

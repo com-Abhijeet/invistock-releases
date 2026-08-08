@@ -62,7 +62,7 @@ const originalConsole = {
 
 console.log = (...args) => {
   // Only write to terminal, do NOT bloat backend log with API bodies
-  originalConsole.log(...args); 
+  originalConsole.log(...args);
 };
 
 console.error = (...args) => {
@@ -101,11 +101,13 @@ export function startServer(dbPath, userDataPath) {
   );
 
   app.use(express.json({ limit: "50mb" })); // Increased limit for large syncs
-  
+
   // Session Logger Middleware
   app.use((req, res, next) => {
     // Only log the method, url, and IP. Exclude heavy body payload.
-    sessionLogger.info(`[SESSION] ${req.method} ${req.originalUrl} - IP: ${req.ip}`);
+    sessionLogger.info(
+      `[SESSION] ${req.method} ${req.originalUrl} - IP: ${req.ip}`,
+    );
     next();
   });
 
