@@ -329,20 +329,26 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         )
         .join(nl);
 
+      const isQuoteDoc = Boolean(sale.is_quote);
+      const docHeaderTitle = isQuoteDoc ? "Quotation Summary" : "Invoice Summary";
+      const docRefLabel = isQuoteDoc ? "Quote No:" : "Bill No:";
+      const itemsLabel = isQuoteDoc ? "Items Offered:" : "Items Purchased:";
+      const docPdfLabel = isQuoteDoc ? "quotation" : "invoice";
+
       // Base message (common for both cases)
-      let message = `*${shop.shop_name}*${nl}Invoice Summary${nl}———————————————${nl}${nl}Hello ${sale.customer_name || "Customer"},${nl}${nl}🧾 *Bill No:* ${sale.reference_no}${nl}📅 *Date:* ${new Date(
+      let message = `*${shop.shop_name}*${nl}${docHeaderTitle}${nl}———————————————${nl}${nl}Hello ${sale.customer_name || "Customer"},${nl}${nl}🧾 *${docRefLabel}* ${sale.reference_no}${nl}📅 *Date:* ${new Date(
         sale.created_at || Date.now(),
       ).toLocaleDateString(
         "en-IN",
-      )}${nl}${nl}*Items Purchased:*${nl}${itemsList}${nl}${nl}———————————————${nl}💰 *Total Amount:* ₹${sale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}`;
+      )}${nl}${nl}*${itemsLabel}*${nl}${itemsList}${nl}${nl}———————————————${nl}💰 *Total Amount:* ₹${sale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}`;
 
       // Conditional section (ONLY difference)
       if (webLink) {
-        message += `${nl}🌐 *View your detailed digital bill here:*${nl}${webLink}${nl}`;
+        message += `${nl}🌐 *View your detailed digital ${docPdfLabel} here:*${nl}${webLink}${nl}`;
       }
 
       // Common footer
-      message += `${nl}Thank you for shopping with us! 🙏${nl}Please find your invoice PDF attached.${nl}${nl}_Powered by Kosh Billing Software_`;
+      message += `${nl}Thank you for contacting us! 🙏${nl}Please find your ${docPdfLabel} PDF attached.${nl}${nl}_Powered by Kosh Billing Software_`;
 
       const textRes = await window.electron.sendWhatsAppMessage(
         phoneToSend,
@@ -419,91 +425,142 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
     );
   };
 
-  const columns = [
-    {
-      key: "reference",
-      label: "Bill No",
-      format: (val: string) => val || "-N/A-",
-    },
-    {
-      key: "created_at",
-      label: "Date",
-      format: (val: string) => new Date(val).toLocaleDateString("en-IN"),
-    },
-    { key: "customer", label: "Customer" },
-    {
-      key: "total",
-      label: "Gross Amount",
-      format: (val: number) => `₹${val.toLocaleString("en-IN")}`,
-    },
-    {
-      key: "paid_amount",
-      label: "Amount Paid",
-      format: (val: number) => `₹${(val ?? 0).toLocaleString("en-IN")}`,
-    },
-    {
-      key: "payment_mode",
-      label: "Payment Mode",
-      format: (val: string) => val || "-",
-    },
-    {
-      key: "status",
-      label: "Status",
-      format: (val: string) => getStatusChip(val || "Paid"),
-    },
-  ];
+  const isQuoteTable = Boolean(
+    filters?.is_quote === 1 || filters?.is_quote === true,
+  );
 
-  const actions = [
-    {
-      label: "View Customer",
-      icon: <Users size={18} />,
-      onClick: (row: SalesTableType) => handleCustomerNavigation(row.id),
-    },
-    {
-      label: "View Sale",
-      icon: <Eye size={18} />,
-      onClick: (row: SalesTableType) => navigate(`/billing/view/${row.id}`),
-    },
-    {
-      label: "Edit Sale",
-      icon: <Pencil size={18} />,
-      onClick: (row: SalesTableType) => navigate(`/billing/edit/${row.id}`),
-    },
-    ...(onMarkPayment
-      ? [
-          {
-            label: "Mark Payment",
-            icon: <Wallet size={18} color={theme.palette.success.main} />,
-            onClick: (row: SalesTableType) => onMarkPayment(row),
-          },
-        ]
-      : []),
-    {
-      label: "Print Invoice",
-      icon: <Printer size={18} />,
-      onClick: (row: SalesTableType) => handleSalePrint(row.id),
-    },
-    {
-      label: "Print Shipping Label",
-      icon: <Truck size={18} />,
-      onClick: (row: SalesTableType) => handleShippingLablePrint(row.id),
-    },
-    {
-      label: "Send on WhatsApp",
-      icon: <MessageCircle size={18} color="#25D366" />,
-      onClick: (row: SalesTableType) => handleWhatsAppShare(row.id),
-    },
-    {
-      label: "Process Return / Credit Note",
-      icon: <Undo2 size={18} />,
-      onClick: (row: SalesTableType) => handleProcessReturn(row.id),
-    },
-    {
-      label: "Settle Store Credit (Refund)",
-      icon: <Banknote size={18} color={theme.palette.error.main} />,
-      onClick: (row: SalesTableType) => handleOpenSettle(row),
-    },
-  ];
+  const columns = isQuoteTable
+    ? [
+        {
+          key: "reference",
+          label: "Quote No",
+          format: (val: string) => val || "-N/A-",
+        },
+        {
+          key: "created_at",
+          label: "Date",
+          format: (val: string) => new Date(val).toLocaleDateString("en-IN"),
+        },
+        { key: "customer", label: "Customer" },
+        {
+          key: "total",
+          label: "Total Amount",
+          format: (val: number) => `₹${val.toLocaleString("en-IN")}`,
+        },
+      ]
+    : [
+        {
+          key: "reference",
+          label: "Bill No",
+          format: (val: string) => val || "-N/A-",
+        },
+        {
+          key: "created_at",
+          label: "Date",
+          format: (val: string) => new Date(val).toLocaleDateString("en-IN"),
+        },
+        { key: "customer", label: "Customer" },
+        {
+          key: "total",
+          label: "Gross Amount",
+          format: (val: number) => `₹${val.toLocaleString("en-IN")}`,
+        },
+        {
+          key: "paid_amount",
+          label: "Amount Paid",
+          format: (val: number) => `₹${(val ?? 0).toLocaleString("en-IN")}`,
+        },
+        {
+          key: "payment_mode",
+          label: "Payment Mode",
+          format: (val: string) => val || "-",
+        },
+        {
+          key: "status",
+          label: "Status",
+          format: (val: string) => getStatusChip(val || "Paid"),
+        },
+      ];
+
+  const actions = isQuoteTable
+    ? [
+        {
+          label: "View Quotation",
+          icon: <Eye size={18} />,
+          onClick: (row: SalesTableType) => navigate(`/billing/view/${row.id}`),
+        },
+        {
+          label: "Edit Quotation",
+          icon: <Pencil size={18} />,
+          onClick: (row: SalesTableType) => navigate(`/billing/edit/${row.id}`),
+        },
+        {
+          label: "Print Quotation",
+          icon: <Printer size={18} />,
+          onClick: (row: SalesTableType) => handleSalePrint(row.id),
+        },
+        {
+          label: "Send Quotation on WhatsApp",
+          icon: <MessageCircle size={18} color="#25D366" />,
+          onClick: (row: SalesTableType) => handleWhatsAppShare(row.id),
+        },
+        {
+          label: "View Customer",
+          icon: <Users size={18} />,
+          onClick: (row: SalesTableType) => handleCustomerNavigation(row.id),
+        },
+      ]
+    : [
+        {
+          label: "View Customer",
+          icon: <Users size={18} />,
+          onClick: (row: SalesTableType) => handleCustomerNavigation(row.id),
+        },
+        {
+          label: "View Sale",
+          icon: <Eye size={18} />,
+          onClick: (row: SalesTableType) => navigate(`/billing/view/${row.id}`),
+        },
+        {
+          label: "Edit Sale",
+          icon: <Pencil size={18} />,
+          onClick: (row: SalesTableType) => navigate(`/billing/edit/${row.id}`),
+        },
+        ...(onMarkPayment
+          ? [
+              {
+                label: "Mark Payment",
+                icon: <Wallet size={18} color={theme.palette.success.main} />,
+                onClick: (row: SalesTableType) => onMarkPayment(row),
+              },
+            ]
+          : []),
+        {
+          label: "Print Invoice",
+          icon: <Printer size={18} />,
+          onClick: (row: SalesTableType) => handleSalePrint(row.id),
+        },
+        {
+          label: "Print Shipping Label",
+          icon: <Truck size={18} />,
+          onClick: (row: SalesTableType) => handleShippingLablePrint(row.id),
+        },
+        {
+          label: "Send on WhatsApp",
+          icon: <MessageCircle size={18} color="#25D366" />,
+          onClick: (row: SalesTableType) => handleWhatsAppShare(row.id),
+        },
+        {
+          label: "Process Return / Credit Note",
+          icon: <Undo2 size={18} />,
+          onClick: (row: SalesTableType) => handleProcessReturn(row.id),
+        },
+        {
+          label: "Settle Store Credit (Refund)",
+          icon: <Banknote size={18} color={theme.palette.error.main} />,
+          onClick: (row: SalesTableType) => handleOpenSettle(row),
+        },
+      ];
 
   return (
     <>

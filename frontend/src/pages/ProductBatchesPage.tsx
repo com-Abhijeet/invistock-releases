@@ -48,6 +48,8 @@ import { getProductBatches } from "../lib/api/batchService";
 import DashboardHeader from "../components/DashboardHeader";
 import LabelPrintDialog from "../components/LabelPrintModal";
 import AssignBatchModal from "../components/batch/AssignBatchModal";
+import CreateBatchModal from "../components/batch/CreateBatchModal";
+import AddSerialsModal from "../components/batch/AddSerialsModal";
 import { Product } from "../lib/types/product";
 
 // Types mapping to SQL Schema
@@ -86,6 +88,12 @@ export default function ProductBatchesPage() {
   const [expandedBatch, setExpandedBatch] = useState<number | null>(null);
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [createBatchModalOpen, setCreateBatchModalOpen] = useState(false);
+  const [addSerialsModal, setAddSerialsModal] = useState<{
+    open: boolean;
+    batchId: number;
+    batchNumber: string;
+  }>({ open: false, batchId: 0, batchNumber: "" });
 
   useEffect(() => {
     loadData();
@@ -260,13 +268,27 @@ export default function ProductBatchesPage() {
         title={`Inventory: ${product.name}`}
         showDateFilters={false}
         actions={
-          <Button
-            variant="contained"
-            startIcon={<Printer size={18} />}
-            onClick={() => setPrintModalOpen(true)}
-          >
-            Print Labels
-          </Button>
+          <Stack direction="row" spacing={1.5}>
+            {product.tracking_type !== "none" && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<Plus size={18} />}
+                onClick={() => setCreateBatchModalOpen(true)}
+                sx={{ borderRadius: "12px", textTransform: "none", fontWeight: 600 }}
+              >
+                Manual Stock Entry
+              </Button>
+            )}
+            <Button
+              variant="outlined"
+              startIcon={<Printer size={18} />}
+              onClick={() => setPrintModalOpen(true)}
+              sx={{ borderRadius: "12px", textTransform: "none", fontWeight: 600 }}
+            >
+              Print Labels
+            </Button>
+          </Stack>
         }
       />
 
@@ -630,22 +652,42 @@ export default function ProductBatchesPage() {
                       <Box /> // Spacer
                     )}
 
-                    <Tooltip title="Print Labels for this Batch">
-                      <IconButton
-                        size="small"
-                        sx={{
-                          color: 'text.primary',
-                          bgcolor: "primary.lighter",
-                          "&:hover": {
-                            bgcolor: "primary.light",
-                            color: "#fff",
-                          },
-                        }}
-                        onClick={() => setPrintModalOpen(true)}
-                      >
-                        <Printer size={18} />
-                      </IconButton>
-                    </Tooltip>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      {product.tracking_type === "serial" && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          startIcon={<Plus size={14} />}
+                          onClick={() =>
+                            setAddSerialsModal({
+                              open: true,
+                              batchId: batch.batch_id,
+                              batchNumber: batch.batch_number,
+                            })
+                          }
+                          sx={{ fontSize: "0.75rem", textTransform: "none" }}
+                        >
+                          Add Serials
+                        </Button>
+                      )}
+                      <Tooltip title="Print Labels for this Batch">
+                        <IconButton
+                          size="small"
+                          sx={{
+                            color: 'text.primary',
+                            bgcolor: "primary.lighter",
+                            "&:hover": {
+                              bgcolor: "primary.light",
+                              color: "#fff",
+                            },
+                          }}
+                          onClick={() => setPrintModalOpen(true)}
+                        >
+                          <Printer size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
                   </CardActions>
 
                   <Collapse
@@ -751,6 +793,24 @@ export default function ProductBatchesPage() {
       {/* --- Modals --- */}
       {product && (
         <>
+          <CreateBatchModal
+            open={createBatchModalOpen}
+            onClose={() => setCreateBatchModalOpen(false)}
+            product={product}
+            untrackedQuantity={untrackedQuantity}
+            onSuccess={loadData}
+          />
+          <AddSerialsModal
+            open={addSerialsModal.open}
+            onClose={() =>
+              setAddSerialsModal({ open: false, batchId: 0, batchNumber: "" })
+            }
+            product={product}
+            batchId={addSerialsModal.batchId}
+            batchNumber={addSerialsModal.batchNumber}
+            untrackedQuantity={untrackedQuantity}
+            onSuccess={loadData}
+          />
           <AssignBatchModal
             open={assignModalOpen}
             onClose={() => setAssignModalOpen(false)}

@@ -13,6 +13,8 @@ import {
   getFullReport,
   bulkCreateBatches,
   bulkUntrackProducts,
+  createManualBatch,
+  addSerialsToBatch,
 } from "../controllers/batchController.mjs";
 
 const router = Router();
@@ -24,6 +26,10 @@ router.get("/trace/batch/:batchNumber", traceBatchNumber);
 // Bulk Operations
 router.post("/bulk-create", bulkCreateBatches);
 router.post("/bulk-untrack", bulkUntrackProducts);
+
+// Manual Batch & Serial Creation
+router.post("/create", createManualBatch);
+router.post("/add-serials", addSerialsToBatch);
 
 // New
 router.post("/assign-stock", assignStock);

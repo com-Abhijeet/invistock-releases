@@ -12,6 +12,17 @@ const a5Portrait = (data) => {
   const colSettings = localSettings.columns || {};
   const displaySettings = localSettings.display || {};
   const legalSettings = localSettings.legal || {};
+  const titleSettings = localSettings.titles || {};
+
+  const isQuoteDoc = Boolean(
+    sale.is_quote === true ||
+    sale.is_quote === 1 ||
+    sale.is_quote === "1" ||
+    sale.is_quote === "true"
+  );
+  const docTitle = isQuoteDoc
+    ? (titleSettings.quotationTitle || "ESTIMATE / QUOTATION")
+    : (titleSettings.invoiceTitle || shop.gst_invoice_format || "Tax Invoice");
 
   // Snapshot Variables
   const custName = sale.customer_name || "Cash Customer";
@@ -164,7 +175,7 @@ const a5Portrait = (data) => {
         <div class="header-box">
           <div class="shop-info" style="display: flex; justify-content: space-between; align-items: center; padding-right: 15px;">
             <div>
-              <h1>${shop.gst_invoice_format || "Tax Invoice"}</h1>
+              <h1>${docTitle}</h1>
               <div class="bold" style="font-size:14px; margin-bottom:2px;">${shop.use_alias_on_bills && shop.shop_alias ? shop.shop_alias : shop.shop_name}</div>
               <div style="font-size:9px;">${formatAddress(shop.address_line1, shop.city, shop.state, shop.pincode)}</div>
               <div style="font-size:9px; margin-top:2px;">Ph: ${shop.contact_number} ${gstEnabled ? `| <strong>GSTIN: ${shop.gstin}</strong>` : ""}</div>
@@ -172,7 +183,7 @@ const a5Portrait = (data) => {
             
           </div>
           <div class="invoice-meta">
-            <div class="flex-between"><span>Inv No:</span> <span class="bold">${sale.reference_no}</span></div>
+            <div class="flex-between"><span>${isQuoteDoc ? "Quote No:" : "Inv No:"}</span> <span class="bold">${sale.reference_no}</span></div>
             <div class="flex-between"><span>Date:</span> <span class="bold">${formatDate(sale.created_at)}</span></div>
             <div class="flex-between"><span>State:</span> <span>${custState || shop.state || ""}</span></div>
           </div>
@@ -187,7 +198,7 @@ const a5Portrait = (data) => {
           </div>
           <div class="extra-meta">
              ${gstEnabled && custGst ? `<div>Cust GST: ${custGst}</div>` : ""}
-             <div style="margin-top:2px;">Mode: ${sale.payment_mode || "Cash"}</div>
+             ${isQuoteDoc ? "" : `<div style="margin-top:2px;">Mode: ${sale.payment_mode || "Cash"}</div>`}
           </div>
         </div>
 
@@ -223,7 +234,7 @@ const a5Portrait = (data) => {
               <div class="bold">Amount in Words:</div>
               <div style="font-style:italic; margin-bottom:8px;">${numberToWords(sale.total_amount)}</div>
               ${
-                gstEnabled && showGstBreakup
+                !isQuoteDoc && gstEnabled && showGstBreakup
                   ? `
                   <div style="font-size:9px; border-top:1px dotted #ccc; padding-top:4px;">
                       Taxable: ${formatAmount(totalTaxableValue)}<br>
@@ -231,10 +242,10 @@ const a5Portrait = (data) => {
                   </div>`
                   : ""
               }
-              ${inclusiveTax ? `<div style="font-weight: bold; font-size: 10px; margin-top: 6px;">* All prices are inclusive of GST</div>` : ""}
+              ${!isQuoteDoc && inclusiveTax ? `<div style="font-weight: bold; font-size: 10px; margin-top: 6px;">* All prices are inclusive of GST</div>` : ""}
             </div>
 
-            ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code || shop.generated_upi_qr ? `
+            ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code || (!isQuoteDoc && shop.generated_upi_qr) ? `
             <div class="bank-qr-row" style="margin-bottom: 8px;">
               ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code ? `
               <div class="bank-details">
@@ -243,7 +254,7 @@ const a5Portrait = (data) => {
                 <div>A/C: ${shop.bank_account_no || "N/A"}</div>
                 <div>IFSC: ${shop.bank_account_ifsc_code || "N/A"}</div>
               </div>` : ""}
-              ${shop.generated_upi_qr ? `<div>
+              ${!isQuoteDoc && shop.generated_upi_qr ? `<div>
                 <img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" class="qr-img" />
                 <div style="font-size: 8px; font-weight: bold; text-align: center; margin-top: 2px;">Pay via UPI</div>
               </div>` : ""}
@@ -267,7 +278,7 @@ const a5Portrait = (data) => {
                <div class="grand-total flex-between">
                   <span>TOTAL:</span> <span>${formatAmount(sale.total_amount)}</span>
                </div>
-               <div class="flex-between" style="font-size:10px; margin-top:4px;"><span>Paid:</span> <span>${formatAmount(sale.paid_amount)}</span></div>
+               ${isQuoteDoc ? "" : `<div class="flex-between" style="font-size:10px; margin-top:4px;"><span>Paid:</span> <span>${formatAmount(sale.paid_amount)}</span></div>`}
                `
                    : `<div class="continued">Continued...</div>`
                }

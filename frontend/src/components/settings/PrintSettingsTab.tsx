@@ -26,6 +26,7 @@ import { type ShopSetupForm } from "../../lib/types/shopTypes";
 import { useState, useEffect } from "react";
 import { Eye, X, Receipt, Tag, Printer, Columns, Scale } from "lucide-react";
 import toast from "react-hot-toast";
+import InvoiceSettingsModal from "./InvoiceSettingsModal";
 
 const { ipcRenderer } = window.electron;
 
@@ -137,6 +138,7 @@ const DEFAULT_LOCAL_SETTINGS: LocalPrintSettings = {
 export default function PrintSettingsTab({ data, onChange }: Props) {
   const [availablePrinters, setAvailablePrinters] = useState([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewType, setPreviewType] = useState<"invoice" | "label">(
@@ -328,6 +330,16 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
                     </Tooltip>
                   </Stack>
                 </FormField>
+
+                <Button
+                  variant="contained"
+                  fullWidth
+                  color="primary"
+                  onClick={() => setInvoiceModalOpen(true)}
+                  sx={{ mt: 1, borderRadius: 2, textTransform: "none", fontWeight: 700 }}
+                >
+                  Configure Invoice Titles, Layout & Legal Terms
+                </Button>
               </Stack>
             </CardContent>
           </Card>
@@ -744,6 +756,13 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
           )}
         </DialogContent>
       </Dialog>
+
+      <InvoiceSettingsModal
+        open={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+        shopData={data}
+        onShopChange={onChange}
+      />
     </Box>
   );
 }

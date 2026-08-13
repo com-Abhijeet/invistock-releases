@@ -79,6 +79,53 @@ export function assignStock(req, res) {
 }
 
 /**
+ * POST /api/batches/create
+ * Creates a new manual batch for a product.
+ */
+export function createManualBatch(req, res) {
+  try {
+    const data = req.body;
+    if (!data.productId || !data.batchNumber) {
+      return res
+        .status(400)
+        .json({ status: "error", error: "Product ID and Batch Number are required" });
+    }
+
+    const result = BatchService.createManualBatch(data);
+    res.json({ status: "success", data: result });
+  } catch (error) {
+    console.error("createManualBatch -", error);
+    res.status(400).json({ status: "error", error: error.message });
+  }
+}
+
+/**
+ * POST /api/batches/add-serials
+ * Adds new serial numbers to an existing batch.
+ */
+export function addSerialsToBatch(req, res) {
+  try {
+    const { productId, batchId, serials, increaseProductStock } = req.body;
+    if (!productId || !batchId || !serials) {
+      return res
+        .status(400)
+        .json({ status: "error", error: "Missing required fields (productId, batchId, serials)" });
+    }
+
+    const result = BatchService.addSerialsToExistingBatch({
+      productId,
+      batchId,
+      serials,
+      increaseProductStock: increaseProductStock ?? true,
+    });
+    res.json({ status: "success", data: result });
+  } catch (error) {
+    console.error("addSerialsToBatch -", error);
+    res.status(400).json({ status: "error", error: error.message });
+  }
+}
+
+/**
  * POST /api/batches/print-data
  * Returns formatted print payloads (barcodes, labels) for the requested scope.
  */

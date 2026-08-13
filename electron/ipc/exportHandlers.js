@@ -15,12 +15,13 @@ const { createInvoiceHTML } = require("../invoiceTemplate.js");
 function registerExportHandlers(ipcMain, { mainWindow } = {}) {
   ipcMain.handle(
     "export-sales-to-excel",
-    async (event, { startDate, endDate, exportType = "item" }) => {
+    async (event, { startDate, endDate, exportType = "item", isQuote, is_quote }) => {
       try {
         const typeLabel = exportType === "header" ? "Register" : "Items";
+        const docLabel = (isQuote || is_quote) ? "Quotations" : "Sales";
         const { canceled, filePath } = await dialog.showSaveDialog({
-          title: `Save Sales ${typeLabel} Report`,
-          defaultPath: `Sales-${typeLabel}-${startDate}-to-${endDate}.xlsx`,
+          title: `Save ${docLabel} ${typeLabel} Report`,
+          defaultPath: `${docLabel}-${typeLabel}-${startDate}-to-${endDate}.xlsx`,
           filters: [{ name: "Excel Files", extensions: ["xlsx"] }],
         });
 
@@ -36,6 +37,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
           startDate,
           endDate,
           exportType,
+          isQuote: isQuote ?? is_quote ?? 0,
         });
 
         if (!rawSalesData || rawSalesData.length === 0) {
@@ -222,21 +224,22 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
 
   ipcMain.handle(
     "export-sales-to-pdfs",
-    async (event, { startDate, endDate, shop }) => {
+    async (event, { startDate, endDate, shop, isQuote, is_quote }) => {
       try {
+        const docLabel = (isQuote || is_quote) ? "Quotations" : "Invoices";
         const { canceled, filePaths } = await dialog.showOpenDialog({
-          title: "Select Folder to Save Invoices",
+          title: `Select Folder to Save ${docLabel}`,
           properties: ["openDirectory"],
         });
         if (canceled || filePaths.length === 0)
           return { success: false, message: "Export cancelled." };
         const destFolder = filePaths[0];
 
-        const sales = getSalesForPDFExport({ startDate, endDate });
+        const sales = getSalesForPDFExport({ startDate, endDate, isQuote: isQuote ?? is_quote ?? 0 });
         if (sales.length === 0)
           return {
             success: true,
-            message: "No sales found in the selected period.",
+            message: `No ${docLabel.toLowerCase()} found in the selected period.`,
           };
 
         for (const [index, sale] of sales.entries()) {

@@ -253,6 +253,7 @@ export function getOverdueCustomerSummary() {
           s.customer_id,
           s.created_at,
           s.total_amount,
+          COALESCE(s.paid_amount, 0) AS header_paid_amount,
           -- ✅ FIX: Strictly Cash In/Out for Payment metric
           COALESCE(SUM(CASE 
             WHEN t.type = 'payment_in' THEN t.amount 
@@ -266,16 +267,17 @@ export function getOverdueCustomerSummary() {
         LEFT JOIN transactions t ON s.id = t.bill_id 
           AND t.bill_type = 'sale' 
           AND t.status != 'deleted'
-        WHERE s.is_quote = 0
+        WHERE s.is_quote = 0 
+          AND (s.status IS NULL OR LOWER(s.status) NOT IN ('paid', 'completed', 'cancelled'))
         GROUP BY s.id
       ),
       ReconciledPending AS (
         SELECT
           *,
-          ((total_amount - total_credit_notes) - total_paid) AS reconciled_balance,
+          ((total_amount - total_credit_notes) - MAX(header_paid_amount, total_paid)) AS reconciled_balance,
           (julianday('now', 'localtime') - julianday(created_at)) AS bill_age
         FROM BillBalances
-        WHERE ((total_amount - total_credit_notes) - total_paid) > 0.9
+        WHERE ((total_amount - total_credit_notes) - MAX(header_paid_amount, total_paid)) > 0.9
       )
       SELECT
         c.id,
@@ -320,14 +322,13 @@ export async function getCustomersWithFinancials({
     SELECT 
       customer_id,
       COUNT(id) as total_bills,
-      COALESCE(SUM(total_amount), 0) as total_purchased,
-      SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as total_bills_paid
+      COALESCE(SUM(total_amount), 0) as total_purchased
     FROM sales
     WHERE status != 'cancelled' AND is_quote = 0
     GROUP BY customer_id
   `;
 
-  // ✅ FIX: Separated cash flow and debt adjustments
+  // ✅ STRICT SOURCE OF TRUTH: Transactions table for cash flow & credit notes
   const transSubquery = `
     SELECT 
       entity_id,
@@ -340,6 +341,26 @@ export async function getCustomersWithFinancials({
     GROUP BY entity_id
   `;
 
+  // Count of fully settled bills per customer (strictly via transactions)
+  const settledBillsSubquery = `
+    SELECT 
+      s.customer_id,
+      COUNT(s.id) as total_bills_paid
+    FROM sales s
+    LEFT JOIN (
+      SELECT 
+        bill_id,
+        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN amount WHEN type = 'payment_out' THEN -amount ELSE 0 END), 0) as paid,
+        COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as credit
+      FROM transactions
+      WHERE bill_type = 'sale' AND status != 'deleted'
+      GROUP BY bill_id
+    ) t_bill ON s.id = t_bill.bill_id
+    WHERE s.status != 'cancelled' AND s.is_quote = 0
+      AND (s.total_amount - COALESCE(t_bill.paid, 0) - COALESCE(t_bill.credit, 0)) <= 0.01
+    GROUP BY s.customer_id
+  `;
+
   const sql = `
     SELECT 
       c.id, 
@@ -348,9 +369,10 @@ export async function getCustomersWithFinancials({
       c.city,
       COALESCE(s_stats.total_bills, 0) as total_bills,
       COALESCE(s_stats.total_purchased, 0) as total_purchased,
-      COALESCE(s_stats.total_bills_paid, 0) as total_bills_paid,
+      COALESCE(sb_stats.total_bills_paid, 0) as total_bills_paid,
       COALESCE(t_stats.total_amount_paid, 0) as total_amount_paid,
-      ((COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0)) - COALESCE(t_stats.total_amount_paid, 0)) as total_overdue,
+      COALESCE(t_stats.total_credit_notes, 0) as total_credit_notes,
+      MAX(0, (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0) - COALESCE(t_stats.total_amount_paid, 0))) as total_overdue,
       CASE 
         WHEN (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0)) <= 0 THEN 0
         ELSE ROUND((COALESCE(t_stats.total_amount_paid, 0) * 100.0) / (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0)), 2)
@@ -358,6 +380,7 @@ export async function getCustomersWithFinancials({
     FROM customers c
     LEFT JOIN (${salesSubquery}) s_stats ON c.id = s_stats.customer_id
     LEFT JOIN (${transSubquery}) t_stats ON c.id = t_stats.entity_id
+    LEFT JOIN (${settledBillsSubquery}) sb_stats ON c.id = sb_stats.customer_id
     WHERE ${whereClause}
     ORDER BY ${sortBy} ${sortOrder}
     LIMIT ? OFFSET ?
@@ -378,3 +401,118 @@ export async function getCustomersWithFinancials({
     },
   };
 }
+
+/**
+ * Fetches pending bills by customer using transactions table as the source of truth for all payments & credit notes.
+ */
+export function getPendingBillsByCustomer({ customerId, query = "", minAgeDays = 0 } = {}) {
+  try {
+    let whereClauses = [
+      "s.is_quote = 0",
+      "s.status != 'cancelled'"
+    ];
+    let params = [];
+
+    if (customerId) {
+      whereClauses.push("s.customer_id = ?");
+      params.push(Number(customerId));
+    }
+
+    if (query) {
+      whereClauses.push("(c.name LIKE ? OR c.phone LIKE ? OR s.reference_no LIKE ?)");
+      const q = `%${query}%`;
+      params.push(q, q, q);
+    }
+
+    const whereString = whereClauses.join(" AND ");
+
+    const sql = `
+      WITH BillTransactions AS (
+        SELECT 
+          s.id AS sale_id,
+          s.customer_id,
+          c.name AS customer_name,
+          c.phone AS customer_phone,
+          c.city AS customer_city,
+          s.reference_no,
+          s.created_at AS bill_date,
+          s.total_amount,
+          COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN t.amount WHEN t.type = 'payment_out' THEN -t.amount ELSE 0 END), 0) AS total_paid_trans,
+          COALESCE(SUM(CASE WHEN t.type = 'credit_note' THEN t.amount ELSE 0 END), 0) AS total_credit_notes_trans,
+          CAST(julianday('now', 'localtime') - julianday(s.created_at) AS INTEGER) AS bill_age_days
+        FROM sales s
+        JOIN customers c ON s.customer_id = c.id
+        LEFT JOIN transactions t ON s.id = t.bill_id 
+          AND t.bill_type = 'sale' 
+          AND t.status != 'deleted'
+        WHERE ${whereString}
+        GROUP BY s.id
+      ),
+      PendingBills AS (
+        SELECT 
+          *,
+          (total_amount - total_credit_notes_trans - total_paid_trans) AS pending_balance
+        FROM BillTransactions
+        WHERE (total_amount - total_credit_notes_trans - total_paid_trans) > 0.01
+      )
+      SELECT * FROM PendingBills
+      WHERE bill_age_days >= ?
+      ORDER BY bill_date ASC
+    `;
+
+    params.push(Number(minAgeDays) || 0);
+
+    const bills = db.prepare(sql).all(...params);
+
+    let totalPendingAmount = 0;
+    let maxAgeDays = 0;
+    const customerMap = {};
+
+    for (const bill of bills) {
+      totalPendingAmount += bill.pending_balance;
+      if (bill.bill_age_days > maxAgeDays) {
+        maxAgeDays = bill.bill_age_days;
+      }
+
+      if (!customerMap[bill.customer_id]) {
+        customerMap[bill.customer_id] = {
+          customer_id: bill.customer_id,
+          customer_name: bill.customer_name,
+          customer_phone: bill.customer_phone,
+          customer_city: bill.customer_city,
+          total_pending_amount: 0,
+          pending_bills_count: 0,
+          oldest_bill_age: 0,
+          bills: []
+        };
+      }
+
+      customerMap[bill.customer_id].total_pending_amount += bill.pending_balance;
+      customerMap[bill.customer_id].pending_bills_count += 1;
+      if (bill.bill_age_days > customerMap[bill.customer_id].oldest_bill_age) {
+        customerMap[bill.customer_id].oldest_bill_age = bill.bill_age_days;
+      }
+
+      customerMap[bill.customer_id].bills.push(bill);
+    }
+
+    const customersList = Object.values(customerMap).sort(
+      (a, b) => b.total_pending_amount - a.total_pending_amount
+    );
+
+    return {
+      summary: {
+        totalPendingAmount,
+        totalPendingBills: bills.length,
+        totalCustomersCount: customersList.length,
+        maxAgeDays
+      },
+      customers: customersList,
+      allBills: bills
+    };
+  } catch (error) {
+    console.error("Error in getPendingBillsByCustomer:", error.message);
+    throw new Error("Failed to fetch pending bills: " + error.message);
+  }
+}
+

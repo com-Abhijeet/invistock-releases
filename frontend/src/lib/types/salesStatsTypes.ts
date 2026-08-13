@@ -7,6 +7,8 @@ export interface SalesFilter {
   page?: number;
   limit?: number;
   limitTop?: number; // for top-customers/products
+  is_quote?: boolean | number;
+  query?: string;
 }
 
 // Responses

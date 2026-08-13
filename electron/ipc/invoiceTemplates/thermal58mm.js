@@ -9,6 +9,17 @@ const thermal58mm = (data) => {
   const jurisdiction = legalSettings.jurisdiction || "";
   const disclaimer = legalSettings.disclaimer || "";
   const termsAndConditions = legalSettings.termsAndConditions || "";
+  const titleSettings = localSettings.titles || {};
+
+  const isQuoteDoc = Boolean(
+    sale.is_quote === true ||
+    sale.is_quote === 1 ||
+    sale.is_quote === "1" ||
+    sale.is_quote === "true"
+  );
+  const docTitle = isQuoteDoc
+    ? (titleSettings.quotationTitle || "ESTIMATE / QUOTATION")
+    : (titleSettings.invoiceTitle || shop.gst_invoice_format || "TAX INVOICE");
 
   // Dynamic Logo Construction - Updated to use logo_url first
   const logoSrc = getLogoSrc(shop.logo_url || shop.logo);
@@ -66,7 +77,8 @@ const thermal58mm = (data) => {
         </div>
         
         <div class="line"></div>
-        <div class="flex"><span>Bill No: ${sale.reference_no}</span></div>
+        <div style="text-align: center; font-weight: bold; font-size: 11px; margin: 3px 0; text-transform: uppercase;">*** ${docTitle} ***</div>
+        <div class="flex"><span>${isQuoteDoc ? "Quote No:" : "Bill No:"} ${sale.reference_no}</span></div>
         <div class="flex"><span>Date: ${formatDate(sale.created_at)}</span></div>
         <div class="flex"><span>Cust: ${custName}</span></div>
         ${custGst ? `<div class="flex"><span>GSTIN: ${custGst}</span></div>` : ""}
@@ -135,13 +147,13 @@ const thermal58mm = (data) => {
         }
 
         ${
-          isInclusive
+          !isQuoteDoc && isInclusive
             ? `<div class="center" style="font-size:9px; color:#555; margin-top:4px;">(All prices inclusive of GST)</div>`
             : ""
         }
 
         ${
-          shop.generated_upi_qr
+          !isQuoteDoc && shop.generated_upi_qr
             ? `<div class="center" style="margin-top:10px;"><img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" style="width:70px;" /></div>`
             : ""
         }

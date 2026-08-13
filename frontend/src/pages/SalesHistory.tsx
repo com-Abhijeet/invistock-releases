@@ -51,7 +51,11 @@ const getInitialFilters = (): DashboardFilter => {
 
 type ExportType = "excel-header" | "excel-item" | "pdf" | null;
 
-export default function SalesTablePage() {
+interface SalesTablePageProps {
+  isQuotePage?: boolean;
+}
+
+export default function SalesTablePage({ isQuotePage = false }: SalesTablePageProps) {
   const [activeFilters, setActiveFilters] =
     useState<DashboardFilter>(getInitialFilters);
   const [searchQuery, setSearchQuery] = useState("");
@@ -120,6 +124,7 @@ export default function SalesTablePage() {
         startDate,
         endDate,
         exportType,
+        isQuote: isQuotePage ? 1 : 0,
       });
     } else if (exportModal.type === "pdf") {
       setPdfProgress({ current: 0, total: 0 });
@@ -127,6 +132,7 @@ export default function SalesTablePage() {
         startDate,
         endDate,
         shop,
+        isQuote: isQuotePage ? 1 : 0,
       });
     }
 
@@ -185,6 +191,7 @@ export default function SalesTablePage() {
     to: activeFilters.to,
     filter: activeFilters.filter || "month",
     query: searchQuery,
+    is_quote: isQuotePage ? 1 : 0,
   };
 
   return (
@@ -197,7 +204,7 @@ export default function SalesTablePage() {
       }}
     >
       <DashboardHeader
-        title="Sales History"
+        title={isQuotePage ? "Quotations Register" : "Sales Register"}
         showSearch={true}
         showDateFilters={true}
         onSearch={setSearchQuery}

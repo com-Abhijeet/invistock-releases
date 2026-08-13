@@ -1,13 +1,14 @@
 "use client";
 
 import { Chip } from "@mui/material";
-import { Pencil, Trash2, Printer, Eye, Tag } from "lucide-react";
+import { Pencil, Trash2, Printer, Eye, Tag, Boxes } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import type { Product } from "../../lib/types/product";
 import DataTable from "../DataTable";
 import LabelPrintDialog from "../LabelPrintModal";
 import CustomLabelPrintModal from "../CustomLabelPrintModal"; // Import the new modal
 import BulkEditProductModal from "./BulkEditProductModal";
+import CreateBatchModal from "../batch/CreateBatchModal";
 import { getAllProducts } from "../../lib/api/productService";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
@@ -30,6 +31,7 @@ export default function ProductTable({
 
   // New State for Custom Label Modal
   const [customLabelModalOpen, setCustomLabelModalOpen] = useState(false);
+  const [createBatchModalOpen, setCreateBatchModalOpen] = useState(false);
 
   // Bulk Edit States
   const [bulkEditModalOpen, setBulkEditModalOpen] = useState(false);
@@ -135,6 +137,21 @@ export default function ProductTable({
         setCustomLabelModalOpen(true);
       },
     },
+    // Manual Stock Entry
+    {
+      label: "Manual Stock Entry",
+      icon: <Boxes size={16} />,
+      onClick: (row: Product) => {
+        if (row.tracking_type === "none" || !row.tracking_type) {
+          toast.error(
+            `"${row.name}" is untracked. Change tracking type to Batch or Serial to add batches.`
+          );
+          return;
+        }
+        setSelectedProduct(row);
+        setCreateBatchModalOpen(true);
+      },
+    },
   ];
 
   return (
@@ -161,7 +178,7 @@ export default function ProductTable({
               setSelectedBulkProducts(selectedRows);
               setBulkEditModalOpen(true);
             },
-          }
+          },
         ]}
       />
 
@@ -180,6 +197,16 @@ export default function ProductTable({
           open={customLabelModalOpen}
           onClose={() => setCustomLabelModalOpen(false)}
           product={selectedProduct}
+        />
+      )}
+
+      {/* Create Batch Modal */}
+      {selectedProduct && (
+        <CreateBatchModal
+          open={createBatchModalOpen}
+          onClose={() => setCreateBatchModalOpen(false)}
+          product={selectedProduct}
+          onSuccess={fetchProducts}
         />
       )}
 

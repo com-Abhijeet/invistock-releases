@@ -173,6 +173,17 @@ function createInvoiceHTML(data) {
   const showGstAmtCol =
     gstEnabled && Boolean(colSettings.showGstAmtCol ?? true) && !inclusiveTax;
 
+  const titleSettings = localSettings?.titles || {};
+  const isQuoteDoc = Boolean(
+    sale.is_quote === true ||
+    sale.is_quote === 1 ||
+    sale.is_quote === "1" ||
+    sale.is_quote === "true"
+  );
+  const docTitle = isQuoteDoc
+    ? (titleSettings.quotationTitle || "ESTIMATE / QUOTATION")
+    : (titleSettings.invoiceTitle || shop.gst_invoice_format || "Tax Invoice");
+
   const jurisdiction = legalSettings.jurisdiction || "";
   const disclaimer = legalSettings.disclaimer || "";
   const termsAndConditions = legalSettings.termsAndConditions || "";
@@ -315,7 +326,7 @@ function createInvoiceHTML(data) {
         <div class="header-box">
           <div class="shop-info" style="display: flex; justify-content: space-between; align-items: center; padding-right: 20px;">
             <div>
-              <h1>${shop.gst_invoice_format || "Tax Invoice"}</h1>
+              <h1>${docTitle}</h1>
               <div class="bold" style="font-size:14px; margin-bottom:2px;">${shop.use_alias_on_bills && shop.shop_alias ? shop.shop_alias : shop.shop_name}</div>
               <div>${shop.use_alias_on_bills && shop.shop_alias ? "" : formatAddress(shop.address_line1, shop.city, shop.state, shop.pincode)}</div>
               ${gstEnabled ? `<div style="margin-top:2px;"><strong>GSTIN: ${shop.gstin || "N/A"}</strong> | Ph: ${shop.contact_number || ""}</div>` : `<div>Ph: ${shop.contact_number || ""}</div>`}
@@ -323,7 +334,7 @@ function createInvoiceHTML(data) {
             ${logoSrc ? `<img src="${logoSrc}" onerror="this.style.display='none'" style="max-height: 55px; max-width: 140px; object-fit: contain;" />` : ""}
           </div>
           <div class="invoice-meta">
-            <div class="flex-between"><span>Inv No:</span> <span class="bold">${sale.reference_no}</span></div>
+            <div class="flex-between"><span>${isQuoteDoc ? "Quote No:" : "Inv No:"}</span> <span class="bold">${sale.reference_no}</span></div>
             <div class="flex-between"><span>Date:</span> <span class="bold">${formatDate(sale.created_at)}</span></div>
             <div class="flex-between"><span>State:</span> <span>${custState || shop.state || ""}</span></div>
           </div>
@@ -338,7 +349,7 @@ function createInvoiceHTML(data) {
           </div>
           <div class="extra-meta">
              ${gstEnabled && custGst ? `<div>Cust GST: ${custGst}</div>` : ""}
-             <div style="margin-top:2px;">Mode: ${sale.payment_mode || "Cash"}</div>
+             ${isQuoteDoc ? "" : `<div style="margin-top:2px;">Mode: ${sale.payment_mode || "Cash"}</div>`}
           </div>
         </div>
 
@@ -371,7 +382,7 @@ function createInvoiceHTML(data) {
             <div class="bold">Amount in Words:</div>
             <div style="font-style:italic; margin-bottom:8px;">${numberToWords(sale.total_amount)}</div>
            ${
-             gstEnabled
+             !isQuoteDoc && gstEnabled
                ? `
       ${
         showGstBreakup
@@ -403,7 +414,7 @@ function createInvoiceHTML(data) {
              <div>A/C: ${shop.bank_account_no || ""}</div>
              <div>IFSC: ${shop.bank_account_ifsc_code || ""}</div>
              ` : ""}
-             ${shop.generated_upi_qr ? `<div class="qr-wrap"><img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" /><div style="font-size: 9px; font-weight: bold; margin-top: 2px;">Pay via UPI</div></div>` : ""}
+             ${!isQuoteDoc && shop.generated_upi_qr ? `<div class="qr-wrap"><img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" /><div style="font-size: 9px; font-weight: bold; margin-top: 2px;">Pay via UPI</div></div>` : ""}
           </div>
 
           <div class="totals-area">
@@ -414,7 +425,7 @@ function createInvoiceHTML(data) {
              ${discountPercentage > 0 ? `<div class="flex-between" style="color:red;"><span>Discount (${discountPercentage}%):</span> <span>-${formatAmount(discountAmount)}</span></div>` : ""}
              ${Math.abs(roundOff) > 0.01 ? `<div class="flex-between"><span>Round Off:</span> <span>${roundOff > 0 ? "+" : ""}${formatAmount(roundOff)}</span></div>` : ""}
              <div class="grand-total flex-between"><span>TOTAL:</span> <span>${formatAmount(sale.total_amount)}</span></div>
-             <div class="flex-between" style="font-size:10px; margin-top:2px;"><span>Paid:</span> <span>${formatAmount(sale.paid_amount)}</span></div>
+             ${isQuoteDoc ? "" : `<div class="flex-between" style="font-size:10px; margin-top:2px;"><span>Paid:</span> <span>${formatAmount(sale.paid_amount)}</span></div>`}
              `
                  : `<div class="continued">Continued...</div>`
              }

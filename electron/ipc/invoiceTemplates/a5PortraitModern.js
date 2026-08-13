@@ -12,6 +12,17 @@ const a5PortraitCentered = (data) => {
   const colSettings = localSettings?.columns || {};
   const displaySettings = localSettings?.display || {};
   const legalSettings = localSettings?.legal || {};
+  const titleSettings = localSettings?.titles || {};
+
+  const isQuoteDoc = Boolean(
+    sale.is_quote === true ||
+    sale.is_quote === 1 ||
+    sale.is_quote === "1" ||
+    sale.is_quote === "true"
+  );
+  const docTitle = isQuoteDoc
+    ? (titleSettings.quotationTitle || "ESTIMATE / QUOTATION")
+    : (titleSettings.invoiceTitle || shop.gst_invoice_format || "TAX INVOICE");
 
   // Dynamic Logo Construction
   const logoSrc = getLogoSrc(shop.logo_url || shop.logo);
@@ -165,7 +176,7 @@ const a5PortraitCentered = (data) => {
         </div>
 
         <div class="invoice-title-bar">
-            ${shop.gst_invoice_format || "TAX INVOICE"}
+            ${docTitle}
         </div>
 
         <!-- CUSTOMER & META ROW -->
@@ -179,10 +190,10 @@ const a5PortraitCentered = (data) => {
             
             <div class="invoice-details-box">
                 <table class="meta-table">
-                    <tr><td class="meta-label">Invoice No:</td><td class="bold text-right">${sale.reference_no}</td></tr>
+                    <tr><td class="meta-label">${isQuoteDoc ? "Quote No:" : "Invoice No:"}</td><td class="bold text-right">${sale.reference_no}</td></tr>
                     <tr><td class="meta-label">Date:</td><td class="bold text-right">${formatDate(sale.created_at)}</td></tr>
                     <tr><td class="meta-label">State:</td><td class="text-right">${custState || shop.state || ""}</td></tr>
-                    <tr><td class="meta-label">Mode:</td><td class="text-right">${sale.payment_mode || "Cash"}</td></tr>
+                    ${isQuoteDoc ? "" : `<tr><td class="meta-label">Mode:</td><td class="text-right">${sale.payment_mode || "Cash"}</td></tr>`}
                 </table>
             </div>
         </div>
@@ -219,7 +230,7 @@ const a5PortraitCentered = (data) => {
               <div class="bold">Amount in Words:</div>
               <div style="font-style:italic; margin-bottom:8px;">${numberToWords(sale.total_amount)}</div>
               ${
-                gstEnabled && showGstBreakup
+                !isQuoteDoc && gstEnabled && showGstBreakup
                   ? `
                   <div style="font-size:9px; border-top:1px dotted #000; padding-top:4px;">
                       Taxable: ${formatAmount(totalTaxableValue)}<br>
@@ -227,10 +238,10 @@ const a5PortraitCentered = (data) => {
                   </div>`
                   : ""
               }
-              ${inclusiveTax ? `<div style="font-weight: bold; font-size: 10px; margin-top: 6px;">* All prices are inclusive of GST</div>` : ""}
+              ${!isQuoteDoc && inclusiveTax ? `<div style="font-weight: bold; font-size: 10px; margin-top: 6px;">* All prices are inclusive of GST</div>` : ""}
             </div>
 
-            ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code || shop.generated_upi_qr ? `
+            ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code || (!isQuoteDoc && shop.generated_upi_qr) ? `
             <div class="bank-qr-row">
               ${shop.bank_name || shop.bank_account_no || shop.bank_account_ifsc_code ? `
               <div class="bank-details">
@@ -239,7 +250,7 @@ const a5PortraitCentered = (data) => {
                 <div>A/C: ${shop.bank_account_no || "N/A"}</div>
                 <div>IFSC: ${shop.bank_account_ifsc_code || "N/A"}</div>
               </div>` : ""}
-              ${shop.generated_upi_qr ? `<div>
+              ${!isQuoteDoc && shop.generated_upi_qr ? `<div>
                 <img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" class="qr-img" />
                 <div style="font-size: 8px; font-weight: bold; text-align: center; margin-top: 2px;">Pay via UPI</div>
               </div>` : ""}
@@ -263,7 +274,7 @@ const a5PortraitCentered = (data) => {
                <div class="grand-total flex-between">
                   <span>TOTAL:</span> <span>${formatAmount(sale.total_amount)}</span>
                </div>
-               <div class="flex-between" style="font-size:10px; margin-top:4px;"><span>Paid:</span> <span>${formatAmount(sale.paid_amount)}</span></div>
+               ${isQuoteDoc ? "" : `<div class="flex-between" style="font-size:10px; margin-top:4px;"><span>Paid:</span> <span>${formatAmount(sale.paid_amount)}</span></div>`}
                `
                    : `<div class="continued">Continued...</div>`
                }

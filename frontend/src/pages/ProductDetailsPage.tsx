@@ -27,6 +27,7 @@ import {
   Package,
   ExternalLink,
   BarChart3,
+  Plus,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -38,6 +39,7 @@ import theme from "../../theme";
 import AddProductModal from "../components/products/AddProductModal";
 import { productDetails } from "../lib/types/product";
 import StockAdjustmentModal from "../components/inventory/StockAdjustmentModal";
+import CreateBatchModal from "../components/batch/CreateBatchModal";
 
 type ProductHistoryData = Awaited<ReturnType<typeof fetchProductHistory>>;
 
@@ -55,6 +57,7 @@ export default function ProductDetailPage() {
   const [historyPage, setHistoryPage] = useState(0);
   const [historyRowsPerPage, setHistoryRowsPerPage] = useState(5);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [createBatchOpen, setCreateBatchOpen] = useState(false);
 
   const fetchData = async () => {
     if (!id) return;
@@ -163,22 +166,37 @@ export default function ProductDetailPage() {
               Analysis
             </Button>
 
-            {/* Batch View Button */}
+            {/* Batch View & Create Buttons */}
             {(product.tracking_type === "batch" ||
               product.tracking_type === "serial") && (
-              <Button
-                variant="outlined"
-                color="secondary"
-                onClick={() => navigate(`/products/${id}/batches`)}
-                startIcon={<Boxes size={18} />}
-                sx={{
-                  borderRadius: "12px",
-                  textTransform: "none",
-                  fontWeight: 600,
-                }}
-              >
-                View Batches
-              </Button>
+              <>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={() => setCreateBatchOpen(true)}
+                  startIcon={<Plus size={18} />}
+                  sx={{
+                    borderRadius: "12px",
+                    textTransform: "none",
+                    fontWeight: 600,
+                  }}
+                >
+                  Manual Stock Entry
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  onClick={() => navigate(`/products/${id}/batches`)}
+                  startIcon={<Boxes size={18} />}
+                  sx={{
+                    borderRadius: "12px",
+                    textTransform: "none",
+                    fontWeight: 600,
+                  }}
+                >
+                  View Batches
+                </Button>
+              </>
             )}
             <Button
               variant="outlined"
@@ -467,6 +485,14 @@ export default function ProductDetailPage() {
           initialData={editProduct}
           onSuccess={handleOnSuccess}
           mode="edit"
+        />
+      )}
+      {product.id && (
+        <CreateBatchModal
+          open={createBatchOpen}
+          onClose={() => setCreateBatchOpen(false)}
+          product={product}
+          onSuccess={fetchData}
         />
       )}
     </Box>

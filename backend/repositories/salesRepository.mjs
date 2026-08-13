@@ -344,6 +344,7 @@ export function getSaleWithItemsById(saleId) {
  * @description Fetches all sales within a date range, including their items and customer details, structured for PDF export.
  */
 export function getSalesForPDFExport(filters) {
+  const quoteVal = (filters.isQuote === true || filters.isQuote === 1 || filters.is_quote === 1 || filters.is_quote === true || filters.is_quote === "1" || filters.is_quote === "true") ? 1 : 0;
   const sales = db
     .prepare(
       `
@@ -359,10 +360,10 @@ export function getSalesForPDFExport(filters) {
     FROM sales s
     LEFT JOIN customers c ON s.customer_id = c.id
     WHERE date(s.created_at) BETWEEN @startDate AND @endDate
-      AND s.is_quote = 0
+      AND s.is_quote = @quoteVal
   `,
     )
-    .all(filters);
+    .all({ ...filters, quoteVal });
 
   if (sales.length === 0) {
     return [];
@@ -616,7 +617,8 @@ export async function updateSaleStatus(id, status) {
  * Supports both Header-level (Sales Register) and Item-level (Product Analysis) exports.
  */
 export function getExportableSalesData(filters) {
-  const { startDate, endDate, exportType = "item" } = filters;
+  const { startDate, endDate, exportType = "item", isQuote, is_quote } = filters;
+  const quoteVal = (isQuote === true || isQuote === 1 || is_quote === 1 || is_quote === true || is_quote === "1" || is_quote === "true") ? 1 : 0;
 
   if (exportType === "header") {
     // APPROACH 2: 1 Row per Invoice
@@ -645,10 +647,10 @@ export function getExportableSalesData(filters) {
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
       WHERE date(s.created_at) BETWEEN @startDate AND @endDate
-        AND s.is_quote = 0
+        AND s.is_quote = @quoteVal
       ORDER BY s.created_at DESC
     `);
-    return stmt.all({ startDate, endDate });
+    return stmt.all({ startDate, endDate, quoteVal });
   } else {
     // APPROACH 1: 1 Row per Item (For deep GST Analysis)
     const stmt = db.prepare(`
@@ -685,10 +687,10 @@ export function getExportableSalesData(filters) {
       JOIN products p ON si.product_id = p.id
       LEFT JOIN customers c ON s.customer_id = c.id
       WHERE date(s.created_at) BETWEEN @startDate AND @endDate
-        AND s.is_quote = 0
+        AND s.is_quote = @quoteVal
       ORDER BY s.created_at DESC, si.id ASC
     `);
-    return stmt.all({ startDate, endDate });
+    return stmt.all({ startDate, endDate, quoteVal });
   }
 }
 

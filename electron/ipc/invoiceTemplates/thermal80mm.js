@@ -10,6 +10,17 @@ const thermal80mm = (data) => {
   const jurisdiction = legalSettings.jurisdiction || "";
   const disclaimer = legalSettings.disclaimer || "";
   const termsAndConditions = legalSettings.termsAndConditions || "";
+  const titleSettings = localSettings.titles || {};
+
+  const isQuoteDoc = Boolean(
+    sale.is_quote === true ||
+    sale.is_quote === 1 ||
+    sale.is_quote === "1" ||
+    sale.is_quote === "true"
+  );
+  const docTitle = isQuoteDoc
+    ? (titleSettings.quotationTitle || "ESTIMATE / QUOTATION")
+    : (titleSettings.invoiceTitle || shop.gst_invoice_format || "TAX INVOICE");
 
   // Dynamic Logo Construction - Updated to use logo_url first
   const logoSrc = getLogoSrc(shop.logo_url || shop.logo);
@@ -74,7 +85,8 @@ const thermal80mm = (data) => {
         </div>
         
         <div class="divider"></div>
-        <div class="info-row"><span>Bill No: <span class="bold">${sale.reference_no}</span></span></div>
+        <div style="text-align: center; font-weight: bold; font-size: 13px; margin: 3px 0; text-transform: uppercase;">*** ${docTitle} ***</div>
+        <div class="info-row"><span>${isQuoteDoc ? "Quote No:" : "Bill No:"} <span class="bold">${sale.reference_no}</span></span></div>
         <div class="info-row"><span>Date: ${formatDate(sale.created_at)}</span> <span>Mode: ${sale.payment_mode || "Cash"}</span></div>
         <div class="info-row"><span>Customer: ${custName}</span></div>
         ${custGst ? `<div class="info-row"><span>GSTIN: ${custGst}</span></div>` : ""}
@@ -124,13 +136,13 @@ const thermal80mm = (data) => {
         }
 
         ${
-          isInclusive
+          !isQuoteDoc && isInclusive
             ? `<div style="text-align:center; font-size:10px; color:#555; margin-top:4px;">(All prices are inclusive of GST)</div>`
             : ""
         }
 
         ${
-          shop.generated_upi_qr
+          !isQuoteDoc && shop.generated_upi_qr
             ? `
           <div class="qr-box">
             <img src="${shop.generated_upi_qr}" onerror="this.style.display='none'" style="width:90px; height:90px; border: 1px solid #eee; padding: 4px;" />

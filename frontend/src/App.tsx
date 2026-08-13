@@ -73,6 +73,7 @@ import TrackerPage from "./pages/TrackerPage";
 import ProductBatchesPage from "./pages/ProductBatchesPage";
 import BatchAnalysisPage from "./pages/BatchAnalysisPage";
 import CustomerAccountsPage from "./pages/CustomerAccountsPage";
+import PendingBillsByCustomerPage from "./pages/PendingBillsByCustomerPage";
 import SalesOrderPage from "./pages/SalesOrderPage";
 import SalesOrdersList from "./pages/SalesOrdersList";
 import ViewSalesOrderPage from "./pages/ViewSalesOrderPage";
@@ -85,6 +86,7 @@ import TallyDashboard from "./pages/setup/TallyDashboard";
 import TallyLedgerConfig from "./pages/setup/TallyLedgerConfig";
 import BusinessSettings from "./pages/BusinessSettingsPage";
 import MissingBatchesPage from "./pages/MissingBatchesPage";
+import CheckPrintingPage from "./pages/CheckPrintingPage";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -267,6 +269,14 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="sales-history">
                         <SalesTablePage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/quotations"
+                    element={
+                      <PermissionGuard requiredPermission="sales-history">
+                        <SalesTablePage isQuotePage={true} />
                       </PermissionGuard>
                     }
                   />
@@ -482,6 +492,14 @@ function AppLayout() {
                     }
                   />
                   <Route
+                    path="/customers/pending-bills"
+                    element={
+                      <PermissionGuard requiredPermission="customers">
+                        <PendingBillsByCustomerPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
                     path="/customers/ledger/:id"
                     element={
                       <PermissionGuard requiredPermission="customers">
@@ -574,6 +592,18 @@ function AppLayout() {
                         <BusinessSettings />
                       </PermissionGuard>
                     }
+                  />
+                  <Route
+                    path="/cheque-printing"
+                    element={
+                      <PermissionGuard requiredPermission="transactions">
+                        <CheckPrintingPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/check-printing"
+                    element={<Navigate to="/cheque-printing" replace />}
                   />
 
                   <Route path="/about" element={<AboutPage />} />

@@ -204,3 +204,26 @@ export async function getCustomersFinancials(req, res) {
     res.status(500).json({ status: "error", error: error.message });
   }
 }
+
+export async function getPendingBillsByCustomerController(req, res) {
+  try {
+    const { customerId, query, minAgeDays } = req.query;
+    const result = await customerService.getPendingBillsByCustomerService({
+      customerId,
+      query,
+      minAgeDays: minAgeDays ? Number(minAgeDays) : 0,
+    });
+
+    return res.status(200).json({
+      status: "success",
+      message: "Pending bills fetched successfully",
+      summary: result.summary,
+      customers: result.customers,
+      allBills: result.allBills,
+    });
+  } catch (error) {
+    console.error("getPendingBillsByCustomerController -", error);
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+}
+

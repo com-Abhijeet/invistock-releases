@@ -12,6 +12,8 @@ import {
   Button,
   Collapse,
   alpha,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect, useRef } from "react";
@@ -26,9 +28,11 @@ import {
   Briefcase,
   FileText,
   ScanLine,
+  Receipt,
 } from "lucide-react";
 import { indianStates } from "../../lib/constants/statesList";
 import BooleanToggle from "../BooleanToggle";
+import InvoiceSettingsModal from "../settings/InvoiceSettingsModal";
 
 interface EmployeeOption {
   id: number;
@@ -91,6 +95,7 @@ export default function SalesPosHeaderSection({
 }: Props) {
   const theme = useTheme();
   const [showMore, setShowMore] = useState(false);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
 
   const customerInputRef = useRef<HTMLInputElement>(null);
   const employeeInputRef = useRef<HTMLInputElement>(null);
@@ -174,15 +179,26 @@ export default function SalesPosHeaderSection({
           }}
         >
           {/* 1. Pill Doc Type Toggle */}
-          <Box sx={{ minWidth: 100 }}>
-            <BooleanToggle
-              value={sale.is_quote || false}
-              onChange={(newValue) => handleFieldChange("is_quote", newValue)}
-              trueLabel="QUO"
-              falseLabel="INV"
-              disabled={mode === "view"}
-            />
-          </Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Box sx={{ minWidth: 100 }}>
+              <BooleanToggle
+                value={sale.is_quote || false}
+                onChange={(newValue) => handleFieldChange("is_quote", newValue)}
+                trueLabel="QUO"
+                falseLabel="INV"
+                disabled={mode === "view"}
+              />
+            </Box>
+            <Tooltip title="Configure Invoice Titles & Layout">
+              <IconButton
+                size="small"
+                onClick={() => setInvoiceModalOpen(true)}
+                sx={{ border: `1px solid ${theme.palette.divider}`, p: 0.8 }}
+              >
+                <Receipt size={16} color={theme.palette.primary.main} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
 
           {/* 2. Party Selection Command Bar - Required */}
           <Box
@@ -522,6 +538,11 @@ export default function SalesPosHeaderSection({
           </Box>
         </Collapse>
       </Stack>
+
+      <InvoiceSettingsModal
+        open={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+      />
     </Box>
   );
 }

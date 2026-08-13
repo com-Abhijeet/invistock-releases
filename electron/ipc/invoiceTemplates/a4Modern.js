@@ -13,6 +13,17 @@ const a4Modern = (data) => {
 
   const colSettings = localSettings.columns || {};
   const legalSettings = localSettings.legal || {};
+  const titleSettings = localSettings.titles || {};
+
+  const isQuoteDoc = Boolean(
+    sale.is_quote === true ||
+    sale.is_quote === 1 ||
+    sale.is_quote === "1" ||
+    sale.is_quote === "true"
+  );
+  const docTitle = isQuoteDoc
+    ? (titleSettings.quotationTitle || "ESTIMATE / QUOTATION")
+    : (titleSettings.invoiceTitle || shop.gst_invoice_format || "INVOICE");
 
   const showHsnSac = Boolean(colSettings.showHsnSac ?? true);
   const showDiscountCol = Boolean(colSettings.showDiscountCol ?? false);
@@ -80,9 +91,9 @@ const a4Modern = (data) => {
             ${logoSrc ? `<img src="${logoSrc}" onerror="this.style.display='none'" style="max-height: 60px; max-width: 160px; object-fit: contain;" />` : ""}
           </div>
           <div>
-            <div class="invoice-label">INVOICE</div>
+            <div class="invoice-label" style="font-size: ${docTitle.length > 15 ? '20px' : '36px'}">${docTitle}</div>
             <div style="text-align: right; margin-top: 10px;">
-              <div class="meta-label">Invoice #</div>
+              <div class="meta-label">${isQuoteDoc ? "Quote #" : "Invoice #"}</div>
               <div class="meta-value">${sale.reference_no}</div>
               <div class="meta-label">Date</div>
               <div class="meta-value">${formatDate(sale.created_at)}</div>
@@ -171,7 +182,7 @@ const a4Modern = (data) => {
               </div>
               ` : ""}
               ${
-                shop.generated_upi_qr
+                !isQuoteDoc && shop.generated_upi_qr
                   ? `<div class="qr-code">
                        <img src="${shop.generated_upi_qr}" style="width:85px; height:85px; border:1px solid #eee; padding:2px;" />
                        <div style="font-size:9px; font-weight: bold; color:#6b7280; margin-top:2px;">Pay via UPI</div>
@@ -210,7 +221,7 @@ const a4Modern = (data) => {
                  }
                  
                  ${
-                   isInclusive
+                   !isQuoteDoc && isInclusive
                      ? `<div style="font-size:10px; color:#666; margin-top:2px;">All prices are inclusive of GST</div>`
                      : ""
                  }

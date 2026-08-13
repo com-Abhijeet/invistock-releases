@@ -118,3 +118,56 @@ export const getCustomerLedger = async (
   });
   return response.data;
 };
+
+export interface PendingBillItem {
+  sale_id: number;
+  customer_id: number;
+  customer_name: string;
+  customer_phone: string;
+  customer_city?: string;
+  reference_no: string;
+  bill_date: string;
+  total_amount: number;
+  total_paid_trans: number;
+  total_credit_notes_trans: number;
+  pending_balance: number;
+  bill_age_days: number;
+}
+
+export interface PendingBillsCustomerGroup {
+  customer_id: number;
+  customer_name: string;
+  customer_phone: string;
+  customer_city?: string;
+  total_pending_amount: number;
+  pending_bills_count: number;
+  oldest_bill_age: number;
+  bills: PendingBillItem[];
+}
+
+export interface PendingBillsSummary {
+  totalPendingAmount: number;
+  totalPendingBills: number;
+  totalCustomersCount: number;
+  maxAgeDays: number;
+}
+
+export interface FetchPendingBillsParams {
+  customerId?: number | string;
+  query?: string;
+  minAgeDays?: number;
+}
+
+export async function fetchPendingBillsByCustomer(params?: FetchPendingBillsParams): Promise<{
+  summary: PendingBillsSummary;
+  customers: PendingBillsCustomerGroup[];
+  allBills: PendingBillItem[];
+}> {
+  const response = await api.get(`${BASE_URL}/pending-bills`, { params });
+  return {
+    summary: response.data.summary,
+    customers: response.data.customers,
+    allBills: response.data.allBills,
+  };
+}
+

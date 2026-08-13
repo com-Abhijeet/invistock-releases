@@ -1,4 +1,5 @@
 import * as BatchRepo from "../repositories/batchRepository.mjs";
+import * as AdjustmentRepo from "../repositories/stockAdjustmentRepository.mjs";
 import { generateBatchUid, calculateDaysLeft } from "../utils/batchUtils.mjs";
 import db from "../db/db.mjs";
 
@@ -326,10 +327,317 @@ export function assignUntrackedStock({
       }
     }
 
+    const oldQty =
+      db.prepare("SELECT quantity FROM products WHERE id = ?").get(productId)
+        ?.quantity || 0;
+    AdjustmentRepo.createAdjustmentLog({
+      product_id: productId,
+      category: "Batch Stock Assignment",
+      old_quantity: oldQty,
+      new_quantity: oldQty,
+      adjustment: 0,
+      reason: `Assigned untracked stock to Batch ${batchNumber || "ASSIGNED"} (${quantity} units)`,
+      adjusted_by: "Admin",
+      batch_id: newBatchId,
+      serial_id: null,
+    });
+
     return { batchId: newBatchId, message: "Stock assigned successfully" };
   });
 
   return assignTransaction();
+}
+
+/**
+ * Creates a new batch manually for a product.
+ * Supports adding new inventory (increaseProductStock = true) or assigning untracked stock (false).
+ */
+export function createManualBatch({
+  productId,
+  batchNumber,
+  barcode,
+  expiryDate,
+  mfgDate,
+  mrp,
+  mop,
+  mfwPrice,
+  margin,
+  quantity,
+  location,
+  serials,
+  increaseProductStock = true,
+}) {
+  const transaction = db.transaction(() => {
+    const product = db
+      .prepare("SELECT * FROM products WHERE id = ?")
+      .get(productId);
+    if (!product) throw new Error("Product not found");
+
+    let serialList = [];
+    if (Array.isArray(serials)) {
+      serialList = serials.map((s) => String(s).trim()).filter(Boolean);
+    } else if (typeof serials === "string") {
+      serialList = serials
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    let finalQty = Number(quantity) || 0;
+    if (product.tracking_type === "serial") {
+      if (serialList.length === 0) {
+        throw new Error(
+          "At least one serial number is required for serial-tracked products",
+        );
+      }
+      finalQty = serialList.length;
+
+      // Check duplicate serials in system
+      const checkStmt = db.prepare(
+        "SELECT serial_number FROM product_serials WHERE serial_number = ?",
+      );
+      for (const sn of serialList) {
+        const existing = checkStmt.get(sn);
+        if (existing) {
+          throw new Error(
+            `Serial number "${sn}" already exists in the system`,
+          );
+        }
+      }
+    }
+
+    if (finalQty <= 0) {
+      throw new Error("Quantity must be greater than 0");
+    }
+
+    // Generate batch UID
+    const countStmt = db.prepare(
+      "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?",
+    );
+    const result = countStmt.get(productId);
+    const nextSequence = (result ? result.count : 0) + 1;
+    const batchUid = generateBatchUid(productId, nextSequence);
+
+    const insertBatch = db.prepare(`
+      INSERT INTO product_batches (
+        product_id,
+        purchase_id,
+        batch_uid,
+        batch_number,
+        barcode,
+        expiry_date,
+        mfg_date,
+        mrp,
+        margin,
+        mop,
+        mfw_price,
+        quantity,
+        location,
+        is_active,
+        created_at
+      ) VALUES (
+        @productId,
+        NULL,
+        @batchUid,
+        @batchNumber,
+        @barcode,
+        @expiryDate,
+        @mfgDate,
+        @mrp,
+        @margin,
+        @mop,
+        @mfwPrice,
+        @quantity,
+        @location,
+        1,
+        datetime('now')
+      )
+    `);
+
+    const info = insertBatch.run({
+      productId,
+      batchUid,
+      batchNumber: batchNumber || "MANUAL",
+      barcode: barcode || null,
+      expiryDate: expiryDate || null,
+      mfgDate: mfgDate || null,
+      mrp: mrp || 0,
+      margin: margin || 0,
+      mop: mop || 0,
+      mfwPrice: mfwPrice || mrp || 0,
+      quantity: finalQty,
+      location: location || product.storage_location || "Store",
+    });
+
+    const batchId = info.lastInsertRowid;
+
+    if (product.tracking_type === "serial" && serialList.length > 0) {
+      const insertSerial = db.prepare(`
+        INSERT INTO product_serials (
+          product_id,
+          batch_id,
+          serial_number,
+          status,
+          created_at
+        ) VALUES (
+          @productId,
+          @batchId,
+          @serialNumber,
+          'available',
+          datetime('now')
+        )
+      `);
+
+      for (const sn of serialList) {
+        insertSerial.run({
+          productId,
+          batchId,
+          serialNumber: sn,
+        });
+      }
+    }
+
+    const oldQuantity = product.quantity;
+    const addedQty = increaseProductStock ? finalQty : 0;
+    const newQuantity = oldQuantity + addedQty;
+
+    if (increaseProductStock) {
+      db.prepare(
+        "UPDATE products SET quantity = quantity + ? WHERE id = ?",
+      ).run(finalQty, productId);
+    }
+
+    AdjustmentRepo.createAdjustmentLog({
+      product_id: productId,
+      category: increaseProductStock
+        ? "New Batch Stock"
+        : "Batch Stock Assignment",
+      old_quantity: oldQuantity,
+      new_quantity: newQuantity,
+      adjustment: addedQty,
+      reason: `Manual Batch Entry: ${batchNumber || "MANUAL"}${
+        product.tracking_type === "serial"
+          ? ` (${serialList.length} serials)`
+          : ` (${finalQty} units)`
+      }`,
+      adjusted_by: "Admin",
+      batch_id: batchId,
+      serial_id: null,
+    });
+
+    return { batchId, batchUid, quantity: finalQty };
+  });
+
+  return transaction();
+}
+
+/**
+ * Adds new serial numbers to an existing batch.
+ */
+export function addSerialsToExistingBatch({
+  productId,
+  batchId,
+  serials,
+  increaseProductStock = true,
+}) {
+  const transaction = db.transaction(() => {
+    const product = db
+      .prepare("SELECT * FROM products WHERE id = ?")
+      .get(productId);
+    if (!product) throw new Error("Product not found");
+
+    const batch = db
+      .prepare(
+        "SELECT * FROM product_batches WHERE id = ? AND product_id = ?",
+      )
+      .get(batchId, productId);
+    if (!batch) throw new Error("Batch not found for this product");
+
+    let serialList = [];
+    if (Array.isArray(serials)) {
+      serialList = serials.map((s) => String(s).trim()).filter(Boolean);
+    } else if (typeof serials === "string") {
+      serialList = serials
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    if (serialList.length === 0) {
+      throw new Error("No serial numbers provided");
+    }
+
+    // Check duplicate serials
+    const checkStmt = db.prepare(
+      "SELECT serial_number FROM product_serials WHERE serial_number = ?",
+    );
+    for (const sn of serialList) {
+      const existing = checkStmt.get(sn);
+      if (existing) {
+        throw new Error(
+          `Serial number "${sn}" already exists in the system`,
+        );
+      }
+    }
+
+    const insertSerial = db.prepare(`
+      INSERT INTO product_serials (
+        product_id,
+        batch_id,
+        serial_number,
+        status,
+        created_at
+      ) VALUES (
+        @productId,
+        @batchId,
+        @serialNumber,
+        'available',
+        datetime('now')
+      )
+    `);
+
+    for (const sn of serialList) {
+      insertSerial.run({
+        productId,
+        batchId,
+        serialNumber: sn,
+      });
+    }
+
+    const addedCount = serialList.length;
+
+    // Update batch quantity
+    db.prepare(
+      "UPDATE product_batches SET quantity = quantity + ? WHERE id = ?",
+    ).run(addedCount, batchId);
+
+    // Update product quantity if requested
+    const oldQuantity = product.quantity;
+    const addedQty = increaseProductStock ? addedCount : 0;
+    const newQuantity = oldQuantity + addedQty;
+
+    if (increaseProductStock) {
+      db.prepare(
+        "UPDATE products SET quantity = quantity + ? WHERE id = ?",
+      ).run(addedCount, productId);
+    }
+
+    AdjustmentRepo.createAdjustmentLog({
+      product_id: productId,
+      category: increaseProductStock ? "Serial Addition" : "Serial Assignment",
+      old_quantity: oldQuantity,
+      new_quantity: newQuantity,
+      adjustment: addedQty,
+      reason: `Added ${addedCount} serials to Batch ${batch.batch_number}`,
+      adjusted_by: "Admin",
+      batch_id: batchId,
+      serial_id: null,
+    });
+
+    return { addedCount, newBatchQuantity: batch.quantity + addedCount };
+  });
+
+  return transaction();
 }
 
 export function processSaleItemStockDeduction({ batchId, serialId, quantity }) {

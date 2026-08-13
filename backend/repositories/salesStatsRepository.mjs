@@ -196,8 +196,8 @@ export function getBestSalesDay(filters) {
 
 // 🔹 Sales Table (Paginated with Search - Updated Payment Mode)
 export function getSalesTable({ page = 1, limit = 20, ...filters }) {
-  // 1. Destructure the query from the rest of the filters
-  const { query, ...dateFilters } = filters;
+  // 1. Destructure the query and is_quote from the rest of the filters
+  const { query, is_quote, ...dateFilters } = filters;
 
   // 2. Get the base filter for dates
   const { where: dateWhere, params: dateParams } = getDateFilter({
@@ -208,6 +208,12 @@ export function getSalesTable({ page = 1, limit = 20, ...filters }) {
   // 3. Build the final WHERE clause and parameters dynamically
   const whereClauses = [dateWhere];
   const params = [...dateParams];
+
+  if (is_quote !== undefined && is_quote !== null && is_quote !== "") {
+    const quoteVal = (is_quote === true || is_quote === 1 || is_quote === "1" || is_quote === "true") ? 1 : 0;
+    whereClauses.push(`s.is_quote = ?`);
+    params.push(quoteVal);
+  }
 
   if (query && query.trim() !== "") {
     // Add the search condition if a query is provided

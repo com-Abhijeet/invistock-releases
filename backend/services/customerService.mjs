@@ -213,3 +213,8 @@ export async function getCustomerFinancialsList(params) {
     sortOrder: safeSortOrder,
   });
 }
+
+export async function getPendingBillsByCustomerService(params = {}) {
+  return customerRepository.getPendingBillsByCustomer(params);
+}
+

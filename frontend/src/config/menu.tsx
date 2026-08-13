@@ -68,6 +68,11 @@ export const menuSections = [
         shortcut: "F3",
       },
       {
+        label: "Quotations Register",
+        icon: <FileText size={20} />,
+        path: "/quotations",
+      },
+      {
         label: "Generate Sales Order",
         icon: <Clipboard size={20} />,
         path: "/sales-order",
@@ -223,10 +228,10 @@ export const menuSections = [
     ],
   },
   {
-    title: "Configuration",
+    title: "Settings",
     items: [
       {
-        label: "Features (F11/F12)", // Tally reference
+        label: "Settings (F11/F12)", // Tally reference
         icon: <Settings size={20} />,
         path: "/settings",
         shortcut: "F12",
@@ -254,7 +259,7 @@ export const menuSections = [
       {
         label: "Check Printing",
         icon: <Printer size={20} />,
-        path: "#check-print", // Special path to trigger modal
+        path: "/cheque-printing",
       },
     ],
   },

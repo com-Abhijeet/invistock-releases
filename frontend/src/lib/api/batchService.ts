@@ -104,6 +104,55 @@ export async function assignStockToBatch(payload: AssignStockPayload) {
   }
 }
 
+export interface CreateBatchPayload {
+  productId: number;
+  batchNumber: string;
+  barcode?: string;
+  quantity?: number;
+  expiryDate?: string;
+  mfgDate?: string;
+  mrp?: number;
+  mop?: number;
+  mfwPrice?: number;
+  margin?: number;
+  location?: string;
+  serials?: string[];
+  increaseProductStock?: boolean;
+}
+
+export interface AddSerialsPayload {
+  productId: number;
+  batchId: number;
+  serials: string[];
+  increaseProductStock?: boolean;
+}
+
+export async function createManualBatch(payload: CreateBatchPayload) {
+  try {
+    const response = await api.post("/api/batches/create", payload);
+    if (response.data.status === "success") {
+      return response.data.data;
+    }
+    throw new Error(response.data.error || "Failed to create batch");
+  } catch (error: any) {
+    console.error("Failed to create batch:", error);
+    throw error.response?.data?.error || error.message;
+  }
+}
+
+export async function addSerialsToBatch(payload: AddSerialsPayload) {
+  try {
+    const response = await api.post("/api/batches/add-serials", payload);
+    if (response.data.status === "success") {
+      return response.data.data;
+    }
+    throw new Error(response.data.error || "Failed to add serials");
+  } catch (error: any) {
+    console.error("Failed to add serials:", error);
+    throw error.response?.data?.error || error.message;
+  }
+}
+
 export const getBatchPrintData = async (payload: {
   scope: "product" | "batch" | "serial";
   productId: number;

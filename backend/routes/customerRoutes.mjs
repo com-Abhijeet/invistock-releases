@@ -10,6 +10,11 @@ const customerRoutes = Router();
 // This must be before /:id so "financials" isn't treated as an ID
 customerRoutes.get("/financials", customerController.getCustomersFinancials);
 
+customerRoutes.get(
+  "/pending-bills",
+  customerController.getPendingBillsByCustomerController
+);
+
 // This must also be before /:id
 customerRoutes.get(
   "/overdue-summary",
