@@ -9,11 +9,13 @@ import {
   CardContent,
   Box,
   Stack,
+  MenuItem,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { FormField } from "../FormField";
 import { type ShopSetupForm } from "../../lib/types/shopTypes";
 import LogoPicker from "./LogoPicker";
+import { indianStates } from "../../lib/constants/statesList";
 
 interface Props {
   data: ShopSetupForm;
@@ -253,11 +255,18 @@ export default function ProfileSettingsTab({ data, onChange }: Props) {
                 <Grid item xs={12} sm={6}>
                   <FormField label="State">
                     <TextField
+                      select
                       fullWidth
                       size="small"
                       value={data.state || ""}
                       onChange={(e) => onChange("state", e.target.value)}
-                    />
+                    >
+                      {Array.from(new Set([...(data.state ? [data.state] : []), ...indianStates])).map((s) => (
+                        <MenuItem key={s} value={s}>
+                          {s}
+                        </MenuItem>
+                      ))}
+                    </TextField>
                   </FormField>
                 </Grid>
                 <Grid item xs={12} sm={6}>

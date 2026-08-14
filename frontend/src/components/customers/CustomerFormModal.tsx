@@ -280,7 +280,7 @@ export default function CustomerFormModal({
                 value={form.state}
                 onChange={(e) => handleChange("state", e.target.value)}
               >
-                {indianStates.map((stateName) => (
+                {Array.from(new Set([...(form.state ? [form.state] : []), ...indianStates])).map((stateName) => (
                   <MenuItem key={stateName} value={stateName}>
                     {stateName}
                   </MenuItem>

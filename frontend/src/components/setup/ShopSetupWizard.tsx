@@ -27,6 +27,8 @@ import toast from "react-hot-toast";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
 import { api } from "../../lib/api/api";
 
+import { indianStates } from "../../lib/constants/statesList";
+
 type Props = {
   onSuccess: () => void;
 };
@@ -300,10 +302,17 @@ export default function ShopSetupWizard({ onSuccess }: Props) {
       <Grid item xs={6}>
         <Label text="State" />
         <TextField
+          select
           fullWidth
           value={form.state}
           onChange={(e) => updateForm("state", e.target.value)}
-        />
+        >
+          {Array.from(new Set([...(form.state ? [form.state] : []), ...indianStates])).map((s) => (
+            <MenuItem key={s} value={s}>
+              {s}
+            </MenuItem>
+          ))}
+        </TextField>
       </Grid>
       <Grid item xs={6}>
         <Label text="Pincode" />

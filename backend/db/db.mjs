@@ -765,6 +765,7 @@ export function initializeDatabase(dbPath) {
   safeMigrate(db, "sales_items", "barcode", "TEXT");
   safeMigrate(db, "sales_items", "hsn", "TEXT");
   safeMigrate(db, "sales_items", "return_quantity", "INTEGER");
+  safeMigrate(db, "purchase_items", "return_quantity", "REAL DEFAULT 0");
 
   // 6. EXECUTE NON-GST SCHEMA (Standard Default)
   nonGstDb.exec(`

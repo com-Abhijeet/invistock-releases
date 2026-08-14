@@ -11,6 +11,9 @@ purchaseRoutes.post(
   validateRequest(purchaseSchema),
   purchaseController.createPurchase
 );
+
+// 🔹 POST /purchases/return – Process Purchase Return & Debit Note
+purchaseRoutes.post("/return", purchaseController.processPurchaseReturnController);
 // Get purchases for a specific supplier by ID
 purchaseRoutes.get(
   "/supplier/:id",

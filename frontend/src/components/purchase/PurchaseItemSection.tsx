@@ -558,7 +558,11 @@ const PurchaseItemSection = ({
                         type="number"
                         variant="standard"
                         fullWidth
-                        value={item.quantity}
+                        value={
+                          readOnly && (item.return_quantity || 0) > 0
+                            ? Math.max(0, item.quantity - (item.return_quantity || 0))
+                            : item.quantity
+                        }
                         onKeyDown={(e) => handleCellKeyDown(e, idx, "quantity")}
                         onClick={() => setActiveRowIndex(idx)}
                         onChange={(e) =>
@@ -577,6 +581,15 @@ const PurchaseItemSection = ({
                         sx={inputSx}
                       />
                     </Box>
+                    {readOnly && (item.return_quantity || 0) > 0 && (
+                      <Chip
+                        label={`-${item.return_quantity} Ret (${item.quantity} Orig)`}
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        sx={{ fontSize: "0.65rem", height: 18, mt: 0.5 }}
+                      />
+                    )}
                   </TableCell>
 
                   <TableCell sx={{ p: 1 }}>
@@ -684,11 +697,19 @@ const PurchaseItemSection = ({
 
                   <TableCell align="right" sx={{ pr: 2 }}>
                     <Typography fontWeight={800} color="text.primary">
-                      {item.price.toLocaleString("en-IN", {
+                      {((readOnly && (item.return_quantity || 0) > 0)
+                        ? (item.net_price ?? calculatePrice({ ...item, quantity: item.quantity - (item.return_quantity || 0) }))
+                        : item.price
+                      ).toLocaleString("en-IN", {
                         style: "currency",
                         currency: "INR",
                       })}
                     </Typography>
+                    {readOnly && (item.return_quantity || 0) > 0 && (
+                      <Typography variant="caption" color="text.disabled" sx={{ textDecoration: "line-through", display: "block" }}>
+                        {item.price.toLocaleString("en-IN", { style: "currency", currency: "INR" })}
+                      </Typography>
+                    )}
                   </TableCell>
 
                   <TableCell align="center">

@@ -174,3 +174,32 @@ export async function getPurchasePaymentModeBreakdownController(req, res) {
     res.status(500).json({ status: "error", message: err.message });
   }
 }
+
+/**
+ * Handles Purchase Return / Debit Note request.
+ * POST /api/purchases/return
+ */
+export function processPurchaseReturnController(req, res) {
+  try {
+    const { purchaseId, returnItems, note, customTotalAmount } = req.body;
+
+    const result = purchaseService.processPurchaseReturnService({
+      purchaseId,
+      returnItems,
+      note,
+      customTotalAmount,
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: "Purchase return processed successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("processPurchaseReturnController -", error);
+    res.status(400).json({
+      status: "error",
+      message: error.message,
+    });
+  }
+}

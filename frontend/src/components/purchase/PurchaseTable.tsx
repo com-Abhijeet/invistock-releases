@@ -1,13 +1,12 @@
-"use client";
-
 import { Box, useTheme } from "@mui/material";
-import { Edit, Delete, Eye, Tag, Wallet } from "lucide-react"; // ✅ Import Tag icon
+import { Edit, Delete, Eye, Tag, Wallet, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getAllPurchases } from "../../lib/api/purchaseService";
 import DataTable from "../DataTable";
 import { useNavigate } from "react-router-dom";
 import type { DashboardFilter } from "../../lib/types/inventoryDashboardTypes";
-import BulkLabelPrintModal from "../BulkLabelPrintModal"; // ✅ Import the modal
+import BulkLabelPrintModal from "../BulkLabelPrintModal";
+import PurchaseReturnModal from "./PurchaseReturnModal";
 import { PurchasePayload } from "../../lib/types/purchaseTypes";
 
 interface PurchaseTableProps {
@@ -22,11 +21,15 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
   const [purchases, setPurchases] = useState([]);
   const [total, setTotal] = useState(0);
 
-  // ✅ State for the bulk print modal
+  // State for the bulk print modal
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(
     null,
   );
+
+  // State for Purchase Return / Debit Note modal
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [selectedReturnPurchase, setSelectedReturnPurchase] = useState<any>(null);
 
   const [page, setPage] = useState(0);
   const [limit, setLimit] = useState(10);
@@ -59,7 +62,6 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit, search, status, from, to]);
 
-  // ... (columns definition unchanged) ...
   const columns = [
     { key: "internal_ref_no", label: "Internal Inv No" },
     { key: "reference_no", label: "Reference No" },
@@ -67,8 +69,14 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
     { key: "supplier_name", label: "Supplier" },
     {
       key: "original_total",
-      label: "Total",
-      format: (val: number) => `₹${val?.toLocaleString("en-IN")}`,
+      label: "Net Total",
+      format: (val: number, row?: any) => {
+        const adj = row?.total_adjustments || 0;
+        const net = val + adj;
+        return adj < 0
+          ? `₹${net?.toLocaleString("en-IN")} (Orig: ₹${val?.toLocaleString("en-IN")})`
+          : `₹${val?.toLocaleString("en-IN")}`;
+      },
     },
     {
       key: "original_paid",
@@ -77,7 +85,7 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
     },
     {
       key: "total_adjustments",
-      label: "Adjustments",
+      label: "Return / Adjustments",
       format: (val: number) => `₹${val?.toLocaleString("en-IN")}`,
     },
     { key: "status", label: "Status" },
@@ -98,7 +106,14 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
         navigate(`/purchase/edit/${row.id}`);
       },
     },
-    // ✅ ADDED: Print Labels Action
+    {
+      icon: <RotateCcw size={16} color={theme.palette.warning.main} />,
+      label: "Purchase Return / Debit Note",
+      onClick: (row: any) => {
+        setSelectedReturnPurchase(row);
+        setReturnModalOpen(true);
+      },
+    },
     {
       icon: <Tag size={16} />,
       label: "Print Labels",
@@ -141,7 +156,7 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
         }}
       />
 
-      {/* ✅ Render the Bulk Label Print Modal */}
+      {/* Bulk Label Print Modal */}
       <BulkLabelPrintModal
         open={printModalOpen}
         onClose={() => {
@@ -150,6 +165,23 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
         }}
         purchaseId={selectedPurchaseId}
       />
+
+      {/* Purchase Return / Debit Note Modal */}
+      {selectedReturnPurchase && (
+        <PurchaseReturnModal
+          open={returnModalOpen}
+          onClose={() => {
+            setReturnModalOpen(false);
+            setSelectedReturnPurchase(null);
+          }}
+          onSuccess={() => {
+            setReturnModalOpen(false);
+            setSelectedReturnPurchase(null);
+            fetchData();
+          }}
+          purchase={selectedReturnPurchase}
+        />
+      )}
     </Box>
   );
 }

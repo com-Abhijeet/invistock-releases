@@ -62,7 +62,9 @@ const PurchaseTablePage = () => {
   };
 
   const handleMarkPayment = (purchase: any) => {
-    const pending = (purchase.original_total || 0) - (purchase.original_paid || 0);
+    const netTotal = (purchase.original_total || 0) + (purchase.total_adjustments || 0);
+    const netPaid = purchase.net_paid_amount ?? purchase.original_paid ?? 0;
+    const pending = Math.max(0, netTotal - netPaid);
 
     if (pending <= 0.9) {
       toast("This bill is already fully paid.", { icon: "ℹ️" });
@@ -74,7 +76,7 @@ const PurchaseTablePage = () => {
       entity_type: "supplier",
       entity_id: purchase.supplier_id,
       bill_id: purchase.id,
-      amount: pending > 0 ? pending : 0,
+      amount: parseFloat(pending.toFixed(2)),
       transaction_date: new Date().toISOString().split("T")[0],
       status: "paid",
       payment_mode: "cash",

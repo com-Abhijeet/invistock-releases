@@ -512,7 +512,7 @@ export default function SalesPosHeaderSection({
                         onChange={(e) => f.setter(e.target.value)}
                         sx={inputSx}
                       >
-                        {indianStates.map((s) => (
+                        {Array.from(new Set([...(f.value ? [f.value] : []), ...indianStates])).map((s) => (
                           <MenuItem
                             key={s}
                             value={s}

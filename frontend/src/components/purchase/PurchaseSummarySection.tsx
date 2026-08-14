@@ -394,6 +394,26 @@ const PurchaseSummarySection = ({
                     {paymentSummary.status}
                   </Typography>
                 </Box>
+                {Boolean(paymentSummary.total_debit_notes) && (
+                  <>
+                    <Divider orientation="vertical" flexItem />
+                    <Box>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                      >
+                        Returns / Debit Notes
+                      </Typography>
+                      <Typography variant="body2" fontWeight={700} color="warning.main">
+                        {paymentSummary.total_debit_notes?.toLocaleString("en-IN", {
+                          style: "currency",
+                          currency: "INR",
+                        })}
+                      </Typography>
+                    </Box>
+                  </>
+                )}
                 <Divider orientation="vertical" flexItem />
                 <Box>
                   <Typography
@@ -410,16 +430,17 @@ const PurchaseSummarySection = ({
                     })}
                   </Typography>
                 </Box>
+                <Divider orientation="vertical" flexItem />
                 <Box>
                   <Typography
                     variant="caption"
                     color="text.secondary"
                     display="block"
                   >
-                    Balance
+                    Net Balance
                   </Typography>
                   <Typography
-                    variant="h4"
+                    variant="h6"
                     fontWeight={800}
                     color="secondary.main"
                     sx={{ whiteSpace: "nowrap" }}

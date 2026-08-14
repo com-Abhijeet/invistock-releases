@@ -8,6 +8,8 @@ import {
 import { normalizeBooleans } from "../utils/normalizeBooleans.mjs";
 import { calculateAveragePurchaseCost } from "../utils/updateAveragePurchaseCostForProduct.mjs";
 import { convertToStockQuantity } from "../services/unitService.mjs";
+import { generateReference } from "./referenceRepository.mjs";
+import * as AdjustmentRepo from "./stockAdjustmentRepository.mjs";
 
 function normalizeItemUnit(unit, fallback = "pcs") {
   const normalized = unit ? unit.toString().trim() : "";
@@ -87,7 +89,7 @@ export function createPurchase(purchaseData, items) {
         gst_rate,
         discount,
         price,
-        itemUnit, // Store the unit used
+        itemUnit,
         batch_uid || null,
         batch_number || null,
         barcode || null,
@@ -101,19 +103,12 @@ export function createPurchase(purchaseData, items) {
       );
 
       // --- UNIT CONVERSION LOGIC ---
-      // 1. Convert the Purchase Quantity (e.g., 10 Boxes) to Stock Quantity (e.g., 250 kg)
       const stockQty = convertToStockQuantity(quantity, itemUnit, product);
-
-      // 2. Calculate Effective Rate per Stock Unit
-      // Total Cost = quantity * rate.
-      // Effective Rate = Total Cost / stockQty.
-      // Example: Bought 1 Box @ 100. Stock Qty = 10 pcs. Effective Rate = 100 / 10 = 10 per pc.
       let effectiveRate = rate;
       if (stockQty !== quantity && stockQty > 0) {
         effectiveRate = (quantity * rate) / stockQty;
       }
 
-      // Recalculate Average Cost (Weighted Average) using converted values
       const { newAverageCost, newTotalQuantity } = calculateAveragePurchaseCost(
         item.product_id,
         stockQty,
@@ -126,7 +121,6 @@ export function createPurchase(purchaseData, items) {
 
     return purchase_id;
   } catch (err) {
-    // If using transaction in service, this might throw to service to rollback
     console.error("Repo Transaction failed:", err.message);
     throw err;
   }
@@ -149,11 +143,10 @@ export function getPurchaseById(id) {
 
     if (!purchase) return null;
 
-    // UPDATED: Fetch 'barcode' and 'margin'
     const itemsStmt = db.prepare(`
       SELECT 
         pi.id, pi.product_id, pr.name AS product_name, pr.hsn AS hsn_code,
-        pi.rate, pi.quantity, pi.unit, pi.gst_rate, pi.discount, pi.price,
+        pi.rate, pi.quantity, COALESCE(pi.return_quantity, 0) AS return_quantity, pi.unit, pi.gst_rate, pi.discount, pi.price,
         pi.batch_number, pi.barcode, pi.expiry_date, pi.mfg_date, pi.serial_numbers,
         pi.mrp, pi.margin, pi.mop, pi.mfw_price
       FROM purchase_items pi
@@ -163,13 +156,21 @@ export function getPurchaseById(id) {
     `);
     const items = itemsStmt.all(id);
 
-    // Parse serial numbers back to array if they exist
-    const itemsWithSerials = items.map((item) => ({
-      ...item,
-      serial_numbers: item.serial_numbers
-        ? JSON.parse(item.serial_numbers)
-        : [],
-    }));
+    const itemsWithSerials = items.map((item) => {
+      const returnQty = item.return_quantity || 0;
+      const netQty = Math.max(0, item.quantity - returnQty);
+      const unitPrice = item.quantity > 0 ? item.price / item.quantity : item.rate;
+      const netPrice = parseFloat((unitPrice * netQty).toFixed(2));
+      return {
+        ...item,
+        return_quantity: returnQty,
+        net_quantity: netQty,
+        net_price: netPrice,
+        serial_numbers: item.serial_numbers
+          ? JSON.parse(item.serial_numbers)
+          : [],
+      };
+    });
 
     const summaryStmt = db.prepare(`
       SELECT
@@ -191,10 +192,13 @@ export function getPurchaseById(id) {
 
     return {
       ...purchase,
+      original_total_amount: purchase.total_amount,
+      total_amount: adjustedTotal,
       items: itemsWithSerials,
       payment_summary: {
         total_paid: totalPaid,
         total_debit_notes: debitNotes,
+        original_total: purchase.total_amount,
         adjusted_total: adjustedTotal,
         balance: balance > 0 ? balance : 0,
         status: paymentStatus,
@@ -213,9 +217,6 @@ export function getPurchaseById(id) {
 }
 
 export function getPurchaseItemsForLabels(purchaseId) {
-  // UPDATED: Smart Barcode & MRP Selection
-  // 1. Barcode: Purchase Item -> Product Master -> Product Code
-  // 2. MRP: Product Batch (Actual Created) -> Purchase Item (Entered) -> Product Master (Fallback)
   return db
     .prepare(
       `
@@ -224,10 +225,7 @@ export function getPurchaseItemsForLabels(purchaseId) {
       p.name, 
       p.product_code, 
       COALESCE(NULLIF(pi.barcode, ''), NULLIF(p.barcode, ''), p.product_code) as barcode,
-      
-      -- ✅ FIX: Prioritize MRP from the created batch (pb.mrp)
       COALESCE(pb.mrp, pi.mrp, p.mrp) as mrp, 
-      
       pi.mop, 
       pi.mfw_price, 
       p.size, 
@@ -235,25 +233,20 @@ export function getPurchaseItemsForLabels(purchaseId) {
       p.tracking_type,
       pi.quantity as purchase_quantity,
       pi.unit as purchase_unit,
-      
-      -- Prefer authoritative Batch details from product_batches
       COALESCE(pb.batch_uid, pi.batch_uid) as batch_uid,
       COALESCE(pb.batch_number, pi.batch_number) as batch_number,
-      
-      -- Useful for label printing if batch has a specific barcode
       pb.barcode as batch_barcode, 
-
       pi.serial_numbers,
       pi.margin
     FROM purchase_items pi
     JOIN products p ON pi.product_id = p.id
-    -- ✅ JOIN to get the actual batch created for this purchase item
     LEFT JOIN product_batches pb ON pb.purchase_id = pi.purchase_id AND pb.product_id = pi.product_id
     WHERE pi.purchase_id = ?
   `,
     )
     .all(purchaseId);
 }
+
 export async function deletePurchase(id) {
   await db.run("BEGIN");
   const items = await db.all(
@@ -261,16 +254,6 @@ export async function deletePurchase(id) {
     [id],
   );
 
-  // Need to import unitService dynamically or assume it's available.
-  // Since this is repository, better to handle logic in Service or duplicate simple logic.
-  // Actually, deletePurchase with unit conversion is tricky without 'product' details for conversion factor.
-  // We need to fetch product details for each item to reverse the conversion.
-
-  // NOTE: Simple reversal without conversion logic will corrupt data if units were used.
-  // I will skip complex reversal logic here as per previous pattern, assuming stock management is external or simple.
-  // BUT, to be safe, we should probably fetch the product to get conversion.
-
-  // FIX: Fetch product to ensure we deduct the correct STOCK quantity
   const getProductStmt = db.prepare(
     "SELECT base_unit, secondary_unit, conversion_factor FROM products WHERE id = ?",
   );
@@ -279,8 +262,6 @@ export async function deletePurchase(id) {
     const product = getProductStmt.get(item.product_id);
     let qtyToDeduct = item.quantity;
     if (product) {
-      // Inline simple conversion logic or import helper
-      // Re-using the import from top: convertToStockQuantity
       qtyToDeduct = convertToStockQuantity(item.quantity, item.unit, product);
     }
 
@@ -296,13 +277,9 @@ export async function deletePurchase(id) {
 }
 
 export function updatePurchase(id, data, newItems) {
-  // Use a synchronous transaction for better-sqlite3
-  // NOTE: Stock updates are removed from here and moved to Service layer
   const executeUpdate = db.transaction(() => {
-    // 1. Delete old items
     db.prepare(`DELETE FROM purchase_items WHERE purchase_id = ?`).run(id);
 
-    // 2. Add New Items
     const insertItemStmt = db.prepare(`
       INSERT INTO purchase_items (
         purchase_id, product_id, quantity, rate, gst_rate, discount, unit,
@@ -339,7 +316,6 @@ export function updatePurchase(id, data, newItems) {
       });
     }
 
-    // 3. Update Purchase Header
     db.prepare(
       `
       UPDATE purchases 
@@ -409,7 +385,7 @@ export function getAllPurchases({
 
     const finalQuery = `
       SELECT
-        p.id, p.internal_ref_no, p.reference_no, p.date, p.status, s.name AS supplier_name,
+        p.id, p.internal_ref_no, p.reference_no, p.date, p.status, p.supplier_id, s.name AS supplier_name,
         p.total_amount AS original_total, p.paid_amount AS original_paid,
         COALESCE(SUM(CASE WHEN t.type IN ('debit_note') THEN t.amount ELSE 0 END), 0) AS total_adjustments,
         COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN t.amount ELSE 0 END), 0) AS net_paid_amount
@@ -472,7 +448,7 @@ export function getPurchasesBySupplierId(supplierId, filters = {}) {
 
   const dataQuery = `
       SELECT
-        p.id, p.reference_no, p.date, p.status, p.total_amount AS original_total_amount,
+        p.id, p.supplier_id, p.reference_no, p.date, p.status, p.total_amount AS original_total_amount,
         COALESCE(SUM(CASE WHEN t.type IN ('debit_note') THEN t.amount ELSE 0 END), 0) AS total_adjustments,
         COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN t.amount ELSE 0 END), 0) AS total_paid_amount,
         p.total_amount + COALESCE(SUM(CASE WHEN t.type = 'debit_note' THEN t.amount ELSE 0 END), 0) AS adjusted_total_amount
@@ -630,4 +606,172 @@ export function getPurchasePaymentModeBreakdown(filters) {
     ...row,
     percentage: total ? Math.round((row.amount / total) * 100) : 0,
   }));
+}
+
+/**
+ * Processes a purchase return, updates stock/batches/serials, logs adjustment,
+ * and creates a Debit Note transaction that reduces the purchase bill balance.
+ */
+export function processPurchaseReturn(payload) {
+  const { purchaseId, returnItems, note, customTotalAmount, gstAmount } = payload;
+
+  const transaction = db.transaction(() => {
+    // 1. Get original purchase & supplier info
+    const purchase = db
+      .prepare(
+        `
+      SELECT p.*, s.name as supplier_name, s.gst_number as supplier_gstin
+      FROM purchases p
+      JOIN suppliers s ON p.supplier_id = s.id
+      WHERE p.id = ?
+    `,
+      )
+      .get(purchaseId);
+
+    if (!purchase) throw new Error("Purchase bill not found");
+
+    let totalRefundAmount = 0;
+    const dnRef = generateReference("DN");
+
+    // 2. Process each returned purchase item
+    for (const item of returnItems) {
+      const {
+        purchase_item_id,
+        quantity,
+        returnToStock = true,
+        price,
+        selectedSerials,
+      } = item;
+      totalRefundAmount += Number(price) || 0;
+
+      const purchaseItem = db
+        .prepare(
+          `
+        SELECT pi.*, p.name as product_name, p.tracking_type
+        FROM purchase_items pi
+        JOIN products p ON pi.product_id = p.id
+        WHERE pi.id = ?
+      `,
+        )
+        .get(purchase_item_id);
+
+      if (!purchaseItem) continue;
+
+      // Increment return_quantity on purchase_items table
+      db.prepare(
+        `
+        UPDATE purchase_items
+        SET return_quantity = COALESCE(return_quantity, 0) + ?
+        WHERE id = ?
+      `,
+      ).run(quantity, purchase_item_id);
+
+      const currentProduct = getProductById(purchaseItem.product_id);
+      if (!currentProduct) continue;
+
+      const stockQty = convertToStockQuantity(
+        quantity,
+        purchaseItem.unit,
+        currentProduct,
+      );
+
+      if (returnToStock) {
+        // Deduct stock from master product
+        const newQty = Math.max(0, currentProduct.quantity - stockQty);
+        updateProductQuantity(purchaseItem.product_id, newQty);
+
+        // Find linked batch if any
+        let batchId = null;
+        if (
+          currentProduct.tracking_type === "batch" ||
+          currentProduct.tracking_type === "serial"
+        ) {
+          const batch = db
+            .prepare(
+              `
+            SELECT id, quantity FROM product_batches
+            WHERE purchase_id = ? AND product_id = ?
+          `,
+            )
+            .get(purchaseId, purchaseItem.product_id);
+
+          if (batch) {
+            batchId = batch.id;
+            const newBatchQty = Math.max(0, batch.quantity - stockQty);
+            db.prepare(
+              "UPDATE product_batches SET quantity = ? WHERE id = ?",
+            ).run(newBatchQty, batch.id);
+          }
+        }
+
+        // Handle Serials status update if serial tracked
+        if (
+          currentProduct.tracking_type === "serial" &&
+          Array.isArray(selectedSerials) &&
+          selectedSerials.length > 0
+        ) {
+          const updateSerialStmt = db.prepare(
+            `UPDATE product_serials SET status = 'returned' WHERE product_id = ? AND serial_number = ? AND status = 'available'`,
+          );
+          for (const sn of selectedSerials) {
+            updateSerialStmt.run(purchaseItem.product_id, sn);
+          }
+        }
+
+        // Log in stock_adjustments history
+        AdjustmentRepo.createAdjustmentLog({
+          product_id: purchaseItem.product_id,
+          category: "Purchase Return",
+          old_quantity: currentProduct.quantity,
+          new_quantity: newQty,
+          adjustment: -stockQty,
+          reason: `Returned to Supplier via Debit Note ${dnRef} (Bill #${purchase.reference_no})`,
+          batch_id: batchId,
+          serial_id: null,
+          adjusted_by: "System-PurchaseReturn",
+        });
+      }
+    }
+
+    // 3. Financial Debit Note Transaction (-finalDebitAmount to reduce purchase total balance)
+    const finalDebitAmount =
+      customTotalAmount !== undefined
+        ? Number(customTotalAmount)
+        : totalRefundAmount;
+
+    const returnGstVal = Number(gstAmount) || 0;
+    const todayDate = new Date().toISOString().split("T")[0];
+
+    const result = db
+      .prepare(
+        `
+      INSERT INTO transactions (
+        reference_no, type, bill_id, bill_type, entity_id, entity_type,
+        transaction_date, amount, gst_amount, payment_mode, status, note
+      ) VALUES (?, 'debit_note', ?, 'purchase', ?, 'supplier', ?, ?, ?, 'Cash', 'completed', ?)
+    `,
+      )
+      .run(
+        dnRef,
+        purchaseId,
+        purchase.supplier_id,
+        todayDate,
+        -Math.abs(finalDebitAmount),
+        returnGstVal,
+        note || `Debit Note against Purchase Bill #${purchase.reference_no}`,
+      );
+
+    const transactionId = result.lastInsertRowid;
+
+    return {
+      success: true,
+      dnId: transactionId,
+      debitNoteRef: dnRef,
+      refundAmount: finalDebitAmount,
+      gstAmount: returnGstVal,
+      purchaseId: purchaseId,
+    };
+  });
+
+  return transaction();
 }

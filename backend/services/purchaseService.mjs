@@ -346,3 +346,15 @@ export function getPurchasePaymentModeBreakdownService(query) {
     year,
   });
 }
+
+export function processPurchaseReturnService(payload) {
+  if (
+    !payload.purchaseId ||
+    !payload.returnItems ||
+    !Array.isArray(payload.returnItems) ||
+    payload.returnItems.length === 0
+  ) {
+    throw new Error("Invalid purchase return data: Purchase ID and items are required.");
+  }
+  return purchaseRepository.processPurchaseReturn(payload);
+}

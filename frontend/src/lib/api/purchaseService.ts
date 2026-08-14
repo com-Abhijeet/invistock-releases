@@ -144,3 +144,29 @@ export const fetchPurchaseItemsForLabels = async (
     );
   }
 };
+
+export interface PurchaseReturnPayload {
+  purchaseId: number;
+  returnItems: Array<{
+    purchase_item_id: number | string;
+    product_id: number;
+    quantity: number;
+    returnToStock?: boolean;
+    price: number;
+    selectedSerials?: string[];
+  }>;
+  note?: string;
+  customTotalAmount?: number;
+}
+
+export async function processPurchaseReturn(payload: PurchaseReturnPayload) {
+  try {
+    const response = await api.post(`${BASE_URL}/return`, payload);
+    return response.data;
+  } catch (error: any) {
+    const message =
+      error?.response?.data?.message || "Failed to process purchase return";
+    toast.error(message);
+    throw error;
+  }
+}
