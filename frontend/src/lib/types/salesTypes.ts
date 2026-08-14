@@ -31,6 +31,7 @@ export interface SalePayload {
   id?: number;
   customer_id?: number | null;
   customer_name?: string | null;
+  customer_phone?: string | null;
   bill_address?: string | null;
   state?: string | null;
   pincode?: string | null;
@@ -62,6 +63,8 @@ export interface SalePayload {
     | "draft";
   items: SaleItemPayload[];
   createdAt?: string;
+  created_at?: string;
+  date?: string;
 
   is_quote?: boolean;
   is_ecommerce_sale?: boolean;

@@ -21,17 +21,10 @@ function normalizeItemUnit(unit, fallback = "pcs") {
 export function createSale(saleData, items) {
   try {
     const runTransaction = db.transaction(() => {
-      // Create the sale record with snapshot fields included
-      const saleStmt = db.prepare(`
-        INSERT INTO sales (
-          customer_id, customer_name, bill_address, state, pincode, reference_no, payment_mode, paid_amount, total_amount,
-          note, status, discount, is_reverse_charge, is_ecommerce_sale, is_quote, employee_id, round_off, gstin
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
       const {
         customer_id,
         customer_name,
+        customer_phone,
         bill_address,
         state,
         pincode,
@@ -48,7 +41,36 @@ export function createSale(saleData, items) {
         employee_id,
         round_off,
         gstin,
+        created_at,
+        createdAt,
+        date,
       } = saleData;
+
+      const rawCreatedAt = created_at || createdAt || date;
+      let customCreatedAt = null;
+      if (rawCreatedAt) {
+        const trimmed = rawCreatedAt.toString().trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+          const nowTime = new Date().toTimeString().split(" ")[0];
+          customCreatedAt = `${trimmed} ${nowTime}`;
+        } else {
+          customCreatedAt = trimmed;
+        }
+      }
+
+      const saleStmt = customCreatedAt
+        ? db.prepare(`
+            INSERT INTO sales (
+              customer_id, customer_name, customer_phone, bill_address, state, pincode, reference_no, payment_mode, paid_amount, total_amount,
+              note, status, discount, is_reverse_charge, is_ecommerce_sale, is_quote, employee_id, round_off, gstin, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `)
+        : db.prepare(`
+            INSERT INTO sales (
+              customer_id, customer_name, customer_phone, bill_address, state, pincode, reference_no, payment_mode, paid_amount, total_amount,
+              note, status, discount, is_reverse_charge, is_ecommerce_sale, is_quote, employee_id, round_off, gstin
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
 
       const {
         is_reverse_charge: normalised_is_reverse_charge,
@@ -56,14 +78,14 @@ export function createSale(saleData, items) {
         is_quote: normalised_is_quote,
       } = normalizeBooleans({ is_reverse_charge, is_ecommerce_sale, is_quote });
 
-      const saleResult = saleStmt.run(
+      const saleParams = [
         customer_id,
         customer_name || null,
+        customer_phone || null,
         bill_address || null,
         state || null,
         pincode || null,
         reference_no,
-
         payment_mode,
         paid_amount,
         total_amount,
@@ -76,7 +98,10 @@ export function createSale(saleData, items) {
         employee_id,
         round_off || 0,
         gstin,
-      );
+      ];
+      if (customCreatedAt) saleParams.push(customCreatedAt);
+
+      const saleResult = saleStmt.run(...saleParams);
       const saleId = saleResult.lastInsertRowid;
 
       // Check for items and create them
@@ -267,7 +292,7 @@ export function getSaleWithItemsById(saleId) {
       SELECT
         s.*,
         COALESCE(s.customer_name, c.name) AS customer_name,
-        c.phone AS customer_phone,
+        COALESCE(s.customer_phone, c.phone) AS customer_phone,
         COALESCE(s.bill_address, c.address) AS customer_address,
         c.city as customer_city,
         COALESCE(s.state, c.state) as customer_state,
@@ -396,6 +421,7 @@ export function updateSaleHeader(id, saleData) {
   const {
     customer_id,
     customer_name,
+    customer_phone,
     bill_address,
     state,
     pincode,
@@ -412,7 +438,22 @@ export function updateSaleHeader(id, saleData) {
     is_quote,
     employee_id,
     round_off,
+    created_at,
+    createdAt,
+    date,
   } = saleData;
+
+  const rawCreatedAt = created_at || createdAt || date;
+  let customCreatedAt = null;
+  if (rawCreatedAt) {
+    const trimmed = rawCreatedAt.toString().trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const nowTime = new Date().toTimeString().split(" ")[0];
+      customCreatedAt = `${trimmed} ${nowTime}`;
+    } else {
+      customCreatedAt = trimmed;
+    }
+  }
 
   const {
     is_reverse_charge: normalised_is_reverse_charge,
@@ -420,18 +461,25 @@ export function updateSaleHeader(id, saleData) {
     is_quote: normalised_is_quote,
   } = normalizeBooleans({ is_reverse_charge, is_ecommerce_sale, is_quote });
 
-  const stmt = db.prepare(`
-    UPDATE sales SET 
-      customer_id = ?, customer_name = ?, bill_address = ?, state = ?, pincode = ?, 
-      reference_no = ?, payment_mode = ?, paid_amount = ?, total_amount = ?, note = ?, 
-      status = ?, discount = ?, is_reverse_charge = ?, is_ecommerce_sale = ?, 
-      is_quote = ?, employee_id = ?, round_off = ?, gstin = ?, updated_at = datetime('now', 'localtime')
-    WHERE id = ?
-  `);
+  const queryStr = customCreatedAt
+    ? `UPDATE sales SET 
+        customer_id = ?, customer_name = ?, customer_phone = ?, bill_address = ?, state = ?, pincode = ?, 
+        reference_no = ?, payment_mode = ?, paid_amount = ?, total_amount = ?, note = ?, 
+        status = ?, discount = ?, is_reverse_charge = ?, is_ecommerce_sale = ?, 
+        is_quote = ?, employee_id = ?, round_off = ?, gstin = ?, created_at = ?, updated_at = datetime('now', 'localtime')
+      WHERE id = ?`
+    : `UPDATE sales SET 
+        customer_id = ?, customer_name = ?, customer_phone = ?, bill_address = ?, state = ?, pincode = ?, 
+        reference_no = ?, payment_mode = ?, paid_amount = ?, total_amount = ?, note = ?, 
+        status = ?, discount = ?, is_reverse_charge = ?, is_ecommerce_sale = ?, 
+        is_quote = ?, employee_id = ?, round_off = ?, gstin = ?, updated_at = datetime('now', 'localtime')
+      WHERE id = ?`;
 
-  return stmt.run(
+  const stmt = db.prepare(queryStr);
+  const params = [
     customer_id,
     customer_name || null,
+    customer_phone || null,
     bill_address || null,
     state || null,
     pincode || null,
@@ -448,8 +496,11 @@ export function updateSaleHeader(id, saleData) {
     employee_id || null,
     round_off || 0,
     gstin,
-    id,
-  );
+  ];
+  if (customCreatedAt) params.push(customCreatedAt);
+  params.push(id);
+
+  return stmt.run(...params);
 }
 
 /**

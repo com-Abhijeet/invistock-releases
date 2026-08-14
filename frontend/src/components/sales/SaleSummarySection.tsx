@@ -37,12 +37,10 @@ import {
   X,
   Info,
   SlidersHorizontal,
-  Banknote,
   Receipt,
   Settings,
   SplitSquareHorizontal,
   Clock,
-  FileText,
 } from "lucide-react";
 import InvoiceSettingsModal from "../settings/InvoiceSettingsModal";
 import toast from "react-hot-toast";
@@ -78,24 +76,26 @@ const SaleSummarySection = ({
   const [businessId, setBusinessId] = useState("");
 
   const [configOpen, setConfigOpen] = useState(false);
-  const [configSettings, setConfigSettings] = useState<PosConfigSettings>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("kosh_pos_config");
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch (e) {
-          console.error(e);
+  const [configSettings, setConfigSettings] = useState<PosConfigSettings>(
+    () => {
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("kosh_pos_config");
+        if (stored) {
+          try {
+            return JSON.parse(stored);
+          } catch (e) {
+            console.error(e);
+          }
         }
       }
-    }
-    return {
-      doPrint: true,
-      doWhatsApp: true,
-      paymentTiming: "before_save",
-      doSplit: false,
-    };
-  });
+      return {
+        doPrint: true,
+        doWhatsApp: true,
+        paymentTiming: "before_save",
+        doSplit: false,
+      };
+    },
+  );
 
   const [splitModalOpen, setSplitModalOpen] = useState(false);
   const [savedSaleForSplit, setSavedSaleForSplit] = useState<any>(null);
@@ -308,8 +308,11 @@ const SaleSummarySection = ({
       }
     }
 
+    const finalCustomerPhone =
+      customer?.phone || resolvedCustomer?.phone || sale.customer_phone || "";
+
     if (!finalCustomerId || finalCustomerId === 0) {
-      if (!customer?.name || (!customer?.phone && !resolvedCustomer?.phone)) {
+      if (!customer?.name || !finalCustomerPhone) {
         toast.error("Customer Name and Phone Number are required.");
         return;
       }
@@ -331,15 +334,17 @@ const SaleSummarySection = ({
           ...saleDataWithCustomer,
           customer_id: resolvedCustomer.id,
           customer_name: resolvedCustomer.name || finalCustomerName,
+          customer_phone: finalCustomerPhone,
         };
       } else if (finalCustomerId && finalCustomerId !== 0) {
         saleDataWithCustomer = {
           ...saleDataWithCustomer,
           customer_id: finalCustomerId,
           customer_name: finalCustomerName,
+          customer_phone: finalCustomerPhone,
         };
       } else if (!sale.customer_id || sale.customer_id === 0) {
-        const phoneToUse = resolvedCustomer?.phone || customer?.phone!;
+        const phoneToUse = finalCustomerPhone;
         try {
           const customerRes = await createCustomer({
             name: customer?.name!,
@@ -353,6 +358,7 @@ const SaleSummarySection = ({
           saleDataWithCustomer = {
             ...saleDataWithCustomer,
             customer_id: customerRes.id,
+            customer_phone: phoneToUse,
           };
         } catch (err: any) {
           if (
@@ -374,13 +380,17 @@ const SaleSummarySection = ({
       // Explicitly construct the final payload verifying all fields
       const payload: SalePayload = {
         ...saleDataWithCustomer,
+        customer_phone: finalCustomerPhone,
         is_quote: Boolean(sale.is_quote),
         round_off: Number(sale.round_off) || 0, // Enforce newly added snapshot field
         items: saleDataWithCustomer.items.filter((item) => item.product_id > 0),
       };
 
       // If Quotation or Post-Sale payment mode is enabled: force paid_amount = 0 and status = pending
-      if (sale.is_quote || (configSettings.paymentTiming === "post_save" && mode !== "edit")) {
+      if (
+        sale.is_quote ||
+        (configSettings.paymentTiming === "post_save" && mode !== "edit")
+      ) {
         payload.paid_amount = 0;
         payload.status = "pending";
       }
@@ -412,13 +422,22 @@ const SaleSummarySection = ({
       if (doPrint) handlePrint(printPayload);
 
       // If Post-Sale payment mode is enabled AND not a quote: open post sale modal right after save
-      if (!sale.is_quote && configSettings.paymentTiming === "post_save" && mode !== "edit") {
+      if (
+        !sale.is_quote &&
+        configSettings.paymentTiming === "post_save" &&
+        mode !== "edit"
+      ) {
         setSavedSaleForSplit(savedSale);
         setSplitModalOpen(true);
       }
 
       // --- CLOUD INVOICE / WHATSAPP LOGIC ---
-      if (doWhatsApp && customer?.phone) {
+      const targetPhone =
+        customer?.phone ||
+        savedSale.customer_phone ||
+        sale.customer_phone ||
+        "";
+      if (doWhatsApp && targetPhone && targetPhone !== "0000000000") {
         const shopName = shop?.shop_name || "Our Shop";
         let message = "";
 
@@ -433,7 +452,7 @@ const SaleSummarySection = ({
             invoiceNo: savedSale.reference_no,
             date: savedSale.created_at || new Date().toISOString(),
             customerName: savedSale.customer_name || "Customer",
-            customerPhone: savedSale.customer_phone || "",
+            customerPhone: targetPhone,
             customerAddress: savedSale.customer_address || "",
             customerState: savedSale.customer_state || "",
             customerPincode: savedSale.customer_pincode || "",
@@ -528,7 +547,7 @@ const SaleSummarySection = ({
 
         // 4. Send WhatsApp Text Message
         if (window.electron?.sendWhatsAppMessage) {
-          window.electron.sendWhatsAppMessage(customer.phone, message);
+          window.electron.sendWhatsAppMessage(targetPhone, message);
         }
 
         // 5. Send PDF Invoice via WhatsApp
@@ -537,7 +556,7 @@ const SaleSummarySection = ({
             sale: printPayload,
             shop: shop,
             localSettings: localSettings,
-            customerPhone: customer?.phone,
+            customerPhone: targetPhone,
           })
           .then((res: any) => {
             console.log("RESPONSE FROM PDF", res);
@@ -785,7 +804,16 @@ const SaleSummarySection = ({
                   </Box>
                 </Grid> */}
                 {/* 1. Round Off */}
-                <Grid item xs={sale.is_quote ? 4 : (configSettings.paymentTiming === "post_save" ? 2.5 : 2)}>
+                <Grid
+                  item
+                  xs={
+                    sale.is_quote
+                      ? 4
+                      : configSettings.paymentTiming === "post_save"
+                        ? 2.5
+                        : 2
+                  }
+                >
                   <Typography {...labelStyle}>Round Off</Typography>
                   <Box sx={fieldBoxSx}>
                     <TextField
@@ -808,7 +836,16 @@ const SaleSummarySection = ({
                 </Grid>
 
                 {/* 2. GST Opt (moved right beside Round Off) */}
-                <Grid item xs={sale.is_quote ? 4 : (configSettings.paymentTiming === "post_save" ? 2.5 : 2)}>
+                <Grid
+                  item
+                  xs={
+                    sale.is_quote
+                      ? 4
+                      : configSettings.paymentTiming === "post_save"
+                        ? 2.5
+                        : 2
+                  }
+                >
                   <Typography {...labelStyle}>GST Opt</Typography>
                   <FormControl size="small" fullWidth>
                     <Select
@@ -867,9 +904,17 @@ const SaleSummarySection = ({
                 </Grid>
 
                 {/* 3. Payment Info / Inputs (Disabled for Quotations) */}
-                {sale.is_quote ? null : configSettings.paymentTiming === "post_save" ? (
+                {sale.is_quote ? null : configSettings.paymentTiming ===
+                  "post_save" ? (
                   <Grid item xs={7}>
-                    <Box sx={{ display: "flex", alignItems: "center", height: "100%", pt: 1.5 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        height: "100%",
+                        pt: 1.5,
+                      }}
+                    >
                       <Chip
                         icon={<Clock size={14} />}
                         label="Post-Sale Payment (Modal opens on Save)"
@@ -896,7 +941,9 @@ const SaleSummarySection = ({
                           variant="standard"
                           value={sale.paid_amount ?? ""}
                           onChange={(e) =>
-                            handlePaidAmountChange(parseFloat(e.target.value) || 0)
+                            handlePaidAmountChange(
+                              parseFloat(e.target.value) || 0,
+                            )
                           }
                           sx={{
                             ...inputSx,
@@ -1006,7 +1053,13 @@ const SaleSummarySection = ({
                           setSavedSaleForSplit(sale);
                           setSplitModalOpen(true);
                         }}
-                        sx={{ fontSize: "0.65rem", fontWeight: 800, py: 0.25, px: 1, minWidth: 0 }}
+                        sx={{
+                          fontSize: "0.65rem",
+                          fontWeight: 800,
+                          py: 0.25,
+                          px: 1,
+                          minWidth: 0,
+                        }}
                       >
                         Record Payment
                       </Button>
@@ -1025,7 +1078,12 @@ const SaleSummarySection = ({
           {/* RIGHT: Actions */}
           {!isViewMode && (
             <Grid item xs={12} md={4.3}>
-              <Stack direction="row" spacing={1} alignItems="center" width="100%">
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                width="100%"
+              >
                 <Button
                   onClick={() => setConfigOpen(true)}
                   color="primary"
@@ -1065,10 +1123,24 @@ const SaleSummarySection = ({
                   }}
                 >
                   <Stack direction="row" spacing={0.8} alignItems="baseline">
-                    <Typography variant="body2" sx={{ fontWeight: 900, fontSize: "0.85rem", letterSpacing: 0.5 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: 900,
+                        fontSize: "0.85rem",
+                        letterSpacing: 0.5,
+                      }}
+                    >
                       {isSubmitting ? "..." : "SAVE"}
                     </Typography>
-                    <Typography variant="caption" sx={{ fontSize: "0.68rem", fontWeight: 700, opacity: 0.85 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        opacity: 0.85,
+                      }}
+                    >
                       (Ctrl+S)
                     </Typography>
                   </Stack>
@@ -1201,7 +1273,11 @@ const SaleSummarySection = ({
           onClose={handleSplitModalClose}
           saleId={savedSaleForSplit.id}
           customerId={savedSaleForSplit.customer_id || customer?.id || 0}
-          totalAmount={savedSaleForSplit.payment_summary?.balance || savedSaleForSplit.total_amount || 0}
+          totalAmount={
+            savedSaleForSplit.payment_summary?.balance ||
+            savedSaleForSplit.total_amount ||
+            0
+          }
           referenceNo={savedSaleForSplit.reference_no || ""}
         />
       )}

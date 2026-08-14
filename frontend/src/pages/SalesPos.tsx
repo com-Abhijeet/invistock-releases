@@ -14,6 +14,9 @@ import {
   Typography,
   Chip,
   Tooltip,
+  Switch,
+  FormControlLabel,
+  alpha,
 } from "@mui/material";
 import {
   Save as SaveIcon,
@@ -133,11 +136,62 @@ export default function SalesPos() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
+  const [saleDate, setSaleDate] = useState<string>(
+    () => new Date().toISOString().split("T")[0],
+  );
 
   const [employees, setEmployees] = useState<any[]>([]);
   const [draftsModalOpen, setDraftsModalOpen] = useState(false);
   const [drafts, setDrafts] = useState<SavedDraft[]>([]);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+
+  // State for Auto Walk-in Customer toggle
+  const [useDefaultWalkIn, setUseDefaultWalkIn] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("pos_use_default_walkin");
+      return stored !== null ? stored === "true" : true;
+    }
+    return true;
+  });
+
+  const clearCustomerData = () => {
+    setCustomerId(0);
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerGstNo("");
+    setAddress("");
+    setCity("");
+    setState("");
+    setPincode("");
+
+    setSale((prev) => ({
+      ...prev,
+      customer_id: null,
+      customer_name: "",
+      bill_address: "",
+      state: "",
+      pincode: "",
+      customer_gst_no: "",
+      gstin: "",
+    }));
+  };
+
+  const handleToggleWalkIn = (enabled: boolean) => {
+    setUseDefaultWalkIn(enabled);
+    localStorage.setItem("pos_use_default_walkin", String(enabled));
+
+    if (enabled) {
+      if (walkInCustomer) {
+        setWalkInCustomerData(walkInCustomer);
+      } else {
+        fetchAndSetWalkIn();
+      }
+      toast.success("Default Walk-in customer enabled");
+    } else {
+      clearCustomerData();
+      toast("Default Walk-in customer disabled");
+    }
+  };
 
   useEffect(() => {
     const isDirty = sale.items.length > 0;
@@ -211,15 +265,20 @@ export default function SalesPos() {
 
   const resetForm = () => {
     setSale(defaultSalePayload);
+    setSaleDate(new Date().toISOString().split("T")[0]);
     setQuery("");
     setOptions([]);
     setMode("new");
     setSalesOrderId(null);
 
-    if (walkInCustomer) {
-      setWalkInCustomerData(walkInCustomer);
+    if (useDefaultWalkIn) {
+      if (walkInCustomer) {
+        setWalkInCustomerData(walkInCustomer);
+      } else {
+        fetchAndSetWalkIn();
+      }
     } else {
-      fetchAndSetWalkIn();
+      clearCustomerData();
     }
 
     if (id) navigate("/billing");
@@ -342,7 +401,11 @@ export default function SalesPos() {
       } else {
         setMode("new");
         if (sale.id) resetForm();
-        fetchAndSetWalkIn();
+        if (useDefaultWalkIn) {
+          fetchAndSetWalkIn();
+        } else {
+          clearCustomerData();
+        }
       }
     };
     init();
@@ -442,11 +505,20 @@ export default function SalesPos() {
       ...prev,
       customer_id: id,
       customer_name: customer.name || "",
+      customer_phone: customer.phone || "",
       bill_address: customer.address || "",
       state: customer.state || "",
       pincode: customer.pincode || "",
       customer_gst_no: customer.gst_no || "",
       gstin: customer.gst_no || "",
+    }));
+  };
+
+  const handleCustomerPhoneChange = (newPhone: string) => {
+    setCustomerPhone(newPhone);
+    setSale((prev: any) => ({
+      ...prev,
+      customer_phone: newPhone,
     }));
   };
 
@@ -545,7 +617,7 @@ export default function SalesPos() {
       <Box
         sx={{
           display: "flex",
-          justifyContent: "flex-end",
+          justifyContent: "space-between",
           alignItems: "center",
           m: 0,
           p: 0,
@@ -554,44 +626,160 @@ export default function SalesPos() {
           zIndex: 10,
         }}
       >
-        {mode === "new" && (
-          <>
-            <Button
-              variant="text"
-              color="primary"
-              onClick={saveDraft}
-              startIcon={<SaveIcon sx={{ fontSize: "0.9rem !important" }} />}
+        <Box display="flex" alignItems="center">
+          {mode === "new" && (
+            <>
+              <Button
+                variant="text"
+                color="primary"
+                onClick={saveDraft}
+                startIcon={<SaveIcon sx={{ fontSize: "0.9rem !important" }} />}
+                sx={{
+                  fontSize: "0.65rem",
+                  textTransform: "none",
+                  py: 0.5,
+                  px: 1.5,
+                  minWidth: "auto",
+                  borderRadius: 0,
+                  borderRight: `1px solid ${theme.palette.divider}`,
+                }}
+              >
+                Save Draft
+              </Button>
+              <Button
+                variant="text"
+                color="primary"
+                onClick={() => setDraftsModalOpen(true)}
+                startIcon={<FolderIcon sx={{ fontSize: "0.9rem !important" }} />}
+                sx={{
+                  fontSize: "0.65rem",
+                  textTransform: "none",
+                  py: 0.5,
+                  px: 1.5,
+                  minWidth: "auto",
+                  borderRadius: 0,
+                  borderRight: `1px solid ${theme.palette.divider}`,
+                }}
+              >
+                View Drafts
+              </Button>
+            </>
+          )}
+
+          {/* Auto Walk-in Customer Toggle */}
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={useDefaultWalkIn}
+                onChange={(e) => handleToggleWalkIn(e.target.checked)}
+                color="primary"
+                sx={{
+                  scale: "0.85",
+                  mr: -0.5,
+                }}
+              />
+            }
+            label={
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  userSelect: "none",
+                  color: useDefaultWalkIn
+                    ? theme.palette.primary.main
+                    : theme.palette.text.secondary,
+                }}
+              >
+                Auto Walk-in Customer
+              </Typography>
+            }
+            sx={{
+              ml: 1.5,
+              mr: 0.5,
+              my: 0.25,
+              px: 1,
+              py: 0.1,
+              borderRadius: 1,
+              bgcolor: useDefaultWalkIn
+                ? alpha(theme.palette.primary.main, 0.08)
+                : "action.hover",
+              border: `1px solid ${
+                useDefaultWalkIn
+                  ? alpha(theme.palette.primary.main, 0.25)
+                  : theme.palette.divider
+              }`,
+            }}
+          />
+
+          {/* Document Type Toggle: INVOICE <Switch> QUOTATION */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              ml: 0.5,
+              my: 0.25,
+              px: 1,
+              py: 0.1,
+              borderRadius: 1,
+              bgcolor: sale.is_quote
+                ? alpha(theme.palette.secondary.main, 0.08)
+                : alpha(theme.palette.primary.main, 0.08),
+              border: `1px solid ${
+                sale.is_quote
+                  ? alpha(theme.palette.secondary.main, 0.25)
+                  : alpha(theme.palette.primary.main, 0.25)
+              }`,
+            }}
+          >
+            <Typography
+              variant="caption"
               sx={{
-                fontSize: "0.65rem",
-                textTransform: "none",
-                py: 0.5,
-                px: 1.5,
-                minWidth: "auto",
-                borderRadius: 0,
-                borderRight: `1px solid ${theme.palette.divider}`,
+                fontSize: "0.7rem",
+                fontWeight: !sale.is_quote ? 800 : 500,
+                color: !sale.is_quote ? "primary.main" : "text.secondary",
+                userSelect: "none",
+                cursor: mode === "view" ? "default" : "pointer",
+              }}
+              onClick={() => {
+                if (mode !== "view") handleFieldChange("is_quote", false);
               }}
             >
-              Save Draft
-            </Button>
-            <Button
-              variant="text"
-              color="primary"
-              onClick={() => setDraftsModalOpen(true)}
-              startIcon={<FolderIcon sx={{ fontSize: "0.9rem !important" }} />}
+              INVOICE
+            </Typography>
+
+            <Switch
+              size="small"
+              checked={sale.is_quote || false}
+              onChange={(e) => handleFieldChange("is_quote", e.target.checked)}
+              disabled={mode === "view"}
+              color="secondary"
               sx={{
-                fontSize: "0.65rem",
-                textTransform: "none",
-                py: 0.5,
-                px: 1.5,
-                minWidth: "auto",
-                borderRadius: 0,
-                borderRight: `1px solid ${theme.palette.divider}`,
+                scale: "0.85",
+                mx: -0.5,
+              }}
+            />
+
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: "0.7rem",
+                fontWeight: sale.is_quote ? 800 : 500,
+                color: sale.is_quote ? "secondary.main" : "text.secondary",
+                userSelect: "none",
+                cursor: mode === "view" ? "default" : "pointer",
+              }}
+              onClick={() => {
+                if (mode !== "view") handleFieldChange("is_quote", true);
               }}
             >
-              View Drafts
-            </Button>
-          </>
-        )}
+              QUOTATION
+            </Typography>
+          </Box>
+        </Box>
+
         <Button
           variant="text"
           color="info"
@@ -626,11 +814,13 @@ export default function SalesPos() {
           city={city}
           state={state}
           pincode={pincode}
+          saleDate={saleDate}
+          setSaleDate={setSaleDate}
           setCustomerName={handleCustomerNameChange} // Wrapped to sync payload
           setQuery={setQuery}
           setCustomerId={setCustomerId}
           handleSelect={handleSelect}
-          setSelectedPhone={setCustomerPhone}
+          setSelectedPhone={handleCustomerPhoneChange}
           setCustomerGstNo={handleGstChange} // Wrapped to sync payload
           setAddress={handleAddressChange} // Wrapped to sync payload
           setCity={setCity}

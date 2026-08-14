@@ -74,10 +74,12 @@ export function createSaleWithItems(saleData) {
     }
 
     // 2. Create Sale Header
+    const customDate = saleData.created_at || saleData.createdAt || saleData.date || null;
     const saleId = createSale(
       {
         customer_id: customer_id || null,
         customer_name,
+        customer_phone: saleData.customer_phone || null,
         bill_address,
         state,
         pincode,
@@ -94,6 +96,7 @@ export function createSaleWithItems(saleData) {
         is_quote,
         employee_id: employee_id || null,
         round_off: round_off || 0,
+        created_at: customDate,
       },
       items,
     );
@@ -102,40 +105,36 @@ export function createSaleWithItems(saleData) {
       throw new Error("Failed to create sale record.");
     }
 
+    // 3. Process Stock Deductions & Batches
     let totalGstAmount = 0;
+    for (const item of items) {
+      const product = getProductById(item.product_id);
+      if (!product) throw new Error(`Product ${item.product_id} not found.`);
 
-    // 3. Process Items (Stock Deduction)
-    items.forEach((item) => {
-      if (!is_quote) {
-        const product = getProductById(item.product_id);
-        if (!product)
-          throw new Error(`Product not found (ID: ${item.product_id})`);
+      const deductionQty = convertToStockQuantity(
+        item.quantity,
+        item.unit,
+        product,
+      );
+      updateProductQuantity(item.product_id, product.quantity - deductionQty);
 
-        // --- UNIT CONVERSION ---
-        const deductionQty = convertToStockQuantity(
-          item.quantity,
-          item.unit,
-          product,
-        );
-
-        // Deduct Stock
-        updateProductQuantity(item.product_id, product.quantity - deductionQty);
-
-        if (item.batch_id || item.serial_id) {
-          batchService.processSaleItemStockDeduction({
-            batchId: item.batch_id,
-            serialId: item.serial_id,
-            quantity: deductionQty,
-          });
-        }
+      if (item.batch_id || item.serial_id) {
+        batchService.processSaleItemStockDeduction({
+          batchId: item.batch_id,
+          serialId: item.serial_id,
+          quantity: deductionQty,
+        });
       }
 
-      const baseValue = item.rate * item.quantity;
-      const discountAmount = (baseValue * (item.discount || 0)) / 100;
-      const taxableValue = baseValue - discountAmount;
-      const itemGst = (taxableValue * (item.gst_rate || 0)) / 100;
-      totalGstAmount += itemGst;
-    });
+      if (item.gst_rate) {
+        const itemRate = parseFloat(item.rate || 0);
+        const itemQty = parseFloat(item.quantity || 0);
+        const itemDiscount = parseFloat(item.discount || 0);
+        const lineSubtotal = itemRate * itemQty - itemDiscount;
+        const lineGst = (lineSubtotal * parseFloat(item.gst_rate)) / 100;
+        totalGstAmount += lineGst;
+      }
+    }
 
     // 4. Record Employee Commission
     if (employee_id && !is_quote) {
@@ -150,7 +149,7 @@ export function createSaleWithItems(saleData) {
         bill_type: "sale",
         entity_id: customer_id,
         entity_type: "customer",
-        transaction_date: new Date().toISOString().slice(0, 10),
+        transaction_date: customDate ? customDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
         amount: paid_amount,
         payment_mode,
         status: "completed",
