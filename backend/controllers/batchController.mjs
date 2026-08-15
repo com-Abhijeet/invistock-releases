@@ -296,3 +296,23 @@ export function bulkUntrackProducts(req, res) {
     res.status(500).json({ status: "error", error: error.message });
   }
 }
+
+/**
+ * PUT /api/batches/:id
+ * Updates batch details and logs stock adjustment if quantity changes.
+ */
+export function updateBatch(req, res) {
+  try {
+    const { id } = req.params;
+    const data = req.body;
+    if (!id) {
+      return res.status(400).json({ status: "error", error: "Batch ID is required" });
+    }
+
+    const result = BatchService.updateBatchService(Number(id), data);
+    res.json({ status: "success", data: result });
+  } catch (error) {
+    console.error("updateBatch -", error);
+    res.status(400).json({ status: "error", error: error.message });
+  }
+}

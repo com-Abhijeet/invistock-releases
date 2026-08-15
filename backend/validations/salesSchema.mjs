@@ -52,6 +52,7 @@ export const saleSchema = z.object({
   id: z.string().optional(),
   customer_id: z.number().int().optional().nullable(),
   customer_name: z.string().optional().nullable(),
+  customer_phone: z.string().optional().nullable(),
   bill_address: z.string().optional().nullable(),
   state: z.string().optional().nullable(),
   pincode: z.string().optional().nullable(),

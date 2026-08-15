@@ -122,7 +122,11 @@ export default function AddEditTransactionModal({
   initialData = defaultForm,
   disableTypeSelection = false,
 }: AddEditTransactionModalProps) {
-  const [form, setForm] = useState<Partial<Transaction>>(initialData || {});
+  const [form, setForm] = useState<Partial<Transaction>>({
+    ...defaultForm,
+    ...(initialData || {}),
+    payment_mode: initialData?.payment_mode || "cash",
+  });
   const [loading, setLoading] = useState(false);
 
   const [entityOptions, setEntityOptions] = useState<
@@ -141,11 +145,19 @@ export default function AddEditTransactionModal({
 
   const isEditMode = !!initialData?.id;
 
-  // Sync initial data
+  // Sync initial data and reset transient state on modal open
   useEffect(() => {
     if (!open) return;
-    setForm(initialData || defaultForm);
+    setForm({
+      ...defaultForm,
+      ...(initialData || {}),
+      payment_mode: initialData?.payment_mode || "cash",
+    });
     setSelectedBillDetails(null);
+    setLastSavedTransaction(null);
+    setIsCheckModalOpen(false);
+    setLoading(false);
+    setEntityQuery("");
   }, [open, initialData]);
 
   // Fetch Specific Entity on Mount
@@ -433,15 +445,19 @@ export default function AddEditTransactionModal({
     }
 
     setLoading(true);
+    const submitPayload = {
+      ...form,
+      payment_mode: form.payment_mode || "cash",
+    };
     try {
       if (isEditMode) {
         if (!initialData?.id) throw new Error("Transaction ID is missing.");
-        await updateTransaction(initialData.id, form);
+        await updateTransaction(initialData.id, submitPayload);
         toast.success("Transaction updated successfully!");
         onSuccess();
         onClose();
       } else {
-        const res = await createTransaction(form);
+        const res = await createTransaction(submitPayload);
         setLastSavedTransaction(res);
         toast.success("Transaction recorded successfully!");
         // We don't close immediately if it's a payment out, giving user a chance to print check
@@ -815,7 +831,14 @@ export default function AddEditTransactionModal({
             Print Cheque
           </Button>
         )}
-        <Button onClick={onClose} color="inherit" disabled={loading}>
+        <Button
+          onClick={() => {
+            setLastSavedTransaction(null);
+            onClose();
+          }}
+          color="inherit"
+          disabled={loading}
+        >
           {lastSavedTransaction ? "Close" : "Cancel"}
         </Button>
         {!lastSavedTransaction && (

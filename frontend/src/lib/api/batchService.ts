@@ -236,3 +236,8 @@ export const checkBarcodeExists = async (code: string): Promise<boolean> => {
     return false;
   }
 };
+
+export const updateBatch = async (batchId: number, payload: any): Promise<any> => {
+  const res = await api.put(`/api/batches/${batchId}`, payload);
+  return res.data || res;
+};

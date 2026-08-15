@@ -64,7 +64,6 @@ export interface SalePayload {
   items: SaleItemPayload[];
   createdAt?: string;
   created_at?: string;
-  date?: string;
 
   is_quote?: boolean;
   is_ecommerce_sale?: boolean;

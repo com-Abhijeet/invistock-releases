@@ -1110,3 +1110,62 @@ export function bulkUntrackProducts(productIds) {
 
   return transaction(productIds);
 }
+
+/**
+ * Updates full batch details, serial numbers, and logs stock adjustments if quantity changes.
+ */
+export function updateBatchService(batchId, payload) {
+  const transaction = db.transaction(() => {
+    const batch = BatchRepo.getBatchById(batchId);
+    if (!batch) {
+      throw new Error(`Batch with ID ${batchId} not found`);
+    }
+
+    const oldQuantity = Number(batch.quantity) || 0;
+    let newQuantity = payload.quantity !== undefined ? Number(payload.quantity) : oldQuantity;
+
+    // Handle serials list if provided
+    if (payload.serials && Array.isArray(payload.serials)) {
+      BatchRepo.syncBatchSerials(batchId, batch.product_id, payload.serials);
+      newQuantity = payload.serials.length;
+    }
+
+    const diff = newQuantity - oldQuantity;
+
+    // If quantity changed, adjust master stock & log in stock_adjustments
+    if (diff !== 0) {
+      // 1. Update master product stock count
+      db.prepare("UPDATE products SET quantity = quantity + ? WHERE id = ?").run(diff, batch.product_id);
+
+      // 2. Log in stock_adjustments history
+      AdjustmentRepo.createAdjustmentLog({
+        product_id: batch.product_id,
+        category: diff > 0 ? "addition" : "subtraction",
+        old_quantity: oldQuantity,
+        new_quantity: newQuantity,
+        adjustment: diff,
+        reason:
+          payload.reason ||
+          `Batch ${payload.batchNumber || batch.batch_number} quantity updated (${oldQuantity} -> ${newQuantity})`,
+        adjusted_by: payload.adjustedBy || payload.adjusted_by || "Admin",
+        batch_id: batchId,
+        serial_id: null,
+      });
+    }
+
+    // 3. Update product_batches record
+    BatchRepo.updateBatchDetails(batchId, {
+      ...payload,
+      quantity: newQuantity,
+    });
+
+    return {
+      batchId,
+      oldQuantity,
+      newQuantity,
+      adjustment: diff,
+    };
+  });
+
+  return transaction();
+}

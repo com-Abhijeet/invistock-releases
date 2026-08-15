@@ -62,11 +62,11 @@ export default function OverduePaymentsNotification() {
 
   const handleClose = () => setAnchorEl(null);
   const handleItemClick = (id: number) => {
-    navigate(`/customer/${id}`);
+    navigate(`/customers/pending-bills?customerId=${id}`);
     handleClose();
   };
   const handleViewAll = () => {
-    navigate("/customers/accounts");
+    navigate("/customers/pending-bills");
     handleClose();
   };
 
@@ -290,7 +290,7 @@ export default function OverduePaymentsNotification() {
                 "&:hover": { bgcolor: alpha(theme.palette.error.main, 0.04) },
               }}
             >
-              Review All Customer Ledgers
+              Review Pending Bills by Customer
             </Button>
           </Box>
         )}

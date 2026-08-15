@@ -40,6 +40,7 @@ import {
   Barcode,
   Factory,
   ShieldAlert,
+  Edit,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -89,6 +90,7 @@ export default function ProductBatchesPage() {
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [createBatchModalOpen, setCreateBatchModalOpen] = useState(false);
+  const [editingBatch, setEditingBatch] = useState<BatchGroup | null>(null);
   const [addSerialsModal, setAddSerialsModal] = useState<{
     open: boolean;
     batchId: number;
@@ -274,7 +276,10 @@ export default function ProductBatchesPage() {
                 variant="contained"
                 color="primary"
                 startIcon={<Plus size={18} />}
-                onClick={() => setCreateBatchModalOpen(true)}
+                onClick={() => {
+                  setEditingBatch(null);
+                  setCreateBatchModalOpen(true);
+                }}
                 sx={{ borderRadius: "12px", textTransform: "none", fontWeight: 600 }}
               >
                 Manual Stock Entry
@@ -671,6 +676,25 @@ export default function ProductBatchesPage() {
                           Add Serials
                         </Button>
                       )}
+                      <Tooltip title="Edit Batch Details & Stock">
+                        <IconButton
+                          size="small"
+                          sx={{
+                            color: "primary.main",
+                            bgcolor: "action.hover",
+                            "&:hover": {
+                              bgcolor: "primary.main",
+                              color: "#fff",
+                            },
+                          }}
+                          onClick={() => {
+                            setEditingBatch(batch);
+                            setCreateBatchModalOpen(true);
+                          }}
+                        >
+                          <Edit size={18} />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Print Labels for this Batch">
                         <IconButton
                           size="small"
@@ -795,9 +819,13 @@ export default function ProductBatchesPage() {
         <>
           <CreateBatchModal
             open={createBatchModalOpen}
-            onClose={() => setCreateBatchModalOpen(false)}
+            onClose={() => {
+              setCreateBatchModalOpen(false);
+              setEditingBatch(null);
+            }}
             product={product}
             untrackedQuantity={untrackedQuantity}
+            initialBatch={editingBatch}
             onSuccess={loadData}
           />
           <AddSerialsModal

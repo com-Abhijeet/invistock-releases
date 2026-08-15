@@ -136,9 +136,6 @@ export default function SalesPos() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
-  const [saleDate, setSaleDate] = useState<string>(
-    () => new Date().toISOString().split("T")[0],
-  );
 
   const [employees, setEmployees] = useState<any[]>([]);
   const [draftsModalOpen, setDraftsModalOpen] = useState(false);
@@ -225,6 +222,7 @@ export default function SalesPos() {
       ...prev,
       customer_id: walkIn.id,
       customer_name: walkIn.name || "Walk-in Customer",
+      customer_phone: walkIn.phone || "0000000000",
       bill_address: walkIn.address || "",
       state: walkIn.state || "",
       pincode: walkIn.pincode || "",
@@ -265,7 +263,6 @@ export default function SalesPos() {
 
   const resetForm = () => {
     setSale(defaultSalePayload);
-    setSaleDate(new Date().toISOString().split("T")[0]);
     setQuery("");
     setOptions([]);
     setMode("new");
@@ -814,8 +811,6 @@ export default function SalesPos() {
           city={city}
           state={state}
           pincode={pincode}
-          saleDate={saleDate}
-          setSaleDate={setSaleDate}
           setCustomerName={handleCustomerNameChange} // Wrapped to sync payload
           setQuery={setQuery}
           setCustomerId={setCustomerId}

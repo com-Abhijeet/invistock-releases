@@ -53,6 +53,74 @@ export function updateBatchQuantity(batchId, quantityChange) {
 }
 
 /**
+ * Updates full details of a specific batch.
+ */
+export function updateBatchDetails(batchId, data) {
+  const stmt = db.prepare(`
+    UPDATE product_batches 
+    SET 
+      batch_number = COALESCE(@batchNumber, batch_number),
+      barcode = @barcode,
+      expiry_date = @expiryDate,
+      mfg_date = @mfgDate,
+      mrp = COALESCE(@mrp, mrp),
+      margin = COALESCE(@margin, margin),
+      mop = COALESCE(@mop, mop),
+      mfw_price = COALESCE(@mfwPrice, mfw_price),
+      quantity = @quantity,
+      location = @location,
+      is_active = COALESCE(@isActive, is_active),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = @batchId
+  `);
+  stmt.run({
+    batchId,
+    batchNumber: data.batchNumber || null,
+    barcode: data.barcode || null,
+    expiryDate: data.expiryDate || null,
+    mfgDate: data.mfgDate || null,
+    mrp: data.mrp !== undefined && data.mrp !== null ? data.mrp : null,
+    margin: data.margin !== undefined && data.margin !== null ? data.margin : null,
+    mop: data.mop !== undefined && data.mop !== null ? data.mop : null,
+    mfwPrice: data.mfwPrice !== undefined && data.mfwPrice !== null ? data.mfwPrice : null,
+    quantity: data.quantity ?? 0,
+    location: data.location || "Store",
+    isActive: data.isActive !== undefined ? (data.isActive ? 1 : 0) : null,
+  });
+}
+
+/**
+ * Syncs serial numbers for a batch (inserts new ones, removes deleted available ones).
+ */
+export function syncBatchSerials(batchId, productId, newSerialList = []) {
+  const existingSerials = db
+    .prepare("SELECT * FROM product_serials WHERE batch_id = ?")
+    .all(batchId);
+
+  const existingMap = new Map(existingSerials.map((s) => [s.serial_number, s]));
+  const newSet = new Set(newSerialList.map((s) => String(s).trim()).filter(Boolean));
+
+  // 1. Remove serials no longer in the list (only if currently 'available')
+  for (const existing of existingSerials) {
+    if (!newSet.has(existing.serial_number) && existing.status === "available") {
+      db.prepare("DELETE FROM product_serials WHERE id = ?").run(existing.id);
+    }
+  }
+
+  // 2. Insert new serials
+  const insertSerial = db.prepare(`
+    INSERT INTO product_serials (product_id, batch_id, serial_number, status)
+    VALUES (?, ?, ?, 'available')
+  `);
+
+  for (const sn of newSet) {
+    if (!existingMap.has(sn)) {
+      insertSerial.run(productId, batchId, sn);
+    }
+  }
+}
+
+/**
  * Updates the status of a specific serial number.
  * @param {number} serialId
  * @param {string} status - 'sold', 'available', 'returned', 'defective'

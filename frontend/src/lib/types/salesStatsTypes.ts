@@ -72,6 +72,7 @@ export interface SalesTable {
   id: number;
   customer_id?: number;
   customer: string;
+  customer_phone?: string;
   total: number;
   paid_amount: number;
   payment_mode: string;

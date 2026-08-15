@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   MessageCircle,
   Megaphone,
+  BookAlert,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -267,6 +268,12 @@ export default function CustomerAccountsPage() {
 
   const actions = [
     {
+      label: "View Pending Bills",
+      icon: <BookAlert size={16} color="#d32f2f" />,
+      onClick: (row: CustomerFinancialRow) =>
+        navigate(`/customers/pending-bills?customerId=${row.id}`),
+    },
+    {
       label: "Send Reminder",
       icon: <MessageCircle size={16} color="green" />,
       onClick: (row: CustomerFinancialRow) => handleSingleMessage(row),
@@ -297,27 +304,42 @@ export default function CustomerAccountsPage() {
         onRefresh={fetchData}
         initialFilter="today" // Not used but required by prop type
         actions={
-          <Button
-            variant="contained"
-            color="success"
-            startIcon={<Megaphone size={18} />}
-            onClick={handleBulkMessage}
-            disabled={customers.length === 0 || isSending}
-            sx={{
-              borderRadius: "12px",
-              fontWeight: 600,
-              textTransform: "none",
-              boxShadow: "none",
-              bgcolor: "#2e7d32",
-              "&:hover": { bgcolor: "#1b5e20" },
-            }}
-          >
-            {isSending
-              ? "Sending..."
-              : `Send Reminders (${
-                  customers.filter((c) => c.total_overdue > 0).length
-                })`}
-          </Button>
+          <Stack direction="row" spacing={1.5}>
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<BookAlert size={18} />}
+              onClick={() => navigate("/customers/pending-bills")}
+              sx={{
+                borderRadius: "12px",
+                fontWeight: 700,
+                textTransform: "none",
+              }}
+            >
+              Pending Bills by Customer
+            </Button>
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<Megaphone size={18} />}
+              onClick={handleBulkMessage}
+              disabled={customers.length === 0 || isSending}
+              sx={{
+                borderRadius: "12px",
+                fontWeight: 600,
+                textTransform: "none",
+                boxShadow: "none",
+                bgcolor: "#2e7d32",
+                "&:hover": { bgcolor: "#1b5e20" },
+              }}
+            >
+              {isSending
+                ? "Sending..."
+                : `Send Reminders (${
+                    customers.filter((c) => c.total_overdue > 0).length
+                  })`}
+            </Button>
+          </Stack>
         }
       />
 

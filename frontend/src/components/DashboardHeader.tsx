@@ -322,7 +322,15 @@ export default function DashboardHeader({
               }}
             >
               <IconButton
-                onClick={() => setIsSearchExpanded(!isSearchExpanded)}
+                onClick={() => {
+                  if (isSearchExpanded) {
+                    setSearchQuery("");
+                    if (onSearch) onSearch("");
+                    setIsSearchExpanded(false);
+                  } else {
+                    setIsSearchExpanded(true);
+                  }
+                }}
                 sx={{ width: 44, height: 44 }}
               >
                 {isSearchExpanded ? <X size={18} /> : <Search size={18} />}

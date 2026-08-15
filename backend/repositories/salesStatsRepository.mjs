@@ -216,10 +216,10 @@ export function getSalesTable({ page = 1, limit = 20, ...filters }) {
   }
 
   if (query && query.trim() !== "") {
-    // Add the search condition if a query is provided
-    whereClauses.push(`(s.reference_no LIKE ? OR c.name LIKE ?)`);
+    // Add the search condition if a query is provided (searching reference, customer name, and phone)
+    whereClauses.push(`(s.reference_no LIKE ? OR c.name LIKE ? OR s.customer_name LIKE ? OR s.customer_phone LIKE ? OR c.phone LIKE ?)`);
     const searchQuery = `%${query.trim()}%`;
-    params.push(searchQuery, searchQuery);
+    params.push(searchQuery, searchQuery, searchQuery, searchQuery, searchQuery);
   }
 
   const finalWhere = whereClauses.join(" AND ");
@@ -233,7 +233,8 @@ export function getSalesTable({ page = 1, limit = 20, ...filters }) {
       s.id AS id,
       s.reference_no as reference,
       c.id AS customer_id,
-      c.name AS customer,
+      COALESCE(s.customer_name, c.name, 'Walk-in Customer') AS customer,
+      COALESCE(s.customer_phone, c.phone) AS customer_phone,
       s.total_amount AS total,
       s.paid_amount AS paid_amount,
       COALESCE(

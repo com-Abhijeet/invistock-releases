@@ -12,11 +12,6 @@ import {
   Button,
   Collapse,
   alpha,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useState, useEffect, useRef } from "react";
@@ -31,8 +26,6 @@ import {
   Briefcase,
   FileText,
   ScanLine,
-  ShieldAlert,
-  AlertTriangle,
 } from "lucide-react";
 import { indianStates } from "../../lib/constants/statesList";
 
@@ -56,8 +49,6 @@ interface Props {
   city: string;
   state: string;
   pincode: string;
-  saleDate?: string;
-  setSaleDate?: (value: string) => void;
   setCustomerName: (value: string) => void;
   setQuery: (value: string) => void;
   setCustomerId: (value: number) => void;
@@ -85,8 +76,6 @@ export default function SalesPosHeaderSection({
   city,
   state,
   pincode,
-  saleDate,
-  setSaleDate,
   setCustomerName,
   setQuery,
   setCustomerId,
@@ -101,36 +90,6 @@ export default function SalesPosHeaderSection({
 }: Props) {
   const theme = useTheme();
   const [showMore, setShowMore] = useState(false);
-  const [warningOpen, setWarningOpen] = useState(false);
-  const [pendingDate, setPendingDate] = useState<string | null>(null);
-
-  const todayStr = new Date().toISOString().split("T")[0];
-  const currentDate = saleDate || todayStr;
-  const isBackdated = currentDate !== todayStr;
-
-  const handleDatePick = (pickedDate: string) => {
-    if (!pickedDate || pickedDate === todayStr) {
-      if (setSaleDate) setSaleDate(todayStr);
-      handleFieldChange("created_at", todayStr);
-    } else {
-      setPendingDate(pickedDate);
-      setWarningOpen(true);
-    }
-  };
-
-  const handleConfirmBackdate = () => {
-    if (pendingDate) {
-      if (setSaleDate) setSaleDate(pendingDate);
-      handleFieldChange("created_at", pendingDate);
-    }
-    setWarningOpen(false);
-    setPendingDate(null);
-  };
-
-  const handleCancelBackdate = () => {
-    setWarningOpen(false);
-    setPendingDate(null);
-  };
 
   const customerInputRef = useRef<HTMLInputElement>(null);
   const employeeInputRef = useRef<HTMLInputElement>(null);
@@ -414,55 +373,30 @@ export default function SalesPosHeaderSection({
             />
           </Box>
 
-          {/* 6. Editable Date Badge */}
+          {/* 6. Date Badge */}
           <Box
             sx={{
               ...containerSx,
-              borderColor: isBackdated
-                ? alpha(theme.palette.warning.main, 0.4)
-                : alpha(theme.palette.divider, 0.8),
-              bgcolor: isBackdated
-                ? alpha(theme.palette.warning.main, 0.05)
-                : "transparent",
-              minWidth: 155,
+              border: "none",
+              bgcolor: "transparent",
+              minWidth: "fit-content",
             }}
           >
-            <Calendar
-              size={14}
-              color={
-                isBackdated
-                  ? theme.palette.warning.main
-                  : theme.palette.text.disabled
-              }
-            />
+            <Calendar size={14} color={theme.palette.text.disabled} />
             <Typography
+              variant="body2"
               sx={{
-                ...labelSx,
-                color: isBackdated ? "warning.main" : "text.disabled",
+                fontWeight: 800,
+                letterSpacing: -0.5,
+                whiteSpace: "nowrap",
               }}
             >
-              DATE {isBackdated ? "(BACKDATED)" : ""}
+              {new Date().toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              })}
             </Typography>
-            <TextField
-              type="date"
-              variant="standard"
-              size="small"
-              disabled={mode === "view"}
-              value={currentDate}
-              onChange={(e) => handleDatePick(e.target.value)}
-              sx={{
-                ...inputSx,
-                "& input": {
-                  fontSize: "0.75rem",
-                  fontWeight: 800,
-                  color: isBackdated
-                    ? theme.palette.warning.main
-                    : "inherit",
-                  py: 0,
-                  cursor: "pointer",
-                },
-              }}
-            />
           </Box>
         </Box>
 
@@ -595,110 +529,6 @@ export default function SalesPosHeaderSection({
           </Box>
         </Collapse>
       </Stack>
-
-      {/* Backdated Invoice Warning Dialog */}
-      <Dialog
-        open={warningOpen}
-        onClose={handleCancelBackdate}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            p: 1,
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 1.5,
-            color: "warning.main",
-            fontWeight: 800,
-            fontSize: "1.1rem",
-          }}
-        >
-          <ShieldAlert size={22} color={theme.palette.warning.main} />
-          Backdated Invoice Warning
-        </DialogTitle>
-
-        <DialogContent dividers>
-          <Alert
-            severity="warning"
-            icon={<AlertTriangle size={20} />}
-            sx={{ mb: 2, borderRadius: 1.5, fontWeight: 600 }}
-          >
-            You are setting a backdate of{" "}
-            <strong>
-              {pendingDate
-                ? new Date(pendingDate).toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })
-                : pendingDate}
-            </strong>{" "}
-            for this invoice.
-          </Alert>
-
-          <Typography
-            variant="body2"
-            color="text.primary"
-            sx={{ mb: 1.5, lineHeight: 1.6 }}
-          >
-            Invistock enforces a <strong>strict sequential invoice numbering sequence</strong> (e.g. <code>INV-001, INV-002, INV-003...</code>). This sequence will continue forward linearly even for a backdated bill.
-          </Typography>
-
-          <Box
-            sx={{
-              p: 1.5,
-              borderRadius: 1.5,
-              bgcolor: "action.hover",
-              border: "1px solid",
-              borderColor: "divider",
-            }}
-          >
-            <Typography
-              variant="caption"
-              fontWeight={700}
-              color="text.secondary"
-              display="block"
-              sx={{ mb: 0.5 }}
-            >
-              POTENTIAL RISKS TO CONSIDER:
-            </Typography>
-            <Stack spacing={0.75}>
-              <Typography variant="caption" color="text.secondary">
-                • <strong>GST Compliance & Audit:</strong> Having a backdated invoice date on a higher sequence number can raise compliance queries during GST audits or GSTR-1 filings.
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                • <strong>Financial & Inventory Logs:</strong> Historical daily cash summaries and stock valuation reports for that past date will be updated retroactively.
-              </Typography>
-            </Stack>
-          </Box>
-        </DialogContent>
-
-        <DialogActions sx={{ p: 2, justifyContent: "space-between" }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleCancelBackdate}
-            startIcon={<Calendar size={16} />}
-            sx={{ textTransform: "none", fontWeight: 700 }}
-          >
-            Keep Today's Date
-          </Button>
-          <Button
-            variant="outlined"
-            color="warning"
-            onClick={handleConfirmBackdate}
-            sx={{ textTransform: "none", fontWeight: 700 }}
-          >
-            I Understand the Risk — Proceed & Change Date
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

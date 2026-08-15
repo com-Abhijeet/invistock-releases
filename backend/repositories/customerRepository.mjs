@@ -341,7 +341,28 @@ export async function getCustomersWithFinancials({
     GROUP BY entity_id
   `;
 
-  // Count of fully settled bills per customer (strictly via transactions)
+  // Bill-by-bill pending dues aggregation for 100% precision across all screens
+  const pendingBillsSubquery = `
+    SELECT 
+      s.customer_id,
+      COALESCE(SUM(
+        MAX(0, (s.total_amount - COALESCE(t_bill.credit, 0) - MAX(COALESCE(s.paid_amount, 0), COALESCE(t_bill.paid, 0))))
+      ), 0) as total_pending_dues
+    FROM sales s
+    LEFT JOIN (
+      SELECT 
+        bill_id,
+        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN amount WHEN type = 'payment_out' THEN -amount ELSE 0 END), 0) as paid,
+        COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as credit
+      FROM transactions
+      WHERE bill_type = 'sale' AND status != 'deleted'
+      GROUP BY bill_id
+    ) t_bill ON s.id = t_bill.bill_id
+    WHERE s.status != 'cancelled' AND s.is_quote = 0
+    GROUP BY s.customer_id
+  `;
+
+  // Count of fully settled bills per customer
   const settledBillsSubquery = `
     SELECT 
       s.customer_id,
@@ -357,7 +378,7 @@ export async function getCustomersWithFinancials({
       GROUP BY bill_id
     ) t_bill ON s.id = t_bill.bill_id
     WHERE s.status != 'cancelled' AND s.is_quote = 0
-      AND (s.total_amount - COALESCE(t_bill.paid, 0) - COALESCE(t_bill.credit, 0)) <= 0.01
+      AND (s.total_amount - COALESCE(t_bill.credit, 0) - MAX(COALESCE(s.paid_amount, 0), COALESCE(t_bill.paid, 0))) <= 0.01
     GROUP BY s.customer_id
   `;
 
@@ -372,15 +393,16 @@ export async function getCustomersWithFinancials({
       COALESCE(sb_stats.total_bills_paid, 0) as total_bills_paid,
       COALESCE(t_stats.total_amount_paid, 0) as total_amount_paid,
       COALESCE(t_stats.total_credit_notes, 0) as total_credit_notes,
-      MAX(0, (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0) - COALESCE(t_stats.total_amount_paid, 0))) as total_overdue,
+      ROUND(COALESCE(pb_stats.total_pending_dues, 0), 2) as total_overdue,
       CASE 
-        WHEN (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0)) <= 0 THEN 0
-        ELSE ROUND((COALESCE(t_stats.total_amount_paid, 0) * 100.0) / (COALESCE(s_stats.total_purchased, 0) - COALESCE(t_stats.total_credit_notes, 0)), 2)
+        WHEN COALESCE(s_stats.total_purchased, 0) <= 0 THEN 0
+        ELSE ROUND(((COALESCE(s_stats.total_purchased, 0) - COALESCE(pb_stats.total_pending_dues, 0)) * 100.0) / COALESCE(s_stats.total_purchased, 0), 2)
       END as payment_percentage
     FROM customers c
     LEFT JOIN (${salesSubquery}) s_stats ON c.id = s_stats.customer_id
     LEFT JOIN (${transSubquery}) t_stats ON c.id = t_stats.entity_id
     LEFT JOIN (${settledBillsSubquery}) sb_stats ON c.id = sb_stats.customer_id
+    LEFT JOIN (${pendingBillsSubquery}) pb_stats ON c.id = pb_stats.customer_id
     WHERE ${whereClause}
     ORDER BY ${sortBy} ${sortOrder}
     LIMIT ? OFFSET ?
@@ -437,6 +459,7 @@ export function getPendingBillsByCustomer({ customerId, query = "", minAgeDays =
           s.reference_no,
           s.created_at AS bill_date,
           s.total_amount,
+          COALESCE(s.paid_amount, 0) AS header_paid,
           COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN t.amount WHEN t.type = 'payment_out' THEN -t.amount ELSE 0 END), 0) AS total_paid_trans,
           COALESCE(SUM(CASE WHEN t.type = 'credit_note' THEN t.amount ELSE 0 END), 0) AS total_credit_notes_trans,
           CAST(julianday('now', 'localtime') - julianday(s.created_at) AS INTEGER) AS bill_age_days
@@ -451,9 +474,10 @@ export function getPendingBillsByCustomer({ customerId, query = "", minAgeDays =
       PendingBills AS (
         SELECT 
           *,
-          (total_amount - total_credit_notes_trans - total_paid_trans) AS pending_balance
+          MAX(header_paid, total_paid_trans) AS effective_paid,
+          (total_amount - total_credit_notes_trans - MAX(header_paid, total_paid_trans)) AS pending_balance
         FROM BillTransactions
-        WHERE (total_amount - total_credit_notes_trans - total_paid_trans) > 0.01
+        WHERE (total_amount - total_credit_notes_trans - MAX(header_paid, total_paid_trans)) > 0.01
       )
       SELECT * FROM PendingBills
       WHERE bill_age_days >= ?
@@ -502,7 +526,7 @@ export function getPendingBillsByCustomer({ customerId, query = "", minAgeDays =
 
     return {
       summary: {
-        totalPendingAmount,
+        totalPendingAmount: Math.round(totalPendingAmount * 100) / 100,
         totalPendingBills: bills.length,
         totalCustomersCount: customersList.length,
         maxAgeDays

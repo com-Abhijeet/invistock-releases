@@ -70,16 +70,55 @@ export default function DataTable({
   // Ref to the table container to manage focus within the list
   const tableRef = useRef<HTMLTableSectionElement>(null);
 
-  // Auto-focus the first row when the data is loaded and rows are available
+  // Auto-focus the first row when the data is loaded and rows are available,
+  // UNLESS the user is actively typing in an input or search field.
   useEffect(() => {
     if (!loading && rows.length > 0) {
       setFocusedIndex(0);
-      const firstRow = tableRef.current?.childNodes[0] as HTMLElement;
-      if (firstRow) {
-        firstRow.focus();
+      const activeEl = document.activeElement;
+      const isUserTyping =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.getAttribute("contenteditable") === "true");
+
+      if (!isUserTyping) {
+        const firstRow = tableRef.current?.childNodes[0] as HTMLElement;
+        if (firstRow) {
+          firstRow.focus();
+        }
       }
     }
   }, [loading, rows.length]);
+
+  // Option 2: Allow user to press ArrowDown from any active search/input field to jump straight into table focus,
+  // or press Escape from table focus to return back to search input.
+  useEffect(() => {
+    const handleInputKeyDown = (e: globalThis.KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.getAttribute("contenteditable") === "true");
+
+      if (isInput && rows.length > 0) {
+        if (e.key === "ArrowDown") {
+          const firstRow = tableRef.current?.childNodes[0] as HTMLElement;
+          if (firstRow) {
+            e.preventDefault();
+            setFocusedIndex(0);
+            firstRow.focus();
+          }
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleInputKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleInputKeyDown);
+    };
+  }, [rows.length]);
 
   const handleMenuOpen = (
     event: MouseEvent<HTMLButtonElement> | HTMLElement,
@@ -162,6 +201,16 @@ export default function DataTable({
         const prevIndex = Math.max(index - 1, 0);
         setFocusedIndex(prevIndex);
         (tableRef.current?.childNodes[prevIndex] as HTMLElement)?.focus();
+        break;
+      case "Escape":
+        // Pressing Escape while in table row refocuses search input
+        const searchInput = document.querySelector<HTMLInputElement>(
+          'input[type="text"], input[type="search"]',
+        );
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
         break;
       case "Enter":
       case " ":

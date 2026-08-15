@@ -30,6 +30,7 @@ export function createSaleWithItems(saleData) {
   const {
     customer_id,
     customer_name,
+    customer_phone,
     bill_address,
     state,
     pincode,
@@ -73,13 +74,23 @@ export function createSaleWithItems(saleData) {
       }
     }
 
-    // 2. Create Sale Header
-    const customDate = saleData.created_at || saleData.createdAt || saleData.date || null;
+    // 2. Resolve Customer Phone Fallback
+    let resolvedPhone = customer_phone || saleData.customer_phone || saleData.phone || null;
+    if (!resolvedPhone && customer_id) {
+      try {
+        const cust = db.prepare("SELECT phone FROM customers WHERE id = ?").get(customer_id);
+        if (cust && cust.phone) resolvedPhone = cust.phone;
+      } catch (e) {
+        console.warn("[SalesService] Failed to fallback fetch customer phone:", e.message);
+      }
+    }
+
+    // 3. Create Sale Header
     const saleId = createSale(
       {
         customer_id: customer_id || null,
         customer_name,
-        customer_phone: saleData.customer_phone || null,
+        customer_phone: resolvedPhone,
         bill_address,
         state,
         pincode,
@@ -96,7 +107,6 @@ export function createSaleWithItems(saleData) {
         is_quote,
         employee_id: employee_id || null,
         round_off: round_off || 0,
-        created_at: customDate,
       },
       items,
     );
@@ -149,7 +159,7 @@ export function createSaleWithItems(saleData) {
         bill_type: "sale",
         entity_id: customer_id,
         entity_type: "customer",
-        transaction_date: customDate ? customDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        transaction_date: new Date().toISOString().slice(0, 10),
         amount: paid_amount,
         payment_mode,
         status: "completed",
@@ -219,6 +229,14 @@ export async function updateSaleWithItemsService(saleId, newData) {
     }
 
     // 3. Update Sale Header and Replace Items
+    if (!newData.customer_phone && newData.customer_id) {
+      try {
+        const cust = db.prepare("SELECT phone FROM customers WHERE id = ?").get(newData.customer_id);
+        if (cust && cust.phone) newData.customer_phone = cust.phone;
+      } catch (e) {
+        console.warn("[SalesService] Update phone fallback failed:", e.message);
+      }
+    }
     updateSaleHeader(saleId, newData);
     replaceSaleItems(saleId, newData.items);
 

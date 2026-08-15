@@ -35,6 +35,7 @@ import {
 import toast from "react-hot-toast";
 
 import DashboardHeader from "../components/DashboardHeader";
+import AddEditTransactionModal from "../components/transactions/AddEditTransactionModal";
 import {
   fetchPendingBillsByCustomer,
   PendingBillsCustomerGroup,
@@ -60,6 +61,9 @@ export default function PendingBillsByCustomerPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [minAgeDays, setMinAgeDays] = useState<number>(0);
   const [expandedCustomer, setExpandedCustomer] = useState<number | false>(false);
+
+  const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [txInitialData, setTxInitialData] = useState<any>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -193,7 +197,14 @@ export default function PendingBillsByCustomerPage() {
               variant="contained"
               color="primary"
               startIcon={<CreditCard size={18} />}
-              onClick={() => navigate("/transactions")}
+              onClick={() => {
+                setTxInitialData({
+                  type: "payment_in",
+                  entity_type: "customer",
+                  entity_id: selectedCustomerId ? Number(selectedCustomerId) : undefined,
+                });
+                setIsTxModalOpen(true);
+              }}
               sx={{
                 borderRadius: "10px",
                 fontWeight: 700,
@@ -646,7 +657,17 @@ export default function PendingBillsByCustomerPage() {
                                   <IconButton
                                     size="small"
                                     color="primary"
-                                    onClick={() => navigate("/transactions")}
+                                    onClick={() => {
+                                      setTxInitialData({
+                                        type: "payment_in",
+                                        entity_type: "customer",
+                                        entity_id: bill.customer_id,
+                                        bill_type: "sale",
+                                        bill_id: bill.sale_id,
+                                        amount: bill.pending_balance,
+                                      });
+                                      setIsTxModalOpen(true);
+                                    }}
                                   >
                                     <CreditCard size={16} />
                                   </IconButton>
@@ -683,6 +704,21 @@ export default function PendingBillsByCustomerPage() {
           })}
         </Stack>
       )}
+
+      {/* Prefilled Record Payment Modal */}
+      <AddEditTransactionModal
+        open={isTxModalOpen}
+        onClose={() => {
+          setIsTxModalOpen(false);
+          setTxInitialData(null);
+        }}
+        onSuccess={() => {
+          setIsTxModalOpen(false);
+          setTxInitialData(null);
+          loadData();
+        }}
+        initialData={txInitialData}
+      />
     </Box>
   );
 }

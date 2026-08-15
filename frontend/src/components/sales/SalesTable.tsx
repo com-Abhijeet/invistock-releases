@@ -443,6 +443,11 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         },
         { key: "customer", label: "Customer" },
         {
+          key: "customer_phone",
+          label: "Phone No",
+          format: (val: string) => val || "-",
+        },
+        {
           key: "total",
           label: "Total Amount",
           format: (val: number) => `₹${val.toLocaleString("en-IN")}`,
@@ -460,6 +465,11 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
           format: (val: string) => new Date(val).toLocaleDateString("en-IN"),
         },
         { key: "customer", label: "Customer" },
+        {
+          key: "customer_phone",
+          label: "Phone No",
+          format: (val: string) => val || "-",
+        },
         {
           key: "total",
           label: "Gross Amount",

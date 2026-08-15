@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -19,20 +19,14 @@ import {
   Chip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import {
-  Plus,
-  Sparkles,
-  Barcode as BarcodeIcon,
-  Calendar,
-  Layers,
-  Zap,
-} from "lucide-react";
+import { Plus, Sparkles, Zap } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { Product } from "../../lib/types/product";
 import {
   createManualBatch,
   generateBarcode,
+  updateBatch,
   CreateBatchPayload,
 } from "../../lib/api/batchService";
 import FastSerialScannerInput from "./FastSerialScannerInput";
@@ -42,6 +36,7 @@ interface CreateBatchModalProps {
   onClose: () => void;
   product: Product;
   untrackedQuantity?: number;
+  initialBatch?: any | null;
   onSuccess: () => void;
 }
 
@@ -50,13 +45,15 @@ export default function CreateBatchModal({
   onClose,
   product,
   untrackedQuantity = 0,
+  initialBatch = null,
   onSuccess,
 }: CreateBatchModalProps) {
   const [loading, setLoading] = useState(false);
+  const isEditMode = !!initialBatch;
 
   // Stock mode: 'new_stock' (increments total product.quantity) vs 'untracked_stock' (converts general stock)
   const [stockMode, setStockMode] = useState<"new_stock" | "untracked_stock">(
-    untrackedQuantity > 0 ? "untracked_stock" : "new_stock"
+    untrackedQuantity > 0 ? "untracked_stock" : "new_stock",
   );
 
   const [formData, setFormData] = useState<{
@@ -68,8 +65,10 @@ export default function CreateBatchModal({
     mrp: number;
     mop: number;
     mfwPrice: number;
+    margin: number;
     location: string;
     serials: string[];
+    reason: string;
   }>({
     batchNumber: "",
     barcode: "",
@@ -79,34 +78,84 @@ export default function CreateBatchModal({
     mrp: product?.mrp || 0,
     mop: product?.mop || 0,
     mfwPrice: Number(product?.mfw_price) || 0,
+    margin: 0,
     location: product?.storage_location || "",
     serials: [],
+    reason: "",
   });
 
   const batchInputRef = useRef<HTMLInputElement>(null);
 
+  const formatDateForInput = (d: any): string => {
+    if (!d) return "";
+    const str = String(d).trim();
+    if (str.includes("T")) return str.split("T")[0];
+    if (str.includes(" ")) return str.split(" ")[0];
+    return str;
+  };
+
+  const calcMargin = (mrp: number, mop: number) => {
+    if (mrp > 0 && mop >= 0) {
+      return Number((((mrp - mop) / mrp) * 100).toFixed(2));
+    }
+    return 0;
+  };
+
   // Initialize form state on open
   useEffect(() => {
     if (open && product) {
-      const today = new Date().toISOString().split("T")[0];
-      const autoBatchNum = `BAT-${new Date()
-        .toISOString()
-        .slice(2, 10)
-        .replace(/-/g, "")}-${Math.floor(10 + Math.random() * 90)}`;
+      if (initialBatch) {
+        const serialsList = initialBatch.serials
+          ? initialBatch.serials.map((s: any) =>
+              typeof s === "string" ? s : s.serial_number,
+            )
+          : [];
 
-      setStockMode(untrackedQuantity > 0 ? "untracked_stock" : "new_stock");
-      setFormData({
-        batchNumber: autoBatchNum,
-        barcode: "",
-        quantity: 1,
-        expiryDate: "",
-        mfgDate: today,
-        mrp: product.mrp || 0,
-        mop: product.mop || 0,
-        mfwPrice: Number(product.mfw_price) || 0,
-        location: product.storage_location || "Store",
-        serials: [],
-      });
+        const bMrp = initialBatch.mrp || 0;
+        const bMop = initialBatch.mop || 0;
+        const bMargin = initialBatch.margin ?? calcMargin(bMrp, bMop);
+
+        setFormData({
+          batchNumber: initialBatch.batch_number || "",
+          barcode: initialBatch.barcode || "",
+          quantity: initialBatch.quantity || 0,
+          expiryDate: formatDateForInput(initialBatch.expiry_date),
+          mfgDate: formatDateForInput(initialBatch.mfg_date),
+          mrp: bMrp,
+          mop: bMop,
+          mfwPrice: Number(initialBatch.mfw_price) || 0,
+          margin: bMargin,
+          location: initialBatch.location || "",
+          serials: serialsList,
+          reason: "",
+        });
+      } else {
+        const today = new Date().toISOString().split("T")[0];
+        const autoBatchNum = `BAT-${new Date()
+          .toISOString()
+          .slice(2, 10)
+          .replace(/-/g, "")}-${Math.floor(10 + Math.random() * 90)}`;
+
+        const pMrp = product.mrp || 0;
+        const pMop = product.mop || 0;
+        const pMargin = calcMargin(pMrp, pMop);
+
+        setStockMode(untrackedQuantity > 0 ? "untracked_stock" : "new_stock");
+        setFormData({
+          batchNumber: autoBatchNum,
+          barcode: "",
+          quantity: 1,
+          expiryDate: "",
+          mfgDate: today,
+          mrp: pMrp,
+          mop: pMop,
+          mfwPrice: Number(product.mfw_price) || 0,
+          margin: pMargin,
+          location: product.storage_location || "Store",
+          serials: [],
+          reason: "",
+        });
+      }
 
       // Auto-focus batch number input
       setTimeout(() => {
@@ -116,7 +165,7 @@ export default function CreateBatchModal({
         }
       }, 100);
     }
-  }, [open, product, untrackedQuantity]);
+  }, [open, product, initialBatch, untrackedQuantity]);
 
   // Global Keyboard Listener (Ctrl+Enter to submit)
   useEffect(() => {
@@ -153,6 +202,11 @@ export default function CreateBatchModal({
   };
 
   const handleSubmit = async () => {
+    if (!product?.id) {
+      toast.error("Invalid Product ID");
+      return;
+    }
+
     if (!formData.batchNumber.trim()) {
       toast.error("Batch Number is required");
       return;
@@ -163,30 +217,62 @@ export default function CreateBatchModal({
       ? formData.serials.length
       : Number(formData.quantity);
 
-    if (finalQuantity <= 0) {
+    if (finalQuantity < 0) {
+      toast.error("Quantity cannot be negative");
+      return;
+    }
+
+    if (!isEditMode && finalQuantity <= 0) {
       toast.error(
         isSerial
           ? "Please add at least one serial number"
-          : "Quantity must be greater than 0"
+          : "Quantity must be greater than 0",
       );
       return;
     }
 
     if (
+      !isEditMode &&
       stockMode === "untracked_stock" &&
       untrackedQuantity > 0 &&
       finalQuantity > untrackedQuantity
     ) {
       toast.error(
-        `Cannot assign more than available untracked stock (${untrackedQuantity})`
+        `Cannot assign more than available untracked stock (${untrackedQuantity})`,
       );
       return;
     }
 
     setLoading(true);
     try {
+      if (isEditMode && initialBatch) {
+        const batchId = initialBatch.batch_id || initialBatch.id;
+        const payload = {
+          batchNumber: formData.batchNumber.trim(),
+          barcode: formData.barcode.trim() || undefined,
+          quantity: finalQuantity,
+          expiryDate: formData.expiryDate || undefined,
+          mfgDate: formData.mfgDate || undefined,
+          mrp: Number(formData.mrp) || 0,
+          mop: Number(formData.mop) || 0,
+          mfwPrice: Number(formData.mfwPrice) || 0,
+          margin:
+            Number(formData.margin) ||
+            calcMargin(Number(formData.mrp), Number(formData.mop)),
+          location: formData.location.trim() || undefined,
+          serials: isSerial ? formData.serials : undefined,
+          reason: formData.reason.trim() || undefined,
+        };
+
+        await updateBatch(batchId, payload);
+        toast.success("Batch details updated!");
+        onSuccess();
+        onClose();
+        return;
+      }
+
       const payload: CreateBatchPayload = {
-        productId: product.id,
+        productId: product.id!,
         batchNumber: formData.batchNumber.trim(),
         barcode: formData.barcode.trim() || undefined,
         quantity: finalQuantity,
@@ -195,6 +281,9 @@ export default function CreateBatchModal({
         mrp: Number(formData.mrp) || 0,
         mop: Number(formData.mop) || 0,
         mfwPrice: Number(formData.mfwPrice) || 0,
+        margin:
+          Number(formData.margin) ||
+          calcMargin(Number(formData.mrp), Number(formData.mop)),
         location: formData.location.trim() || undefined,
         serials: isSerial ? formData.serials : undefined,
         increaseProductStock: stockMode === "new_stock",
@@ -204,13 +293,13 @@ export default function CreateBatchModal({
       toast.success(
         stockMode === "new_stock"
           ? `Batch created & added ${finalQuantity} units to stock!`
-          : `Assigned ${finalQuantity} units to batch!`
+          : `Assigned ${finalQuantity} units to batch!`,
       );
       onSuccess();
       onClose();
     } catch (error: any) {
       console.error(error);
-      toast.error(error || "Failed to create batch");
+      toast.error(error?.message || error || "Failed to save batch");
     } finally {
       setLoading(false);
     }
@@ -235,10 +324,11 @@ export default function CreateBatchModal({
         >
           <Box>
             <Typography variant="h6" fontWeight={700}>
-              Manual Stock Entry
+              {isEditMode ? "Edit Batch Details" : "Manual Stock Entry"}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Product: <b>{product.name}</b> ({product.tracking_type?.toUpperCase()} TRACKED)
+              Product: <b>{product.name}</b> (
+              {product.tracking_type?.toUpperCase()} TRACKED)
             </Typography>
           </Box>
           <Chip
@@ -254,58 +344,77 @@ export default function CreateBatchModal({
 
       <DialogContent dividers>
         <Stack spacing={2.5} pt={1}>
-          {/* Stock Mode Switch */}
-          <Box
-            sx={{
-              p: 2,
-              borderRadius: 2,
-              bgcolor: stockMode === "new_stock" ? "primary.50" : "warning.50",
-              border: "1px solid",
-              borderColor:
-                stockMode === "new_stock" ? "primary.200" : "warning.200",
-            }}
-          >
-            <Typography variant="subtitle2" fontWeight={700} gutterBottom>
-              Stock Source Selection
-            </Typography>
-            <RadioGroup
-              row
-              value={stockMode}
-              onChange={(e) =>
-                setStockMode(e.target.value as "new_stock" | "untracked_stock")
-              }
+          {/* Stock Mode Switch - only show when creating new batch */}
+          {!isEditMode && (
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor:
+                  stockMode === "new_stock" ? "primary.50" : "warning.50",
+                border: "1px solid",
+                borderColor:
+                  stockMode === "new_stock" ? "primary.200" : "warning.200",
+              }}
             >
-              <FormControlLabel
-                value="new_stock"
-                control={<Radio size="small" />}
-                label={
-                  <Box>
-                    <Typography variant="body2" fontWeight={600}>
-                      🟢 Add New Stock
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Creates batch AND increases total product inventory
-                    </Typography>
-                  </Box>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                Stock Source Selection
+              </Typography>
+              <RadioGroup
+                row
+                value={stockMode}
+                onChange={(e) =>
+                  setStockMode(
+                    e.target.value as "new_stock" | "untracked_stock",
+                  )
                 }
-              />
-              <FormControlLabel
-                value="untracked_stock"
-                control={<Radio size="small" />}
-                disabled={untrackedQuantity <= 0}
-                label={
-                  <Box>
-                    <Typography variant="body2" fontWeight={600}>
-                      🟡 Assign Untracked Stock ({untrackedQuantity} Available)
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Converts general inventory into tracked batch without double counting
-                    </Typography>
-                  </Box>
-                }
-              />
-            </RadioGroup>
-          </Box>
+              >
+                <FormControlLabel
+                  value="new_stock"
+                  control={<Radio size="small" />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>
+                        🟢 Add New Stock
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Creates batch AND increases total product inventory
+                      </Typography>
+                    </Box>
+                  }
+                />
+                <FormControlLabel
+                  value="untracked_stock"
+                  control={<Radio size="small" />}
+                  disabled={untrackedQuantity <= 0}
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>
+                        🟡 Assign Untracked Stock ({untrackedQuantity}{" "}
+                        Available)
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Converts general inventory into tracked batch without
+                        double counting
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </RadioGroup>
+            </Box>
+          )}
+
+          {isEditMode && (
+            <TextField
+              label="Stock Adjustment Reason / Note"
+              fullWidth
+              size="small"
+              value={formData.reason}
+              onChange={(e) => handleChange("reason", e.target.value)}
+              placeholder="e.g. Audit correction, Damaged stock removed, Quantity reconciled"
+              helperText="Logged in Stock Adjustments history if batch quantity is modified"
+            />
+          )}
 
           <Grid container spacing={2}>
             {/* Batch Number */}
@@ -405,8 +514,18 @@ export default function CreateBatchModal({
                 value={formData.expiryDate}
                 onChange={(e) => handleChange("expiryDate", e.target.value)}
               />
-              <Stack direction="row" spacing={0.5} mt={0.8} flexWrap="wrap" gap={0.5}>
-                <Typography variant="caption" color="text.secondary" alignSelf="center">
+              <Stack
+                direction="row"
+                spacing={0.5}
+                mt={0.8}
+                flexWrap="wrap"
+                gap={0.5}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  alignSelf="center"
+                >
                   Quick Expiry:
                 </Typography>
                 <Chip
@@ -509,11 +628,15 @@ export default function CreateBatchModal({
           onClick={handleSubmit}
           variant="contained"
           color="primary"
-          startIcon={<Plus size={18} />}
+          startIcon={isEditMode ? undefined : <Plus size={18} />}
           disabled={loading}
           sx={{ px: 3, fontWeight: 700 }}
         >
-          {loading ? "Saving..." : "Save Stock Entry (Ctrl+Enter)"}
+          {loading
+            ? "Saving..."
+            : isEditMode
+              ? "Update Batch Details (Ctrl+Enter)"
+              : "Save Stock Entry (Ctrl+Enter)"}
         </Button>
       </DialogActions>
     </Dialog>

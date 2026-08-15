@@ -543,6 +543,7 @@ export function initializeDatabase(dbPath) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
       customer_name TEXT,
+      customer_phone TEXT,
       bill_address TEXT,
       state TEXT,
       pincode TEXT,
@@ -565,6 +566,7 @@ export function initializeDatabase(dbPath) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales (customer_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_customer_phone ON sales (customer_phone);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_reference_no ON sales (reference_no);
 
     CREATE TABLE IF NOT EXISTS sales_items (
@@ -754,11 +756,25 @@ export function initializeDatabase(dbPath) {
   */
   safeMigrate(db, "sales", "employee_id", "INTEGER");
   safeMigrate(db, "sales", "customer_name", "TEXT");
+  safeMigrate(db, "sales", "customer_phone", "TEXT");
   safeMigrate(db, "sales", "bill_address", "TEXT");
   safeMigrate(db, "sales", "state", "TEXT");
   safeMigrate(db, "sales", "pincode", "TEXT");
   safeMigrate(db, "sales", "round_off", "REAL");
   safeMigrate(db, "sales", "gstin", "TEXT");
+
+  // Backfill customer_phone from customers table for existing sales records
+  try {
+    db.prepare(`
+      UPDATE sales
+      SET customer_phone = (
+        SELECT phone FROM customers WHERE customers.id = sales.customer_id
+      )
+      WHERE (customer_phone IS NULL OR customer_phone = '') AND customer_id IS NOT NULL;
+    `).run();
+  } catch (e) {
+    console.warn("[DB] customer_phone backfill warning:", e.message);
+  }
 
   safeMigrate(db, "sales_items", "product_name", "TEXT");
   safeMigrate(db, "sales_items", "description", "TEXT");
