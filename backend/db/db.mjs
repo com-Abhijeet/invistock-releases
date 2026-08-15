@@ -745,6 +745,22 @@ export function initializeDatabase(dbPath) {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       kosh_business_id TEXT UNIQUE
     );
+
+    CREATE TABLE IF NOT EXISTS sales_billing_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      use_queue INTEGER DEFAULT 1,
+      queue_type TEXT DEFAULT 'fefo',
+      use_default_customer INTEGER DEFAULT 1,
+      auto_print_after_save INTEGER DEFAULT 0,
+      send_whatsapp_invoice INTEGER DEFAULT 0,
+      payment_marking_timing TEXT DEFAULT 'pre_save',
+      enable_split_payments INTEGER DEFAULT 1,
+      updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+    );
+
+    INSERT OR IGNORE INTO sales_billing_settings (
+      id, use_queue, queue_type, use_default_customer, auto_print_after_save, send_whatsapp_invoice, payment_marking_timing, enable_split_payments
+    ) VALUES (1, 1, 'fefo', 1, 0, 0, 'pre_save', 1);
   `);
 
   /*

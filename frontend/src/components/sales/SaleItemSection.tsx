@@ -356,17 +356,42 @@ export default function SaleItemSection({
       product.tracking_type === "batch" ||
       product.tracking_type === "serial"
     ) {
-      setPendingItemIndex(index);
-      setPendingProduct(product);
       setLoadingBatches(true);
-      setBatchModalOpen(true);
-      setFocusedBatchIndex(0);
       try {
         const batchData = await getProductBatches(
           product.id!,
           product.tracking_type,
         );
+
+        let useQueue = true;
+        if (typeof window !== "undefined") {
+          const storedQueue = localStorage.getItem("pos_use_queue");
+          if (storedQueue !== null) {
+            useQueue = storedQueue === "true";
+          }
+        }
+
+        // If Queue is ON and product is batch-tracked, auto-pick top batch without asking
+        if (
+          product.tracking_type === "batch" &&
+          useQueue &&
+          batchData &&
+          batchData.length > 0
+        ) {
+          const topBatch = batchData[0];
+          addItemToTable(index, product, topBatch);
+          toast.success(
+            `Auto-selected Queue batch: ${topBatch.batch_number || "DEFAULT"}`,
+          );
+          return;
+        }
+
+        // Otherwise (queue OFF or serial tracked), show manual selection modal
+        setPendingItemIndex(index);
+        setPendingProduct(product);
         setAvailableBatches(batchData);
+        setFocusedBatchIndex(0);
+        setBatchModalOpen(true);
       } catch (err) {
         toast.error("Failed to load batches");
       } finally {

@@ -39,6 +39,8 @@ import { getSaleById } from "../lib/api/salesService";
 import { getSalesOrderById } from "../lib/api/salesOrderService";
 import SalesPosHeaderSection from "../components/sales/SalesPosHeaderSection";
 import ProductOverviewModal from "../components/products/ProductOverviewModal";
+import BillingSettingsModal from "../components/sales/BillingSettingsModal";
+import { Layers } from "lucide-react";
 import theme from "../../theme";
 import toast from "react-hot-toast";
 import { api } from "../lib/api/api";
@@ -141,6 +143,7 @@ export default function SalesPos() {
   const [draftsModalOpen, setDraftsModalOpen] = useState(false);
   const [drafts, setDrafts] = useState<SavedDraft[]>([]);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+  const [billingSettingsModalOpen, setBillingSettingsModalOpen] = useState(false);
 
   // State for Auto Walk-in Customer toggle
   const [useDefaultWalkIn, setUseDefaultWalkIn] = useState<boolean>(() => {
@@ -775,6 +778,30 @@ export default function SalesPos() {
               QUOTATION
             </Typography>
           </Box>
+
+          {/* Queue Settings Button */}
+          <Button
+            variant="text"
+            color="primary"
+            onClick={() => setBillingSettingsModalOpen(true)}
+            startIcon={<Layers size={14} />}
+            sx={{
+              fontSize: "0.7rem",
+              fontWeight: 700,
+              textTransform: "none",
+              py: 0.4,
+              px: 1,
+              ml: 0.5,
+              borderRadius: 1,
+              bgcolor: alpha(theme.palette.primary.main, 0.08),
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+              "&:hover": {
+                bgcolor: alpha(theme.palette.primary.main, 0.16),
+              },
+            }}
+          >
+            Queue Settings
+          </Button>
         </Box>
 
         <Button
@@ -1051,6 +1078,15 @@ export default function SalesPos() {
           <Button onClick={() => setDraftsModalOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* --- Billing Settings Modal --- */}
+      <BillingSettingsModal
+        open={billingSettingsModalOpen}
+        onClose={() => setBillingSettingsModalOpen(false)}
+        onSuccess={(newSettings) => {
+          setUseDefaultWalkIn(newSettings.use_default_customer);
+        }}
+      />
     </Box>
   );
 }

@@ -1,4 +1,5 @@
 import db from "../db/db.mjs";
+import { getSalesBillingSettings } from "./salesBillingSettingsRepository.mjs";
 
 // ... existing create/update functions ...
 
@@ -140,12 +141,26 @@ export function updateSerialStatus(serialId, status) {
  * @param {number} productId
  */
 export function getActiveBatchesByProductId(productId) {
+  let orderBy = "created_at DESC";
+  try {
+    const settings = getSalesBillingSettings();
+    if (settings.use_queue) {
+      if (settings.queue_type === "fefo") {
+        orderBy = "CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END, expiry_date ASC, created_at ASC";
+      } else if (settings.queue_type === "fifo") {
+        orderBy = "created_at ASC, id ASC";
+      }
+    }
+  } catch (err) {
+    console.error("getActiveBatchesByProductId settings fetch error:", err);
+  }
+
   return db
     .prepare(
       `
     SELECT * FROM product_batches 
     WHERE product_id = ? AND is_active = 1 AND quantity > 0
-    ORDER BY expiry_date ASC
+    ORDER BY ${orderBy}
   `,
     )
     .all(productId);

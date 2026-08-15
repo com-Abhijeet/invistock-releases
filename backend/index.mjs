@@ -37,6 +37,7 @@ import accountingRoutes from "./routes/accountingRoutes.mjs";
 import businessRoutes from "./routes/businessRoutes.mjs";
 import tallyRoutes from "./routes/tallyRoutes.mjs";
 import tallySseRoutes from "./routes/tallySseRoutes.mjs";
+import salesBillingSettingsRoutes from "./routes/salesBillingSettingsRoutes.mjs";
 
 // ✅ NEW: Import the Sync Routes for Mobile
 import syncRoutes from "./routes/syncRoutes.mjs";
@@ -144,6 +145,7 @@ export function startServer(dbPath, userDataPath) {
   app.use("/api/tally", tallySseRoutes);
   app.use("/api/tally", tallyRoutes);
   app.use("/api/business", businessRoutes);
+  app.use("/api/settings/sales-billing", salesBillingSettingsRoutes);
 
   // ✅ Register Sync Routes
   app.use("/api/sync", syncRoutes);
