@@ -78,7 +78,7 @@ export default function FastSerialScannerInput({
 
   // Sequence generator states
   const [prefix, setPrefix] = useState("SN-");
-  const [suffix, setSuffix] = useState("");
+  const [suffix] = useState("");
   const [startNum, setStartNum] = useState(1);
   const [count, setCount] = useState(10);
   const [padZeros, setPadZeros] = useState(3);
@@ -266,7 +266,6 @@ export default function FastSerialScannerInput({
           value={tabIndex}
           onChange={(_, val) => setTabIndex(val)}
           variant="fullWidth"
-          size="small"
           sx={{ minHeight: 40 }}
         >
           <Tab

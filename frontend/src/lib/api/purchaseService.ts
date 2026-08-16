@@ -157,6 +157,7 @@ export interface PurchaseReturnPayload {
   }>;
   note?: string;
   customTotalAmount?: number;
+  gstAmount?: number;
 }
 
 export async function processPurchaseReturn(payload: PurchaseReturnPayload) {

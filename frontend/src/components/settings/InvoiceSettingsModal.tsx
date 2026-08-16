@@ -33,7 +33,6 @@ import {
   Check,
   User,
   Building,
-  Tag,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";

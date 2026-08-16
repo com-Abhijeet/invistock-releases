@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -86,7 +86,7 @@ export default function AddSerialsModal({
     setLoading(true);
     try {
       await addSerialsToBatch({
-        productId: product.id,
+        productId: product.id!,
         batchId,
         serials,
         increaseProductStock: stockMode === "new_stock",

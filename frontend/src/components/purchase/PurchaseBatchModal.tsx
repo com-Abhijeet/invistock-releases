@@ -35,6 +35,7 @@ import toast from "react-hot-toast";
 
 // Extended Item Type used locally
 export interface ExtendedPurchaseItem extends PurchaseItem {
+  product_name?: string;
   tracking_type?: "none" | "batch" | "serial";
   batch_number?: string;
   expiry_date?: string;
@@ -47,6 +48,8 @@ export interface ExtendedPurchaseItem extends PurchaseItem {
   unit?: string;
   margin?: number;
   barcode?: string;
+  return_quantity?: number;
+  net_price?: number;
 }
 
 interface Props {
