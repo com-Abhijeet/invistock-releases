@@ -203,14 +203,23 @@ function restoreDataFromBackup(activeDb, backupPath) {
                 col === "timestamp" ||
                 col === "checked_at"
               ) {
-                return `datetime(${col}, 'localtime')`;
+                return `COALESCE(datetime(replace(${col}, 'T', ' '), 'localtime'), ${col}, datetime('now', 'localtime'))`;
               }
               // SQLite handles implicit casting (INTEGER -> REAL) here for 'quantity'
               return col;
             })
             .join(", ");
 
-          const insertSql = `INSERT INTO main.${table} (${commonCols.join(", ")}) SELECT ${selectCols} FROM old_db.${table}`;
+          const insertVerb = [
+            "license_info",
+            "shop",
+            "business",
+            "sales_billing_settings",
+          ].includes(table)
+            ? "INSERT OR REPLACE"
+            : "INSERT OR IGNORE";
+
+          const insertSql = `${insertVerb} INTO main.${table} (${commonCols.join(", ")}) SELECT ${selectCols} FROM old_db.${table}`;
           activeDb.exec(insertSql);
           console.log(`[DB] Restored ${table} (${commonCols.length} cols)`);
         } catch (err) {
@@ -566,7 +575,6 @@ export function initializeDatabase(dbPath) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales (customer_id);
-    CREATE INDEX IF NOT EXISTS idx_sales_customer_phone ON sales (customer_phone);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_reference_no ON sales (reference_no);
 
     CREATE TABLE IF NOT EXISTS sales_items (
@@ -773,6 +781,13 @@ export function initializeDatabase(dbPath) {
   safeMigrate(db, "sales", "employee_id", "INTEGER");
   safeMigrate(db, "sales", "customer_name", "TEXT");
   safeMigrate(db, "sales", "customer_phone", "TEXT");
+  try {
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_sales_customer_phone ON sales (customer_phone)",
+    ).run();
+  } catch (e) {
+    console.warn("[DB] idx_sales_customer_phone index warning:", e.message);
+  }
   safeMigrate(db, "sales", "bill_address", "TEXT");
   safeMigrate(db, "sales", "state", "TEXT");
   safeMigrate(db, "sales", "pincode", "TEXT");
