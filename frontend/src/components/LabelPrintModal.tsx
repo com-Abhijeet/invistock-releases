@@ -343,31 +343,17 @@ export default function LabelPrintDialog({ open, onClose, product }: Props) {
         return;
       }
 
-      toast.loading(`Printing ${itemsToPrint.length} labels...`, {
-        duration: 2000,
+      toast.loading(`Printing ${itemsToPrint.length} label(s)...`, {
+        duration: 1500,
       });
 
-      // Loop through the items and print
-      let index = 0;
-      const interval = setInterval(() => {
-        if (index >= itemsToPrint.length) {
-          clearInterval(interval);
-          setPrinting(false);
-          onClose();
-          return;
-        }
+      ipcRenderer.send("print-label", {
+        items: itemsToPrint,
+        shop,
+      });
 
-        const itemJob = itemsToPrint[index];
-
-        ipcRenderer.send("print-label", {
-          product: itemJob.product,
-          shop,
-          copies: itemJob.copies,
-          customBarcode: itemJob.customBarcode,
-        });
-
-        index++;
-      }, 500);
+      setPrinting(false);
+      onClose();
     } catch (error) {
       toast.dismiss();
       toast.error("Failed to generate print data.");

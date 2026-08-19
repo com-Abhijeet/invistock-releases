@@ -20,60 +20,77 @@ const generateBarcodeBase64 = async (barcodeText) => {
 // =======================================================
 
 const createPrintWindow = async (payload) => {
-  const { product, shop, copies, customBarcode } = payload;
-
-  if (!product || !shop) {
-    console.error("❌ Missing data for label printing.");
+  const { shop } = payload;
+  if (!shop) {
+    console.error("❌ Missing shop data for label printing.");
     return;
   }
 
-  // ===================================================
-  // BARCODE
-  // ===================================================
-
-  const code =
-    customBarcode ||
-    product.barcode ||
-    product.batch_uid ||
-    product.product_code ||
-    "0000";
-
-  let barcodeBase64 = "";
-  try {
-    barcodeBase64 = await generateBarcodeBase64(code);
-  } catch (error) {
-    console.error("Barcode generation failed:", error);
+  let itemsList = [];
+  if (Array.isArray(payload.items) && payload.items.length > 0) {
+    itemsList = payload.items;
+  } else if (payload.product) {
+    itemsList = [
+      {
+        product: payload.product,
+        copies: payload.copies,
+        customBarcode: payload.customBarcode,
+      },
+    ];
   }
 
-  // ===================================================
-  // TEMPLATE & SIZING
-  // ===================================================
+  if (itemsList.length === 0) {
+    console.error("❌ No items provided for label printing.");
+    return;
+  }
 
   const printerWidth = Number(shop.label_printer_width_mm) || 50;
   const printerHeight = Number(shop.label_printer_height_mm) || 25;
   const templateId = shop.label_template_id || "lbl_standard";
 
-  // Get the core content from the registry
-  const { style, content } = createLabelHTML(
-    product,
-    shop,
-    barcodeBase64,
-    printerWidth,
-    templateId,
-    printerHeight,
-  );
-
-  // PHYSICAL DUPLICATION FOR COPIES
-  // We manually repeat the HTML for each copy to fix PDF/Driver copy bugs
-  const totalCopies = Math.max(1, Number(copies) || 1);
   let labelsHtml = "";
-  for (let i = 0; i < totalCopies; i++) {
-    labelsHtml += `
-      <div class="label-page">
-        <div class="label-container">
-          ${content}
-        </div>
-      </div>`;
+  let baseStyle = "";
+
+  for (const itemJob of itemsList) {
+    const product = itemJob.product;
+    if (!product) continue;
+
+    const code =
+      itemJob.customBarcode ||
+      product.barcode ||
+      product.batch_uid ||
+      product.product_code ||
+      "0000";
+
+    let barcodeBase64 = "";
+    try {
+      barcodeBase64 = await generateBarcodeBase64(code);
+    } catch (error) {
+      console.error("Barcode generation failed:", error);
+    }
+
+    const { style, content } = createLabelHTML(
+      product,
+      shop,
+      barcodeBase64,
+      printerWidth,
+      templateId,
+      printerHeight,
+    );
+
+    if (!baseStyle && style) {
+      baseStyle = style;
+    }
+
+    const totalCopies = Math.max(1, Number(itemJob.copies) || 1);
+    for (let i = 0; i < totalCopies; i++) {
+      labelsHtml += `
+        <div class="label-page">
+          <div class="label-container">
+            ${content}
+          </div>
+        </div>`;
+    }
   }
 
   const fullHtml = `
@@ -81,7 +98,7 @@ const createPrintWindow = async (payload) => {
     <html>
       <head>
         <meta charset="UTF-8" />
-        ${style}
+        ${baseStyle}
         <style>
           @page { 
             margin: 0 !important; 

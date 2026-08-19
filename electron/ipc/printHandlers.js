@@ -36,7 +36,11 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
 
   ipcMain.on("print-label", async (event, payload) => {
     try {
-      console.log("🖨️ Printing label for product:", payload.product.name);
+      const targetName =
+        payload?.product?.name ||
+        payload?.items?.[0]?.product?.name ||
+        "Label";
+      console.log("🖨️ Printing label for product:", targetName);
       await createPrintWindow(payload);
     } catch (err) {
       console.error("❌ Label printing failed:", err);
