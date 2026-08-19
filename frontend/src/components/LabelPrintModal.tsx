@@ -72,22 +72,61 @@ export default function LabelPrintDialog({ open, onClose, product }: Props) {
     product?.tracking_type === "batch" || product?.tracking_type === "serial";
   const isSerial = product?.tracking_type === "serial";
 
+  // --- DERIVED LISTS ---
+  const uniqueBatches = useMemo(() => {
+    if (!isTracked) return [];
+    const map = new Map();
+    stockItems.forEach((item) => {
+      const bId = item.id || -1;
+      if (!map.has(bId)) {
+        map.set(bId, {
+          ...item,
+          id: bId,
+          batch_number: item.batch_number || "General Stock (No Batch)",
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [stockItems, isTracked]);
+
+  const availableSerials = useMemo(() => {
+    if (!isSerial || filterBatchId === "") return [];
+    if (filterBatchId === -1) {
+      return stockItems.filter((item) => !item.id);
+    }
+    return stockItems.filter((item) => item.id === filterBatchId);
+  }, [stockItems, isSerial, filterBatchId]);
+
   // Load Data
   useEffect(() => {
-    if (open && product && isTracked) {
-      setLoading(true);
-      getProductBatches(
-        product.id!,
-        product.tracking_type as "batch" | "serial",
-      )
-        .then((data) => {
-          setStockItems(data || []);
-          setFilterBatchId("");
-          setSelectedSerialIds([]);
-          setSelectedPrintBatchIds([]);
-        })
-        .catch(() => toast.error("Failed to load stock info"))
-        .finally(() => setLoading(false));
+    if (open && product) {
+      if (product.tracking_type === "batch") {
+        setPrintScope("batch");
+      } else if (product.tracking_type === "serial") {
+        setPrintScope("serial");
+      } else {
+        setPrintScope("product");
+      }
+
+      if (isTracked) {
+        setLoading(true);
+        getProductBatches(
+          product.id!,
+          product.tracking_type as "batch" | "serial",
+        )
+          .then((data) => {
+            setStockItems(data || []);
+            setFilterBatchId("");
+            setSelectedSerialIds([]);
+          })
+          .catch(() => toast.error("Failed to load stock info"))
+          .finally(() => setLoading(false));
+      } else {
+        setStockItems([]);
+        setFilterBatchId("");
+        setSelectedSerialIds([]);
+        setSelectedPrintBatchIds([]);
+      }
     } else {
       setStockItems([]);
       setFilterBatchId("");
@@ -103,10 +142,11 @@ export default function LabelPrintDialog({ open, onClose, product }: Props) {
       setSelectedSerialIds([]);
       setSelectedPrintBatchIds([]);
     } else if (printScope === "batch") {
-      // When switching to batch, maybe select all? or none. Let's keep none.
-      setSelectedPrintBatchIds([]);
+      if (uniqueBatches.length > 0) {
+        setSelectedPrintBatchIds(uniqueBatches.map((b) => b.id));
+      }
     }
-  }, [printScope]);
+  }, [printScope, uniqueBatches]);
 
   // Reset serials when filter batch changes (only for serial mode)
   useEffect(() => {
@@ -114,39 +154,6 @@ export default function LabelPrintDialog({ open, onClose, product }: Props) {
   }, [filterBatchId]);
 
   if (!product) return null;
-
-  // --- DERIVED LISTS ---
-  const uniqueBatches = useMemo(() => {
-    if (!isTracked) return [];
-    // If tracking type is serial, we still might want batches to group them
-
-    const map = new Map();
-    stockItems.forEach((item) => {
-      // Handle items with no batch_id (Direct Serial Stock) by using -1
-      const bId = item.id || -1;
-
-      if (!map.has(bId)) {
-        map.set(bId, {
-          ...item,
-          id: bId, // Ensure the ID is -1 for the dropdown value
-          batch_number: item.batch_number || "General Stock (No Batch)",
-        });
-      }
-    });
-    return Array.from(map.values());
-  }, [stockItems, isTracked]);
-
-  const availableSerials = useMemo(() => {
-    // Check for empty string specifically to allow 0 or -1 as valid IDs
-    if (!isSerial || filterBatchId === "") return [];
-
-    // If "General Stock" (-1) is selected, filter items with no batch_id
-    if (filterBatchId === -1) {
-      return stockItems.filter((item) => !item.id);
-    }
-
-    return stockItems.filter((item) => item.id === filterBatchId);
-  }, [stockItems, isSerial, filterBatchId]);
 
   // --- HANDLERS ---
 
@@ -214,69 +221,149 @@ export default function LabelPrintDialog({ open, onClose, product }: Props) {
       setPrinting(true);
       toast.loading("Generating labels...");
 
-      let allPrintJobs: any[] = [];
+      const itemsToPrint: any[] = [];
 
       if (printScope === "batch") {
-        // Loop through all selected batches and gather jobs
-        const promises = selectedPrintBatchIds.map((batchId) =>
-          getBatchPrintData({
-            scope: "batch",
-            productId: product.id!,
-            batchId: batchId === -1 ? undefined : batchId,
+        // Construct each selected batch as its own item with explicit price fields
+        selectedPrintBatchIds.forEach((batchId) => {
+          const batchObj = uniqueBatches.find((b) => b.id === batchId);
+          if (!batchObj) return;
+
+          const batchMrp =
+            Number(batchObj.mrp || 0) > 0
+              ? Number(batchObj.mrp)
+              : Number(product.mrp || 0);
+          const batchMop =
+            Number(batchObj.mop || 0) > 0
+              ? Number(batchObj.mop)
+              : product.mop
+                ? Number(product.mop)
+                : batchMrp;
+          const batchMfw = batchObj.mfw_price || product.mfw_price || "";
+          const batchBarcode =
+            batchObj.barcode ||
+            batchObj.batch_uid ||
+            product.barcode ||
+            product.product_code ||
+            "0000";
+
+          itemsToPrint.push({
+            product: {
+              ...product,
+              mrp: batchMrp,
+              mop: batchMop,
+              rate: batchMop,
+              price: batchMrp,
+              mfw_price: batchMfw,
+              batch_number: batchObj.batch_number,
+              batch_no: batchObj.batch_number,
+              batch_uid: batchObj.batch_uid,
+              expiry_date: batchObj.expiry_date,
+              mfg_date: batchObj.mfg_date,
+            },
             copies: copies,
-          }),
-        );
-        const results = await Promise.all(promises);
-        results.forEach((jobs) => {
-          if (jobs) allPrintJobs.push(...jobs);
+            customBarcode: batchBarcode,
+          });
         });
-      } else {
-        // Product or Serial scope (single call)
-        allPrintJobs = await getBatchPrintData({
-          scope: printScope,
+      } else if (printScope === "serial") {
+        const allPrintJobs = await getBatchPrintData({
+          scope: "serial",
           productId: product.id!,
-          // Pass the batchId if scope is serial and a batch has been selected
           batchId:
-            printScope === "serial" && filterBatchId !== ""
-              ? filterBatchId === -1
-                ? undefined
-                : Number(filterBatchId)
+            filterBatchId !== "" && filterBatchId !== -1
+              ? Number(filterBatchId)
               : undefined,
           serialIds:
             selectedSerialIds.length > 0 ? selectedSerialIds : undefined,
           copies: copies,
         });
+
+        allPrintJobs.forEach((job: any) => {
+          const finalMrp =
+            Number(job.mrp || 0) > 0
+              ? Number(job.mrp)
+              : Number(product.mrp || 0);
+          const finalMop =
+            Number(job.mop || 0) > 0
+              ? Number(job.mop)
+              : Number(product.mop || finalMrp);
+          const finalMfw = job.mfw_price || product.mfw_price || "";
+
+          itemsToPrint.push({
+            product: {
+              ...product,
+              mrp: finalMrp,
+              mop: finalMop,
+              rate: finalMop,
+              price: finalMrp,
+              mfw_price: finalMfw,
+              ...(job.batch_number
+                ? { batch_no: job.batch_number, batch_number: job.batch_number }
+                : {}),
+              ...(job.expiry_date ? { expiry_date: job.expiry_date } : {}),
+              ...(job.mfg_date ? { mfg_date: job.mfg_date } : {}),
+            },
+            copies: job.copies,
+            customBarcode: job.barcode,
+          });
+        });
+      } else {
+        // Product mode
+        const activeBatch = uniqueBatches[0];
+        const prodMrp =
+          Number(product.mrp || 0) > 0
+            ? Number(product.mrp)
+            : Number(activeBatch?.mrp || 0);
+        const prodMop =
+          Number(product.mop || 0) > 0
+            ? Number(product.mop)
+            : Number(activeBatch?.mop || prodMrp);
+        const prodMfw = product.mfw_price || activeBatch?.mfw_price || "";
+
+        itemsToPrint.push({
+          product: {
+            ...product,
+            mrp: prodMrp,
+            mop: prodMop,
+            rate: prodMop,
+            price: prodMrp,
+            mfw_price: prodMfw,
+          },
+          copies: copies,
+          customBarcode:
+            product.barcode || product.product_code || String(product.id),
+        });
       }
 
       toast.dismiss();
 
-      if (!allPrintJobs || allPrintJobs.length === 0) {
+      if (itemsToPrint.length === 0) {
         toast.error("No labels generated.");
         setPrinting(false);
         return;
       }
 
-      toast.loading(`Printing ${allPrintJobs.length} labels...`, {
+      toast.loading(`Printing ${itemsToPrint.length} labels...`, {
         duration: 2000,
       });
 
-      // Loop through the jobs returned by backend and print
+      // Loop through the items and print
       let index = 0;
       const interval = setInterval(() => {
-        if (index >= allPrintJobs.length) {
+        if (index >= itemsToPrint.length) {
           clearInterval(interval);
           setPrinting(false);
           onClose();
           return;
         }
 
-        const job = allPrintJobs[index];
+        const itemJob = itemsToPrint[index];
 
         ipcRenderer.send("print-label", {
-          product,
+          product: itemJob.product,
           shop,
-          copies: job.copies,
-          customBarcode: job.barcode,
+          copies: itemJob.copies,
+          customBarcode: itemJob.customBarcode,
         });
 
         index++;

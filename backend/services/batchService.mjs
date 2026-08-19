@@ -729,10 +729,27 @@ export async function generatePrintPayload({
 
   if (scope === "product") {
     const code = product.barcode || product.product_code || String(product.id);
+    let prodMrp = Number(product.mrp || 0);
+    let prodMop = Number(product.mop || 0);
+    let prodMfw = product.mfw_price || "";
+
+    if (prodMrp === 0 || prodMop === 0) {
+      const activeBatches = BatchRepo.getActiveBatchesByProductId(product.id);
+      if (activeBatches && activeBatches.length > 0) {
+        const firstBatch = activeBatches[0];
+        if (prodMrp === 0 && firstBatch.mrp > 0) prodMrp = Number(firstBatch.mrp);
+        if (prodMop === 0 && firstBatch.mop > 0) prodMop = Number(firstBatch.mop);
+        if (!prodMfw && firstBatch.mfw_price) prodMfw = firstBatch.mfw_price;
+      }
+    }
+
     labels.push({
       barcode: code,
       label: product.name,
-      price: product.mrp,
+      price: prodMop || prodMrp,
+      mrp: prodMrp,
+      mop: prodMop,
+      mfw_price: prodMfw,
       copies: qty,
     });
   } else if (scope === "batch") {
@@ -740,10 +757,29 @@ export async function generatePrintPayload({
     const batch = await BatchRepo.getBatchById(batchId);
     if (!batch) throw new Error("Batch not found");
     const code = batch.barcode || batch.batch_uid || `BAT-${batch.id}`;
+
+    const effectiveMrp =
+      batch.mrp && Number(batch.mrp) > 0
+        ? Number(batch.mrp)
+        : Number(product.mrp || 0);
+    const effectiveMop =
+      batch.mop && Number(batch.mop) > 0
+        ? Number(batch.mop)
+        : product.mop
+          ? Number(product.mop)
+          : effectiveMrp;
+    const effectiveMfw = batch.mfw_price || product.mfw_price || "";
+
     labels.push({
       barcode: code,
       label: `${product.name} (Batch: ${batch.batch_number})`,
-      price: batch.mrp,
+      price: effectiveMop || effectiveMrp,
+      mrp: effectiveMrp,
+      mop: effectiveMop,
+      mfw_price: effectiveMfw,
+      batch_number: batch.batch_number,
+      expiry_date: batch.expiry_date,
+      mfg_date: batch.mfg_date,
       copies: qty,
     });
   } else if (scope === "serial") {
@@ -755,12 +791,31 @@ export async function generatePrintPayload({
     } else {
       serials = BatchRepo.getSerialsByIds(serialIds);
     }
+
+    const effectiveMrp =
+      batch.mrp && Number(batch.mrp) > 0
+        ? Number(batch.mrp)
+        : Number(product.mrp || 0);
+    const effectiveMop =
+      batch.mop && Number(batch.mop) > 0
+        ? Number(batch.mop)
+        : product.mop
+          ? Number(product.mop)
+          : effectiveMrp;
+    const effectiveMfw = batch.mfw_price || product.mfw_price || "";
+
     for (const item of serials) {
       const code = item.serial_number;
       labels.push({
         barcode: code,
         label: `${product.name} (SN: ${item.serial_number})`,
-        price: batch.mrp,
+        price: effectiveMop || effectiveMrp,
+        mrp: effectiveMrp,
+        mop: effectiveMop,
+        mfw_price: effectiveMfw,
+        batch_number: batch.batch_number,
+        expiry_date: batch.expiry_date,
+        mfg_date: batch.mfg_date,
         copies: qty,
       });
     }

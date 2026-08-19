@@ -30,6 +30,7 @@ class BarcodeCache {
       const svg = bwipjs.toSVG({
         bcid: "code128",
         text: text,
+        scale: 3,
         height: 10,
         includetext: true,
         textxalign: "center",

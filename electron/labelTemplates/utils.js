@@ -81,12 +81,43 @@ const encodePrice = (price) => {
 };
 
 const getPriceDetails = (item) => {
-  const mainPrice = Math.round(item.mop || item.rate || item.mrp || 0);
-  const sellingPrice = item.mop || item.rate;
-  const showStrike = sellingPrice && item.mrp && item.mrp > sellingPrice;
-  const mrp = Math.round(item.mrp || 0);
+  const mrpNum = Number(item.mrp || 0);
+  const mopNum = Number(item.mop || 0);
+  const rateNum = Number(item.rate || 0);
+  const priceNum = Number(item.price || 0);
+
+  // MRP is the absolute truth for label price when available (> 0)
+  const mainPriceVal =
+    mrpNum > 0 ? mrpNum : [mopNum, rateNum, priceNum].find((p) => p > 0) || 0;
+  const mainPrice = Math.round(mainPriceVal);
+
+  const mrp = Math.round(mrpNum > 0 ? mrpNum : mainPriceVal);
+  const sellingPrice =
+    mopNum > 0 ? mopNum : rateNum > 0 ? rateNum : priceNum > 0 ? priceNum : 0;
+  const showStrike = sellingPrice > 0 && mrp > sellingPrice;
+
   const encoded = item.mfw_price ? encodePrice(item.mfw_price) : "";
   return { mainPrice, mrp, showStrike, encoded };
 };
 
-module.exports = { BRANDING_HTML, getBaseStyle, encodePrice, getPriceDetails };
+const formatDisplayName = (item) => {
+  const name = item.name || "Product";
+  const batchOrTag = item.batch_number || item.batch_no || item.size || "";
+  if (!batchOrTag) {
+    return `<div class="truncate" style="text-align: center; width: 100%; font-weight: 700;">${name}</div>`;
+  }
+  return `
+    <div style="display: flex; justify-content: center; align-items: center; width: 100%; overflow: hidden; white-space: nowrap; gap: 4px;">
+      <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; min-width: 0; font-weight: 700;">${name}</span>
+      <span style="flex-shrink: 0; font-weight: 700; white-space: nowrap;">- ${batchOrTag}</span>
+    </div>
+  `;
+};
+
+module.exports = {
+  BRANDING_HTML,
+  getBaseStyle,
+  encodePrice,
+  getPriceDetails,
+  formatDisplayName,
+};

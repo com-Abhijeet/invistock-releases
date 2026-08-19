@@ -32,7 +32,11 @@ const createPrintWindow = async (payload) => {
   // ===================================================
 
   const code =
-    customBarcode || product.barcode || product.product_code || "0000";
+    customBarcode ||
+    product.barcode ||
+    product.batch_uid ||
+    product.product_code ||
+    "0000";
 
   let barcodeBase64 = "";
   try {
