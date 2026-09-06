@@ -115,11 +115,11 @@ export function getCustomerLedger(customerId, startDate, endDate) {
     .prepare(
       `
     SELECT
-      (SELECT COALESCE(SUM(total_amount), 0) FROM sales WHERE customer_id = ? AND date(created_at) < date(?) AND status != 'cancelled')
+      (SELECT COALESCE(SUM(total_amount + COALESCE(round_off, 0)), 0) FROM sales WHERE customer_id = ? AND date(created_at) < date(?) AND status != 'cancelled')
       +
-      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'customer' AND type = 'payment_out' AND date(transaction_date) < date(?) AND status != 'deleted')
+      (SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'customer' AND type = 'payment_out' AND date(transaction_date) < date(?) AND status != 'deleted')
       -
-      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'customer' AND type IN ('payment_in', 'credit_note') AND date(transaction_date) < date(?) AND status != 'deleted')
+      (SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'customer' AND type IN ('payment_in', 'credit_note') AND date(transaction_date) < date(?) AND status != 'deleted')
       as balance
   `,
     )
@@ -133,7 +133,7 @@ export function getCustomerLedger(customerId, startDate, endDate) {
     -- DEBIT: Sales Invoices
     SELECT 
       'Sale Invoice' as record_type, s.id, s.reference_no, date(s.created_at) as date, 
-      s.total_amount as debit, 0 as credit, s.note
+      (s.total_amount + COALESCE(s.round_off, 0)) as debit, 0 as credit, s.note
     FROM sales s
     WHERE s.customer_id = ? AND date(s.created_at) BETWEEN date(?) AND date(?) AND s.status != 'cancelled'
     
@@ -142,7 +142,7 @@ export function getCustomerLedger(customerId, startDate, endDate) {
     -- DEBIT: Cash Refunds to Customer (Increases Balance)
     SELECT 
       'Cash Refund' as record_type, t.id, t.reference_no, date(t.transaction_date) as date,
-      t.amount as debit, 0 as credit, t.note
+      ABS(t.amount) as debit, 0 as credit, t.note
     FROM transactions t
     WHERE t.entity_id = ? AND t.entity_type = 'customer' AND t.type = 'payment_out'
       AND date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.status != 'deleted'
@@ -153,7 +153,7 @@ export function getCustomerLedger(customerId, startDate, endDate) {
     SELECT 
       CASE WHEN t.type = 'payment_in' THEN 'Payment Received' ELSE 'Sales Return (CN)' END as record_type, 
       t.id, t.reference_no, date(t.transaction_date) as date, 
-      0 as debit, t.amount as credit, t.note
+      0 as debit, ABS(t.amount) as credit, t.note
     FROM transactions t
     WHERE t.entity_id = ? AND t.entity_type = 'customer' AND t.type IN ('payment_in', 'credit_note')
       AND date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.status != 'deleted'
@@ -189,9 +189,9 @@ export function getSupplierLedger(supplierId, startDate, endDate) {
     SELECT
       (SELECT COALESCE(SUM(total_amount), 0) FROM purchases WHERE supplier_id = ? AND date(date) < date(?) AND status != 'cancelled')
       +
-      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'supplier' AND type = 'payment_in' AND date(transaction_date) < date(?) AND status != 'deleted')
+      (SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'supplier' AND type = 'payment_in' AND date(transaction_date) < date(?) AND status != 'deleted')
       -
-      (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'supplier' AND type IN ('payment_out', 'debit_note') AND date(transaction_date) < date(?) AND status != 'deleted')
+      (SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions WHERE entity_id = ? AND entity_type = 'supplier' AND type IN ('payment_out', 'debit_note') AND date(transaction_date) < date(?) AND status != 'deleted')
       as balance
   `,
     )
@@ -214,7 +214,7 @@ export function getSupplierLedger(supplierId, startDate, endDate) {
     -- CREDIT: Cash Refund received from Supplier
     SELECT 
       'Refund Received' as record_type, t.id, t.reference_no, date(t.transaction_date) as date, 
-      0 as debit, t.amount as credit, t.note
+      0 as debit, ABS(t.amount) as credit, t.note
     FROM transactions t
     WHERE t.entity_id = ? AND t.entity_type = 'supplier' AND t.type = 'payment_in'
       AND date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.status != 'deleted'
@@ -225,7 +225,7 @@ export function getSupplierLedger(supplierId, startDate, endDate) {
     SELECT 
       CASE WHEN t.type = 'payment_out' THEN 'Payment Sent' ELSE 'Purchase Return (DN)' END as record_type, 
       t.id, t.reference_no, date(t.transaction_date) as date, 
-      t.amount as debit, 0 as credit, t.note
+      ABS(t.amount) as debit, 0 as credit, t.note
     FROM transactions t
     WHERE t.entity_id = ? AND t.entity_type = 'supplier' AND t.type IN ('payment_out', 'debit_note')
       AND date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.status != 'deleted'
@@ -399,10 +399,10 @@ export function getStockSummaryReport(startDate, endDate) {
 export function getReceivablesAging() {
   const query = `
     WITH SalePayments AS (
-        SELECT bill_id, SUM(amount) as paid_amount
+        SELECT bill_id, SUM(ABS(amount)) as paid_amount
         FROM transactions
         WHERE LOWER(bill_type) = 'sale' 
-          AND LOWER(type) IN ('payment_in', 'credit_note', 'sale') 
+          AND LOWER(type) IN ('payment_in', 'credit_note') 
           AND LOWER(status) != 'deleted'
         GROUP BY bill_id
     ),
@@ -410,11 +410,11 @@ export function getReceivablesAging() {
         SELECT 
             s.id as sale_id,
             s.customer_id,
-            (s.total_amount - COALESCE(sp.paid_amount, 0)) as pending_amount,
+            ((s.total_amount + COALESCE(s.round_off, 0)) - COALESCE(sp.paid_amount, 0)) as pending_amount,
             CAST(julianday('now', 'localtime') - julianday(s.created_at, 'localtime') AS INTEGER) as age_days
         FROM sales s
         LEFT JOIN SalePayments sp ON s.id = sp.bill_id
-        WHERE s.status != 'cancelled' AND (s.total_amount - COALESCE(sp.paid_amount, 0)) > 0.5
+        WHERE s.status != 'cancelled' AND ((s.total_amount + COALESCE(s.round_off, 0)) - COALESCE(sp.paid_amount, 0)) > 0.5
     )
     SELECT 
         c.id as customer_id,
@@ -436,10 +436,10 @@ export function getReceivablesAging() {
 export function getCustomerBillByBill(customerId) {
   const query = `
     WITH SalePayments AS (
-        SELECT bill_id, SUM(amount) as paid_amount
+        SELECT bill_id, SUM(ABS(amount)) as paid_amount
         FROM transactions
         WHERE LOWER(bill_type) = 'sale' 
-          AND LOWER(type) IN ('payment_in', 'credit_note', 'sale') 
+          AND LOWER(type) IN ('payment_in', 'credit_note') 
           AND LOWER(status) != 'deleted'
         GROUP BY bill_id
     )
@@ -447,13 +447,13 @@ export function getCustomerBillByBill(customerId) {
         s.id as sale_id,
         s.reference_no,
         date(s.created_at) as date,
-        s.total_amount as invoice_amount,
+        (s.total_amount + COALESCE(s.round_off, 0)) as invoice_amount,
         COALESCE(sp.paid_amount, 0) as paid_amount,
-        (s.total_amount - COALESCE(sp.paid_amount, 0)) as pending_amount,
+        ((s.total_amount + COALESCE(s.round_off, 0)) - COALESCE(sp.paid_amount, 0)) as pending_amount,
         CAST(julianday('now', 'localtime') - julianday(s.created_at, 'localtime') AS INTEGER) as age_days
     FROM sales s
     LEFT JOIN SalePayments sp ON s.id = sp.bill_id
-    WHERE s.customer_id = ? AND s.status != 'cancelled' AND (s.total_amount - COALESCE(sp.paid_amount, 0)) > 0.5
+    WHERE s.customer_id = ? AND s.status != 'cancelled' AND ((s.total_amount + COALESCE(s.round_off, 0)) - COALESCE(sp.paid_amount, 0)) > 0.5
     ORDER BY s.created_at ASC
   `;
   return db.prepare(query).all(customerId);
@@ -462,10 +462,10 @@ export function getCustomerBillByBill(customerId) {
 export function getPayablesAging() {
   const query = `
     WITH PurchasePayments AS (
-        SELECT bill_id, SUM(amount) as paid_amount
+        SELECT bill_id, SUM(ABS(amount)) as paid_amount
         FROM transactions
         WHERE LOWER(bill_type) = 'purchase' 
-          AND LOWER(type) IN ('payment_out', 'debit_note', 'purchase') 
+          AND LOWER(type) IN ('payment_out', 'debit_note') 
           AND LOWER(status) != 'deleted'
         GROUP BY bill_id
     ),
@@ -473,11 +473,11 @@ export function getPayablesAging() {
         SELECT 
             p.id as purchase_id,
             p.supplier_id,
-            (p.total_amount - COALESCE(pp.paid_amount, 0)) as pending_amount,
+            ((p.total_amount + COALESCE(p.round_off, 0)) - COALESCE(pp.paid_amount, 0)) as pending_amount,
             CAST(julianday('now', 'localtime') - julianday(p.date, 'localtime') AS INTEGER) as age_days
         FROM purchases p
         LEFT JOIN PurchasePayments pp ON p.id = pp.bill_id
-        WHERE p.status != 'cancelled' AND (p.total_amount - COALESCE(pp.paid_amount, 0)) > 0.5
+        WHERE p.status != 'cancelled' AND ((p.total_amount + COALESCE(p.round_off, 0)) - COALESCE(pp.paid_amount, 0)) > 0.5
     )
     SELECT 
         s.id as supplier_id,
@@ -499,10 +499,10 @@ export function getPayablesAging() {
 export function getSupplierBillByBill(supplierId) {
   const query = `
     WITH PurchasePayments AS (
-        SELECT bill_id, SUM(amount) as paid_amount
+        SELECT bill_id, SUM(ABS(amount)) as paid_amount
         FROM transactions
         WHERE LOWER(bill_type) = 'purchase' 
-          AND LOWER(type) IN ('payment_out', 'debit_note', 'purchase') 
+          AND LOWER(type) IN ('payment_out', 'debit_note') 
           AND LOWER(status) != 'deleted'
         GROUP BY bill_id
     )

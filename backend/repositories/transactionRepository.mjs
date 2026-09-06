@@ -210,11 +210,29 @@ export async function getTransactionsByRelatedId(billId, billType) {
  */
 export function updateTransaction(id, updatedData) {
   try {
-    const fields = Object.keys(updatedData);
+    const ALLOWED_COLUMNS = [
+      "reference_no",
+      "type",
+      "bill_id",
+      "bill_type",
+      "entity_id",
+      "entity_type",
+      "transaction_date",
+      "amount",
+      "payment_mode",
+      "status",
+      "note",
+      "gst_amount",
+      "discount",
+    ];
+
+    const fields = Object.keys(updatedData).filter((key) =>
+      ALLOWED_COLUMNS.includes(key),
+    );
     if (fields.length === 0) return { changes: 0 };
 
     const setClause = fields.map((field) => `${field} = ?`).join(", ");
-    const params = Object.values(updatedData);
+    const params = fields.map((field) => updatedData[field]);
     params.push(id);
 
     const stmt = db.prepare(

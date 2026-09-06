@@ -174,8 +174,8 @@ export function getPurchaseById(id) {
 
     const summaryStmt = db.prepare(`
       SELECT
-        COALESCE(SUM(CASE WHEN t.type IN ('payment_out', 'purchase') THEN t.amount ELSE 0 END), 0) AS total_paid,
-        COALESCE(SUM(CASE WHEN t.type = 'debit_note' THEN t.amount ELSE 0 END), 0) AS total_debit_notes
+        COALESCE(SUM(CASE WHEN t.type IN ('payment_out', 'purchase') THEN ABS(t.amount) ELSE 0 END), 0) AS total_paid,
+        COALESCE(SUM(CASE WHEN t.type = 'debit_note' THEN ABS(t.amount) ELSE 0 END), 0) AS total_debit_notes
       FROM transactions t
       WHERE t.bill_id = ? AND t.bill_type = 'purchase' AND t.status != 'deleted'
     `);
@@ -183,7 +183,7 @@ export function getPurchaseById(id) {
 
     const totalPaid = summary.total_paid || 0;
     const debitNotes = summary.total_debit_notes || 0;
-    const adjustedTotal = (purchase.total_amount || 0) + debitNotes;
+    const adjustedTotal = Math.max(0, (purchase.total_amount || 0) - debitNotes);
     const balance = adjustedTotal - totalPaid;
 
     let paymentStatus = "pending";
@@ -387,8 +387,8 @@ export function getAllPurchases({
       SELECT
         p.id, p.internal_ref_no, p.reference_no, p.date, p.status, p.supplier_id, s.name AS supplier_name,
         p.total_amount AS original_total, p.paid_amount AS original_paid,
-        COALESCE(SUM(CASE WHEN t.type IN ('debit_note') THEN t.amount ELSE 0 END), 0) AS total_adjustments,
-        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN t.amount ELSE 0 END), 0) AS net_paid_amount
+        COALESCE(SUM(CASE WHEN t.type IN ('debit_note') THEN ABS(t.amount) ELSE 0 END), 0) AS total_adjustments,
+        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN ABS(t.amount) ELSE 0 END), 0) AS net_paid_amount
       ${baseQuery}
       GROUP BY p.id
       ORDER BY p.date DESC
@@ -449,9 +449,9 @@ export function getPurchasesBySupplierId(supplierId, filters = {}) {
   const dataQuery = `
       SELECT
         p.id, p.supplier_id, p.reference_no, p.date, p.status, p.total_amount AS original_total_amount,
-        COALESCE(SUM(CASE WHEN t.type IN ('debit_note') THEN t.amount ELSE 0 END), 0) AS total_adjustments,
-        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN t.amount ELSE 0 END), 0) AS total_paid_amount,
-        p.total_amount + COALESCE(SUM(CASE WHEN t.type = 'debit_note' THEN t.amount ELSE 0 END), 0) AS adjusted_total_amount
+        COALESCE(SUM(CASE WHEN t.type IN ('debit_note') THEN ABS(t.amount) ELSE 0 END), 0) AS total_adjustments,
+        COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN ABS(t.amount) ELSE 0 END), 0) AS total_paid_amount,
+        p.total_amount - COALESCE(SUM(CASE WHEN t.type = 'debit_note' THEN ABS(t.amount) ELSE 0 END), 0) AS adjusted_total_amount
       FROM purchases p
       LEFT JOIN transactions t ON t.bill_id = p.id AND t.bill_type = 'purchase'
       WHERE ${finalWhereClause}
@@ -756,7 +756,7 @@ export function processPurchaseReturn(payload) {
         purchaseId,
         purchase.supplier_id,
         todayDate,
-        -Math.abs(finalDebitAmount),
+        Math.abs(finalDebitAmount),
         returnGstVal,
         note || `Debit Note against Purchase Bill #${purchase.reference_no}`,
       );

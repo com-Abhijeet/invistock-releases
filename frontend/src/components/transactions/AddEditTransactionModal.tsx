@@ -444,11 +444,22 @@ export default function AddEditTransactionModal({
       return;
     }
 
-    setLoading(true);
+    const {
+      entity_name,
+      entity_phone,
+      entity_address,
+      bill_ref_no,
+      created_at,
+      updated_at,
+      ...cleanForm
+    } = form as any;
+
     const submitPayload = {
-      ...form,
+      ...cleanForm,
       payment_mode: form.payment_mode || "cash",
     };
+
+    setLoading(true);
     try {
       if (isEditMode) {
         if (!initialData?.id) throw new Error("Transaction ID is missing.");

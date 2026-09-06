@@ -332,8 +332,8 @@ export async function getCustomersWithFinancials({
   const transSubquery = `
     SELECT 
       entity_id,
-      COALESCE(SUM(CASE WHEN type = 'payment_in' THEN amount WHEN type = 'payment_out' THEN -amount ELSE 0 END), 0) as total_amount_paid,
-      COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as total_credit_notes
+      COALESCE(SUM(CASE WHEN type = 'payment_in' THEN ABS(amount) WHEN type = 'payment_out' THEN -ABS(amount) ELSE 0 END), 0) as total_amount_paid,
+      COALESCE(SUM(CASE WHEN type = 'credit_note' THEN ABS(amount) ELSE 0 END), 0) as total_credit_notes
     FROM transactions
     WHERE entity_type = 'customer' 
       AND status != 'deleted' 
@@ -346,14 +346,14 @@ export async function getCustomersWithFinancials({
     SELECT 
       s.customer_id,
       COALESCE(SUM(
-        MAX(0, (s.total_amount - COALESCE(t_bill.credit, 0) - MAX(COALESCE(s.paid_amount, 0), COALESCE(t_bill.paid, 0))))
+        MAX(0, ((s.total_amount + COALESCE(s.round_off, 0)) - COALESCE(t_bill.credit, 0) - MAX(COALESCE(s.paid_amount, 0), COALESCE(t_bill.paid, 0))))
       ), 0) as total_pending_dues
     FROM sales s
     LEFT JOIN (
       SELECT 
         bill_id,
-        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN amount WHEN type = 'payment_out' THEN -amount ELSE 0 END), 0) as paid,
-        COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as credit
+        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN ABS(amount) WHEN type = 'payment_out' THEN -ABS(amount) ELSE 0 END), 0) as paid,
+        COALESCE(SUM(CASE WHEN type = 'credit_note' THEN ABS(amount) ELSE 0 END), 0) as credit
       FROM transactions
       WHERE bill_type = 'sale' AND status != 'deleted'
       GROUP BY bill_id
@@ -371,14 +371,14 @@ export async function getCustomersWithFinancials({
     LEFT JOIN (
       SELECT 
         bill_id,
-        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN amount WHEN type = 'payment_out' THEN -amount ELSE 0 END), 0) as paid,
-        COALESCE(SUM(CASE WHEN type = 'credit_note' THEN amount ELSE 0 END), 0) as credit
+        COALESCE(SUM(CASE WHEN type = 'payment_in' THEN ABS(amount) WHEN type = 'payment_out' THEN -ABS(amount) ELSE 0 END), 0) as paid,
+        COALESCE(SUM(CASE WHEN type = 'credit_note' THEN ABS(amount) ELSE 0 END), 0) as credit
       FROM transactions
       WHERE bill_type = 'sale' AND status != 'deleted'
       GROUP BY bill_id
     ) t_bill ON s.id = t_bill.bill_id
     WHERE s.status != 'cancelled' AND s.is_quote = 0
-      AND (s.total_amount - COALESCE(t_bill.credit, 0) - MAX(COALESCE(s.paid_amount, 0), COALESCE(t_bill.paid, 0))) <= 0.01
+      AND ((s.total_amount + COALESCE(s.round_off, 0)) - COALESCE(t_bill.credit, 0) - MAX(COALESCE(s.paid_amount, 0), COALESCE(t_bill.paid, 0))) <= 0.01
     GROUP BY s.customer_id
   `;
 
@@ -459,9 +459,11 @@ export function getPendingBillsByCustomer({ customerId, query = "", minAgeDays =
           s.reference_no,
           s.created_at AS bill_date,
           s.total_amount,
+          s.round_off,
+          (s.total_amount + COALESCE(s.round_off, 0)) AS net_total_amount,
           COALESCE(s.paid_amount, 0) AS header_paid,
-          COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN t.amount WHEN t.type = 'payment_out' THEN -t.amount ELSE 0 END), 0) AS total_paid_trans,
-          COALESCE(SUM(CASE WHEN t.type = 'credit_note' THEN t.amount ELSE 0 END), 0) AS total_credit_notes_trans,
+          COALESCE(SUM(CASE WHEN t.type = 'payment_in' THEN ABS(t.amount) WHEN t.type = 'payment_out' THEN -ABS(t.amount) ELSE 0 END), 0) AS total_paid_trans,
+          COALESCE(SUM(CASE WHEN t.type = 'credit_note' THEN ABS(t.amount) ELSE 0 END), 0) AS total_credit_notes_trans,
           CAST(julianday('now', 'localtime') - julianday(s.created_at) AS INTEGER) AS bill_age_days
         FROM sales s
         JOIN customers c ON s.customer_id = c.id
@@ -475,9 +477,9 @@ export function getPendingBillsByCustomer({ customerId, query = "", minAgeDays =
         SELECT 
           *,
           MAX(header_paid, total_paid_trans) AS effective_paid,
-          (total_amount - total_credit_notes_trans - MAX(header_paid, total_paid_trans)) AS pending_balance
+          (net_total_amount - total_credit_notes_trans - MAX(header_paid, total_paid_trans)) AS pending_balance
         FROM BillTransactions
-        WHERE (total_amount - total_credit_notes_trans - MAX(header_paid, total_paid_trans)) > 0.01
+        WHERE (net_total_amount - total_credit_notes_trans - MAX(header_paid, total_paid_trans)) > 0.01
       )
       SELECT * FROM PendingBills
       WHERE bill_age_days >= ?

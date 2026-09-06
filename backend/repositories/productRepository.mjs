@@ -373,9 +373,10 @@ export function getProductHistory(productId) {
   const purchases = db
     .prepare(
       `
-    SELECT p.date, pi.quantity, pi.rate, pi.unit
+    SELECT p.id as purchase_id, p.reference_no, p.date, pi.quantity, pi.rate, pi.unit, sup.name as supplier_name
     FROM purchase_items pi
     JOIN purchases p ON pi.purchase_id = p.id
+    LEFT JOIN suppliers sup ON p.supplier_id = sup.id
     WHERE pi.product_id = ?
     ORDER BY p.date ASC
   `,
@@ -385,9 +386,10 @@ export function getProductHistory(productId) {
   const gstSales = db
     .prepare(
       `
-    SELECT s.created_at as date, si.quantity, si.rate, si.unit
+    SELECT s.id as sale_id, s.reference_no, s.created_at as date, si.quantity, si.rate, si.unit, cust.name as customer_name
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
+    LEFT JOIN customers cust ON s.customer_id = cust.id
     WHERE si.product_id = ? AND s.is_quote = 0
     ORDER BY s.created_at ASC
   `,
@@ -398,32 +400,61 @@ export function getProductHistory(productId) {
     .prepare(
       `
     SELECT 
-      created_at as date, 
-      adjustment as quantity,
-      reason,
-      category
-    FROM stock_adjustments
-    WHERE product_id = ?
-    ORDER BY created_at ASC
+      sa.id as adjustment_id,
+      sa.created_at as date, 
+      sa.adjustment as quantity,
+      sa.reason,
+      sa.category,
+      sa.old_quantity,
+      sa.new_quantity,
+      sa.adjusted_by,
+      pb.batch_number
+    FROM stock_adjustments sa
+    LEFT JOIN product_batches pb ON sa.batch_id = pb.id
+    WHERE sa.product_id = ?
+    ORDER BY sa.created_at ASC
   `,
     )
     .all(productId);
 
   const history = [
     ...purchases.map((p) => ({
+      id: `p-${p.purchase_id}`,
       date: p.date,
       type: "Purchase",
+      reference_no: p.reference_no || `PUR-${p.purchase_id}`,
+      entity_id: p.purchase_id,
+      entity_type: "purchase",
+      party_name: p.supplier_name || "Supplier",
       quantity: `+${p.quantity} ${p.unit || ""}`,
     })),
     ...gstSales.map((s) => ({
+      id: `s-${s.sale_id}`,
       date: s.date,
       type: "Sale",
+      reference_no: s.reference_no || `INV-${s.sale_id}`,
+      entity_id: s.sale_id,
+      entity_type: "sale",
+      party_name: s.customer_name || "Customer",
       quantity: `-${s.quantity} ${s.unit || ""}`,
     })),
     ...adjustments.map((a) => ({
+      id: `a-${a.adjustment_id}`,
       date: a.date,
-      type: `Adjustment (${a.category})`,
+      type: "Adjustment",
+      reference_no: a.reason || `Adjustment #${a.adjustment_id}`,
+      entity_id: a.adjustment_id,
+      entity_type: "adjustment",
+      party_name: a.adjusted_by || "System",
       quantity: a.quantity > 0 ? `+${a.quantity}` : `${a.quantity}`,
+      adjustment_details: {
+        category: a.category,
+        reason: a.reason,
+        old_quantity: a.old_quantity,
+        new_quantity: a.new_quantity,
+        adjusted_by: a.adjusted_by,
+        batch_number: a.batch_number,
+      },
     })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 

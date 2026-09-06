@@ -197,8 +197,8 @@ export async function getSuppliersWithFinancials({
   const transSubquery = `
     SELECT 
       entity_id,
-      COALESCE(SUM(CASE WHEN type = 'payment_out' THEN amount WHEN type = 'payment_in' THEN -amount ELSE 0 END), 0) as total_amount_paid,
-      COALESCE(SUM(CASE WHEN type = 'debit_note' THEN amount ELSE 0 END), 0) as total_debit_notes
+      COALESCE(SUM(CASE WHEN type = 'payment_out' THEN ABS(amount) WHEN type = 'payment_in' THEN -ABS(amount) ELSE 0 END), 0) as total_amount_paid,
+      COALESCE(SUM(CASE WHEN type = 'debit_note' THEN ABS(amount) ELSE 0 END), 0) as total_debit_notes
     FROM transactions
     WHERE entity_type = 'supplier' 
       AND status != 'deleted' 

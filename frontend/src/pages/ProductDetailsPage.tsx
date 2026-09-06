@@ -13,6 +13,10 @@ import {
   Stack,
   Alert,
   AlertTitle,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -58,6 +62,10 @@ export default function ProductDetailPage() {
   const [historyRowsPerPage, setHistoryRowsPerPage] = useState(5);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [createBatchOpen, setCreateBatchOpen] = useState(false);
+
+  // Adjustment View Modal state
+  const [selectedAdjustment, setSelectedAdjustment] = useState<any | null>(null);
+  const [adjDetailOpen, setAdjDetailOpen] = useState(false);
 
   const fetchData = async () => {
     if (!id) return;
@@ -115,17 +123,39 @@ export default function ProductDetailPage() {
           day: "2-digit",
           month: "short",
           year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
         }),
     },
     {
       key: "type",
-      label: "Type",
+      label: "Type & Document",
+      format: (_: any, row: any) => (
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Chip
+            label={row.type}
+            size="small"
+            color={
+              row.entity_type === "purchase"
+                ? "success"
+                : row.entity_type === "sale"
+                ? "primary"
+                : "secondary"
+            }
+          />
+          <Typography variant="body2" fontWeight={600}>
+            {row.reference_no}
+          </Typography>
+        </Stack>
+      ),
+    },
+    {
+      key: "party_name",
+      label: "Party / User",
       format: (val: string) => (
-        <Chip
-          label={val}
-          size="small"
-          color={val === "Purchase" ? "success" : "primary"}
-        />
+        <Typography variant="body2" color="text.secondary">
+          {val || "—"}
+        </Typography>
       ),
     },
     {
@@ -139,6 +169,56 @@ export default function ProductDetailPage() {
           {val}
         </Typography>
       ),
+    },
+    {
+      key: "actions",
+      label: "Action",
+      format: (_: any, row: any) => {
+        if (row.entity_type === "sale") {
+          return (
+            <Button
+              size="small"
+              variant="outlined"
+              color="primary"
+              startIcon={<ExternalLink size={14} />}
+              onClick={() => navigate(`/billing/view/${row.entity_id}`)}
+              sx={{ fontSize: "0.75rem", py: 0.25 }}
+            >
+              View Invoice
+            </Button>
+          );
+        } else if (row.entity_type === "purchase") {
+          return (
+            <Button
+              size="small"
+              variant="outlined"
+              color="success"
+              startIcon={<ExternalLink size={14} />}
+              onClick={() => navigate(`/purchase/view/${row.entity_id}`)}
+              sx={{ fontSize: "0.75rem", py: 0.25 }}
+            >
+              View Purchase
+            </Button>
+          );
+        } else if (row.entity_type === "adjustment") {
+          return (
+            <Button
+              size="small"
+              variant="outlined"
+              color="secondary"
+              startIcon={<Sliders size={14} />}
+              onClick={() => {
+                setSelectedAdjustment(row);
+                setAdjDetailOpen(true);
+              }}
+              sx={{ fontSize: "0.75rem", py: 0.25 }}
+            >
+              View Adjustment
+            </Button>
+          );
+        }
+        return null;
+      },
     },
   ];
 
@@ -495,6 +575,112 @@ export default function ProductDetailPage() {
           onSuccess={fetchData}
         />
       )}
+
+      {/* STOCK ADJUSTMENT DETAIL DIALOG */}
+      <Dialog
+        open={adjDetailOpen}
+        onClose={() => setAdjDetailOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: "bold", borderBottom: 1, borderColor: "divider" }}>
+          Stock Adjustment Details
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedAdjustment && (
+            <Stack spacing={2}>
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Typography variant="body2" color="text.secondary">
+                  Category
+                </Typography>
+                <Chip
+                  label={selectedAdjustment.adjustment_details?.category || "Manual"}
+                  color="secondary"
+                  size="small"
+                />
+              </Box>
+
+              <Divider />
+
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">
+                  Adjustment
+                </Typography>
+                <Typography
+                  fontWeight="bold"
+                  color={
+                    selectedAdjustment.quantity.startsWith("+")
+                      ? "success.main"
+                      : "error.main"
+                  }
+                >
+                  {selectedAdjustment.quantity} {product.base_unit || "pcs"}
+                </Typography>
+              </Box>
+
+              {selectedAdjustment.adjustment_details?.old_quantity !== undefined && (
+                <Box display="flex" justifyContent="space-between">
+                  <Typography variant="body2" color="text.secondary">
+                    Stock Change
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600}>
+                    {selectedAdjustment.adjustment_details.old_quantity} ➔{" "}
+                    {selectedAdjustment.adjustment_details.new_quantity}{" "}
+                    {product.base_unit || "pcs"}
+                  </Typography>
+                </Box>
+              )}
+
+              {selectedAdjustment.adjustment_details?.batch_number && (
+                <Box display="flex" justifyContent="space-between">
+                  <Typography variant="body2" color="text.secondary">
+                    Batch
+                  </Typography>
+                  <Chip
+                    label={selectedAdjustment.adjustment_details.batch_number}
+                    size="small"
+                    variant="outlined"
+                  />
+                </Box>
+              )}
+
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">
+                  Reason / Note
+                </Typography>
+                <Typography variant="body2" fontWeight={500} align="right">
+                  {selectedAdjustment.adjustment_details?.reason ||
+                    selectedAdjustment.reference_no ||
+                    "Manual Adjustment"}
+                </Typography>
+              </Box>
+
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">
+                  Adjusted By
+                </Typography>
+                <Typography variant="body2" fontWeight={500}>
+                  {selectedAdjustment.party_name || "System"}
+                </Typography>
+              </Box>
+
+              <Box display="flex" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">
+                  Date & Time
+                </Typography>
+                <Typography variant="body2">
+                  {new Date(selectedAdjustment.date).toLocaleString("en-IN")}
+                </Typography>
+              </Box>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAdjDetailOpen(false)} variant="contained" color="inherit">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

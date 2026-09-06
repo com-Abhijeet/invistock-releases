@@ -14,12 +14,8 @@ async function printNonGstReceipt(htmlContent, printOptions = {}) {
     height: 600,
   });
 
-  await receiptWindow.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
-  );
-
   return new Promise((resolve, reject) => {
-    receiptWindow.webContents.on("did-finish-load", () => {
+    receiptWindow.webContents.once("did-finish-load", () => {
       receiptWindow.webContents.print(printOptions, (success, error) => {
         if (!success) {
           console.error("Non-GST receipt print failed:", error);
@@ -33,6 +29,12 @@ async function printNonGstReceipt(htmlContent, printOptions = {}) {
         }, 300);
       });
     });
+
+    receiptWindow
+      .loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
+      )
+      .catch(reject);
   });
 }
 

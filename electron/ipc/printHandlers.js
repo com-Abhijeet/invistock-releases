@@ -110,15 +110,18 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
         const { customer, ledger } = getCustomerLedger(customerId, filters);
         const htmlContent = createCustomerLedgerHTML(shop, customer, ledger);
         const win = new BrowserWindow({ show: true });
-        await win.loadURL(
-          `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
-        );
+
+        // ✅ FIX: Attach listener BEFORE loading the URL so did-finish-load fires reliably
         win.webContents.on("did-finish-load", () => {
           win.webContents.print({ silent: false }, (success, error) => {
             if (!success) console.error("Ledger print failed:", error);
             win.close();
           });
         });
+
+        await win.loadURL(
+          `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
+        );
         return { success: true };
       } catch (error) {
         console.error("Failed to print customer ledger:", error);
@@ -139,15 +142,18 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
         const { supplier, ledger } = getSupplierLedger(supplierId, filters);
         const htmlContent = createSupplierLedgerHTML(shop, supplier, ledger);
         const win = new BrowserWindow({ show: true });
-        await win.loadURL(
-          `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
-        );
+
+        // ✅ FIX: Attach listener BEFORE loading the URL so did-finish-load fires reliably
         win.webContents.on("did-finish-load", () => {
           win.webContents.print({ silent: false }, (success, error) => {
             if (!success) console.error("Supplier ledger print failed:", error);
             win.close();
           });
         });
+
+        await win.loadURL(
+          `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
+        );
         return { success: true };
       } catch (error) {
         console.error("Failed to print supplier ledger:", error);
