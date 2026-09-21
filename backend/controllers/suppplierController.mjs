@@ -2,7 +2,7 @@ import * as supplierService from "../services/supplierService.mjs";
 
 /**
  * @description Creates a new supplier.
- * @route POST /api/supplier
+ * @route POST /api/suppliers
  * @access Private
  * @param {object} req - Express request object, containing the supplier data in `req.body`.
  * @param {object} res - Express response object.
@@ -10,30 +10,26 @@ import * as supplierService from "../services/supplierService.mjs";
 export async function createSupplierController(req, res) {
   try {
     const result = await supplierService.createSupplierService(req.body);
-
     res
       .status(201)
       .json({ message: "Supplier created successfully", data: result });
   } catch (err) {
     console.error("createSupplierController -", err);
-
-    // ✅ Send a specific status code if the service layer provides one, otherwise default to 500.
     const statusCode = err.statusCode || 500;
     const message =
       err.message ||
       "An unexpected error occurred while creating the supplier.";
-
     res.status(statusCode).json({ message });
   }
 }
 
 export async function getSuppliersController(req, res) {
   try {
-    const data = await supplierService.listSuppliers();
+    const data = await supplierService.listSuppliers(req.query);
     res.status(200).json({ message: "suppliers fetched successfully", data });
   } catch (err) {
     console.error("getSuppliersController -", err);
-    res.status(500).json({ message: "error", message: err.message });
+    res.status(500).json({ message: "error", error: err.message });
   }
 }
 

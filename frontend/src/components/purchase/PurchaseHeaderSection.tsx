@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   Box,
   TextField,
   Typography,
-  CircularProgress,
-  Autocomplete,
   Stack,
   useTheme,
   Button,
@@ -23,6 +21,7 @@ import {
 import { getSuppliers as getAllSuppliers } from "../../lib/api/supplierService";
 import type { PurchasePayload } from "../../lib/types/purchaseTypes";
 import type { SupplierType as Supplier } from "../../lib/types/supplierTypes";
+import AutoSuggestInput, { AutoSuggestOption } from "../common/AutoSuggestInput";
 
 interface Props {
   purchase: PurchasePayload;
@@ -37,18 +36,58 @@ export default function PurchaseHeaderSection({
 }: Props) {
   const theme = useTheme();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showMore, setShowMore] = useState(false);
-  const [supplierQuery, setSupplierQuery] = useState("");
 
   const billNoRef = useRef<HTMLInputElement>(null);
   const supplierRef = useRef<HTMLInputElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const supplierSearchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    getAllSuppliers()
+    getAllSuppliers({ limit: 50 })
       .then((data) => setSuppliers(data || []))
-      .finally(() => setLoading(false));
+      .catch((err) => console.error("Error loading suppliers:", err));
+
+    return () => {
+      if (supplierSearchTimerRef.current) {
+        clearTimeout(supplierSearchTimerRef.current);
+      }
+    };
   }, []);
+
+  const handleSupplierSearch = (query: string) => {
+    if (supplierSearchTimerRef.current) {
+      clearTimeout(supplierSearchTimerRef.current);
+    }
+
+    supplierSearchTimerRef.current = setTimeout(() => {
+      getAllSuppliers({ query: query.trim(), limit: 50 })
+        .then((data) => {
+          if (data && data.length > 0) {
+            setSuppliers((prev) => {
+              const map = new Map<number, Supplier>();
+              prev.forEach((s) => {
+                if (s.id) map.set(s.id, s);
+              });
+              data.forEach((s) => {
+                if (s.id) map.set(s.id, s);
+              });
+              return Array.from(map.values());
+            });
+          }
+        })
+        .catch((err) => console.error("Supplier search error:", err));
+    }, 150);
+  };
+
+  const supplierOptions: AutoSuggestOption[] = useMemo(() => {
+    return suppliers.map((s) => ({
+      ...s,
+      id: s.id,
+      name: s.name,
+      code: s.phone || s.gst_number || "",
+    }));
+  }, [suppliers]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -56,10 +95,12 @@ export default function PurchaseHeaderSection({
       if ((e.ctrlKey || e.metaKey) && (e.code === "KeyR" || e.key.toLowerCase() === "r")) {
         e.preventDefault();
         billNoRef.current?.focus();
+        billNoRef.current?.select();
       }
       if ((e.ctrlKey || e.metaKey) && (e.code === "KeyB" || e.key.toLowerCase() === "b")) {
         e.preventDefault();
         supplierRef.current?.focus();
+        supplierRef.current?.select();
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
         e.preventDefault();
@@ -162,46 +203,35 @@ export default function PurchaseHeaderSection({
             >
               SUPPLIER *
             </Typography>
-            <Autocomplete
-              fullWidth
-              size="small"
-              options={suppliers}
-              loading={loading}
+            <AutoSuggestInput
+              id="purchase-supplier-input"
+              value={purchase.supplier_id || null}
+              options={supplierOptions}
+              placeholder="Search or Type Supplier... (Ctrl+B)"
               disabled={readOnly}
-              getOptionLabel={(option) => option.name || ""}
-              value={suppliers.find((opt) => opt.id === purchase.supplier_id) || null}
-              inputValue={supplierQuery}
-              onInputChange={(_, val, reason) => {
-                if (reason === "input" || reason === "clear") {
-                  setSupplierQuery(val);
-                }
+              allowCreate={true}
+              variant="standard"
+              sx={{ flexGrow: 1, ...inputSx }}
+              onSearch={handleSupplierSearch}
+              inputRef={(el) => {
+                (supplierRef as any).current = el;
               }}
-              onChange={(_, val) => {
-                if (val) {
-                  handleChange("supplier_id", val.id);
-                  setSupplierQuery(val.name);
+              onChange={(val) => {
+                if (typeof val === "number") {
+                  handleChange("supplier_id", val);
+                } else if (typeof val === "string") {
+                  const matched = suppliers.find(
+                    (s) => s.name.toLowerCase() === val.toLowerCase(),
+                  );
+                  handleChange("supplier_id", matched ? matched.id : val);
                 } else {
                   handleChange("supplier_id", 0);
-                  setSupplierQuery("");
                 }
               }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  inputRef={supplierRef}
-                  variant="standard"
-                  placeholder="Required * (Ctrl+B)"
-                  sx={inputSx}
-                  InputProps={{
-                    ...params.InputProps,
-                    endAdornment: loading ? (
-                      <CircularProgress size={12} />
-                    ) : (
-                      params.InputProps.endAdornment
-                    ),
-                  }}
-                />
-              )}
+              onNext={() => {
+                billNoRef.current?.focus();
+                billNoRef.current?.select();
+              }}
             />
           </Box>
 
@@ -240,8 +270,24 @@ export default function PurchaseHeaderSection({
               disabled={readOnly}
               value={purchase.reference_no}
               onChange={(e) => handleChange("reference_no", e.target.value)}
-              placeholder="(Ctrl+R)"
+              onFocus={(e) => e.target.select()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  dateRef.current?.focus();
+                } else if (e.key === "Backspace" && !purchase.reference_no) {
+                  e.preventDefault();
+                  supplierRef.current?.focus();
+                  supplierRef.current?.select();
+                } else if (e.key === "Enter" && e.shiftKey) {
+                  e.preventDefault();
+                  supplierRef.current?.focus();
+                  supplierRef.current?.select();
+                }
+              }}
+              placeholder="Required * (Ctrl+R)"
               inputProps={{ maxLength: 16 }}
+              InputProps={{ disableUnderline: true }}
               sx={inputSx}
             />
           </Box>
@@ -253,10 +299,27 @@ export default function PurchaseHeaderSection({
             <TextField
               type="date"
               fullWidth
+              inputRef={dateRef}
               variant="standard"
               disabled={readOnly}
               value={purchase.date}
               onChange={(e) => handleChange("date", e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  const addItemBtn = document.querySelector<HTMLButtonElement>(
+                    'button[data-action="add-item"]',
+                  );
+                  if (addItemBtn) {
+                    addItemBtn.focus();
+                  }
+                } else if (e.key === "Enter" && e.shiftKey) {
+                  e.preventDefault();
+                  billNoRef.current?.focus();
+                  billNoRef.current?.select();
+                }
+              }}
+              InputProps={{ disableUnderline: true }}
               sx={inputSx}
             />
           </Box>
@@ -264,6 +327,8 @@ export default function PurchaseHeaderSection({
           {/* Details Toggle Button */}
           <Button
             size="small"
+            tabIndex={-1}
+            data-nav-skip="true"
             onClick={() => setShowMore(!showMore)}
             endIcon={
               <ChevronUp

@@ -24,12 +24,6 @@ export default function WhatsAppShareButton({
   const handleShare = async () => {
     if (!customerPhone) return toast.error("No phone number found");
 
-    // 1. Check if we are connected
-    const wsStatus = await window.electron.getWhatsAppStatus();
-    if (wsStatus.status !== "ready") {
-      return toast.error("WhatsApp not connected. Please scan QR in Settings.");
-    }
-
     setSending(true);
     const nl = "\n"; // Standard newline for automated messages
     const text =

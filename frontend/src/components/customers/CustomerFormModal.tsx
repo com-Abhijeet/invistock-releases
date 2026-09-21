@@ -8,16 +8,17 @@ import {
   Stack,
   Typography,
   InputAdornment,
-  MenuItem,
   Box,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import type { CustomerType } from "../../lib/types/customerTypes";
 import { createCustomer, updateCustomer } from "../../lib/api/customerService";
 import { User, Phone, MapPin, Building, Hash, Save } from "lucide-react";
 import toast from "react-hot-toast";
 import { indianStates } from "../../lib/constants/statesList";
+import KeyboardNavForm from "../common/KeyboardNavForm";
+import AutoSuggestInput, { AutoSuggestOption } from "../common/AutoSuggestInput";
 
 // ✅ FormField updated to include a character counter
 const FormField = ({
@@ -112,6 +113,13 @@ export default function CustomerFormModal({
     }
   }, [customer, open]);
 
+  const stateOptions: AutoSuggestOption[] = useMemo(() => {
+    const allStates = Array.from(
+      new Set([...(form.state ? [form.state] : []), ...indianStates]),
+    );
+    return allStates.map((s) => ({ id: s, name: s }));
+  }, [form.state]);
+
   // ✅ New function to handle all form validation
   const validate = (fieldValues = form) => {
     const tempErrors: Partial<typeof form> = {};
@@ -168,7 +176,17 @@ export default function CustomerFormModal({
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle>
+      <KeyboardNavForm
+        onSave={handleSubmit}
+        autoFocusFirst
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
+        <DialogTitle>
         <Stack direction="row" alignItems="center" spacing={1.5}>
           <User />
           <Typography variant="h6">
@@ -272,20 +290,14 @@ export default function CustomerFormModal({
           </Grid>
           <Grid item xs={12} sm={4}>
             <FormField label="State">
-              <TextField
-                select
-                fullWidth
-                variant="outlined"
-                size="small"
+              <AutoSuggestInput
+                id="customer-state"
                 value={form.state}
-                onChange={(e) => handleChange("state", e.target.value)}
-              >
-                {Array.from(new Set([...(form.state ? [form.state] : []), ...indianStates])).map((stateName) => (
-                  <MenuItem key={stateName} value={stateName}>
-                    {stateName}
-                  </MenuItem>
-                ))}
-              </TextField>
+                options={stateOptions}
+                placeholder="Select State"
+                allowCreate={true}
+                onChange={(val) => handleChange("state", (val as string) || "")}
+              />
             </FormField>
           </Grid>
           <Grid item xs={12} sm={4}>
@@ -387,6 +399,7 @@ export default function CustomerFormModal({
             : "Add Customer"}
         </Button>
       </DialogActions>
+      </KeyboardNavForm>
     </Dialog>
   );
 }

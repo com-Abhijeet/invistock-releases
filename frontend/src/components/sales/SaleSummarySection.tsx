@@ -48,6 +48,7 @@ import { getShopData } from "../../lib/api/shopService";
 import { getBusinessProfile } from "../../lib/api/businessService";
 import SalesPosConfigModal, { PosConfigSettings } from "./SalesPosConfigModal";
 import PostSaleTransactionModal from "./PostSaleTransactionModal";
+import ConfirmModal from "../ConfirmModal";
 
 interface Props {
   sale: SalePayload;
@@ -208,6 +209,8 @@ const SaleSummarySection = ({
     sale,
   ]);
 
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((mode !== "new" && mode !== "edit") || isSubmitting) return;
@@ -221,7 +224,12 @@ const SaleSummarySection = ({
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        if (sale.items.length > 0 && confirm("Are you sure?")) resetForm();
+        const hasValidItems = sale.items.some((i) => (i.product_id || 0) > 0);
+        if (hasValidItems) {
+          setCancelConfirmOpen(true);
+        } else {
+          resetForm();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -316,6 +324,13 @@ const SaleSummarySection = ({
         toast.error("Customer Name and Phone Number are required.");
         return;
       }
+    }
+
+    // Validate that at least one product has been added
+    const validItems = sale.items.filter((item) => (item.product_id || 0) > 0);
+    if (validItems.length === 0) {
+      toast.error("Please add at least one product to the sale.");
+      return;
     }
 
     // Check for paid status with small tolerance (0.01) unless bypass flag is active
@@ -545,8 +560,14 @@ const SaleSummarySection = ({
           message = `*${shopName}*${nl}Invoice Summary${nl}———————————————${nl}Hello ${customer?.name || "Customer"},${nl}${nl}🧾 *Bill No:* ${savedSale.reference_no}${nl}📅 *Date:* ${new Date(savedSale.created_at || Date.now()).toLocaleDateString("en-IN")}${nl}${nl}*Items Purchased:*${nl}${itemsList}${nl}${nl}———————————————${nl}*Total Amount:* ₹${savedSale.total_amount.toLocaleString("en-IN")}${nl}———————————————${nl}${nl}Thank you for shopping with us 🙏${nl}Please find your invoice PDF attached.${nl}✨ Powered by Kosh`;
         }
 
-        // 4. Send WhatsApp Text Message
-        if (window.electron?.sendWhatsAppMessage) {
+        // 4. Send WhatsApp Invoice (1 single message bubble for Official, 2 separate messages for Baileys)
+        const wsSettingsRes = await window.electron?.getWhatsAppSettings?.();
+        const wsSettings = wsSettingsRes?.settings;
+        const isOfficialRoute =
+          wsSettings?.route_invoice === "official" ||
+          (wsSettings?.official_enabled && wsSettings?.route_invoice !== "unofficial" && wsSettings?.route_invoice !== "none");
+
+        if (!isOfficialRoute && window.electron?.sendWhatsAppMessage) {
           window.electron.sendWhatsAppMessage(targetPhone, message);
         }
 
@@ -1145,7 +1166,15 @@ const SaleSummarySection = ({
                     </Typography>
                   </Stack>
                 </Button>
-                <IconButton onClick={resetForm} color="error" size="small">
+                <IconButton
+                  onClick={() =>
+                    sale.items.length > 0
+                      ? setCancelConfirmOpen(true)
+                      : resetForm()
+                  }
+                  color="error"
+                  size="small"
+                >
                   <X size={18} />
                 </IconButton>
               </Stack>
@@ -1285,6 +1314,13 @@ const SaleSummarySection = ({
       <InvoiceSettingsModal
         open={invoiceModalOpen}
         onClose={() => setInvoiceModalOpen(false)}
+      />
+      <ConfirmModal
+        open={cancelConfirmOpen}
+        onClose={() => setCancelConfirmOpen(false)}
+        onConfirm={resetForm}
+        header="Cancel Sale"
+        disclaimer="Are you sure you want to cancel and clear the current sale?"
       />
     </Box>
   );

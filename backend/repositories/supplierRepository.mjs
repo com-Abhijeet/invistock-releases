@@ -61,8 +61,26 @@ export function createSupplier(supplierData) {
   }
 }
 
-export async function getAllSuppliers() {
-  return await db.prepare("SELECT * FROM suppliers").all();
+export async function getAllSuppliers(filters = {}) {
+  const { query = "", limit } = filters;
+  let sql = "SELECT * FROM suppliers";
+  const params = [];
+
+  if (query && typeof query === "string" && query.trim()) {
+    sql += " WHERE (name LIKE ? OR phone LIKE ? OR gst_number LIKE ?)";
+    const q = `%${query.trim()}%`;
+    params.push(q, q, q);
+  }
+
+  sql += " ORDER BY name ASC";
+
+  const numLimit = parseInt(limit);
+  if (!isNaN(numLimit) && numLimit > 0) {
+    sql += " LIMIT ?";
+    params.push(numLimit);
+  }
+
+  return await db.prepare(sql).all(...params);
 }
 
 export function getSupplierById(id) {

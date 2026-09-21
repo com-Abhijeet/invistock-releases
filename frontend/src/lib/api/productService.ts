@@ -37,15 +37,13 @@ interface ProductHistoryPayload {
  * @returns {Promise<{records: Product[], totalRecords: number}>} An object containing the product records and the total count.
  */
 export async function getAllProducts(
-  params:
-    | {
-        page: number;
-        limit: number;
-        query: string;
-        isActive: number | undefined;
-        all: boolean;
-      }
-    | undefined,
+  params?: {
+    page?: number;
+    limit?: number;
+    query?: string;
+    isActive?: number | boolean | undefined;
+    all?: boolean;
+  },
 ) {
   try {
     const apiParams = { ...params };

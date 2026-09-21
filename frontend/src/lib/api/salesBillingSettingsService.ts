@@ -7,6 +7,8 @@ export interface SalesBillingSettings {
   use_default_customer: boolean;
   auto_print_after_save: boolean;
   send_whatsapp_invoice: boolean;
+  whatsapp_template_id?: number | null;
+  whatsapp_template_name?: string | null;
   payment_marking_timing: "pre_save" | "post_save";
   enable_split_payments: boolean;
   updated_at?: string;

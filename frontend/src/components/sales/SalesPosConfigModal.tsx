@@ -27,6 +27,11 @@ import { getShopData, updateShopData } from "../../lib/api/shopService";
 import type { ShopSetupForm } from "../../lib/types/shopTypes";
 import { INVOICE_TEMPLATES } from "../settings/InvoiceSettingsModal";
 import toast from "react-hot-toast";
+import WhatsAppTemplateSelector from "../common/WhatsAppTemplateSelector";
+import {
+  getSalesBillingSettings,
+  updateSalesBillingSettings,
+} from "../../lib/api/salesBillingSettingsService";
 
 export interface PosConfigSettings {
   doPrint: boolean;
@@ -52,6 +57,7 @@ export default function SalesPosConfigModal({
 }: Props) {
   const theme = useTheme();
   const [shopData, setShopData] = useState<ShopSetupForm | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
 
   // Preview state
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -63,7 +69,29 @@ export default function SalesPosConfigModal({
     getShopData().then((data) => {
       if (data) setShopData(data);
     });
+    getSalesBillingSettings().then((res) => {
+      if (res?.whatsapp_template_id) {
+        setSelectedTemplateId(res.whatsapp_template_id);
+      }
+    }).catch(() => {});
   }, [open]);
+
+  const handleWhatsAppTemplateSelect = async (tpl: any) => {
+    if (!tpl) return;
+    setSelectedTemplateId(tpl.id);
+    try {
+      await updateSalesBillingSettings({
+        whatsapp_template_id: tpl.id,
+        whatsapp_template_name: tpl.name || tpl.meta_template_name || "",
+      });
+      if (typeof window !== "undefined") {
+        localStorage.setItem("pos_whatsapp_template_id", String(tpl.id));
+        localStorage.setItem("pos_whatsapp_template_name", tpl.name || tpl.meta_template_name || "");
+      }
+    } catch (e) {
+      console.error("Failed to update whatsapp template preference", e);
+    }
+  };
 
   const handleChange = <K extends keyof PosConfigSettings>(
     field: K,
@@ -229,6 +257,25 @@ export default function SalesPosConfigModal({
               <Typography variant="caption" color="text.secondary">
                 Send invoice summary & PDF link via WhatsApp after saving.
               </Typography>
+
+              {settings.doWhatsApp && (
+                <Box sx={{ pl: 1.5, pt: 1, borderLeft: "3px solid #10b981", mt: 1.5 }}>
+                  <Typography variant="caption" fontWeight={700} color="text.secondary" gutterBottom>
+                    Approved WhatsApp Template:
+                  </Typography>
+
+                  <WhatsAppTemplateSelector
+                    category="invoice"
+                    approvedOnly={true}
+                    selectedTemplateId={selectedTemplateId || undefined}
+                    onSelectTemplate={(tpl) => handleWhatsAppTemplateSelect(tpl)}
+                  />
+
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, fontStyle: "italic" }}>
+                    * Meta/MSG91 Official API requires approved templates for client dispatch.
+                  </Typography>
+                </Box>
+              )}
             </Box>
 
             <Divider light />

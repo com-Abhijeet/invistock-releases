@@ -50,6 +50,18 @@ contextBridge.exposeInMainWorld("electron", {
         "open-external-url",
         "whatsapp-restart",
         "whatsapp-bulk-reminders",
+        "whatsapp-get-settings",
+        "whatsapp-save-settings",
+        "whatsapp-test-official",
+        "whatsapp-test-msg91",
+        "whatsapp-open-msg91-signup",
+        "whatsapp-get-analytics",
+        "whatsapp-get-templates",
+        "whatsapp-save-template",
+        "whatsapp-delete-template",
+        "whatsapp-set-default-template",
+        "whatsapp-verify-meta-templates",
+        "whatsapp-register-all-templates",
 
         // Auth & Utils
         "login-admin",
@@ -70,7 +82,7 @@ contextBridge.exposeInMainWorld("electron", {
         "check-for-updates",
         "get-app-version",
         "restart-app",
-        
+
         // ✅ Cloud Sync Channels
         "connect-cloud-sync",
         "disconnect-cloud-sync",
@@ -153,18 +165,22 @@ contextBridge.exposeInMainWorld("electron", {
   getNetworkDetails: () => ipcRenderer.invoke("get-network-details"),
   setManualServer: (url) => ipcRenderer.invoke("set-manual-server", url),
   getManualServer: () => ipcRenderer.invoke("get-manual-server"),
-  
+
   // ✅ CLOUD SYNC
-  connectCloudSync: (businessId) => ipcRenderer.invoke("connect-cloud-sync", businessId),
+  connectCloudSync: (businessId) =>
+    ipcRenderer.invoke("connect-cloud-sync", businessId),
   disconnectCloudSync: () => ipcRenderer.invoke("disconnect-cloud-sync"),
   getCloudSyncStatus: () => ipcRenderer.invoke("get-cloud-sync-status"),
-  onCloudSyncStatus: (callback) => ipcRenderer.on("cloud-sync-status-changed", (event, status) => callback(status)),
+  onCloudSyncStatus: (callback) =>
+    ipcRenderer.on("cloud-sync-status-changed", (event, status) =>
+      callback(status),
+    ),
 
   // --- WHATSAPP ---
   openExternalUrl: (url) => ipcRenderer.invoke("open-external-url", url),
   getWhatsAppStatus: () => ipcRenderer.invoke("whatsapp-get-status"),
-  sendWhatsAppMessage: (phone, message) =>
-    ipcRenderer.invoke("whatsapp-send-message", { phone, message }),
+  sendWhatsAppMessage: (phone, message, category) =>
+    ipcRenderer.invoke("whatsapp-send-message", { phone, message, category }),
   onWhatsAppUpdate: (callback) =>
     ipcRenderer.on("whatsapp-status", (event, data) => callback(data)),
   sendWhatsAppInvoicePdf: (payload) =>
@@ -172,6 +188,35 @@ contextBridge.exposeInMainWorld("electron", {
   // ✅ Added Helper for Customer Ledger
   sendWhatsAppCustomerLedger: (payload) =>
     ipcRenderer.invoke("whatsapp-customer-ledger", payload),
+  getWhatsAppSettings: () => ipcRenderer.invoke("whatsapp-get-settings"),
+  saveWhatsAppSettings: (data) =>
+    ipcRenderer.invoke("whatsapp-save-settings", data),
+  testWhatsAppOfficial: (credentials) =>
+    ipcRenderer.invoke("whatsapp-test-official", credentials),
+  testWhatsAppMsg91: (credentials) =>
+    ipcRenderer.invoke("whatsapp-test-msg91", credentials),
+  openMsg91EmbeddedSignup: () =>
+    ipcRenderer.invoke("whatsapp-open-msg91-signup"),
+  onMsg91SignupCaptured: (callback) =>
+    ipcRenderer.on("msg91-signup-captured", (_event, data) => callback(data)),
+  getWhatsAppAnalytics: (days) =>
+    ipcRenderer.invoke("whatsapp-get-analytics", days),
+  getWhatsAppTemplates: (category) =>
+    ipcRenderer.invoke("whatsapp-get-templates", category),
+  saveWhatsAppTemplate: (data) =>
+    ipcRenderer.invoke("whatsapp-save-template", data),
+  deleteWhatsAppTemplate: (id) =>
+    ipcRenderer.invoke("whatsapp-delete-template", id),
+  setDefaultWhatsAppTemplate: (id, category) =>
+    ipcRenderer.invoke("whatsapp-set-default-template", { id, category }),
+  verifyMetaTemplates: () =>
+    ipcRenderer.invoke("whatsapp-verify-meta-templates"),
+  registerAllWhatsAppTemplates: () =>
+    ipcRenderer.invoke("whatsapp-register-all-templates"),
+  registerSingleWhatsAppTemplate: (id) =>
+    ipcRenderer.invoke("whatsapp-register-single-template", id),
+  verifySingleWhatsAppTemplate: (id) =>
+    ipcRenderer.invoke("whatsapp-verify-single-template", id),
 
   // --- AUTH & UTILS ---
   loginAdmin: (password) => ipcRenderer.invoke("login-admin", password),

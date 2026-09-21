@@ -185,6 +185,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
             gstin: "GSTIN",
             product_name: "Product",
             hsn: "HSN",
+            unit: "Unit",
             rate: "Rate",
             gst_rate: "GST %",
 
@@ -412,6 +413,7 @@ function registerExportHandlers(ipcMain, { mainWindow } = {}) {
           product_code: "Product Code",
           product_name: "Product Name",
           hsn: "HSN Code",
+          unit: "Unit",
           quantity: "Quantity",
           rate: "Rate",
           discount: "Discount (%)",

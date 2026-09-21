@@ -27,6 +27,7 @@ import type { SupplierType } from "../../lib/types/supplierTypes";
 import { numberToWords } from "../../utils/numberToWords";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
+import ConfirmModal from "../ConfirmModal";
 
 interface Props {
   purchase: PurchasePayload;
@@ -53,6 +54,8 @@ const PurchaseSummarySection = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const navigate = useNavigate();
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -80,12 +83,9 @@ const PurchaseSummarySection = ({
       // Escape: Cancel
       if (e.key === "Escape") {
         e.preventDefault();
-        if (
-          purchase.items.length > 0 &&
-          confirm("Are you sure you want to cancel?")
-        ) {
-          handleCancel();
-        } else if (purchase.items.length === 0) {
+        if (purchase.items.length > 0) {
+          setCancelConfirmOpen(true);
+        } else {
           handleCancel();
         }
       }
@@ -296,11 +296,12 @@ const PurchaseSummarySection = ({
                   size="small"
                   type="number"
                   variant="standard"
-                  value={purchase.paid_amount}
+                  value={purchase.paid_amount === 0 ? "" : purchase.paid_amount}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) =>
                     handleFieldChange(
                       "paid_amount",
-                      parseFloat(e.target.value) || 0,
+                      e.target.value === "" ? 0 : parseFloat(e.target.value),
                     )
                   }
                   InputProps={{
@@ -316,6 +317,8 @@ const PurchaseSummarySection = ({
                 <Tooltip title="Shortcut: Ctrl + U">
                   <Button
                     size="small"
+                    tabIndex={-1}
+                    data-nav-skip="true"
                     sx={{ textTransform: "none", minWidth: "auto" }}
                     onClick={handlePaidInFull}
                     disabled={purchase.paid_amount >= purchase.total_amount}
@@ -494,6 +497,7 @@ const PurchaseSummarySection = ({
                   <Button
                     variant="contained"
                     color="secondary"
+                    data-save="true"
                     size="large"
                     onClick={() => handleSubmit()}
                     disabled={isSubmitting}
@@ -537,6 +541,13 @@ const PurchaseSummarySection = ({
           <Button onClick={() => setWarningOpen(false)}>OK</Button>
         </DialogActions>
       </Dialog>
+      <ConfirmModal
+        open={cancelConfirmOpen}
+        onClose={() => setCancelConfirmOpen(false)}
+        onConfirm={handleCancel}
+        header="Cancel Purchase"
+        disclaimer="Are you sure you want to cancel and clear the current purchase?"
+      />
     </Box>
   );
 };

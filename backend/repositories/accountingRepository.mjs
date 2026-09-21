@@ -1,10 +1,11 @@
 import db from "../db/db.mjs";
+import { convertToStockQuantity } from "../services/unitService.mjs";
 
 /**
  * Profit & Loss Statement (Income Statement)
  * CA STRICT LOGIC:
  * - Revenue = Net Taxable Sales (Net of Returns, EXCLUDING GST)
- * - COGS = Purchase Cost of items actually kept by customers (Net of Returns)
+ * - COGS = Purchase Cost of items actually kept by customers (Net of Returns, converted to stock units)
  * - Stock Gain/Loss = Only extraordinary adjustments (excludes Returns to prevent double-counting)
  * - Expenses = All operating outflows
  */
@@ -30,12 +31,19 @@ export function getPnLData(startDate, endDate) {
 
   const netTaxableRevenue = revenueRow.taxable_revenue || 0;
 
-  // 2. Calculate COGS (Net of Returns)
-  const cogsRow = db
+  // 2. Calculate COGS (Net of Returns, converted to base stock units)
+  const cogsItems = db
     .prepare(
       `
     SELECT 
-      SUM((si.quantity - COALESCE(si.return_quantity, 0)) * COALESCE(p.average_purchase_price, p.mop, 0)) as total_cogs
+      si.quantity,
+      COALESCE(si.return_quantity, 0) as return_quantity,
+      si.unit,
+      p.base_unit,
+      p.secondary_unit,
+      p.conversion_factor,
+      p.average_purchase_price,
+      p.mop
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
     JOIN products p ON si.product_id = p.id
@@ -44,9 +52,23 @@ export function getPnLData(startDate, endDate) {
       AND date(s.created_at) BETWEEN date(?) AND date(?)
   `,
     )
-    .get(startDate, endDate);
+    .all(startDate, endDate);
 
-  const totalCogs = cogsRow.total_cogs || 0;
+  let totalCogs = 0;
+  for (const item of cogsItems) {
+    const netQty = (item.quantity || 0) - (item.return_quantity || 0);
+    if (netQty <= 0) continue;
+    const stockQty = convertToStockQuantity(netQty, item.unit, {
+      base_unit: item.base_unit,
+      secondary_unit: item.secondary_unit,
+      conversion_factor: item.conversion_factor,
+    });
+    const unitCost =
+      item.average_purchase_price && item.average_purchase_price > 0
+        ? item.average_purchase_price
+        : item.mop || 0;
+    totalCogs += stockQty * unitCost;
+  }
 
   // 3. Inventory Gains/Losses (From stock adjustments, strictly excluding Returns)
   const adjustmentsRow = db

@@ -31,7 +31,7 @@ import {
   Divider,
   Tooltip,
 } from "@mui/material";
-import { useEffect, useRef, useState, Fragment } from "react";
+import { useEffect, useRef, useState, Fragment, useMemo, useCallback } from "react";
 import { getAllProducts } from "../../lib/api/productService";
 import { getProductBatches, scanBarcodeItem } from "../../lib/api/batchService";
 import type { Product } from "../../lib/types/product";
@@ -48,6 +48,9 @@ import {
   RotateCcw,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import AutoSuggestInput, {
+  AutoSuggestOption,
+} from "../common/AutoSuggestInput";
 
 // --- Types ---
 type PriceType = "mrp" | "mop" | "mfw";
@@ -132,15 +135,13 @@ export default function SaleItemSection({
   mode,
 }: SaleItemSectionProps) {
   const theme = useTheme();
-  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [productsList, setProductsList] = useState<Product[]>([]);
   const [barcodeSearchResults, setBarcodeSearchResults] = useState<Product[]>(
     [],
   );
-  const [loading, setLoading] = useState(false);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [quickBarcode, setQuickBarcode] = useState("");
   const [quickBarcodeLoading, setQuickBarcodeLoading] = useState(false);
-  const [inputValue, setInputValue] = useState("");
   const [barcodeInputValue, setBarcodeInputValue] = useState("");
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const quickBarcodeRef = useRef<HTMLInputElement | null>(null);
@@ -212,12 +213,15 @@ export default function SaleItemSection({
           e.preventDefault();
           const newItems = [...items];
           newItems.splice(activeRowIndex, 1);
+          if (newItems.length === 0) {
+            newItems.push({ ...defaultItem(), price_type: globalPriceType });
+          }
           onItemsChange(newItems);
 
           if (newItems.length > 0) {
             setActiveRowIndex(Math.max(0, activeRowIndex - 1));
           } else {
-            setActiveRowIndex(null);
+            setActiveRowIndex(0);
           }
           toast.success("Row removed");
         }
@@ -228,27 +232,12 @@ export default function SaleItemSection({
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [items, activeRowIndex, mode, globalPriceType, onItemsChange]);
 
-  // Effect for Product Name Search
+  // Always ensure at least 1 item row exists in new/edit mode
   useEffect(() => {
-    if (inputValue.trim() === "") {
-      setSearchResults([]);
-      return;
+    if (mode !== "view" && items.length === 0) {
+      onItemsChange([{ ...defaultItem(), price_type: globalPriceType }]);
     }
-    setLoading(true);
-    const timer = setTimeout(() => {
-      getAllProducts({
-        query: inputValue,
-        isActive: 1,
-        limit: 5,
-        page: 1,
-        all: false,
-      }).then((data) => {
-        setSearchResults(data.records || []);
-        setLoading(false);
-      });
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [inputValue]);
+  }, [items.length, mode, globalPriceType, onItemsChange]);
 
   // Effect for Barcode Search List
   useEffect(() => {
@@ -324,9 +313,72 @@ export default function SaleItemSection({
     });
   }, [items]);
 
+  // Debounced server-side product search
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleProductSearch = useCallback((query: string) => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+
+    searchTimerRef.current = setTimeout(() => {
+      getAllProducts({
+        page: 1,
+        limit: 10,
+        query: query.trim(),
+        isActive: 1,
+        all: false,
+      }).then((data: any) => {
+        const prods: Product[] = data?.records || [];
+        setProductsList(prods);
+        setProductCache((prev) => {
+          const next = { ...prev };
+          prods.forEach((p: Product) => {
+            if (p.id) next[p.id] = p;
+          });
+          return next;
+        });
+      });
+    }, 150);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     getShopData().then((res) => setShop(res!));
+    getAllProducts({
+      page: 1,
+      limit: 10,
+      query: "",
+      isActive: 1,
+      all: false,
+    }).then((data: any) => {
+      const prods: Product[] = data?.records || [];
+      setProductsList(prods);
+      setProductCache((prev) => {
+        const next = { ...prev };
+        prods.forEach((p: Product) => {
+          if (p.id) next[p.id] = p;
+        });
+        return next;
+      });
+    });
   }, []);
+
+  const productOptions: AutoSuggestOption[] = useMemo(() => {
+    return productsList.map((p) => ({
+      id: p.id,
+      name: p.name,
+      code: p.barcode || p.product_code || "",
+      product: p,
+    }));
+  }, [productsList]);
 
   const calculateItemPrice = (item: SaleItemRow) => {
     if (!shop) return 0;
@@ -383,6 +435,7 @@ export default function SaleItemSection({
           toast.success(
             `Auto-selected Queue batch: ${topBatch.batch_number || "DEFAULT"}`,
           );
+          setTimeout(() => focusInput(index, "quantity"), 50);
           return;
         }
 
@@ -412,6 +465,11 @@ export default function SaleItemSection({
           ...prev,
           [result.product.id]: result.product,
         }));
+        setProductsList((prev) =>
+          prev.some((p) => p.id === result.product.id)
+            ? prev
+            : [result.product, ...prev],
+        );
         let batchInfo = null;
         if (result.type === "batch") batchInfo = result.batch;
         else if (result.type === "serial" && result.serial) {
@@ -424,6 +482,7 @@ export default function SaleItemSection({
         }
         addItemToTable(index, result.product, batchInfo, code);
         toast.success(`Found: ${result.product.name}`);
+        setTimeout(() => focusInput(index, "quantity"), 50);
       }
     } catch (err: any) {
       toast.error(err.message || "Item not found");
@@ -495,23 +554,19 @@ export default function SaleItemSection({
     const updatedItems = [...items];
     updatedItems[index] = newItem;
     onItemsChange(updatedItems);
-    setInputValue("");
     setBarcodeInputValue("");
     setBatchModalOpen(false);
-    setTimeout(() => focusInput(index, "quantity"), 50);
   };
 
   const handleBatchSelect = (batch: any) => {
-    if (pendingItemIndex !== null && pendingProduct)
+    if (pendingItemIndex !== null && pendingProduct) {
       addItemToTable(pendingItemIndex, pendingProduct, batch);
+      setTimeout(() => focusInput(pendingItemIndex, "quantity"), 50);
+    }
   };
 
-  const handleQuickBarcodeSubmit = async (e?: React.KeyboardEvent | React.FocusEvent) => {
-    if (e && 'key' in e) {
-      if (e.key !== 'Enter') return;
-      e.preventDefault(); // Prevent form submission or focus loss
-    }
-    const code = quickBarcode.trim();
+  const processBarcode = async (codeStr: string) => {
+    const code = codeStr.trim();
     if (!code) return;
 
     setQuickBarcodeLoading(true);
@@ -523,7 +578,7 @@ export default function SaleItemSection({
           ...prev,
           [result.product.id]: result.product,
         }));
-        
+
         let batchInfo = null;
         if (result.type === "batch") batchInfo = result.batch;
         else if (result.type === "serial" && result.serial) {
@@ -535,9 +590,10 @@ export default function SaleItemSection({
           };
         }
 
-        const existingIndex = items.findIndex(i => 
-          i.product_id === result.product.id && 
-          (!batchInfo || i.batch_id === batchInfo.id)
+        const existingIndex = items.findIndex(
+          (i) =>
+            i.product_id === result.product.id &&
+            (!batchInfo || i.batch_id === batchInfo.id),
         );
 
         if (existingIndex !== -1) {
@@ -545,30 +601,36 @@ export default function SaleItemSection({
           const newItems = [...items];
           newItems[existingIndex] = {
             ...newItems[existingIndex],
-            quantity: (newItems[existingIndex].quantity || 0) + 1
+            quantity: (newItems[existingIndex].quantity || 0) + 1,
           };
-          newItems[existingIndex].price = calculateItemPrice(newItems[existingIndex]);
+          newItems[existingIndex].price = calculateItemPrice(
+            newItems[existingIndex],
+          );
+          if (!newItems.some((i) => !i.product_id)) {
+            newItems.push({ ...defaultItem(), price_type: globalPriceType });
+          }
           onItemsChange(newItems);
           toast.success(`Incremented quantity: ${result.product.name}`);
         } else {
           // Add new item to the first empty row, or append a new one
-          let emptyIndex = items.findIndex(i => !i.product_id);
+          let emptyIndex = items.findIndex((i) => !i.product_id);
           const newItems = [...items];
-          
+
           if (emptyIndex === -1) {
             emptyIndex = newItems.length;
             newItems.push({ ...defaultItem(), price_type: globalPriceType });
           }
 
-          // We pass emptyIndex to a modified addItem logic, but since addItemToTable 
-          // calls onItemsChange directly, let's just construct the item here to avoid conflicting states
           const currentItem = newItems[emptyIndex];
-          const pType: PriceType = (currentItem.price_type as PriceType) || globalPriceType;
+          const pType: PriceType =
+            (currentItem.price_type as PriceType) || globalPriceType;
           const strategy = currentItem.pricing_strategy || "batch_pricing";
           const bMrp = batchInfo?.mrp ? Number(batchInfo.mrp) : undefined;
           const bMop = batchInfo?.mop ? Number(batchInfo.mop) : undefined;
-          const bMfw = batchInfo?.mfw_price ? Number(batchInfo.mfw_price) : undefined;
-      
+          const bMfw = batchInfo?.mfw_price
+            ? Number(batchInfo.mfw_price)
+            : undefined;
+
           let baseRate = 0;
           if (strategy === "batch_pricing") {
             if (pType === "mrp" && bMrp) baseRate = bMrp;
@@ -576,17 +638,26 @@ export default function SaleItemSection({
             else if (pType === "mfw" && bMfw) baseRate = bMfw;
           }
           if (!baseRate)
-            baseRate = Number((result.product as any)[pType]) || Number((result.product as any).mrp) || 0;
-      
-          const defaultUnit = (result.product.base_unit || (result.product as any).unit || "pcs").toLowerCase();
-      
+            baseRate =
+              Number((result.product as any)[pType]) ||
+              Number((result.product as any).mrp) ||
+              0;
+
+          const defaultUnit = (
+            result.product.base_unit ||
+            (result.product as any).unit ||
+            "pcs"
+          ).toLowerCase();
+
           const newItem: SaleItemRow = {
             ...currentItem,
             product_id: result.product.id!,
             product_name: result.product.name,
             hsn: result.product.hsn || currentItem.hsn || "",
-            barcode: code || result.product.barcode || currentItem.barcode || "",
-            description: currentItem.description || result.product.description || "",
+            barcode:
+              code || result.product.barcode || currentItem.barcode || "",
+            description:
+              currentItem.description || result.product.description || "",
             rate: baseRate,
             gst_rate: result.product.gst_rate ?? 0,
             quantity: 1,
@@ -601,14 +672,14 @@ export default function SaleItemSection({
             price_type: pType,
             pricing_strategy: strategy,
           };
-      
+
           if (result.product.tracking_type === "serial" && batchInfo) {
             newItem.serial_id = batchInfo.id;
             if (batchInfo.batch_id) newItem.batch_id = batchInfo.batch_id;
           } else if (result.product.tracking_type === "batch" && batchInfo) {
             newItem.batch_id = batchInfo.id;
           }
-      
+
           newItem.price = calculateItemPrice(newItem);
           newItems[emptyIndex] = newItem;
 
@@ -631,6 +702,81 @@ export default function SaleItemSection({
       }, 50);
     }
   };
+
+  const handleQuickBarcodeSubmit = async (
+    e?: React.KeyboardEvent | React.FocusEvent,
+  ) => {
+    if (e && "key" in e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault(); // Prevent form submission or focus loss
+    }
+    await processBarcode(quickBarcode);
+  };
+
+  // Global hardware USB/Bluetooth barcode scanner capture
+  const barcodeBuffer = useRef("");
+  const lastKeyTime = useRef(0);
+
+  useEffect(() => {
+    if (mode === "view") return;
+
+    const handleGlobalBarcode = (e: KeyboardEvent) => {
+      // F2 shortcut: focus quick barcode scan input
+      if (e.key === "F2") {
+        e.preventDefault();
+        quickBarcodeRef.current?.focus();
+        quickBarcodeRef.current?.select();
+        return;
+      }
+
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isInputOrTextarea =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.getAttribute("contenteditable") === "true");
+
+      if (activeEl === quickBarcodeRef.current) return;
+
+      const currentTime = Date.now();
+      const timeDiff = currentTime - lastKeyTime.current;
+      lastKeyTime.current = currentTime;
+
+      if (e.key === "Enter") {
+        const scannedCode = barcodeBuffer.current.trim();
+        barcodeBuffer.current = "";
+
+        // Scanners send keys rapidly (< 80ms)
+        if (scannedCode.length >= 3 && timeDiff < 100) {
+          e.preventDefault();
+          e.stopPropagation();
+          void processBarcode(scannedCode);
+        }
+        return;
+      }
+
+      // If user is typing in a text field with human typing speed, do not intercept
+      if (isInputOrTextarea) {
+        if (timeDiff > 75) {
+          barcodeBuffer.current = "";
+          return;
+        }
+      }
+
+      if (e.key.length === 1) {
+        if (timeDiff > 120) {
+          barcodeBuffer.current = e.key;
+        } else {
+          barcodeBuffer.current += e.key;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalBarcode);
+    return () => window.removeEventListener("keydown", handleGlobalBarcode);
+  }, [mode, items, globalPriceType, onItemsChange]);
 
   const handleFieldChange = (
     index: number,
@@ -670,6 +816,9 @@ export default function SaleItemSection({
     if (mode === "view") return;
     const newItems = [...items];
     newItems.splice(idx, 1);
+    if (newItems.length === 0) {
+      newItems.push({ ...defaultItem(), price_type: globalPriceType });
+    }
     onItemsChange(newItems);
   };
 
@@ -724,23 +873,60 @@ export default function SaleItemSection({
     field: string,
   ) => {
     if (mode === "view") return;
-    const baseFields = [
-      "product",
-      "barcode",
-      "quantity",
-      "unit",
-      "rate",
-      "discount",
-    ];
-    const fields = showDescriptionRow
-      ? [...baseFields, "description"]
-      : baseFields;
 
-    const currentIdx = fields.indexOf(field);
+    const getNextField = (curField: string): string | null => {
+      if (curField === "product" || curField === "barcode") return "quantity";
+      if (curField === "quantity") return "unit";
+      if (curField === "unit") return "rate";
+      if (curField === "rate") return "discount";
+      if (curField === "discount") return showDescriptionRow ? "description" : null;
+      return null;
+    };
+
+    const getPrevField = (curField: string): string | null => {
+      if (curField === "description") return "discount";
+      if (curField === "discount") return "rate";
+      if (curField === "rate") return "unit";
+      if (curField === "unit") return "quantity";
+      if (curField === "quantity") return "barcode";
+      if (curField === "barcode") return "product";
+      return null;
+    };
+
+    if (e.key === "Backspace") {
+      const target = e.target as HTMLInputElement | HTMLTextAreaElement;
+      const isSelect = target?.tagName === "SELECT" || field === "unit";
+      const isEmpty = !target || !target.value || String(target.value).trim() === "";
+      if (isSelect || isEmpty) {
+        e.preventDefault();
+        const prevField = getPrevField(field);
+        if (prevField) {
+          focusInput(idx, prevField);
+        } else if (idx > 0) {
+          focusInput(idx - 1, showDescriptionRow ? "description" : "discount");
+        }
+        return;
+      }
+    }
+
     if (e.key === "Enter") {
       e.preventDefault();
-      if (currentIdx < fields.length - 1) {
-        focusInput(idx, fields[currentIdx + 1]);
+
+      if (e.shiftKey) {
+        // Shift + Enter: Move backward / left
+        const prevField = getPrevField(field);
+        if (prevField) {
+          focusInput(idx, prevField);
+        } else if (idx > 0) {
+          focusInput(idx - 1, showDescriptionRow ? "description" : "discount");
+        }
+        return;
+      }
+
+      // Enter: Move forward / right
+      const nextField = getNextField(field);
+      if (nextField) {
+        focusInput(idx, nextField);
       } else {
         if (idx === items.length - 1 && items[idx].product_id !== 0) {
           onItemsChange([
@@ -811,7 +997,7 @@ export default function SaleItemSection({
     "&:hover": { bgcolor: alpha(theme.palette.action.hover, 0.06) },
     "&:focus-within": {
       borderColor: theme.palette.primary.main,
-      bgcolor: 'background.paper',
+      bgcolor: "background.paper",
     },
   });
 
@@ -868,7 +1054,7 @@ export default function SaleItemSection({
               sx={{
                 fontWeight: 800,
                 fontSize: "0.75rem",
-                color: 'text.primary',
+                color: "text.primary",
                 bgcolor: alpha(theme.palette.primary.main, 0.05),
                 "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.1) },
               }}
@@ -908,7 +1094,7 @@ export default function SaleItemSection({
               </Typography>
             }
           />
-          
+
           <Divider
             orientation="vertical"
             flexItem
@@ -916,8 +1102,12 @@ export default function SaleItemSection({
           />
 
           {/* Quick Barcode Billing Field */}
-          <Box sx={{ display: 'flex', alignItems: 'center', ml: 1 }}>
-            <ScanBarcode size={16} color={theme.palette.text.secondary} style={{ marginRight: 8 }} />
+          <Box sx={{ display: "flex", alignItems: "center", ml: 1 }}>
+            <ScanBarcode
+              size={16}
+              color={theme.palette.text.secondary}
+              style={{ marginRight: 8 }}
+            />
             <input
               ref={quickBarcodeRef}
               type="text"
@@ -945,7 +1135,7 @@ export default function SaleItemSection({
           variant="caption"
           sx={{ color: "text.disabled", fontWeight: 700 }}
         >
-          {items.length} LINE ITEMS
+          {items.filter((i) => (i.product_id || 0) > 0).length} LINE ITEMS
         </Typography>
       </Box>
 
@@ -1099,52 +1289,59 @@ export default function SaleItemSection({
                             )}
                           </Stack>
                         ) : (
-                          <Autocomplete
-                            fullWidth
-                            freeSolo
-                            size="small"
-                            options={searchResults}
+                          <AutoSuggestInput
+                            id={`product-${idx}`}
+                            value={item.product_name || product?.name || ""}
+                            options={productOptions}
+                            placeholder="Type name or code..."
                             disabled={mode !== "new"}
-                            getOptionLabel={(opt) =>
-                              typeof opt === "string"
-                                ? opt
-                                : `${opt.name} (${opt.barcode || "No Barcode"})`
-                            }
-                            value={product || null}
-                            loading={loading}
-                            onChange={(_, v) =>
-                              handleProductSelect(idx, v as Product)
-                            }
-                            onInputChange={(_, nv) => setInputValue(nv)}
-                            onKeyDown={(e) =>
-                              handleGridKeyDown(e, idx, "product")
-                            }
-                            renderOption={(props, option) => (
-                              <li {...props}>
-                                <Stack>
-                                  <Typography variant="body2" fontWeight={700}>
-                                    {option.name}
-                                  </Typography>
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                  >
-                                    {option.barcode}
-                                  </Typography>
-                                </Stack>
-                              </li>
-                            )}
-                            renderInput={(params) => (
-                              <TextField
-                                {...params}
-                                inputRef={(el) =>
-                                  (gridRefs.current[`${idx}-product`] = el)
-                                }
-                                placeholder="Type name or code..."
-                                variant="standard"
-                                sx={inputSx}
-                              />
-                            )}
+                            allowCreate={false}
+                            variant="standard"
+                            sx={inputSx}
+                            inputRef={(el) => {
+                              gridRefs.current[`${idx}-product`] = el;
+                            }}
+                            onSearch={handleProductSearch}
+                            onChange={(val) => {
+                              const selected =
+                                productsList.find((p) => p.id === val) ||
+                                (typeof val === "number"
+                                  ? productCache[val]
+                                  : null) ||
+                                Object.values(productCache).find(
+                                  (p) => p.id === val,
+                                ) ||
+                                productsList.find(
+                                  (p) =>
+                                    p.name.toLowerCase() ===
+                                      String(val).toLowerCase() ||
+                                    p.barcode?.toLowerCase() ===
+                                      String(val).toLowerCase(),
+                                ) ||
+                                Object.values(productCache).find(
+                                  (p) =>
+                                    p.name.toLowerCase() ===
+                                      String(val).toLowerCase() ||
+                                    p.barcode?.toLowerCase() ===
+                                      String(val).toLowerCase(),
+                                );
+                              if (selected) {
+                                void handleProductSelect(idx, selected);
+                              }
+                            }}
+                            onNext={() => {
+                              focusInput(idx, "quantity");
+                            }}
+                            onPrev={() => {
+                              if (idx > 0) {
+                                focusInput(
+                                  idx - 1,
+                                  showDescriptionRow
+                                    ? "description"
+                                    : "discount",
+                                );
+                              }
+                            }}
                           />
                         )}
                       </Box>
@@ -1168,11 +1365,14 @@ export default function SaleItemSection({
                             setBarcodeInputValue(nv);
                             handleFieldChange(idx, "barcode", nv);
                           }}
-                          onChange={(_, v) =>
-                            handleProductSelect(idx, v as Product)
-                          }
+                          onChange={(_, v) => {
+                            if (v) {
+                              handleProductSelect(idx, v as Product);
+                              setTimeout(() => focusInput(idx, "quantity"), 50);
+                            }
+                          }}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") {
+                            if (e.key === "Enter" && !e.shiftKey) {
                               e.preventDefault();
                               handleBarcodeScan(idx, item.barcode || "");
                             } else {
@@ -1358,7 +1558,7 @@ export default function SaleItemSection({
                           variant="caption"
                           sx={{
                             fontWeight: 800,
-                            color: 'text.primary',
+                            color: "text.primary",
                             bgcolor: alpha(theme.palette.primary.main, 0.05),
                             px: 0.8,
                             py: 0.2,
@@ -1504,6 +1704,7 @@ export default function SaleItemSection({
           }}
         >
           <Button
+            id="add-line-item-btn"
             size="small"
             startIcon={<Plus size={16} />}
             onClick={() =>
@@ -1515,7 +1716,7 @@ export default function SaleItemSection({
             sx={{
               fontWeight: 800,
               textTransform: "none",
-              color: 'text.primary',
+              color: "text.primary",
               borderRadius: "6px",
             }}
           >
@@ -1592,7 +1793,9 @@ export default function SaleItemSection({
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
-            setFocusedBatchIndex((p) => Math.min(p + 1, availableBatches.length - 1));
+            setFocusedBatchIndex((p) =>
+              Math.min(p + 1, availableBatches.length - 1),
+            );
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
             setFocusedBatchIndex((p) => Math.max(p - 1, 0));
@@ -1612,7 +1815,10 @@ export default function SaleItemSection({
         >
           SELECT BATCH / SERIAL
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, maxHeight: 400, overflowY: "auto" }}>
+        <DialogContent
+          dividers
+          sx={{ p: 0, maxHeight: 400, overflowY: "auto" }}
+        >
           {loadingBatches ? (
             <Box p={4} textAlign="center">
               <CircularProgress size={24} />
@@ -1634,8 +1840,16 @@ export default function SaleItemSection({
                     }}
                   >
                     <ListItemText
-                      primary={isSerial ? `Serial: ${b.serial_number}` : `Batch: ${b.batch_number || "DEFAULT"}`}
-                      secondary={isSerial ? `Stock: 1 | MRP: ₹${b.mrp}` : `Stock: ${b.quantity} | MRP: ₹${b.mrp}`}
+                      primary={
+                        isSerial
+                          ? `Serial: ${b.serial_number}`
+                          : `Batch: ${b.batch_number || "DEFAULT"}`
+                      }
+                      secondary={
+                        isSerial
+                          ? `Stock: 1 | MRP: ₹${b.mrp}`
+                          : `Stock: ${b.quantity} | MRP: ₹${b.mrp}`
+                      }
                       primaryTypographyProps={{
                         fontWeight: 800,
                         fontSize: "0.875rem",

@@ -36,6 +36,39 @@ const theme = createTheme({
       secondary: "#4B5563", // Darkened "Neutral Grey" for better contrast on cream
     },
   },
+  components: {
+    MuiInputBase: {
+      defaultProps: {
+        onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+          const target = e.target;
+          if (
+            target &&
+            target.tagName === "INPUT" &&
+            !["checkbox", "radio", "file", "date", "time", "datetime-local", "color"].includes(
+              (target as HTMLInputElement).type,
+            )
+          ) {
+            // Slight delay ensures mouse clicks don't immediately unselect text
+            setTimeout(() => {
+              if (document.activeElement === target) {
+                (target as HTMLInputElement).select?.();
+              }
+            }, 20);
+          }
+        },
+      },
+    },
+    MuiButtonBase: {
+      styleOverrides: {
+        root: {
+          "&:focus-visible": {
+            outline: "2px solid #1A2744",
+            outlineOffset: "2px",
+          },
+        },
+      },
+    },
+  },
 });
 
 export default theme;

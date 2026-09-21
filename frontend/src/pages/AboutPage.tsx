@@ -18,6 +18,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   Alert,
+  alpha,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -45,12 +46,16 @@ import {
   IndianRupee,
   Notebook,
   QrCode,
+  Compass,
+  Sparkles,
 } from "lucide-react";
 import { useUpdate } from "../context/UpdateContext";
 import { useNavigate } from "react-router-dom";
 import { getLicenseStatus, LicenseStatus } from "../lib/api/LicenseService";
 import { getBusinessProfile } from "../lib/api/businessService";
 import KbdButton from "../components/ui/Button";
+import PatchNotesModal from "../components/PatchNotesModal";
+import rootPackageJson from "../../../package.json";
 
 // EAS Testing Build URL
 const EAS_BUILD_URL =
@@ -75,6 +80,7 @@ export default function AboutPage() {
   const [appMode, setAppMode] = useState<string | null>(null);
   const [license, setLicense] = useState<LicenseStatus | null>(null);
   const [_loadingLicense, setLoadingLicense] = useState(true);
+  const [patchNotesOpen, setPatchNotesOpen] = useState(false);
 
   // Cloud Sync
   const [syncStatus, setSyncStatus] = useState<boolean>(false);
@@ -133,7 +139,7 @@ export default function AboutPage() {
   const isLicenseWarning =
     license?.status === "expired" || license?.status === "grace_period";
 
-  // Navigation Features - Expanded based on sidebar
+  // Navigation Features - Expanded based on sidebar with Tally Hotkeys
   const features = [
     {
       title: "Billing (POS)",
@@ -141,7 +147,7 @@ export default function AboutPage() {
       icon: <CreditCard size={20} />,
       path: "/billing",
       color: "secondary.main",
-      shortcut: "F2",
+      shortcut: "S > P",
     },
     {
       title: "Sales Register",
@@ -149,7 +155,7 @@ export default function AboutPage() {
       icon: <Clock size={20} />,
       path: "/sales-history",
       color: "text.primary",
-      shortcut: "F3",
+      shortcut: "S > R",
     },
     {
       title: "Purchase Voucher",
@@ -157,7 +163,7 @@ export default function AboutPage() {
       icon: <FileText size={20} />,
       path: "/purchase",
       color: "text.primary",
-      shortcut: "F4",
+      shortcut: "P > P",
     },
     {
       title: "Stock Summary",
@@ -165,7 +171,7 @@ export default function AboutPage() {
       icon: <Package size={20} />,
       path: "/inventory",
       color: "text.primary",
-      shortcut: "F6",
+      shortcut: "I > S",
     },
     {
       title: "Payment / Receipt",
@@ -173,7 +179,7 @@ export default function AboutPage() {
       icon: <IndianRupee size={20} />,
       path: "/transactions",
       color: "text.primary",
-      shortcut: "F8",
+      shortcut: "A > P",
     },
     {
       title: "Debtors (Customers)",
@@ -181,7 +187,7 @@ export default function AboutPage() {
       icon: <Users size={20} />,
       path: "/customers",
       color: "text.primary",
-      shortcut: "F10",
+      shortcut: "C > D",
     },
     {
       title: "GST Reports",
@@ -189,7 +195,7 @@ export default function AboutPage() {
       icon: <Notebook size={20} />,
       path: "/gst",
       color: "text.primary",
-      shortcut: null,
+      shortcut: "R > G",
     },
     {
       title: "Features / Settings",
@@ -197,7 +203,7 @@ export default function AboutPage() {
       icon: <Settings size={20} />,
       path: "/settings",
       color: "text.primary",
-      shortcut: "F12",
+      shortcut: "T > S",
     },
   ];
 
@@ -269,7 +275,7 @@ export default function AboutPage() {
                     spacing={1}
                   >
                     <Chip
-                      label={`v${currentVersion}`}
+                      label={`v${currentVersion && currentVersion !== "0.0.0" ? currentVersion : rootPackageJson.version}`}
                       size="small"
                       sx={{
                         fontWeight: "bold",
@@ -317,6 +323,59 @@ export default function AboutPage() {
 
             {/* Quick Navigation Grid */}
             <Box>
+              {/* Gateway of KOSH Interactive Banner */}
+              <Card
+                elevation={0}
+                onClick={() => window.dispatchEvent(new CustomEvent("open-gateway"))}
+                sx={{
+                  mb: 2,
+                  p: 2,
+                  borderRadius: 2,
+                  border: `1px solid ${theme.palette.primary.main}`,
+                  bgcolor: alpha(theme.palette.primary.main, 0.05),
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  transition: "all 0.2s ease",
+                  "&:hover": {
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                    transform: "translateY(-1px)",
+                  },
+                }}
+              >
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Compass size={24} color={theme.palette.primary.main} />
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight={800} color="text.primary">
+                      Gateway of KOSH{" "}
+                      <Box component="span" sx={{ color: "primary.main", ml: 0.5, fontWeight: 700 }}>
+                        (Tally Keyboard Mode)
+                      </Box>
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Press <Box component="span" sx={{ fontWeight: 800, color: "primary.main" }}>G</Box> or{" "}
+                      <Box component="span" sx={{ fontWeight: 800, color: "primary.main" }}>Alt + G</Box> to open &bull;{" "}
+                      <Box component="span" sx={{ fontWeight: 800 }}>D</Box> Dashboards &bull;{" "}
+                      <Box component="span" sx={{ fontWeight: 800 }}>S</Box> Sales &bull;{" "}
+                      <Box component="span" sx={{ fontWeight: 800 }}>P</Box> Purchase &bull;{" "}
+                      <Box component="span" sx={{ fontWeight: 800 }}>I</Box> Inventory &bull;{" "}
+                      <Box component="span" sx={{ fontWeight: 800 }}>A</Box> Accounts
+                    </Typography>
+                  </Box>
+                </Stack>
+                <Chip
+                  label="Press G"
+                  size="small"
+                  sx={{
+                    fontWeight: 900,
+                    bgcolor: theme.palette.primary.main,
+                    color: "white",
+                    letterSpacing: 0.5,
+                  }}
+                />
+              </Card>
+
               <Typography
                 variant="subtitle1"
                 fontWeight="bold"
@@ -724,9 +783,27 @@ export default function AboutPage() {
                     >
                       Update Center
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Current Version: <strong>v{currentVersion}</strong>
-                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" mt={0.5}>
+                      <Typography variant="body2" color="text.secondary">
+                        Current Version: <strong>v{currentVersion && currentVersion !== "0.0.0" ? currentVersion : rootPackageJson.version}</strong>
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<Sparkles size={14} />}
+                        onClick={() => setPatchNotesOpen(true)}
+                        sx={{
+                          height: 22,
+                          px: 1,
+                          fontSize: "0.68rem",
+                          fontWeight: 800,
+                          textTransform: "none",
+                          borderRadius: 1,
+                        }}
+                      >
+                        What's New
+                      </Button>
+                    </Stack>
                   </Box>
                   <Box
                     sx={{
@@ -938,6 +1015,12 @@ export default function AboutPage() {
           </Stack>
         </Grid>
       </Grid>
+
+      <PatchNotesModal
+        open={patchNotesOpen}
+        onClose={() => setPatchNotesOpen(false)}
+        currentAppVersion={currentVersion}
+      />
     </Box>
   );
 }

@@ -1,9 +1,10 @@
 import db from "../db/db.mjs";
 import { getDateFilter } from "../utils/dateFilter.mjs";
+import { convertToStockQuantity } from "../services/unitService.mjs";
 
 /**
  * The Mega-Query function for the dashboard.
- * UPDATED: Uses (quantity - return_quantity) & rigorously excludes GST and artificial stock gains.
+ * UPDATED: Uses (quantity - return_quantity) & rigorously excludes GST and artificial stock gains, with unit conversion for COGS.
  */
 export function getDashboardStats(filters) {
   const { where: sWhere, params: sParams } = getDateFilter({
@@ -22,25 +23,58 @@ export function getDashboardStats(filters) {
   // --------------------------------------------------------------------------
   // 1. FINANCIALS: Net Revenue, Net COGS, and Net Gross Profit
   // --------------------------------------------------------------------------
-  // Excludes GST from Revenue to prevent artificial inflation
-  const profitQuery = `
+  // Excludes GST from Revenue and converts transaction units to base units for COGS
+  const salesItemsForProfit = db
+    .prepare(
+      `
     SELECT 
-      SUM( (si.rate * (si.quantity - COALESCE(si.return_quantity, 0)) * (1 - si.discount/100.0)) / (1 + (COALESCE(si.gst_rate, pr.gst_rate, 0)/100.0)) ) as revenue,
-      SUM( (si.quantity - COALESCE(si.return_quantity, 0)) * COALESCE(pr.average_purchase_price, pr.mop, 0) ) as cogs
+      si.rate,
+      si.quantity,
+      COALESCE(si.return_quantity, 0) as return_quantity,
+      si.discount,
+      COALESCE(si.gst_rate, pr.gst_rate, 0) as gst_rate,
+      si.unit,
+      pr.base_unit,
+      pr.secondary_unit,
+      pr.conversion_factor,
+      pr.average_purchase_price,
+      pr.mop
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
     JOIN products pr ON si.product_id = pr.id
     WHERE s.is_quote = 0 AND ${sWhere}
-  `;
-
-  const profitData = db
-    .prepare(
-      `SELECT SUM(revenue) as revenue, SUM(cogs) as cogs FROM (${profitQuery})`,
+  `,
     )
-    .get(...sParams);
+    .all(...sParams);
 
-  const totalRevenue = profitData.revenue || 0;
-  const totalCOGS = profitData.cogs || 0;
+  let totalRevenue = 0;
+  let totalCOGS = 0;
+
+  for (const item of salesItemsForProfit) {
+    const netQty = (item.quantity || 0) - (item.return_quantity || 0);
+    if (netQty <= 0) continue;
+
+    const rate = Number(item.rate) || 0;
+    const discPct = Number(item.discount) || 0;
+    const gstPct = Number(item.gst_rate) || 0;
+
+    const rev = (rate * netQty * (1 - discPct / 100)) / (1 + gstPct / 100);
+    totalRevenue += rev;
+
+    const stockQty = convertToStockQuantity(netQty, item.unit, {
+      base_unit: item.base_unit,
+      secondary_unit: item.secondary_unit,
+      conversion_factor: item.conversion_factor,
+    });
+
+    const unitCost =
+      item.average_purchase_price && item.average_purchase_price > 0
+        ? item.average_purchase_price
+        : item.mop || 0;
+
+    totalCOGS += stockQty * unitCost;
+  }
+
   const grossProfit = totalRevenue - totalCOGS;
 
   // --------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 const os = require("os");
 const { machineIdSync } = require("node-machine-id");
-const Store = require('electron-store');
+const Store = require("electron-store");
 const store = new Store();
 
 function getLocalIps() {
@@ -18,7 +18,7 @@ function getLocalIps() {
 
 function registerCoreHandlers(
   ipcMain,
-  { getLastKnownServerUrl, getAppMode, mainWindow }
+  { getLastKnownServerUrl, getAppMode, mainWindow },
 ) {
   ipcMain.handle("get-app-mode", () => {
     return getAppMode();
@@ -38,7 +38,6 @@ function registerCoreHandlers(
 
   ipcMain.handle("get-store-val", (e, key) => store.get(key));
   ipcMain.handle("set-store-val", (e, key, val) => store.set(key, val));
-
 }
 
 module.exports = { registerCoreHandlers };

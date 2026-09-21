@@ -18,7 +18,6 @@ import {
   Settings as SettingsIcon,
   DatabaseBackup,
   Smartphone,
-  MessageCircle,
   Printer,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -29,7 +28,6 @@ import PreferencesTab from "../components/settings/PreferencesTab";
 import PrintSettingsTab from "../components/settings/PrintSettingsTab"; // ✅ New Import
 import BackupRestoreTab from "../components/settings/BackupRestoreTab";
 import MobileAccessTab from "../components/settings/MobileAccessTab";
-import WhatsAppTab from "../components/settings/WhatsAppTab";
 
 import type { ShopSetupForm } from "../lib/types/shopTypes";
 import { getShopData, updateShopData } from "../lib/api/shopService";
@@ -145,7 +143,6 @@ export default function SettingsPage() {
               <Tab icon={<SettingsIcon size={18} />} iconPosition="start" label="Preferences" />
               <Tab icon={<DatabaseBackup size={18} />} iconPosition="start" label="Backup" />
               <Tab icon={<Smartphone size={18} />} iconPosition="start" label="Mobile" />
-              <Tab icon={<MessageCircle size={18} />} iconPosition="start" label="WhatsApp" />
             </Tabs>
         </Box>
 
@@ -181,7 +178,6 @@ export default function SettingsPage() {
                 <BackupRestoreTab data={shopData} onChange={handleChange} />
               )}
               {activeTab === 5 && <MobileAccessTab />}
-              {activeTab === 6 && <WhatsAppTab />}
             </Box>
           </Fade>
           </Box>

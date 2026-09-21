@@ -22,6 +22,8 @@ export function getSalesBillingSettings() {
     use_default_customer: Boolean(settings.use_default_customer),
     auto_print_after_save: Boolean(settings.auto_print_after_save),
     send_whatsapp_invoice: Boolean(settings.send_whatsapp_invoice),
+    whatsapp_template_id: settings.whatsapp_template_id ? Number(settings.whatsapp_template_id) : null,
+    whatsapp_template_name: settings.whatsapp_template_name || null,
     payment_marking_timing: settings.payment_marking_timing || "pre_save",
     enable_split_payments: Boolean(settings.enable_split_payments),
     updated_at: settings.updated_at,
@@ -39,6 +41,8 @@ export function updateSalesBillingSettings(data) {
   const use_default_customer = data.use_default_customer !== undefined ? (data.use_default_customer ? 1 : 0) : (current.use_default_customer ? 1 : 0);
   const auto_print_after_save = data.auto_print_after_save !== undefined ? (data.auto_print_after_save ? 1 : 0) : (current.auto_print_after_save ? 1 : 0);
   const send_whatsapp_invoice = data.send_whatsapp_invoice !== undefined ? (data.send_whatsapp_invoice ? 1 : 0) : (current.send_whatsapp_invoice ? 1 : 0);
+  const whatsapp_template_id = data.whatsapp_template_id !== undefined ? (data.whatsapp_template_id ? Number(data.whatsapp_template_id) : null) : current.whatsapp_template_id;
+  const whatsapp_template_name = data.whatsapp_template_name !== undefined ? (data.whatsapp_template_name ? String(data.whatsapp_template_name) : null) : current.whatsapp_template_name;
   const payment_marking_timing = data.payment_marking_timing ? String(data.payment_marking_timing) : current.payment_marking_timing;
   const enable_split_payments = data.enable_split_payments !== undefined ? (data.enable_split_payments ? 1 : 0) : (current.enable_split_payments ? 1 : 0);
 
@@ -50,6 +54,8 @@ export function updateSalesBillingSettings(data) {
       use_default_customer = ?,
       auto_print_after_save = ?,
       send_whatsapp_invoice = ?,
+      whatsapp_template_id = ?,
+      whatsapp_template_name = ?,
       payment_marking_timing = ?,
       enable_split_payments = ?,
       updated_at = datetime('now', 'localtime')
@@ -60,6 +66,8 @@ export function updateSalesBillingSettings(data) {
     use_default_customer,
     auto_print_after_save,
     send_whatsapp_invoice,
+    whatsapp_template_id,
+    whatsapp_template_name,
     payment_marking_timing,
     enable_split_payments
   );

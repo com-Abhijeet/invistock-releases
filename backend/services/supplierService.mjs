@@ -50,36 +50,19 @@ export async function createSupplierService(supplierData) {
   };
 
   try {
-    // If a phone number is provided, check if it's unique.
-    // if (normalizedData.phone) {
-    //   const existingByPhone = await supplierRepository.findByPhone(
-    //     normalizedData.phone
-    //   );
-    //   if (existingByPhone) {
-    //     const err = new Error(
-    //       "A supplier with this phone number already exists."
-    //     );
-    //     err.statusCode = 409; // Conflict
-    //     throw err;
-    //   }
-    // }
-
-    // If all checks pass, create the new supplier.
     const newSupplier = await createSupplier(normalizedData);
     return newSupplier;
   } catch (error) {
-    // Re-throw our custom validation/duplicate errors so the controller can catch them.
     if (error.statusCode) {
       throw error;
     }
-
-    // For any other unexpected errors, log them and throw a generic server error.
     console.error("Error in addSupplier service:", error);
     throw new Error("Failed to add supplier due to a server error.");
   }
 }
-export async function listSuppliers() {
-  return await getAllSuppliers();
+
+export async function listSuppliers(filters = {}) {
+  return await getAllSuppliers(filters);
 }
 
 export function getSupplier(id) {

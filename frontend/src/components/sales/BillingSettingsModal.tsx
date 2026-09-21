@@ -62,7 +62,7 @@ export default function BillingSettingsModal({
       const data = await getSalesBillingSettings();
       setSettings(data);
     } catch (err: any) {
-      toast.error("Failed to load queue settings");
+      toast.error("Failed to load batch queue settings");
     } finally {
       setLoading(false);
     }
@@ -81,7 +81,7 @@ export default function BillingSettingsModal({
       if (onSuccess) onSuccess(updated);
       onClose();
     } catch (err: any) {
-      toast.error(err?.message || "Failed to save queue settings");
+      toast.error(err?.message || "Failed to save batch queue settings");
     } finally {
       setSaving(false);
     }

@@ -15,12 +15,21 @@ import {
 } from "lucide-react";
 
 // Define a type for menu items
-interface MenuItem {
+export interface MenuItem {
   label: string;
   icon: React.ReactNode;
   path: string;
+  hotkey?: string;
+  desc?: string;
 }
-const menuSections: { title: string; items: MenuItem[] }[] = [
+
+export interface MenuSection {
+  title: string;
+  hotkey?: string;
+  items: MenuItem[];
+}
+
+const menuSections: MenuSection[] = [
   {
     title: "Analytics & Reports",
     items: [

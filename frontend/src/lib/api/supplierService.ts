@@ -8,9 +8,12 @@ const BASE_URL = "/api/suppliers";
 /**
  * @description Fetches all suppliers directly from the API.
  */
-export async function getSuppliers(): Promise<SupplierType[]> {
+export async function getSuppliers(params?: {
+  query?: string;
+  limit?: number;
+}): Promise<SupplierType[]> {
   try {
-    const res = await api.get(BASE_URL);
+    const res = await api.get(BASE_URL, { params });
     return res.data.data;
   } catch (error: any) {
     throw new Error(

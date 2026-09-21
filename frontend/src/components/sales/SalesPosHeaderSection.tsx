@@ -4,9 +4,6 @@ import {
   Box,
   TextField,
   Typography,
-  CircularProgress,
-  Autocomplete,
-  MenuItem,
   Stack,
   useTheme,
   Button,
@@ -14,7 +11,7 @@ import {
   alpha,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { CustomerType } from "../../lib/types/customerTypes";
 import type { SalePayload } from "../../lib/types/salesTypes";
 import {
@@ -28,6 +25,9 @@ import {
   ScanLine,
 } from "lucide-react";
 import { indianStates } from "../../lib/constants/statesList";
+import AutoSuggestInput, {
+  AutoSuggestOption,
+} from "../common/AutoSuggestInput";
 
 interface EmployeeOption {
   id: number;
@@ -66,7 +66,7 @@ export default function SalesPosHeaderSection({
   sale,
   options,
   employees,
-  loading,
+  loading: _loading,
   mode,
   customerId,
   customerName,
@@ -92,17 +92,48 @@ export default function SalesPosHeaderSection({
   const [showMore, setShowMore] = useState(false);
 
   const customerInputRef = useRef<HTMLInputElement>(null);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
   const employeeInputRef = useRef<HTMLInputElement>(null);
+
+  const customerOptions: AutoSuggestOption[] = useMemo(() => {
+    return options.map((c) => ({
+      id: c.id,
+      name: c.name,
+      code: c.phone || "",
+      customer: c,
+    }));
+  }, [options]);
+
+  const employeeOptions: AutoSuggestOption[] = useMemo(() => {
+    return employees.map((e) => ({
+      id: e.id,
+      name: e.name,
+      code: e.role,
+    }));
+  }, [employees]);
+
+  const selectedEmployee = useMemo(() => {
+    return employees.find((e) => e.id === sale.employee_id);
+  }, [employees, sale.employee_id]);
+
+  const stateOptions: AutoSuggestOption[] = useMemo(() => {
+    const allStates = Array.from(
+      new Set([...(state ? [state] : []), ...indianStates]),
+    );
+    return allStates.map((s) => ({ id: s, name: s }));
+  }, [state]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
         customerInputRef.current?.focus();
+        customerInputRef.current?.select();
       }
       if (e.altKey && e.key.toLowerCase() === "e") {
         e.preventDefault();
         employeeInputRef.current?.focus();
+        employeeInputRef.current?.select();
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
         e.preventDefault();
@@ -112,6 +143,25 @@ export default function SalesPosHeaderSection({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // Auto-focus Customer Name input on initial page load & after explicit sale reset
+  useEffect(() => {
+    const handleResetFocus = () => {
+      setTimeout(() => {
+        if (customerInputRef.current) {
+          customerInputRef.current.focus();
+          customerInputRef.current.select();
+        }
+      }, 150);
+    };
+
+    if (mode !== "view") {
+      handleResetFocus();
+    }
+
+    window.addEventListener("pos-reset", handleResetFocus);
+    return () => window.removeEventListener("pos-reset", handleResetFocus);
+  }, [mode]);
 
   const containerSx = {
     display: "flex",
@@ -199,53 +249,45 @@ export default function SalesPosHeaderSection({
             >
               PARTY *
             </Typography>
-            <Autocomplete
-              freeSolo
-              fullWidth
-              size="small"
-              options={options}
-              loading={loading}
+            <AutoSuggestInput
+              id="pos-party-input"
+              value={customerName}
+              options={customerOptions}
+              placeholder="Search or Type Name..."
               disabled={mode === "view"}
-              getOptionLabel={(option) =>
-                typeof option === "string" ? option : option.name || ""
-              }
-              value={options.find((opt) => opt.id === customerId) || null}
-              inputValue={customerName}
-              onInputChange={(_, val, reason) => {
-                if (reason === "input") {
-                  setCustomerName(val);
-                  setQuery(val);
-                  if (customerId !== 0) setCustomerId(0);
-                } else if (reason === "clear") {
+              allowCreate={true}
+              variant="standard"
+              sx={inputSx}
+              inputRef={(el) => {
+                (customerInputRef as any).current = el;
+              }}
+              onSearch={(val) => {
+                setCustomerName(val);
+                setQuery(val);
+                if (customerId !== 0) setCustomerId(0);
+              }}
+              onChange={(val) => {
+                if (!val) {
                   handleSelect(null);
+                  return;
                 }
-              }}
-              onChange={(_, val, reason) => {
-                if (reason === "clear") return handleSelect(null);
-                if (typeof val === "string") {
-                  setCustomerName(val);
+                const selected =
+                  options.find((c) => c.id === val) ||
+                  options.find(
+                    (c) =>
+                      c.name.toLowerCase() === String(val).toLowerCase() ||
+                      c.phone === String(val),
+                  );
+                if (selected) {
+                  handleSelect(selected);
+                } else {
+                  setCustomerName(String(val));
                   setCustomerId(0);
-                } else if (val) {
-                  handleSelect(val);
                 }
               }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  inputRef={customerInputRef}
-                  variant="standard"
-                  placeholder="Required * (Ctrl+B)"
-                  sx={inputSx}
-                  InputProps={{
-                    ...params.InputProps,
-                    endAdornment: loading ? (
-                      <CircularProgress size={12} />
-                    ) : (
-                      params.InputProps.endAdornment
-                    ),
-                  }}
-                />
-              )}
+              onNext={() => {
+                mobileInputRef.current?.focus();
+              }}
             />
           </Box>
 
@@ -278,6 +320,7 @@ export default function SalesPosHeaderSection({
               MOBILE *
             </Typography>
             <TextField
+              inputRef={mobileInputRef}
               fullWidth
               variant="standard"
               disabled={mode === "view"}
@@ -290,7 +333,8 @@ export default function SalesPosHeaderSection({
               onBlur={() => {
                 if (
                   !selectedPhone.trim() &&
-                  (!customerName || customerName.toLowerCase() === "walk-in customer")
+                  (!customerName ||
+                    customerName.toLowerCase() === "walk-in customer")
                 ) {
                   setSelectedPhone("0000000000");
                 }
@@ -305,6 +349,12 @@ export default function SalesPosHeaderSection({
                   setCustomerId(0);
                 }
               }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  employeeInputRef.current?.focus();
+                }
+              }}
               placeholder="99..."
               sx={inputSx}
             />
@@ -314,25 +364,66 @@ export default function SalesPosHeaderSection({
           <Box sx={{ ...containerSx, flexGrow: 1.5, minWidth: 180 }}>
             <Briefcase size={14} color={theme.palette.text.disabled} />
             <Typography sx={labelSx}>STAFF</Typography>
-            <Autocomplete
-              fullWidth
-              size="small"
-              options={employees}
-              getOptionLabel={(option) => option.name}
-              value={employees.find((e) => e.id === sale.employee_id) || null}
-              onChange={(_, newValue) =>
-                handleFieldChange("employee_id", newValue ? newValue.id : null)
-              }
+            <AutoSuggestInput
+              id="pos-staff-input"
+              value={selectedEmployee ? selectedEmployee.name : ""}
+              options={employeeOptions}
+              placeholder="Billed By..."
               disabled={mode === "view"}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  inputRef={employeeInputRef}
-                  variant="standard"
-                  placeholder="Billed By..."
-                  sx={inputSx}
-                />
-              )}
+              allowCreate={false}
+              variant="standard"
+              sx={inputSx}
+              inputRef={(el) => {
+                (employeeInputRef as any).current = el;
+              }}
+              onChange={(val) => {
+                const emp = employees.find(
+                  (e) =>
+                    e.id === val ||
+                    e.name.toLowerCase() === String(val).toLowerCase(),
+                );
+                handleFieldChange("employee_id", emp ? emp.id : null);
+              }}
+              onNext={() => {
+                if (showMore) {
+                  const firstExpanded = document.getElementById(
+                    "billing-gstin-override",
+                  );
+                  if (firstExpanded) {
+                    firstExpanded.focus();
+                    return;
+                  }
+                }
+
+                // Details are collapsed: proceed directly to line item
+                const firstProductInput = document.getElementById("product-0");
+                if (firstProductInput) {
+                  firstProductInput.focus();
+                  return;
+                }
+
+                // If table is empty, trigger the Add Line Item button
+                const addLineBtn = document.getElementById("add-line-item-btn");
+                if (addLineBtn) {
+                  addLineBtn.click();
+                  setTimeout(() => {
+                    document.getElementById("product-0")?.focus();
+                  }, 120);
+                  return;
+                }
+
+                // Fallback: Dispatch Ctrl+A
+                window.dispatchEvent(
+                  new KeyboardEvent("keydown", {
+                    key: "a",
+                    ctrlKey: true,
+                    bubbles: true,
+                  }),
+                );
+              }}
+              onPrev={() => {
+                mobileInputRef.current?.focus();
+              }}
             />
           </Box>
 
@@ -465,6 +556,7 @@ export default function SalesPosHeaderSection({
             <Grid container spacing={2}>
               {[
                 {
+                  id: "billing-gstin-override",
                   label: "GSTIN (Bill Override)",
                   value: customerGstNo,
                   setter: setCustomerGstNo,
@@ -492,29 +584,22 @@ export default function SalesPosHeaderSection({
                 },
               ].map((f, i) => (
                 <Grid item xs={12} sm={f.size} key={i}>
-                  <Box sx={{ ...containerSx, bgcolor: 'background.paper' }}>
+                  <Box sx={{ ...containerSx, bgcolor: "background.paper" }}>
                     <Typography sx={labelSx}>{f.label}</Typography>
                     {f.isSelect ? (
-                      <TextField
-                        select
-                        fullWidth
+                      <AutoSuggestInput
+                        id="billing-state"
+                        value={f.value || ""}
+                        options={stateOptions}
+                        placeholder="Select State"
+                        allowCreate={true}
                         variant="standard"
-                        value={f.value}
-                        onChange={(e) => f.setter(e.target.value)}
                         sx={inputSx}
-                      >
-                        {Array.from(new Set([...(f.value ? [f.value] : []), ...indianStates])).map((s) => (
-                          <MenuItem
-                            key={s}
-                            value={s}
-                            sx={{ fontSize: "0.8rem" }}
-                          >
-                            {s}
-                          </MenuItem>
-                        ))}
-                      </TextField>
+                        onChange={(val) => f.setter((val as string) || "")}
+                      />
                     ) : (
                       <TextField
+                        id={f.id}
                         fullWidth
                         variant="standard"
                         value={f.value}

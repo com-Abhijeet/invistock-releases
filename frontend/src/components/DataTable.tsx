@@ -103,6 +103,22 @@ export default function DataTable({
           activeEl.getAttribute("contenteditable") === "true");
 
       if (isInput && rows.length > 0) {
+        // Guard 1: Never hijack ArrowDown if an active modal/dialog is open
+        if (document.querySelector(".MuiDialog-root, .MuiModal-root")) {
+          return;
+        }
+
+        // Guard 2: Never hijack if input is a combobox/dropdown or an autocomplete list is open
+        if (
+          activeEl.getAttribute("aria-expanded") === "true" ||
+          activeEl.getAttribute("role") === "combobox" ||
+          document.querySelector(
+            '.MuiMenu-paper, .MuiAutocomplete-popper, [role="listbox"]',
+          )
+        ) {
+          return;
+        }
+
         if (e.key === "ArrowDown") {
           const firstRow = tableRef.current?.childNodes[0] as HTMLElement;
           if (firstRow) {

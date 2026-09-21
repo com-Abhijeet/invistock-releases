@@ -87,6 +87,8 @@ import TallyLedgerConfig from "./pages/setup/TallyLedgerConfig";
 import BusinessSettings from "./pages/BusinessSettingsPage";
 import MissingBatchesPage from "./pages/MissingBatchesPage";
 import CheckPrintingPage from "./pages/CheckPrintingPage";
+import WhatsAppPage from "./pages/WhatsAppPage";
+import CustomerMessagingPage from "./pages/CustomerMessagingPage";
 
 // Global component for handling F-key and mode-switch shortcuts
 function GlobalShortcuts() {
@@ -113,6 +115,118 @@ function GlobalShortcuts() {
               e.preventDefault();
               navigate(item.path);
               return; // Stop after finding the match
+            }
+          }
+        }
+      }
+
+      // --- 1. Universal Ctrl+S / Cmd+S Save Shortcut ---
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+        // Prevent native browser "Save Page As"
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Check if an active dialog/modal is open on screen
+        const activeDialog = document.querySelector(
+          '[role="dialog"]:not([aria-hidden="true"])',
+        ) as HTMLElement | null;
+
+        const activeScope =
+          activeDialog ||
+          document.activeElement?.closest("form") ||
+          document.body;
+
+        // Look for the Primary / Submit / Save button in the active scope
+        const saveButton = activeScope.querySelector<HTMLButtonElement>(
+          'button[data-save="true"], button[type="submit"], button.MuiButton-containedPrimary, button.MuiButton-contained',
+        );
+
+        if (saveButton && !saveButton.disabled) {
+          saveButton.click();
+        }
+        return;
+      }
+
+      // --- 2. Universal Enter-as-Tab & Shift+Enter Navigation ---
+      if (e.key === "Enter") {
+        const target = e.target as HTMLElement;
+        if (!target) return;
+
+        const isFormInput =
+          target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "TEXTAREA";
+
+        if (!isFormInput) return;
+
+        // In multiline textareas, regular Enter creates newlines. Only Shift+Enter navigates backward.
+        if (target.tagName === "TEXTAREA" && !e.shiftKey) {
+          return;
+        }
+
+        // If an autocomplete/autosuggest popper or dropdown menu is open, let Enter select the highlighted item
+        const hasOpenPopup = !!(
+          document.querySelector(
+            '.MuiMenu-paper:not([style*="visibility: hidden"])',
+          ) ||
+          document.querySelector(
+            '.MuiAutocomplete-popper:not([style*="display: none"])',
+          ) ||
+          document.querySelector(
+            '[role="listbox"]:not([style*="display: none"])',
+          ) ||
+          target.getAttribute("aria-expanded") === "true"
+        );
+
+        if (hasOpenPopup) {
+          return;
+        }
+
+        // Determine scope: active modal dialog, enclosing form, or document body
+        const scope =
+          target.closest('[role="dialog"], [data-keyboard-nav="true"], form') ||
+          document.body;
+
+        const selector = [
+          'input:not([disabled]):not([type="hidden"]):not([tabindex="-1"])',
+          'select:not([disabled]):not([tabindex="-1"])',
+          'textarea:not([disabled]):not([tabindex="-1"])',
+          'button:not([disabled]):not([tabindex="-1"]):not([data-nav-skip="true"])',
+        ].join(", ");
+
+        const focusables = Array.from(
+          scope.querySelectorAll<HTMLElement>(selector),
+        ).filter(
+          (el) =>
+            el.getAttribute("data-nav-skip") !== "true" &&
+            !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+        );
+
+        const currentIndex = focusables.findIndex(
+          (el) => el === target || el.contains(target),
+        );
+
+        if (currentIndex === -1) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.shiftKey) {
+          // Shift+Enter: move focus backward
+          const prevIndex = currentIndex - 1;
+          if (prevIndex >= 0) {
+            focusables[prevIndex].focus();
+          }
+        } else {
+          // Enter: move focus forward
+          const nextIndex = currentIndex + 1;
+          if (nextIndex < focusables.length) {
+            focusables[nextIndex].focus();
+          } else {
+            // Reached last element: if it's a save/submit button, click it
+            const lastEl = focusables[currentIndex];
+            if (lastEl && lastEl.tagName === "BUTTON") {
+              (lastEl as HTMLButtonElement).click();
             }
           }
         }
@@ -515,6 +629,22 @@ function AppLayout() {
                       </PermissionGuard>
                     }
                   />
+                  <Route
+                    path="/messaging"
+                    element={
+                      <PermissionGuard requiredPermission="customers">
+                        <CustomerMessagingPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/customer-messaging"
+                    element={
+                      <PermissionGuard requiredPermission="customers">
+                        <CustomerMessagingPage />
+                      </PermissionGuard>
+                    }
+                  />
 
                   {/* --- Reports --- */}
                   <Route
@@ -566,6 +696,30 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="settings">
                         <SettingsPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/whatsapp"
+                    element={
+                      <PermissionGuard requiredPermission="settings">
+                        <WhatsAppPage defaultTab="setup" />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/whatsapp/analytics"
+                    element={
+                      <PermissionGuard requiredPermission="settings">
+                        <WhatsAppPage defaultTab="analytics" />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/whatsapp-analytics"
+                    element={
+                      <PermissionGuard requiredPermission="settings">
+                        <WhatsAppPage defaultTab="analytics" />
                       </PermissionGuard>
                     }
                   />

@@ -160,7 +160,7 @@ export default function ProductDetailPage() {
     },
     {
       key: "quantity",
-      label: `Quantity Change (${product.base_unit || "pcs"})`,
+      label: "Quantity Change",
       format: (val: string) => (
         <Typography
           fontWeight="bold"

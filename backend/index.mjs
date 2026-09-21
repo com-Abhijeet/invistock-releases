@@ -153,17 +153,21 @@ export function startServer(dbPath, userDataPath) {
   // Mobile HTML (Optional now, but kept if you still need the web view)
   app.use("/mobile", mobileHtmlRoutes);
 
-  // ✅ SERVE IMAGES STATICALLY (For Mobile)
+  // ✅ SERVE IMAGES & TEMP PDFS STATICALLY
   if (userDataPath) {
     const imagesPath = path.join(userDataPath, "images");
-    // This exposes: http://IP:5000/images/products/filename.jpg
     app.use("/images", express.static(imagesPath));
-    // Now this log will appear in backend.log due to the override,
-    // but we can still use backendLogger explicitly if we want.
-    backendLogger.info(`[BACKEND] Serving images from: ${imagesPath}`);
+    
+    const tempPdfsPath = path.join(userDataPath, "temp_pdfs");
+    if (!fs.existsSync(tempPdfsPath)) {
+      try { fs.mkdirSync(tempPdfsPath, { recursive: true }); } catch (e) {}
+    }
+    app.use("/temp-pdfs", express.static(tempPdfsPath));
+
+    backendLogger.info(`[BACKEND] Serving images from: ${imagesPath}, temp_pdfs from: ${tempPdfsPath}`);
   } else {
     backendLogger.warn(
-      "[BACKEND] No userDataPath provided. Images will not be served.",
+      "[BACKEND] No userDataPath provided. Images and temp_pdfs will not be served.",
     );
   }
 

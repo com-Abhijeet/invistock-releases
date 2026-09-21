@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import { MessageCircle, Send, Users } from "lucide-react";
 import toast from "react-hot-toast";
+import { hydrateTemplate } from "../../lib/utils/templateRenderer";
 
 const { electron } = window;
 
@@ -24,7 +25,7 @@ const TEMPLATES = [
   {
     id: "miss_you",
     label: "We Miss You (Discount)",
-    text: "Hello {name}! 👋\n\nIt's been a while since we saw you at InviStock. We miss you!\n\nAs a special gift, here is a 5% discount on your next purchase. Valid for 7 days.\n\nSee you soon!",
+    text: "Hello {{Name}}! 👋\n\nIt's been a while since we saw you at {{ShopName}}. We miss you!\n\nAs a special gift, here is a 5% discount on your next purchase. Valid for 7 days.\n\nSee you soon!",
   },
   {
     id: "new_stock",
@@ -67,25 +68,40 @@ export default function WhatsAppTemplateModal({
   onClose,
   recipients,
 }: Props) {
-  const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
-  const [messageBody, setMessageBody] = useState(TEMPLATES[0].text);
+  const [templateList, setTemplateList] = useState<any[]>(TEMPLATES);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>(TEMPLATES[0].id);
+  const [messageBody, setMessageBody] = useState<string>(TEMPLATES[0].text);
   const [isSending, setIsSending] = useState(false);
   const [progress, setProgress] = useState(0);
   const [sentCount, setSentCount] = useState(0);
 
-  // Reset when opening with new recipients
   useEffect(() => {
     if (open) {
       setIsSending(false);
       setProgress(0);
       setSentCount(0);
-      // Don't reset text so user doesn't lose edits if they close/reopen quickly
+
+      // Load DB Templates dynamically
+      if (electron?.getWhatsAppTemplates) {
+        electron.getWhatsAppTemplates().then((res: any) => {
+          if (res.success && res.templates && res.templates.length > 0) {
+            const formatted = res.templates.map((t: any) => ({
+              id: String(t.id),
+              label: `${t.name} (${t.category})`,
+              text: t.content,
+            }));
+            setTemplateList(formatted);
+            setSelectedTemplate(formatted[0].id);
+            setMessageBody(formatted[0].text);
+          }
+        });
+      }
     }
   }, [open]);
 
   const handleTemplateChange = (id: string) => {
     setSelectedTemplate(id);
-    const template = TEMPLATES.find((t) => t.id === id);
+    const template = templateList.find((t) => String(t.id) === String(id));
     if (template) setMessageBody(template.text);
   };
 
@@ -98,6 +114,7 @@ export default function WhatsAppTemplateModal({
 
     let successCount = 0;
     let failCount = 0;
+    let lastErrorMsg = "";
 
     // Loop through all recipients
     for (let i = 0; i < recipients.length; i++) {
@@ -108,22 +125,30 @@ export default function WhatsAppTemplateModal({
       setProgress(currentPercent);
 
       if (customer.phone) {
-        // 1. Personalize Message
-        const personalizedMessage = messageBody.replace(
-          /{name}/g,
-          customer.name
-        );
+        // 1. Personalize Message using templateRenderer
+        const personalizedMessage = hydrateTemplate(messageBody, {
+          Name: customer.name,
+          CustomerName: customer.name,
+          Total: customer.pending_amount || customer.total_amount || 0,
+          ...customer,
+        });
 
         // 2. Send via Electron IPC
         try {
           const res = await electron.sendWhatsAppMessage(
             customer.phone,
-            personalizedMessage
+            personalizedMessage,
+            "marketing"
           );
-          if (res.success) successCount++;
-          else failCount++;
-        } catch (e) {
+          if (res && res.success) {
+            successCount++;
+          } else {
+            failCount++;
+            if (res && res.error) lastErrorMsg = res.error;
+          }
+        } catch (e: any) {
           failCount++;
+          lastErrorMsg = e.message;
         }
       } else {
         failCount++;
@@ -138,10 +163,10 @@ export default function WhatsAppTemplateModal({
     setIsSending(false);
 
     if (successCount > 0) {
-      toast.success(`Sent ${successCount} messages successfully!`);
+      toast.success(`Sent ${successCount} message(s) successfully!`);
       onClose();
     } else {
-      toast.error("Failed to send messages. Check connection.");
+      toast.error(`Failed to send: ${lastErrorMsg || "Check connection or configuration."}`);
     }
   };
 
@@ -188,7 +213,7 @@ export default function WhatsAppTemplateModal({
                 value={selectedTemplate}
                 onChange={(e) => handleTemplateChange(e.target.value)}
               >
-                {TEMPLATES.map((t) => (
+                {templateList.map((t) => (
                   <MenuItem key={t.id} value={t.id}>
                     {t.label}
                   </MenuItem>
@@ -207,8 +232,7 @@ export default function WhatsAppTemplateModal({
 
               <Alert severity="info" icon={<Users size={18} />}>
                 This will be sent to{" "}
-                <strong>{recipients.length} customers</strong>. Please ensure
-                your WhatsApp Desktop is connected.
+                <strong>{recipients.length} customer{recipients.length !== 1 ? "s" : ""}</strong> via your active WhatsApp Provider.
               </Alert>
             </>
           )}

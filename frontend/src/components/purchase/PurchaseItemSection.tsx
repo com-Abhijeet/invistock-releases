@@ -143,9 +143,8 @@ const PurchaseItemSection = ({
       page: 1,
       limit: 100,
       query: "",
-      isActive: 0,
-      all: true,
-    }).then((data) => setProducts(data.records || []));
+      all: false,
+    }).then((data) => setProducts(data?.records || []));
 
     getShopData().then((res) => setShop(res));
   }, []);
@@ -179,6 +178,9 @@ const PurchaseItemSection = ({
   ) => {
     if (readOnly) return;
 
+    const fields = ["quantity", "unit", "rate", "margin", "mrp"];
+    const currentIdx = fields.indexOf(field);
+
     switch (e.key) {
       case "ArrowUp":
         if (rowIndex > 0) {
@@ -196,15 +198,40 @@ const PurchaseItemSection = ({
         break;
       case "Enter":
         e.preventDefault();
-        const fields = ["quantity", "unit", "rate", "margin", "mrp"];
-        const currentIdx = fields.indexOf(field);
-        if (currentIdx < fields.length - 1) {
-          focusInput(rowIndex, fields[currentIdx + 1]);
-        } else if (rowIndex < items.length - 1) {
-          setActiveRowIndex(rowIndex + 1);
-          focusInput(rowIndex + 1, "quantity");
+        if (e.shiftKey) {
+          if (currentIdx > 0) {
+            focusInput(rowIndex, fields[currentIdx - 1]);
+          } else if (rowIndex > 0) {
+            setActiveRowIndex(rowIndex - 1);
+            focusInput(rowIndex - 1, fields[fields.length - 1]);
+          }
+        } else {
+          if (currentIdx < fields.length - 1) {
+            focusInput(rowIndex, fields[currentIdx + 1]);
+          } else if (rowIndex < items.length - 1) {
+            setActiveRowIndex(rowIndex + 1);
+            focusInput(rowIndex + 1, "quantity");
+          } else {
+            handleBulkAdd();
+          }
         }
         break;
+      case "Backspace": {
+        const target = e.target as HTMLInputElement;
+        const isSelect = target.tagName === "SELECT";
+        const isEmpty = isSelect || !target.value || target.value.trim() === "" || target.value === "0";
+        if (isEmpty) {
+          if (currentIdx > 0) {
+            e.preventDefault();
+            focusInput(rowIndex, fields[currentIdx - 1]);
+          } else if (rowIndex > 0) {
+            e.preventDefault();
+            setActiveRowIndex(rowIndex - 1);
+            focusInput(rowIndex - 1, fields[fields.length - 1]);
+          }
+        }
+        break;
+      }
     }
   };
 
@@ -281,6 +308,23 @@ const PurchaseItemSection = ({
     if (readOnly) return;
     const updated = [...items];
     (updated[index] as any)[field] = value;
+
+    if (field === "rate") {
+      const rate = Number(value) || 0;
+      const mrp = Number(updated[index].mrp) || 0;
+      const margin = Number(updated[index].margin) || 0;
+
+      if (mrp > 0 && rate > 0) {
+        updated[index].margin = parseFloat(
+          (((mrp - rate) / rate) * 100).toFixed(2),
+        );
+      } else if (margin > 0 && rate > 0 && mrp === 0) {
+        updated[index].mrp = parseFloat(
+          (rate + (rate * margin) / 100).toFixed(2),
+        );
+      }
+    }
+
     updated[index].price = calculatePrice(updated[index]);
     onItemsChange(updated);
   };
@@ -376,6 +420,7 @@ const PurchaseItemSection = ({
         >
           <Box display="flex" gap={2} alignItems="center">
             <Button
+              data-action="add-item"
               onClick={handleBulkAdd}
               variant="contained"
               color="primary"
@@ -561,15 +606,18 @@ const PurchaseItemSection = ({
                         value={
                           readOnly && (item.return_quantity || 0) > 0
                             ? Math.max(0, item.quantity - (item.return_quantity || 0))
-                            : item.quantity
+                            : item.quantity === 0
+                              ? ""
+                              : item.quantity
                         }
                         onKeyDown={(e) => handleCellKeyDown(e, idx, "quantity")}
                         onClick={() => setActiveRowIndex(idx)}
+                        onFocus={(e) => (e.target as HTMLInputElement).select()}
                         onChange={(e) =>
                           handleFieldChange(
                             idx,
                             "quantity",
-                            Number(e.target.value),
+                            e.target.value === "" ? 0 : Number(e.target.value),
                           )
                         }
                         // Make readonly if serial tracked so users use the modal to dictate quantity
@@ -628,10 +676,15 @@ const PurchaseItemSection = ({
                         type="number"
                         variant="standard"
                         fullWidth
-                        value={item.rate}
+                        value={item.rate === 0 ? "" : item.rate}
                         onKeyDown={(e) => handleCellKeyDown(e, idx, "rate")}
+                        onFocus={(e) => (e.target as HTMLInputElement).select()}
                         onChange={(e) =>
-                          handleFieldChange(idx, "rate", Number(e.target.value))
+                          handleFieldChange(
+                            idx,
+                            "rate",
+                            e.target.value === "" ? 0 : Number(e.target.value),
+                          )
                         }
                         InputProps={{ disableUnderline: true, readOnly }}
                         sx={inputSx}
@@ -648,10 +701,12 @@ const PurchaseItemSection = ({
                         type="number"
                         variant="standard"
                         fullWidth
-                        value={item.margin}
+                        value={item.margin === 0 ? "" : item.margin}
                         onKeyDown={(e) => handleCellKeyDown(e, idx, "margin")}
+                        onFocus={(e) => (e.target as HTMLInputElement).select()}
                         onChange={(e) => {
-                          const margin = Number(e.target.value);
+                          const val = e.target.value;
+                          const margin = val === "" ? 0 : Number(val);
                           const mrp = item.rate + (item.rate * margin) / 100;
                           const updated = [...items];
                           updated[idx] = {
@@ -674,10 +729,12 @@ const PurchaseItemSection = ({
                         type="number"
                         variant="standard"
                         fullWidth
-                        value={item.mrp}
+                        value={item.mrp === 0 ? "" : item.mrp}
                         onKeyDown={(e) => handleCellKeyDown(e, idx, "mrp")}
+                        onFocus={(e) => (e.target as HTMLInputElement).select()}
                         onChange={(e) => {
-                          const mrp = Number(e.target.value);
+                          const val = e.target.value;
+                          const mrp = val === "" ? 0 : Number(val);
                           const rate = item.rate;
                           let margin = 0;
                           if (rate > 0) margin = ((mrp - rate) / rate) * 100;

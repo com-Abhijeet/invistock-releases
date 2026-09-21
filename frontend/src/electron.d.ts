@@ -66,6 +66,7 @@ declare global {
       sendWhatsAppMessage: (
         phone: string,
         message: string,
+        category?: string,
       ) => Promise<{ success: boolean; error?: string }>;
       onWhatsAppUpdate: (
         callback: (data: { status: string; qr: string | null }) => void,
@@ -75,6 +76,85 @@ declare global {
         shop: any;
         customerPhone: string;
       }) => Promise<{ success: boolean; error?: string }>;
+      sendWhatsAppCustomerLedger: (payload: {
+        customerId: number;
+        phone: string;
+        filters: any;
+      }) => Promise<{ success: boolean; error?: string }>;
+      getWhatsAppSettings: () => Promise<{
+        success: boolean;
+        settings?: any;
+        error?: string;
+      }>;
+      saveWhatsAppSettings: (
+        data: any,
+      ) => Promise<{ success: boolean; settings?: any; error?: string }>;
+      testWhatsAppOfficial: (credentials: {
+        phoneNumberId: string;
+        accessToken: string;
+      }) => Promise<{
+        success: boolean;
+        displayPhoneNumber?: string;
+        verifiedName?: string;
+        error?: string;
+      }>;
+      testWhatsAppMsg91: (credentials: {
+        authKey: string;
+        integratedNumber: string;
+      }) => Promise<{
+        success: boolean;
+        displayPhoneNumber?: string;
+        verifiedName?: string;
+        error?: string;
+      }>;
+      openMsg91EmbeddedSignup: () => Promise<{ success: boolean }>;
+      onMsg91SignupCaptured: (
+        callback: (data: { authKey?: string; integratedNumber?: string }) => void,
+      ) => void;
+      getWhatsAppAnalytics: (
+        days?: number,
+      ) => Promise<{ success: boolean; stats?: any[]; error?: string }>;
+      getWhatsAppTemplates: (
+        category?: string,
+      ) => Promise<{ success: boolean; templates?: any[]; error?: string }>;
+      saveWhatsAppTemplate: (
+        data: any,
+      ) => Promise<{ success: boolean; error?: string }>;
+      deleteWhatsAppTemplate: (
+        id: number,
+      ) => Promise<{ success: boolean; error?: string }>;
+      setDefaultWhatsAppTemplate: (
+        id: number,
+        category: string,
+      ) => Promise<{ success: boolean; error?: string }>;
+      verifyMetaTemplates: () => Promise<{
+        success: boolean;
+        templates?: any[];
+        syncedCount?: number;
+        error?: string;
+      }>;
+      registerAllWhatsAppTemplates: () => Promise<{
+        success: boolean;
+        templates?: any[];
+        registeredCount?: number;
+        errorCount?: number;
+        errors?: string[];
+        error?: string;
+      }>;
+      registerSingleWhatsAppTemplate: (id: number) => Promise<{
+        success: boolean;
+        status?: string;
+        template?: any;
+        templates?: any[];
+        error?: string;
+      }>;
+      verifySingleWhatsAppTemplate: (id: number) => Promise<{
+        success: boolean;
+        status?: string;
+        template?: any;
+        templates?: any[];
+        error?: string;
+      }>;
       getGDriveStatus: () => Promise<boolean>;
       loginGDrive: () => Promise<{ success: boolean; message?: string }>;
       getGDriveTokenExpiry: () => Promise<number | null>; // milliseconds or null

@@ -1,26 +1,37 @@
-const { app } = require("electron");
+const electron = require("electron");
+const app = electron?.app || electron;
 const path = require("path");
 const fs = require("fs");
 
+let exeDir = process.cwd();
+let isPackaged = false;
+let defaultUserData = path.join(process.cwd(), "userData");
+
+if (app && typeof app.getPath === "function") {
+  try {
+    exeDir = path.dirname(app.getPath("exe"));
+    defaultUserData = app.getPath("userData");
+    isPackaged = app.isPackaged || false;
+  } catch (e) {
+    exeDir = process.cwd();
+  }
+}
+
 // --- 1. PORTABLE/CLIENT MODE DETECTION ---
-const exeDir = path.dirname(app.getPath("exe"));
 const isPortable = fs.existsSync(path.join(exeDir, "portable.dat"));
-const isClientMode = fs.existsSync(path.join(exeDir, "client.dat")); // ✅ Check for client mode
-// const isClientMode = true;
+const isClientMode = fs.existsSync(path.join(exeDir, "client.dat"));
+
 // --- 2. DETERMINE THE USER DATA PATH ---
-// If in portable or client mode, set the data path to a local 'userData' folder.
-// Otherwise, use Electron's default 'roaming/appData' path.
 const useLocalUserData = isPortable || isClientMode;
 const userDataPath = useLocalUserData
   ? path.join(exeDir, "userData")
-  : app.getPath("userData");
+  : defaultUserData;
 
 // --- 3. EXPORT THE CONFIGURATION OBJECT ---
-// This object is the single source of truth for the entire application.
 const config = {
-  isDev: !app.isPackaged,
+  isDev: !isPackaged,
   isPortable,
-  isClientMode, // ✅ Export the new mode
+  isClientMode,
   paths: {
     userData: userDataPath,
     database: path.join(userDataPath, "database.db"),
@@ -29,8 +40,5 @@ const config = {
   },
   logLevel: "info",
 };
-
-// Log the configuration on startup for easy debugging
-// console.log("App Config Loaded:", JSON.stringify(config, null, 2));
 
 module.exports = config;

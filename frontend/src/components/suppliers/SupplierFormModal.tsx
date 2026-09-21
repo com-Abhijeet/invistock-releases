@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 import {
   Box,
@@ -10,7 +10,6 @@ import {
   DialogContent,
   DialogTitle,
   InputAdornment,
-  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -35,6 +34,8 @@ import toast from "react-hot-toast";
 import { createSupplier, updateSupplier } from "../../lib/api/supplierService";
 import { indianStates } from "../../lib/constants/statesList";
 import type { SupplierType } from "../../lib/types/supplierTypes";
+import KeyboardNavForm from "../common/KeyboardNavForm";
+import AutoSuggestInput, { AutoSuggestOption } from "../common/AutoSuggestInput";
 
 const supplierTypes = ["local", "wholeseller", "manufacturer", "distributor"];
 
@@ -199,9 +200,33 @@ export default function SupplierFormModal({
     }
   };
 
+  const stateOptions: AutoSuggestOption[] = useMemo(() => {
+    const allStates = Array.from(
+      new Set([...(form.state ? [form.state] : []), ...indianStates]),
+    );
+    return allStates.map((s) => ({ id: s, name: s }));
+  }, [form.state]);
+
+  const supplierTypeOptions: AutoSuggestOption[] = useMemo(() => {
+    return supplierTypes.map((t) => ({
+      id: t,
+      name: t.charAt(0).toUpperCase() + t.slice(1),
+    }));
+  }, []);
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
+      <KeyboardNavForm
+        onSave={handleSave}
+        autoFocusFirst
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
+        <DialogTitle>
         <Stack direction="row" alignItems="center" spacing={1.5}>
           <Truck />
           <Typography variant="h6">
@@ -325,20 +350,14 @@ export default function SupplierFormModal({
           </Grid>
           <Grid item xs={12} sm={4}>
             <FormField label="State">
-              <TextField
-                select
-                fullWidth
-                variant="outlined"
-                size="small"
-                value={form.state}
-                onChange={(e) => handleChange("state", e.target.value)}
-              >
-                {Array.from(new Set([...(form.state ? [form.state] : []), ...indianStates])).map((stateName) => (
-                  <MenuItem key={stateName} value={stateName}>
-                    {stateName}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <AutoSuggestInput
+                id="supplier-state"
+                value={form.state || ""}
+                options={stateOptions}
+                placeholder="Select State"
+                allowCreate={true}
+                onChange={(val) => handleChange("state", (val as string) || "")}
+              />
             </FormField>
           </Grid>
           <Grid item xs={12} sm={4}>
@@ -398,24 +417,16 @@ export default function SupplierFormModal({
           </Grid>
           <Grid item xs={12} sm={4}>
             <FormField label="Supplier Type">
-              <TextField
-                select
-                fullWidth
-                variant="outlined"
-                size="small"
-                value={form.supplier_type}
-                onChange={(e) => handleChange("supplier_type", e.target.value)}
-              >
-                {supplierTypes.map((type) => (
-                  <MenuItem
-                    key={type}
-                    value={type}
-                    sx={{ textTransform: "capitalize" }}
-                  >
-                    {type}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <AutoSuggestInput
+                id="supplier-type"
+                value={form.supplier_type || "local"}
+                options={supplierTypeOptions}
+                placeholder="Select Supplier Type"
+                allowCreate={false}
+                onChange={(val) =>
+                  handleChange("supplier_type", (val as string) || "local")
+                }
+              />
             </FormField>
           </Grid>
           <Grid item xs={12} sm={4}>
@@ -531,6 +542,7 @@ export default function SupplierFormModal({
             : "Add Supplier"}
         </Button>
       </DialogActions>
+      </KeyboardNavForm>
     </Dialog>
   );
 }

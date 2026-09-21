@@ -45,6 +45,21 @@ import theme from "../../theme";
 import toast from "react-hot-toast";
 import { api } from "../lib/api/api";
 
+export const createDefaultSaleItem = (): SaleItemPayload => ({
+  sr_no: "1",
+  product_id: 0,
+  product_name: "",
+  rate: 0,
+  quantity: 1,
+  gst_rate: 0,
+  discount: 0,
+  price: 0,
+  hsn: "",
+  unit: "pcs",
+  barcode: "",
+  description: "",
+});
+
 const defaultSalePayload = {
   reference_no: "",
   payment_mode: "cash" as const,
@@ -53,7 +68,7 @@ const defaultSalePayload = {
   total_amount: 0,
   round_off: 0,
   status: "paid" as const,
-  items: [],
+  items: [createDefaultSaleItem()],
   customer_id: null,
   customer_name: "",
   bill_address: "",
@@ -194,7 +209,7 @@ export default function SalesPos() {
   };
 
   useEffect(() => {
-    const isDirty = sale.items.length > 0;
+    const isDirty = sale.items.some((item) => (item.product_id || 0) > 0);
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isDirty && mode === "new") {
         const message =
@@ -206,7 +221,7 @@ export default function SalesPos() {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [sale.items.length, mode]);
+  }, [sale.items, mode]);
 
   // Helper function to apply Walk-in customer details to state and sale payload
   const setWalkInCustomerData = (walkIn: any) => {
@@ -273,7 +288,7 @@ export default function SalesPos() {
 
     if (useDefaultWalkIn) {
       if (walkInCustomer) {
-        setWalkInCustomerData(walkInCustomer);
+        setWalkInCustomerData(walkInCustomer);    
       } else {
         fetchAndSetWalkIn();
       }
@@ -282,6 +297,7 @@ export default function SalesPos() {
     }
 
     if (id) navigate("/billing");
+    window.dispatchEvent(new CustomEvent("pos-reset"));
   };
 
   useEffect(() => {
@@ -425,20 +441,18 @@ export default function SalesPos() {
   useEffect(() => {
     const timeout = setTimeout(async () => {
       const searchQuery = query.trim();
-      if (searchQuery.length >= 3) {
-        try {
-          const customersResponse = await getCustomers({
-            query: searchQuery,
-            all: true,
-          });
-          setOptions(customersResponse.records);
-        } catch (e) {
-          console.error(e);
-        }
-      } else {
-        setOptions([]);
+      try {
+        const customersResponse = await getCustomers({
+          page: 1,
+          limit: 10,
+          query: searchQuery,
+          all: false,
+        });
+        setOptions(customersResponse.records || []);
+      } catch (e) {
+        console.error("Failed to fetch customer suggestions:", e);
       }
-    }, 400);
+    }, 150);
     return () => clearTimeout(timeout);
   }, [query]);
 
@@ -548,7 +562,8 @@ export default function SalesPos() {
   };
 
   const saveDraft = () => {
-    if (!sale.items.length && !customerName) {
+    const hasProducts = sale.items.some((i) => (i.product_id || 0) > 0);
+    if (!hasProducts && !customerName) {
       toast.error("Cannot save an empty draft.");
       return;
     }

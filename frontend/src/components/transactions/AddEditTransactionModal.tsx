@@ -9,11 +9,6 @@ import {
   Box,
   Typography,
   TextField,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Select,
-  Autocomplete,
   CircularProgress,
   Card,
   CardContent,
@@ -21,7 +16,9 @@ import {
   Divider,
   Alert,
 } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import KeyboardNavForm from "../common/KeyboardNavForm";
+import AutoSuggestInput, { AutoSuggestOption } from "../common/AutoSuggestInput";
 import {
   createTransaction,
   updateTransaction,
@@ -50,7 +47,6 @@ import type { SupplierType } from "../../lib/types/supplierTypes";
 import {
   Search,
   Wallet,
-  CheckCircle,
   AlertCircle,
   RotateCcw,
   Printer,
@@ -77,10 +73,6 @@ interface BillSummary {
     status: string;
   };
 }
-
-const billTypes: BillType[] = ["sale", "purchase"];
-const paymentModes = ["cash", "card", "upi", "credit"];
-const statuses = ["paid", "pending", "cancelled", "refunded", "issued"];
 
 const formatDate = (date: Date): string => {
   const year = date.getFullYear();
@@ -196,10 +188,9 @@ export default function AddEditTransactionModal({
     const fetchEntities = async () => {
       setEntityLoading(true);
       try {
-        const params = { q: entityQuery, all: true };
         let res: any;
         if (form.entity_type === "customer") {
-          res = await getCustomers(params);
+          res = await getCustomers({ query: entityQuery, limit: 10, all: false });
           setEntityOptions((prev) => {
             const newRecords = res?.records || [];
             return [
@@ -219,7 +210,7 @@ export default function AddEditTransactionModal({
         setEntityLoading(false);
       }
     };
-    const debounceTimeout = setTimeout(fetchEntities, 500);
+    const debounceTimeout = setTimeout(fetchEntities, 150);
     return () => clearTimeout(debounceTimeout);
   }, [form.entity_type, entityQuery]);
 
@@ -321,6 +312,8 @@ export default function AddEditTransactionModal({
   };
 
   const handleBillTypeChange = (newBillType: BillType) => {
+    if (newBillType === form.bill_type) return;
+
     const newEntityType = newBillType === "sale" ? "customer" : "supplier";
     let newTransactionType = form.type;
     if (!isEditMode) {
@@ -347,8 +340,10 @@ export default function AddEditTransactionModal({
 
   const handleEntitySelect = (entity: CustomerType | SupplierType | null) => {
     if (entity) {
+      if (entity.id === form.entity_id) return;
       handleChange("entity_id", entity.id);
     } else {
+      if (form.entity_id === null) return;
       handleChange("entity_id", null);
       handleChange("bill_id", null);
     }
@@ -356,16 +351,14 @@ export default function AddEditTransactionModal({
 
   const handleBillSelect = (bill: any | null) => {
     if (bill) {
+      if (bill.id === form.bill_id) return;
       handleChange("bill_id", bill.id);
     } else {
+      if (form.bill_id === null) return;
       handleChange("bill_id", null);
     }
   };
 
-  const selectedEntity =
-    entityOptions.find((e) => e.id === form.entity_id) || null;
-  const selectedBillOption =
-    billOptions.find((b) => b.id === form.bill_id) || null;
   const isGSTRequired =
     form.type === "credit_note" || form.type === "debit_note";
 
@@ -490,386 +483,417 @@ export default function AddEditTransactionModal({
 
   const currentOptions = getTransactionOptions(form.bill_type || "sale");
 
+  const billTypeOptions: AutoSuggestOption[] = useMemo(
+    () => [
+      { id: "sale", name: "Sale" },
+      { id: "purchase", name: "Purchase" },
+    ],
+    [],
+  );
+
+  const actionOptions: AutoSuggestOption[] = useMemo(() => {
+    return currentOptions.map((opt) => ({
+      id: opt.value,
+      name: opt.label,
+    }));
+  }, [currentOptions]);
+
+  const entitySuggestOptions: AutoSuggestOption[] = useMemo(() => {
+    return entityOptions.map((e: any) => ({
+      id: e.id,
+      name: e.name || "Unknown",
+      code: e.phone || (e.tax_number ? `GST: ${e.tax_number}` : undefined),
+    }));
+  }, [entityOptions]);
+
+  const billSuggestOptions: AutoSuggestOption[] = useMemo(() => {
+    return billOptions.map((b: any) => ({
+      id: b.id,
+      name: b.reference_no
+        ? `${b.reference_no} (₹${b.total_amount ?? 0})`
+        : `Bill #${b.id} (₹${b.total_amount ?? 0})`,
+      code: b.reference_no || String(b.id),
+    }));
+  }, [billOptions]);
+
+  const paymentModeOptions: AutoSuggestOption[] = useMemo(
+    () => [
+      { id: "cash", name: "Cash" },
+      { id: "card", name: "Card" },
+      { id: "upi", name: "UPI" },
+      { id: "credit", name: "Credit" },
+    ],
+    [],
+  );
+
+  const statusOptions: AutoSuggestOption[] = useMemo(
+    () => [
+      { id: "paid", name: "Paid" },
+      { id: "pending", name: "Pending" },
+      { id: "cancelled", name: "Cancelled" },
+      { id: "refunded", name: "Refunded" },
+      { id: "issued", name: "Issued" },
+    ],
+    [],
+  );
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        {isEditMode ? "Edit Transaction" : "Record Payment / Transaction"}
-      </DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2.5} sx={{ p: 1 }}>
-          <Stack direction="row" spacing={2}>
-            <FormControl fullWidth size="small" disabled={disableTypeSelection}>
-              <InputLabel>Bill Context</InputLabel>
-              <Select
-                value={form.bill_type || ""}
-                label="Bill Context"
-                onChange={(e) =>
-                  handleBillTypeChange(e.target.value as BillType)
+      <KeyboardNavForm
+        onSave={handleSubmit}
+        autoFocusFirst
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
+        <DialogTitle>
+          {isEditMode ? "Edit Transaction" : "Record Payment / Transaction"}
+        </DialogTitle>
+        <DialogContent dividers sx={{ overflowY: "auto" }}>
+          <Stack spacing={2.5} sx={{ p: 1 }}>
+            <Stack direction="row" spacing={2}>
+              <Box sx={{ flex: 1 }}>
+                <AutoSuggestInput
+                  id="transaction-bill-type"
+                  label="Bill Context"
+                  value={form.bill_type || "sale"}
+                  options={billTypeOptions}
+                  placeholder="Select Bill Context"
+                  disabled={disableTypeSelection}
+                  allowCreate={false}
+                  onChange={(val) => {
+                    if (val) handleBillTypeChange(val as BillType);
+                  }}
+                />
+              </Box>
+
+              <Box sx={{ flex: 1 }}>
+                <AutoSuggestInput
+                  id="transaction-action-type"
+                  label="Transaction Action"
+                  value={form.type || ""}
+                  options={actionOptions}
+                  placeholder="Select Action"
+                  disabled={disableTypeSelection}
+                  allowCreate={false}
+                  onChange={(val) => {
+                    if (val) handleChange("type", val as TransactionType);
+                  }}
+                />
+              </Box>
+            </Stack>
+
+            <AutoSuggestInput
+              id="transaction-entity-select"
+              label={form.entity_type === "customer" ? "Customer" : "Supplier"}
+              value={form.entity_id || null}
+              options={entitySuggestOptions}
+              placeholder={`Search ${form.entity_type === "customer" ? "customer" : "supplier"}...`}
+              disabled={disableTypeSelection && !!form.entity_id}
+              allowCreate={false}
+              onSearch={(query) => setEntityQuery(query)}
+              InputProps={{
+                startAdornment: (
+                  <Box sx={{ mr: 1, display: "flex", color: "action.active" }}>
+                    <Search size={18} />
+                  </Box>
+                ),
+                endAdornment: entityLoading ? (
+                  <CircularProgress size={18} />
+                ) : undefined,
+              }}
+              onChange={(val) => {
+                if (!val) {
+                  handleEntitySelect(null);
+                  return;
                 }
-              >
-                {billTypes.map((type) => (
-                  <MenuItem key={type} value={type}>
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                const selected = entityOptions.find(
+                  (e) =>
+                    e.id === val ||
+                    e.name.toLowerCase() === String(val).toLowerCase(),
+                );
+                handleEntitySelect(selected || null);
+              }}
+            />
 
-            <FormControl fullWidth size="small" disabled={disableTypeSelection}>
-              <InputLabel>Transaction Action</InputLabel>
-              <Select
-                value={form.type || ""}
-                label="Transaction Action"
-                onChange={(e) =>
-                  handleChange("type", e.target.value as TransactionType)
+            <AutoSuggestInput
+              id="transaction-linked-bill"
+              label="Select Linked Bill"
+              value={form.bill_id || null}
+              options={billSuggestOptions}
+              placeholder={
+                form.entity_id
+                  ? "Select or search bill..."
+                  : "Select entity first"
+              }
+              disabled={
+                (disableTypeSelection && !!form.bill_id) || !form.entity_id
+              }
+              allowCreate={false}
+              InputProps={{
+                endAdornment: billLoading ? (
+                  <CircularProgress size={18} />
+                ) : undefined,
+              }}
+              onChange={(val) => {
+                if (!val) {
+                  handleBillSelect(null);
+                  return;
                 }
-              >
-                {currentOptions.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Stack>
+                const selected = billOptions.find(
+                  (b) =>
+                    b.id === val ||
+                    (b.reference_no && b.reference_no === val),
+                );
+                handleBillSelect(selected || null);
+              }}
+            />
 
-          <Autocomplete
-            options={entityOptions}
-            loading={entityLoading}
-            getOptionLabel={(option) =>
-              typeof option === "string" ? option : option.name || "Unknown"
-            }
-            inputValue={entityQuery}
-            value={selectedEntity}
-            onInputChange={(_, val) => setEntityQuery(val)}
-            onChange={(_, val) => handleEntitySelect(val as any)}
-            disabled={disableTypeSelection && !!form.entity_id}
-            isOptionEqualToValue={(option, value) => option.id === value.id}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={
-                  form.entity_type === "customer" ? "Customer" : "Supplier"
-                }
-                size="small"
-                InputProps={{
-                  ...params.InputProps,
-                  startAdornment: (
-                    <Box sx={{ mr: 1, display: "flex" }}>
-                      <Search size={18} />
-                    </Box>
-                  ),
-                  endAdornment: (
-                    <>
-                      {entityLoading && <CircularProgress size={20} />}
-                      {params.InputProps.endAdornment}
-                    </>
-                  ),
-                }}
-              />
-            )}
-          />
-
-          <Autocomplete
-            options={billOptions}
-            loading={billLoading}
-            getOptionLabel={(option) =>
-              option.reference_no || `ID: ${option.id}`
-            }
-            value={selectedBillOption}
-            onChange={(_, val) => handleBillSelect(val as any)}
-            disabled={disableTypeSelection && !!form.bill_id}
-            isOptionEqualToValue={(option, value) => option.id === value.id}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Select Linked Bill"
-                size="small"
-                InputProps={{
-                  ...params.InputProps,
-                  endAdornment: (
-                    <>
-                      {billLoading && <CircularProgress size={20} />}
-                      {params.InputProps.endAdornment}
-                    </>
-                  ),
-                }}
-              />
-            )}
-          />
-
-          {fetchingBillDetails ? (
-            <Box display="flex" justifyContent="center" py={2}>
-              <CircularProgress size={24} />
-            </Box>
-          ) : (
-            selectedBillDetails && (
-              <Card
-                variant="outlined"
-                sx={{
-                  bgcolor: isRefund ? "error.50" : "action.hover",
-                  borderColor: isRefund ? "error.main" : "divider",
-                }}
-              >
-                <CardContent
-                  sx={{ py: 1.5, px: 2, "&:last-child": { pb: 1.5 } }}
+            {fetchingBillDetails ? (
+              <Box display="flex" justifyContent="center" py={2}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : (
+              selectedBillDetails && (
+                <Card
+                  variant="outlined"
+                  sx={{
+                    bgcolor: isRefund ? "error.50" : "action.hover",
+                    borderColor: isRefund ? "error.main" : "divider",
+                  }}
                 >
-                  <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-                    {isRefund ? (
-                      <RotateCcw size={16} color="error" />
-                    ) : (
-                      <Wallet size={16} />
-                    )}
-                    <Typography
-                      variant="subtitle2"
-                      fontWeight={700}
-                      color={isRefund ? "error.main" : "text.primary"}
-                    >
-                      {isRefund
-                        ? "Refund Eligibility Status"
-                        : "Bill Payment Status"}
-                    </Typography>
-                  </Stack>
-                  <Divider sx={{ mb: 1.5 }} />
-
-                  {isRefund ? (
-                    // Refund Context Display
-                    <Stack direction="row" justifyContent="space-between">
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Net Billed
-                        </Typography>
-                        <Typography variant="body2" fontWeight={700}>
-                          ₹
-                          {selectedBillDetails.total_amount?.toLocaleString(
-                            "en-IN",
-                          ) ?? 0}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: "right" }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Net Paid by Entity (Max Refund)
-                        </Typography>
-                        <Typography
-                          variant="body1"
-                          color="success.main"
-                          fontWeight={800}
-                        >
-                          ₹{totalPaidSoFar.toLocaleString("en-IN")}
-                        </Typography>
-                      </Box>
+                  <CardContent
+                    sx={{ py: 1.5, px: 2, "&:last-child": { pb: 1.5 } }}
+                  >
+                    <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+                      {isRefund ? (
+                        <RotateCcw size={16} color="error" />
+                      ) : (
+                        <Wallet size={16} color="primary" />
+                      )}
+                      <Typography
+                        variant="subtitle2"
+                        fontWeight={600}
+                        color={isRefund ? "error.main" : "primary.main"}
+                      >
+                        {isRefund ? "Refund Reference" : "Payment Reference"}
+                      </Typography>
                     </Stack>
-                  ) : (
-                    // Standard Payment Context Display
-                    <Stack direction="row" justifyContent="space-between">
+
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                    >
                       <Box>
                         <Typography variant="caption" color="text.secondary">
-                          Net Billed
+                          Bill Amount
                         </Typography>
-                        <Typography variant="body2" fontWeight={700}>
+                        <Typography variant="body2" fontWeight={600}>
                           ₹
-                          {selectedBillDetails.total_amount?.toLocaleString(
-                            "en-IN",
-                          ) ?? 0}
+                          {(
+                            selectedBillDetails.total_amount || 0
+                          ).toLocaleString("en-IN")}
                         </Typography>
                       </Box>
+
+                      <Divider orientation="vertical" flexItem />
+
                       <Box>
                         <Typography variant="caption" color="text.secondary">
                           Net Paid
                         </Typography>
                         <Typography
                           variant="body2"
-                          color="success.main"
-                          fontWeight={700}
+                          fontWeight={600}
+                          color={isRefund ? "info.main" : "text.primary"}
                         >
                           ₹{totalPaidSoFar.toLocaleString("en-IN")}
                         </Typography>
                       </Box>
-                      <Box sx={{ textAlign: "right" }}>
+
+                      <Divider orientation="vertical" flexItem />
+
+                      <Box textAlign="right">
                         <Typography variant="caption" color="text.secondary">
-                          Pending Balance
+                          Outstanding Balance
                         </Typography>
                         <Typography
-                          variant="body1"
+                          variant="body2"
+                          fontWeight={700}
                           color={
-                            previewBalance <= 0 ? "success.main" : "error.main"
+                            previewBalance > 0 ? "error.main" : "success.main"
                           }
-                          fontWeight={800}
                         >
-                          ₹
-                          {previewBalance <= 0
-                            ? "0.00 (PAID)"
-                            : previewBalance.toLocaleString("en-IN")}
+                          ₹{Math.max(0, previewBalance).toLocaleString("en-IN")}
                         </Typography>
                       </Box>
                     </Stack>
-                  )}
-                </CardContent>
-              </Card>
-            )
-          )}
-
-          {isFullyPaid && (
-            <Alert icon={<CheckCircle fontSize="inherit" />} severity="success">
-              This bill is already fully paid. No further payment action is
-              needed.
-            </Alert>
-          )}
-
-          <TextField
-            fullWidth
-            label="Transaction Amount"
-            type="number"
-            size="small"
-            required
-            value={form.amount || ""}
-            onChange={(e) => handleChange("amount", Number(e.target.value))}
-            error={isOverpaying || isOverRefund}
-            helperText={
-              isOverpaying
-                ? `Error: Amount exceeds pending balance of ₹${previewBalance.toLocaleString("en-IN")}`
-                : isOverRefund
-                  ? `Error: Cannot refund more than the Net Paid amount of ₹${totalPaidSoFar.toLocaleString("en-IN")}`
-                  : ""
-            }
-            disabled={isFullyPaid}
-            sx={{
-              "& input": {
-                fontSize: "1.1rem",
-                fontWeight: 600,
-                color: isRefund ? "error.main" : "inherit",
-              },
-            }}
-          />
-
-          <Stack direction="row" spacing={2}>
-            <TextField
-              fullWidth
-              label="Date"
-              type="date"
-              size="small"
-              value={form.transaction_date || ""}
-              onChange={(e) => handleChange("transaction_date", e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              disabled={isFullyPaid}
-            />
-
-            {(form.type === "payment_in" || form.type === "payment_out") && (
-              <FormControl fullWidth size="small">
-                <InputLabel>Payment Mode</InputLabel>
-                <Select
-                  value={form.payment_mode || "cash"}
-                  label="Payment Mode"
-                  disabled={isFullyPaid}
-                  onChange={(e) =>
-                    handleChange("payment_mode", e.target.value as string)
-                  }
-                >
-                  {paymentModes.map((mode) => (
-                    <MenuItem key={mode} value={mode}>
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  </CardContent>
+                </Card>
+              )
             )}
-          </Stack>
 
-          {isGSTRequired && (
             <TextField
+              id="transaction-amount"
               fullWidth
-              label="Tax/GST Component (₹)"
+              label="Transaction Amount"
               type="number"
               size="small"
-              value={form.gst_amount || ""}
-              onChange={(e) =>
-                handleChange("gst_amount", Number(e.target.value))
+              required
+              value={form.amount || ""}
+              onChange={(e) => handleChange("amount", Number(e.target.value))}
+              error={isOverpaying || isOverRefund}
+              helperText={
+                isOverpaying
+                  ? `Error: Amount exceeds pending balance of ₹${previewBalance.toLocaleString("en-IN")}`
+                  : isOverRefund
+                    ? `Error: Cannot refund more than the Net Paid amount of ₹${totalPaidSoFar.toLocaleString("en-IN")}`
+                    : ""
               }
-            />
-          )}
-
-          <TextField
-            fullWidth
-            label="Notes / Remarks"
-            multiline
-            rows={2}
-            size="small"
-            value={form.note || ""}
-            onChange={(e) => handleChange("note", e.target.value)}
-            disabled={isFullyPaid}
-          />
-
-          <FormControl fullWidth size="small">
-            <InputLabel>Status</InputLabel>
-            <Select
-              value={form.status || "pending"}
-              label="Status"
               disabled={isFullyPaid}
-              onChange={(e) =>
-                handleChange("status", e.target.value as TransactionStatus)
-              }
-            >
-              {statuses.map((status) => (
-                <MenuItem key={status} value={status}>
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Stack>
+              sx={{
+                "& input": {
+                  fontSize: "1.1rem",
+                  fontWeight: 600,
+                  color: isRefund ? "error.main" : "inherit",
+                },
+              }}
+            />
 
-        {(isOverpaying || isOverRefund) && (
-          <Alert
-            icon={<AlertCircle fontSize="inherit" />}
-            severity="error"
-            sx={{ mt: 2 }}
-          >
-            {isOverRefund
-              ? "You cannot issue a refund larger than the cash you've received."
-              : "You cannot pay more than the outstanding balance."}
-          </Alert>
-        )}
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        {lastSavedTransaction && form.type === "payment_out" && (
-          <Button
-            startIcon={<Printer size={18} />}
-            onClick={() => setIsCheckModalOpen(true)}
-            color="success"
-            variant="outlined"
-            sx={{ mr: "auto" }}
-          >
-            Print Cheque
-          </Button>
-        )}
-        <Button
-          onClick={() => {
-            setLastSavedTransaction(null);
-            onClose();
-          }}
-          color="inherit"
-          disabled={loading}
-        >
-          {lastSavedTransaction ? "Close" : "Cancel"}
-        </Button>
-        {!lastSavedTransaction && (
-          <Button
-            onClick={handleSubmit}
-            variant="contained"
-            disabled={loading || isFullyPaid || isOverpaying || isOverRefund}
-            color={isOverpaying || isOverRefund ? "error" : "primary"}
-            sx={{ minWidth: 120 }}
-          >
-            {loading ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : isEditMode ? (
-              "Update"
-            ) : (
-              "Save"
+            <Stack direction="row" spacing={2}>
+              <Box sx={{ flex: 1 }}>
+                <TextField
+                  id="transaction-date"
+                  fullWidth
+                  label="Date"
+                  type="date"
+                  size="small"
+                  value={form.transaction_date || ""}
+                  onChange={(e) => handleChange("transaction_date", e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  disabled={isFullyPaid}
+                />
+              </Box>
+
+              {(form.type === "payment_in" || form.type === "payment_out") && (
+                <Box sx={{ flex: 1 }}>
+                  <AutoSuggestInput
+                    id="transaction-payment-mode"
+                    label="Payment Mode"
+                    value={form.payment_mode || "cash"}
+                    options={paymentModeOptions}
+                    placeholder="Select Payment Mode"
+                    disabled={isFullyPaid}
+                    allowCreate={false}
+                    onChange={(val) => {
+                      if (val) handleChange("payment_mode", String(val));
+                    }}
+                  />
+                </Box>
+              )}
+            </Stack>
+
+            {isGSTRequired && (
+              <TextField
+                id="transaction-gst-amount"
+                fullWidth
+                label="Tax/GST Component (₹)"
+                type="number"
+                size="small"
+                value={form.gst_amount || ""}
+                onChange={(e) =>
+                  handleChange("gst_amount", Number(e.target.value))
+                }
+              />
             )}
+
+            <TextField
+              id="transaction-notes"
+              fullWidth
+              label="Notes / Remarks"
+              multiline
+              rows={2}
+              size="small"
+              value={form.note || ""}
+              onChange={(e) => handleChange("note", e.target.value)}
+              disabled={isFullyPaid}
+            />
+
+            <AutoSuggestInput
+              id="transaction-status"
+              label="Status"
+              value={form.status || "pending"}
+              options={statusOptions}
+              placeholder="Select Status"
+              disabled={isFullyPaid}
+              allowCreate={false}
+              onChange={(val) => {
+                if (val) handleChange("status", val as TransactionStatus);
+              }}
+            />
+          </Stack>
+
+          {(isOverpaying || isOverRefund) && (
+            <Alert
+              icon={<AlertCircle fontSize="inherit" />}
+              severity="error"
+              sx={{ mt: 2 }}
+            >
+              {isOverRefund
+                ? "You cannot issue a refund larger than the cash you've received."
+                : "You cannot pay more than the outstanding balance."}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          {lastSavedTransaction && form.type === "payment_out" && (
+            <Button
+              startIcon={<Printer size={18} />}
+              onClick={() => setIsCheckModalOpen(true)}
+              color="success"
+              variant="outlined"
+              sx={{ mr: "auto" }}
+            >
+              Print Cheque
+            </Button>
+          )}
+          <Button
+            data-nav-skip="true"
+            onClick={() => {
+              setLastSavedTransaction(null);
+              onClose();
+            }}
+            color="inherit"
+            disabled={loading}
+          >
+            {lastSavedTransaction ? "Close" : "Cancel"}
           </Button>
-        )}
-      </DialogActions>
+          {!lastSavedTransaction && (
+            <Button
+              id="transaction-submit-btn"
+              data-save="true"
+              type="button"
+              onClick={handleSubmit}
+              variant="contained"
+              disabled={loading || isFullyPaid || isOverpaying || isOverRefund}
+              color={isOverpaying || isOverRefund ? "error" : "primary"}
+              sx={{ minWidth: 120 }}
+            >
+              {loading ? (
+                <CircularProgress size={24} color="inherit" />
+              ) : isEditMode ? (
+                "Update"
+              ) : (
+                "Save"
+              )}
+            </Button>
+          )}
+        </DialogActions>
+      </KeyboardNavForm>
 
       <CheckPrintModal
         open={isCheckModalOpen}

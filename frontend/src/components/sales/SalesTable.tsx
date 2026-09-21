@@ -255,14 +255,6 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
   const handleWhatsAppShare = async (saleId: number) => {
     const toastId = toast.loading("Preparing WhatsApp message...");
     try {
-      const wsStatus = await window.electron.getWhatsAppStatus();
-      if (wsStatus.status !== "ready") {
-        toast.error("WhatsApp not connected. Please scan QR in Settings.", {
-          id: toastId,
-        });
-        return;
-      }
-
       const [saleRes, shop, business] = await Promise.all([
         getSaleById(saleId),
         getShopData(),
@@ -350,14 +342,14 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
       // Common footer
       message += `${nl}Thank you for contacting us! 🙏${nl}Please find your ${docPdfLabel} PDF attached.${nl}${nl}_Powered by Kosh Billing Software_`;
 
-      const textRes = await window.electron.sendWhatsAppMessage(
-        phoneToSend,
-        message,
-      );
+      const wsSettingsRes = await window.electron?.getWhatsAppSettings?.();
+      const wsSettings = wsSettingsRes?.settings;
+      const isOfficialRoute =
+        wsSettings?.route_invoice === "official" ||
+        (wsSettings?.official_enabled && wsSettings?.route_invoice !== "unofficial" && wsSettings?.route_invoice !== "none");
 
-      if (textRes.success) {
-        toast.success("Text message sent!", { id: toastId });
-        toast.loading("Sending PDF Invoice...", { id: toastId });
+      if (isOfficialRoute) {
+        toast.loading("Sending Official WhatsApp Invoice...", { id: toastId });
         const pdfRes = await window.electron.sendWhatsAppInvoicePdf({
           sale: sale,
           shop: shop,
@@ -368,10 +360,32 @@ const SalesTable = ({ filters, onMarkPayment }: SalesTableProps) => {
         if (pdfRes.success) {
           toast.success("Invoice sent successfully!", { id: toastId });
         } else {
-          toast.error("Failed to send PDF.", { id: toastId });
+          toast.error("Failed to send WhatsApp Invoice: " + (pdfRes.error || "Unknown error"), { id: toastId });
         }
       } else {
-        toast.error("WhatsApp Text Failed: " + textRes.error, { id: toastId });
+        const textRes = await window.electron.sendWhatsAppMessage(
+          phoneToSend,
+          message,
+        );
+
+        if (textRes.success) {
+          toast.success("Text message sent!", { id: toastId });
+          toast.loading("Sending PDF Invoice...", { id: toastId });
+          const pdfRes = await window.electron.sendWhatsAppInvoicePdf({
+            sale: sale,
+            shop: shop,
+            localSettings: localSettings,
+            customerPhone: phoneToSend,
+          });
+
+          if (pdfRes.success) {
+            toast.success("Invoice sent successfully!", { id: toastId });
+          } else {
+            toast.error("Failed to send PDF.", { id: toastId });
+          }
+        } else {
+          toast.error("WhatsApp Text Failed: " + textRes.error, { id: toastId });
+        }
       }
     } catch (error: any) {
       console.error(error);

@@ -1,23 +1,26 @@
 const log = require("electron-log");
 const path = require("path");
-const { app } = require("electron");
+const electron = require("electron");
+const app = electron?.app || electron;
 const fs = require("fs");
 
-/**
- * Configure a logger instance with specific file path and rotation settings.
- * @param {string} logId - Unique ID for the logger
- * @param {string} fileName - The filename for the log
- */
+function getUserDataPath() {
+  if (app && typeof app.getPath === "function") {
+    try {
+      return app.getPath("userData");
+    } catch (e) {}
+  }
+  return path.join(process.cwd(), "userData");
+}
+
 function createLogger(logId, fileName) {
   const logger = log.create(logId);
 
   // Set file path
   logger.transports.file.resolvePath = () =>
-    path.join(app.getPath("userData"), "logs", fileName);
+    path.join(getUserDataPath(), "logs", fileName);
 
   // LOG ROTATION / CLEANUP
-  // Max size: 5MB. When exceeded, moves to .old.log.
-  // This prevents logs from becoming GBs in size.
   logger.transports.file.maxSize = 5 * 1024 * 1024;
 
   // Format: [Date] [Level] Message

@@ -172,6 +172,7 @@ export function getNonGstSaleItemsForExport(filters) {
       s.reference_no,
       s.customer_name,
       si.product_name,
+      si.unit,
       si.quantity,
       si.rate,
       si.discount,

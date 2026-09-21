@@ -28,238 +28,297 @@ import {
   BookCheck,
   CloudCheck,
   Printer,
+  MessageSquare,
+  Send,
 } from "lucide-react";
+import { MenuSection } from "../lib/navigation";
 
-export const menuSections = [
+export const menuSections: MenuSection[] = [
   {
-    title: "Gateway",
+    title: "Dashboards",
+    hotkey: "D",
     items: [
       {
-        label: "Dashboard",
+        label: "Business Dashboard",
         icon: <LayoutDashboard size={20} />,
         path: "/dashboard",
-        shortcut: "F1",
+        hotkey: "B",
       },
       {
-        label: "Accounting",
+        label: "Accounting Dashboard",
         icon: <BookCheck size={20} />,
         path: "/accounting",
+        hotkey: "A",
       },
     ],
   },
   {
     title: "Sales Vouchers",
+    hotkey: "S",
     items: [
-      {
-        label: "Sales Analysis",
-        icon: <BarChart3 size={20} />,
-        path: "/sales",
-      },
       {
         label: "Sales Voucher (POS)",
         icon: <ScanBarcode size={20} />,
         path: "/billing",
-        shortcut: "F2",
+        hotkey: "V",
       },
       {
-        label: "Sales Register", // Professional term for Sales History
+        label: "Sales Register",
         icon: <Clock size={20} />,
         path: "/sales-history",
-        shortcut: "F3",
+        hotkey: "R",
+      },
+      {
+        label: "Sales Dashboard",
+        icon: <BarChart3 size={20} />,
+        path: "/sales",
+        hotkey: "D",
       },
       {
         label: "Quotations Register",
         icon: <FileText size={20} />,
         path: "/quotations",
+        hotkey: "Q",
+      },
+      {
+        label: "Sales Orders List",
+        icon: <ClipboardCheck size={20} />,
+        path: "/sales-order-list",
+        hotkey: "L",
       },
       {
         label: "Generate Sales Order",
         icon: <Clipboard size={20} />,
         path: "/sales-order",
-      },
-      {
-        label: "Sales Orders",
-        icon: <ClipboardCheck size={20} />,
-        path: "/sales-order-list",
+        hotkey: "G",
       },
     ],
   },
   {
     title: "Purchase Vouchers",
+    hotkey: "P",
     items: [
       {
         label: "Purchase Voucher",
         icon: <FileText size={20} />,
         path: "/purchase",
-        shortcut: "F4",
+        hotkey: "V",
       },
       {
-        label: "Purchase Register", // Professional term for Purchase History
+        label: "Purchase Register",
         icon: <FileClock size={20} />,
         path: "/purchase-history",
+        hotkey: "R",
       },
       {
-        label: "Purchase Analysis",
+        label: "Purchase Dashboard",
         icon: <ChartCandlestick size={20} />,
         path: "/purchase-dashboard",
+        hotkey: "D",
       },
     ],
   },
   {
     title: "Inventory Books",
+    hotkey: "I",
     items: [
       {
-        label: "Stock Summary", // Tally term for Inventory Overview
-        icon: <ClipboardList size={20} />,
-        path: "/inventory",
-        shortcut: "F6",
-      },
-      {
-        label: "Stock Items", // Tally term for Products
+        label: "Stock Register",
         icon: <Boxes size={20} />,
         path: "/products",
-        shortcut: "F7",
+        hotkey: "R",
       },
       {
-        label: "Stock Adjustments", // Kept as requested
+        label: "Stock Summary",
+        icon: <ClipboardList size={20} />,
+        path: "/inventory",
+        hotkey: "M",
+      },
+      {
+        label: "Stock Adjustments",
         icon: <Boxes size={20} />,
         path: "/adjustments",
+        hotkey: "J",
       },
       {
-        label: "Stock Groups", // Tally term for Categories
+        label: "Stock Groups",
         icon: <SquareStack size={20} />,
         path: "/categories",
+        hotkey: "G",
       },
       {
         label: "Batch/Serial Tracker",
         icon: <Search size={20} />,
         path: "/tracker",
+        hotkey: "X",
       },
       {
-        label: "Stock Reorder",
+        label: "Stock Reorder Advice",
         icon: <ArchiveRestore size={20} />,
         path: "/stock-restock",
+        hotkey: "O",
       },
       {
         label: "Dead Stock Analysis",
         icon: <ArchiveX size={20} />,
         path: "/dead-stock",
+        hotkey: "Z",
       },
       {
         label: "Stock ABC Analysis",
         icon: <ChartCandlestick size={20} />,
         path: "/product-abc-page",
+        hotkey: "B",
       },
     ],
   },
   {
     title: "Accounting Vouchers",
+    hotkey: "A",
     items: [
       {
-        label: "Payment / Receipt",
+        label: "Payment Register",
         icon: <IndianRupee size={20} />,
         path: "/transactions",
-        shortcut: "F8",
+        hotkey: "R",
       },
       {
-        label: "Day Book", // Tally term
+        label: "Day Book",
         icon: <BookA size={20} />,
         path: "/daybook",
-        shortcut: "F9",
+        hotkey: "K",
       },
       {
         label: "Journal / Expenses",
         icon: <FileText size={20} />,
         path: "/expenses",
+        hotkey: "J",
       },
     ],
   },
   {
     title: "Party Ledgers",
+    hotkey: "C",
     items: [
       {
-        label: "Debtors (Customers)", // Professional ERP term
+        label: "Customer Register",
         icon: <User size={20} />,
         path: "/customers",
-        shortcut: "F10",
+        hotkey: "C",
       },
       {
-        label: "Creditors (Suppliers)", // Professional ERP term
+        label: "Supplier Register",
         icon: <Truck size={20} />,
         path: "/suppliers",
-        shortcut: "F5",
+        hotkey: "S",
       },
       {
-        label: "Outstandings", // Professional term
-        icon: <BookAlert size={20} />,
-        path: "/customers/accounts",
-      },
-      {
-        label: "Customer Intelligence",
+        label: "Customer Dashboard",
         icon: <UserSearch size={20} />,
         path: "/customer-analytics",
+        hotkey: "D",
+      },
+      {
+        label: "Outstandings Register",
+        icon: <BookAlert size={20} />,
+        path: "/customers/accounts",
+        hotkey: "O",
       },
     ],
   },
   {
     title: "Statutory Reports",
-    items: [
-      { label: "GST Reports", icon: <Notebook size={20} />, path: "/gst" },
-    ],
-  },
-  {
-    title: "Company Info",
+    hotkey: "R",
     items: [
       {
-        label: "User Management",
-        icon: <Users size={20} />,
-        path: "/users",
+        label: "GST Reports",
+        icon: <Notebook size={20} />,
+        path: "/gst",
+        hotkey: "G",
       },
       {
-        label: "Access Logs", // Kept as requested
+        label: "Access Logs",
         icon: <ShieldCheck size={20} />,
         path: "/access-logs",
+        hotkey: "L",
       },
       {
         label: "Employees",
         icon: <UsersRound size={20} />,
         path: "/employees",
+        hotkey: "E",
+      },
+      {
+        label: "User Management",
+        icon: <Users size={20} />,
+        path: "/users",
+        hotkey: "M",
       },
     ],
   },
   {
-    title: "Settings",
+    title: "Settings & Tally",
+    hotkey: "T",
     items: [
       {
-        label: "Settings (F11/F12)", // Tally reference
+        label: "Settings",
         icon: <Settings size={20} />,
         path: "/settings",
-        shortcut: "F12",
+        hotkey: "S",
       },
       {
-        label: "Tally Sync", // Tally reference
+        label: "Tally Sync",
         icon: <CloudCheck size={20} />,
         path: "/tally",
+        hotkey: "Y",
       },
       {
         label: "Tally Config",
         icon: <Settings size={20} />,
         path: "/tally-config",
+        hotkey: "F",
       },
       {
-        label: "Kosh Business", // Tally reference
+        label: "Kosh Business",
         icon: <CloudCheck size={20} />,
         path: "/business-settings",
+        hotkey: "K",
+      },
+    ],
+  },
+  {
+    title: "WhatsApp",
+    hotkey: "W",
+    items: [
+      {
+        label: "WhatsApp Hub",
+        icon: <MessageSquare size={20} />,
+        path: "/whatsapp",
+        hotkey: "H",
+      },
+      {
+        label: "Messaging Hub",
+        icon: <Send size={20} />,
+        path: "/messaging",
+        hotkey: "M",
+      },
+      {
+        label: "Usage & Billing Log",
+        icon: <BarChart3 size={20} />,
+        path: "/whatsapp/analytics",
+        hotkey: "B",
       },
     ],
   },
   {
     title: "Utilities",
+    hotkey: "U",
     items: [
       {
-        label: "Check Printing",
+        label: "Cheque Printing",
         icon: <Printer size={20} />,
         path: "/cheque-printing",
+        hotkey: "P",
       },
     ],
   },

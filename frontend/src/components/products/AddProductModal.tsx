@@ -8,7 +8,6 @@ import {
   DialogActions,
   TextField,
   Button,
-  MenuItem,
   InputAdornment,
   Stack,
   Typography,
@@ -21,8 +20,6 @@ import {
   Switch,
   FormControlLabel,
   Alert,
-  Autocomplete,
-  ListSubheader,
   CircularProgress,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
@@ -54,6 +51,8 @@ import {
 } from "lucide-react";
 import { FormField } from "../FormField";
 import { UNIT_FAMILIES, getUnitFamily } from "../../lib/services/unitService";
+import AutoSuggestInput, { AutoSuggestOption } from "../common/AutoSuggestInput";
+import KeyboardNavForm from "../common/KeyboardNavForm";
 
 type Mode = "add" | "edit";
 
@@ -190,6 +189,7 @@ export default function AddEditProductModal({
     "category",
     "subcategory",
     "tracking_type",
+    "hsn",
     "barcode",
     "quantity",
     "storage_location",
@@ -198,7 +198,6 @@ export default function AddEditProductModal({
     "mrp",
     "mop",
     "mfw_price",
-    "hsn",
     "gst_rate",
     "secondary_unit",
     "conversion_factor",
@@ -242,6 +241,14 @@ export default function AddEditProductModal({
     const target = e.target as HTMLElement;
     if (target.tagName === "TEXTAREA") return;
 
+    // Global Ctrl+S or Cmd+S shortcut to save product form
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      e.stopPropagation();
+      void handleSubmit();
+      return;
+    }
+
     if (e.key === "Enter") {
       e.preventDefault();
       if (nextId) {
@@ -257,7 +264,17 @@ export default function AddEditProductModal({
       return;
     }
 
+    // Do not hijack ArrowUp/ArrowDown on select inputs so user can cycle through options
+    const isSelect =
+      target.getAttribute?.("role") === "combobox" ||
+      Boolean(target.classList?.contains?.("MuiSelect-select")) ||
+      target.tagName === "SELECT" ||
+      ["tracking_type", "base_unit", "pricing_unit"].includes(currentId);
+
     if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      if (isSelect && e.key === "ArrowDown") {
+        return;
+      }
       e.preventDefault();
       const fallbackTarget =
         nextId || getFieldNavigationTarget(currentId, "next");
@@ -266,6 +283,9 @@ export default function AddEditProductModal({
     }
 
     if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      if (isSelect && e.key === "ArrowUp") {
+        return;
+      }
       e.preventDefault();
       const fallbackTarget = getFieldNavigationTarget(currentId, "prev");
       if (fallbackTarget) focusField(fallbackTarget);
@@ -326,32 +346,37 @@ export default function AddEditProductModal({
     }
   }, [open, mode]);
 
+  const loadCategories = async () => {
+    try {
+      const categories = await getCategories();
+      setAvailableCategories(categories);
+    } catch {
+      toast.error("Failed to load categories");
+    }
+  };
+
   useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const categories = await getCategories();
-        setAvailableCategories(categories);
-        if (form.category && typeof form.category === "number") {
-          const selected = categories.find(
-            (cat: { id: number }) => cat.id === Number(form.category),
-          );
-          setFilteredSubcategories(selected?.subcategories || []);
-        } else if (typeof form.category === "string") {
-          const normalizedCategoryName = form.category.trim().toLowerCase();
-          const selected = categories.find(
-            (cat: { name: string }) =>
-              cat.name.toLowerCase() === normalizedCategoryName,
-          );
-          setFilteredSubcategories(selected?.subcategories || []);
-        } else {
-          setFilteredSubcategories([]);
-        }
-      } catch {
-        toast.error("Failed to load categories");
-      }
-    };
-    loadCategories();
-  }, [form.category]);
+    if (open) {
+      loadCategories();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (form.category && typeof form.category === "number") {
+      const selected = availableCategories.find(
+        (cat) => cat.id === Number(form.category),
+      );
+      setFilteredSubcategories(selected?.subcategories || []);
+    } else if (typeof form.category === "string") {
+      const normalizedCategoryName = form.category.trim().toLowerCase();
+      const selected = availableCategories.find(
+        (cat) => cat.name.toLowerCase() === normalizedCategoryName,
+      );
+      setFilteredSubcategories(selected?.subcategories || []);
+    } else {
+      setFilteredSubcategories([]);
+    }
+  }, [form.category, availableCategories]);
 
   const cached = localStorage.getItem("cached_products");
   const products: Product[] = cached
@@ -487,11 +512,7 @@ export default function AddEditProductModal({
         persistPreference("gst_rate", value as number);
       }
       if (key === "category") {
-        if (typeof value === "string") {
-          newForm.subcategory = value;
-        } else {
-          newForm.subcategory = null;
-        }
+        newForm.subcategory = null;
       }
       if (
         !isNewCategory &&
@@ -649,7 +670,8 @@ export default function AddEditProductModal({
   };
 
   const handleSubmit = async () => {
-    const err = validateStep(activeStep);
+    if (loading) return;
+    const err = validateStep(0) || validateStep(activeStep);
     if (err) {
       setError(err);
       return;
@@ -690,6 +712,24 @@ export default function AddEditProductModal({
       setLoading(false);
     }
   };
+
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+
+  useEffect(() => {
+    if (!open) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        e.stopPropagation();
+        void handleSubmitRef.current();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown, true);
+    };
+  }, [open]);
 
   const handleUploadClick = async () => {
     if (!window.electron) {
@@ -738,6 +778,34 @@ export default function AddEditProductModal({
     return [{ value: form.base_unit || "pcs", label: form.base_unit || "pcs" }];
   };
 
+  const trackingOptions: AutoSuggestOption[] = useMemo(
+    () => [
+      { id: "none", name: "Standard" },
+      { id: "batch", name: "Batch Tracking" },
+      { id: "serial", name: "Serialized" },
+    ],
+    [],
+  );
+
+  const baseUnitOptions: AutoSuggestOption[] = useMemo(() => {
+    return Object.entries(UNIT_FAMILIES).flatMap(([_key, family]) =>
+      family.units.map((u) => ({
+        id: u.value,
+        name: u.label,
+        code: u.value,
+        group: family.label,
+      })),
+    );
+  }, []);
+
+  const pricingUnitOptions: AutoSuggestOption[] = useMemo(() => {
+    return getAllowedPricingUnits().map((u) => ({
+      id: u.value,
+      name: u.label,
+      code: u.value,
+    }));
+  }, [form.base_unit]);
+
   return (
     <Dialog
       open={open}
@@ -746,6 +814,15 @@ export default function AddEditProductModal({
       maxWidth="xl"
       PaperProps={{ sx: { maxHeight: { md: "calc(100vh - 32px)" } } }}
     >
+      <KeyboardNavForm
+        onSave={handleSubmit}
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
       <DialogTitle sx={{ bgcolor: "text.primary", color: "white", py: 1.5 }}>
         <Stack direction="row" alignItems="center" spacing={1.5}>
           <PackagePlus color="white" />
@@ -867,153 +944,40 @@ export default function AddEditProductModal({
 
               <Grid item xs={12} sm={4}>
                 <FormField label="Category *">
-                  <Autocomplete
-                    freeSolo
+                  <AutoSuggestInput
+                    id="category"
+                    value={form.category ?? null}
                     options={availableCategories}
-                    getOptionLabel={(option) =>
-                      typeof option === "string" ? option : option.name
-                    }
-                    value={
-                      typeof form.category === "number"
-                        ? availableCategories.find(
-                            (c) => c.id === form.category,
-                          )
-                        : (form.category as string) || null
-                    }
-                    onChange={(_e, newValue) => {
-                      if (newValue && typeof newValue === "object") {
-                        handleChange("category", newValue.id);
-                        handleChange("subcategory", null);
-                      } else if (newValue === null) {
-                        handleChange("category", null);
-                        handleChange("subcategory", null);
-                      } else if (typeof newValue === "string") {
-                        handleChange("category", newValue);
-                        handleChange("subcategory", null);
-                      }
+                    placeholder="Select or Type New"
+                    inputRef={(el) => (fieldRefs.current["category"] = el)}
+                    onChange={(newVal) => {
+                      handleChange("category", newVal);
+                      handleChange("subcategory", null);
                     }}
-                    onInputChange={(_e, newInputValue, reason) => {
-                      if (reason === "input" || reason === "clear") {
-                        const match = availableCategories.find(
-                          (c) =>
-                            c.name.toLowerCase() ===
-                            newInputValue.toLowerCase(),
-                        );
-                        if (match) {
-                          handleChange("category", match.id);
-                        } else {
-                          handleChange(
-                            "category",
-                            newInputValue === "" ? null : newInputValue,
-                          );
-                        }
-                        if (form.subcategory) handleChange("subcategory", null);
-                      }
-                    }}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        fullWidth
-                        size="small"
-                        placeholder="Select or Type New"
-                        inputRef={(el) => (fieldRefs.current["category"] = el)}
-                        // onKeyDown={(e) => {
-                        //   // Intercept Enter to move to subcategory
-                        //   if (e.key === "Enter") {
-                        //     e.preventDefault();
-                        //     handleKeyDown(e, "category", "subcategory");
-                        //     return;
-                        //   }
-                        //   // Prevent custom form navigation when using Arrow keys inside the dropdown list
-                        //   if (
-                        //     e.key === "ArrowDown" ||
-                        //     e.key === "ArrowUp" ||
-                        //     e.key === "ArrowRight" ||
-                        //     e.key === "ArrowLeft"
-                        //   ) {
-                        //     e.stopPropagation();
-                        //   }
-                        // }}
-                      />
-                    )}
+                    onNext={() => focusField("subcategory")}
+                    onPrev={() => focusField("name")}
                   />
                 </FormField>
               </Grid>
 
               <Grid item xs={12} sm={4}>
                 <FormField label="Subcategory">
-                  <Autocomplete
-                    freeSolo
+                  <AutoSuggestInput
+                    id="subcategory"
+                    value={form.subcategory ?? null}
                     options={filteredSubcategories}
                     disabled={!isCategorySet}
-                    getOptionLabel={(option) =>
-                      typeof option === "string" ? option : option.name
+                    placeholder={
+                      !isCategorySet
+                        ? "Select Category First"
+                        : "Select or Type New"
                     }
-                    value={
-                      typeof form.subcategory === "number"
-                        ? filteredSubcategories.find(
-                            (s) => s.id === form.subcategory,
-                          )
-                        : (form.subcategory as string) || null
-                    }
-                    onChange={(_e, newValue) => {
-                      if (newValue && typeof newValue === "object") {
-                        handleChange("subcategory", newValue.id);
-                      } else if (newValue === null) {
-                        handleChange("subcategory", null);
-                      } else if (typeof newValue === "string") {
-                        handleChange("subcategory", newValue);
-                      }
+                    inputRef={(el) => (fieldRefs.current["subcategory"] = el)}
+                    onChange={(newVal) => {
+                      handleChange("subcategory", newVal);
                     }}
-                    onInputChange={(_e, newInputValue, reason) => {
-                      if (reason === "input" || reason === "clear") {
-                        const match = filteredSubcategories.find(
-                          (s) =>
-                            s.name.toLowerCase() ===
-                            newInputValue.toLowerCase(),
-                        );
-                        if (match) {
-                          handleChange("subcategory", match.id);
-                        } else {
-                          handleChange(
-                            "subcategory",
-                            newInputValue === "" ? null : newInputValue,
-                          );
-                        }
-                      }
-                    }}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        fullWidth
-                        size="small"
-                        placeholder={
-                          !isCategorySet
-                            ? "Select Category First"
-                            : "Select or Type New"
-                        }
-                        inputRef={(el) =>
-                          (fieldRefs.current["subcategory"] = el)
-                        }
-                        // onKeyDown={(e) => {
-                        //   // Intercept Enter to move to tracking_type
-                        //   if (e.key === "Enter") {
-                        //     e.preventDefault();
-                        //     handleKeyDown(e, "subcategory", "tracking_type");
-                        //     return;
-                        //   }
-                        //   // Prevent custom form navigation when using Arrow keys inside the dropdown list
-                        //   if (
-                        //     e.key === "ArrowDown" ||
-                        //     e.key === "ArrowUp" ||
-                        //     e.key === "ArrowRight" ||
-                        //     e.key === "ArrowLeft"
-                        //   ) {
-                        //     e.stopPropagation();
-                        //   }
-                        // }}
-                      />
-                    )}
+                    onNext={() => focusField("tracking_type")}
+                    onPrev={() => focusField("category")}
                   />
                 </FormField>
               </Grid>
@@ -1029,23 +993,19 @@ export default function AddEditProductModal({
               </Grid>
               <Grid item xs={12} sm={3}>
                 <FormField label="Batch Tracking">
-                  <TextField
-                    select
-                    fullWidth
-                    size="small"
+                  <AutoSuggestInput
+                    id="tracking_type"
                     value={form.tracking_type || "none"}
+                    options={trackingOptions}
+                    placeholder="Select tracking mode"
+                    allowCreate={false}
                     inputRef={(el) => (fieldRefs.current["tracking_type"] = el)}
-                    onKeyDown={(e) =>
-                      handleKeyDown(e, "tracking_type", "barcode")
+                    onChange={(val) =>
+                      handleChange("tracking_type", (val as string) || "none")
                     }
-                    onChange={(e) =>
-                      handleChange("tracking_type", e.target.value)
-                    }
-                  >
-                    <MenuItem value="none">Standard</MenuItem>
-                    <MenuItem value="batch">Batch Tracking</MenuItem>
-                    <MenuItem value="serial">Serialized</MenuItem>
-                  </TextField>
+                    onNext={() => focusField("hsn")}
+                    onPrev={() => focusField("subcategory")}
+                  />
                 </FormField>
               </Grid>
               <Grid item xs={12} sm={3}>
@@ -1147,35 +1107,19 @@ export default function AddEditProductModal({
 
               <Grid item xs={12} sm={3}>
                 <FormField label="Stock Tracking Unit (Smallest) *">
-                  <TextField
-                    select
-                    fullWidth
-                    size="small"
+                  <AutoSuggestInput
+                    id="base_unit"
                     value={form.base_unit || "pcs"}
-                    onChange={(e) => handleChange("base_unit", e.target.value)}
+                    options={baseUnitOptions}
+                    placeholder="Select tracking unit"
+                    allowCreate={false}
                     inputRef={(el) => (fieldRefs.current["base_unit"] = el)}
-                    onKeyDown={(e) =>
-                      handleKeyDown(e, "base_unit", "pricing_unit")
+                    onChange={(val) =>
+                      handleChange("base_unit", (val as string) || "pcs")
                     }
-                  >
-                    {Object.entries(UNIT_FAMILIES).map(([key, family]) => [
-                      <ListSubheader
-                        key={`header-${key}`}
-                        sx={{ fontWeight: "bold", color: "text.primary" }}
-                      >
-                        {family.label}
-                      </ListSubheader>,
-                      ...family.units.map((unit) => (
-                        <MenuItem
-                          key={unit.value}
-                          value={unit.value}
-                          sx={{ pl: 4 }}
-                        >
-                          {unit.label}
-                        </MenuItem>
-                      )),
-                    ])}
-                  </TextField>
+                    onNext={() => focusField("pricing_unit")}
+                    onPrev={() => focusField("storage_location")}
+                  />
                 </FormField>
               </Grid>
               <Grid item xs={12}>
@@ -1189,21 +1133,23 @@ export default function AddEditProductModal({
               </Grid>
               <Grid item xs={12} sm={3}>
                 <FormField label="Price Input Unit *">
-                  <TextField
-                    select
-                    fullWidth
-                    size="small"
+                  <AutoSuggestInput
+                    id="pricing_unit"
                     value={pricingUnit}
-                    onChange={(e) => setPricingUnit(e.target.value)}
+                    options={pricingUnitOptions}
+                    placeholder="Select price unit"
+                    allowCreate={false}
                     inputRef={(el) => (fieldRefs.current["pricing_unit"] = el)}
-                    onKeyDown={(e) => handleKeyDown(e, "pricing_unit", "mrp")}
-                  >
-                    {getAllowedPricingUnits().map((unit) => (
-                      <MenuItem key={unit.value} value={unit.value}>
-                        {unit.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                    onChange={(val) =>
+                      setPricingUnit(
+                        (val as string) || form.base_unit || "pcs",
+                      )
+                    }
+                    onNext={() =>
+                      focusField(shouldShowPricingFields ? "mrp" : "gst_rate")
+                    }
+                    onPrev={() => focusField("base_unit")}
+                  />
                 </FormField>
               </Grid>
 
@@ -1638,6 +1584,7 @@ export default function AddEditProductModal({
           </>
         )}
       </DialogActions>
+      </KeyboardNavForm>
     </Dialog>
   );
 }

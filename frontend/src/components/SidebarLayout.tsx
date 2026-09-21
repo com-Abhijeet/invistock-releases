@@ -23,6 +23,7 @@ import {
   Menu,
   MenuItem,
   Button,
+  alpha,
 } from "@mui/material";
 import {
   User,
@@ -36,6 +37,7 @@ import {
   LogOut,
   HelpCircle, // Icon for help
   Tag, // Icon for Label Info
+  Compass, // Icon for Gateway of Kosh
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -54,6 +56,7 @@ import ExpiringItemsNotification from "./layout/ExpiringItemsNotification";
 import CalculatorModal from "./layout/CalculatorModal";
 import ActionCenter from "./layout/ActionCenter";
 import CheckPrintModal from "./ui/CheckPrintModal";
+import GatewayModal from "./navigation/GatewayModal";
 
 const drawerWidth = 260;
 const collapsedDrawerWidth = 72;
@@ -307,6 +310,8 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
 
   // Check Print Modal
   const [checkPrintOpen, setCheckPrintOpen] = useState(false);
+  // Gateway of KOSH Modal
+  const [gatewayOpen, setGatewayOpen] = useState(false);
 
   // Profile Menu State
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -314,11 +319,17 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
 
   const theme = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const handleCheckPrintTrigger = () => setCheckPrintOpen(true);
+    const handleOpenGatewayTrigger = () => setGatewayOpen(true);
     window.addEventListener('trigger-check-print', handleCheckPrintTrigger);
-    return () => window.removeEventListener('trigger-check-print', handleCheckPrintTrigger);
+    window.addEventListener('open-gateway', handleOpenGatewayTrigger);
+    return () => {
+      window.removeEventListener('trigger-check-print', handleCheckPrintTrigger);
+      window.removeEventListener('open-gateway', handleOpenGatewayTrigger);
+    };
   }, []);
 
   useEffect(() => {
@@ -371,6 +382,39 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
           return;
         }
         setIsFocusMode(false);
+      }
+
+      // 5. Gateway of KOSH Shortcut: Alt+G or Ctrl+G anywhere in app
+      if (
+        (e.altKey || e.ctrlKey || e.metaKey) &&
+        (e.key === "g" || e.key === "G")
+      ) {
+        e.preventDefault();
+        setGatewayOpen((prev) => !prev);
+        return;
+      }
+
+      // 6. Gateway on Home/About Screen: single 'G' press (when not typing in an input)
+      if (
+        (e.key === "g" || e.key === "G") &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.metaKey
+      ) {
+        const activeEl = document.activeElement as HTMLElement | null;
+        const isInput =
+          activeEl &&
+          (activeEl.tagName === "INPUT" ||
+            activeEl.tagName === "TEXTAREA" ||
+            activeEl.getAttribute("contenteditable") === "true");
+        if (
+          !isInput &&
+          (location.pathname === "/" || location.pathname === "/about")
+        ) {
+          e.preventDefault();
+          setGatewayOpen(true);
+          return;
+        }
       }
     };
 
@@ -536,6 +580,48 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
                   >
                     <ArrowLeft size={20} />
                   </IconButton>
+                </Tooltip>
+
+                {/* Gateway of KOSH Button */}
+                <Tooltip title="Gateway of KOSH (Alt + G)">
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setGatewayOpen(true)}
+                    startIcon={<Compass size={15} color={theme.palette.primary.main} />}
+                    sx={{
+                      fontWeight: 800,
+                      fontSize: "0.75rem",
+                      textTransform: "none",
+                      borderRadius: 2,
+                      px: 1.25,
+                      py: 0.4,
+                      color: "text.primary",
+                      borderColor: "divider",
+                      bgcolor: alpha(theme.palette.primary.main, 0.04),
+                      "&:hover": {
+                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                        borderColor: "primary.main",
+                      },
+                    }}
+                  >
+                    Gateway{" "}
+                    <Box
+                      component="span"
+                      sx={{
+                        ml: 0.75,
+                        fontSize: "0.65rem",
+                        fontWeight: 900,
+                        color: "primary.main",
+                        bgcolor: alpha(theme.palette.primary.main, 0.12),
+                        px: 0.5,
+                        py: 0.1,
+                        borderRadius: 0.5,
+                      }}
+                    >
+                      Alt+G
+                    </Box>
+                  </Button>
                 </Tooltip>
 
                 {/* Utils */}
@@ -743,6 +829,12 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
       <CheckPrintModal
         open={checkPrintOpen}
         onClose={() => setCheckPrintOpen(false)}
+      />
+
+      {/* Gateway of KOSH Modal */}
+      <GatewayModal
+        open={gatewayOpen}
+        onClose={() => setGatewayOpen(false)}
       />
     </Box>
   );

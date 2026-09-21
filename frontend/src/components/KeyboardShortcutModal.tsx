@@ -20,9 +20,12 @@ interface ShortcutGroup {
 const GENERAL_SHORTCUTS: ShortcutGroup = {
   category: "General",
   shortcuts: [
+    { keys: ["Alt", "G"], description: "Gateway of KOSH (Tally Go To)" },
+    { keys: ["Ctrl", "G"], description: "Gateway of KOSH (Tally Go To)" },
+    { keys: ["G"], description: "Open Gateway (from Home screen)" },
     { keys: ["Ctrl", "K"], description: "Global Search" },
-    { keys: ["shift", "?"], description: "Show Keyboard Shortcuts" },
-    { keys: ["Esc"], description: "Close Modals / Focus Mode" },
+    { keys: ["Shift", "?"], description: "Show Keyboard Shortcuts" },
+    { keys: ["Esc"], description: "Close Modals / Exit Gateway" },
     { keys: ["Ctrl", "F"], description: "Toggle Focus Mode" },
     { keys: ["Ctrl", "Alt", "F"], description: "Lock Focus Mode" },
     { keys: ["Alt", "C"], description: "Toggle GST/Non-GST Mode" },
@@ -32,28 +35,20 @@ const GENERAL_SHORTCUTS: ShortcutGroup = {
 
 // 2. Dynamic Navigation Shortcuts (from menu.tsx)
 const NAVIGATION_SHORTCUTS: ShortcutGroup = {
-  category: "Navigation",
+  category: "Gateway Quick Nav (Tally Mode)",
   shortcuts: [],
 };
 
 // Populate Navigation Shortcuts from menuSections
 menuSections.forEach((section) => {
   section.items.forEach((item) => {
-    // Check if the item has a 'shortcut' property
-    if ((item as any).shortcut) {
+    if (item.hotkey && section.hotkey) {
       NAVIGATION_SHORTCUTS.shortcuts.push({
-        keys: [(item as any).shortcut],
-        description: item.label,
+        keys: [section.hotkey, item.hotkey],
+        description: `${item.label} (${section.title})`,
       });
     }
   });
-});
-
-// Sort shortcuts by F-key number (F1, F2...) for cleaner display
-NAVIGATION_SHORTCUTS.shortcuts.sort((a, b) => {
-  const numA = parseInt(a.keys[0].replace("F", ""), 10);
-  const numB = parseInt(b.keys[0].replace("F", ""), 10);
-  return numA - numB;
 });
 
 const ALL_SHORTCUTS = [GENERAL_SHORTCUTS, NAVIGATION_SHORTCUTS];

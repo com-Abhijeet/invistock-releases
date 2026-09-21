@@ -1,5 +1,6 @@
 import db from "../db/db.mjs";
 import { createNewBatch } from "../services/batchService.mjs";
+import { convertToStockQuantity } from "../services/unitService.mjs";
 
 // --- Helper: Get ID or Create New Category/Subcategory ---
 function resolveEntity(db, table, identifier, parentId = null) {
@@ -283,7 +284,7 @@ export function getAllProducts(options) {
       params.push(searchQuery, searchQuery, searchQuery);
     }
 
-    if (!all) {
+    if (!all && isActive !== undefined && isActive !== null && isActive !== "") {
       whereClauses.push(`p.is_active = ?`);
       params.push(isActive);
     }
@@ -377,7 +378,7 @@ export function getProductHistory(productId) {
     FROM purchase_items pi
     JOIN purchases p ON pi.purchase_id = p.id
     LEFT JOIN suppliers sup ON p.supplier_id = sup.id
-    WHERE pi.product_id = ?
+    WHERE pi.product_id = ? AND (p.status IS NULL OR p.status != 'cancelled')
     ORDER BY p.date ASC
   `,
     )
@@ -390,7 +391,7 @@ export function getProductHistory(productId) {
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
     LEFT JOIN customers cust ON s.customer_id = cust.id
-    WHERE si.product_id = ? AND s.is_quote = 0
+    WHERE si.product_id = ? AND s.is_quote = 0 AND (s.status IS NULL OR s.status != 'cancelled')
     ORDER BY s.created_at ASC
   `,
     )
@@ -417,27 +418,59 @@ export function getProductHistory(productId) {
     )
     .all(productId);
 
+  const baseUnit = product.base_unit || "pcs";
+
   const history = [
-    ...purchases.map((p) => ({
-      id: `p-${p.purchase_id}`,
-      date: p.date,
-      type: "Purchase",
-      reference_no: p.reference_no || `PUR-${p.purchase_id}`,
-      entity_id: p.purchase_id,
-      entity_type: "purchase",
-      party_name: p.supplier_name || "Supplier",
-      quantity: `+${p.quantity} ${p.unit || ""}`,
-    })),
-    ...gstSales.map((s) => ({
-      id: `s-${s.sale_id}`,
-      date: s.date,
-      type: "Sale",
-      reference_no: s.reference_no || `INV-${s.sale_id}`,
-      entity_id: s.sale_id,
-      entity_type: "sale",
-      party_name: s.customer_name || "Customer",
-      quantity: `-${s.quantity} ${s.unit || ""}`,
-    })),
+    ...purchases.map((p) => {
+      const stockQty =
+        Math.round(
+          convertToStockQuantity(p.quantity, p.unit || baseUnit, product) *
+            10000,
+        ) / 10000;
+      const isDiffUnit =
+        p.unit &&
+        baseUnit &&
+        p.unit.trim().toLowerCase() !== baseUnit.trim().toLowerCase();
+      const displayQty = isDiffUnit
+        ? `+${p.quantity} ${p.unit} (+${stockQty} ${baseUnit})`
+        : `+${p.quantity} ${p.unit || baseUnit}`;
+
+      return {
+        id: `p-${p.purchase_id}`,
+        date: p.date,
+        type: "Purchase",
+        reference_no: p.reference_no || `PUR-${p.purchase_id}`,
+        entity_id: p.purchase_id,
+        entity_type: "purchase",
+        party_name: p.supplier_name || "Supplier",
+        quantity: displayQty.trim(),
+      };
+    }),
+    ...gstSales.map((s) => {
+      const stockQty =
+        Math.round(
+          convertToStockQuantity(s.quantity, s.unit || baseUnit, product) *
+            10000,
+        ) / 10000;
+      const isDiffUnit =
+        s.unit &&
+        baseUnit &&
+        s.unit.trim().toLowerCase() !== baseUnit.trim().toLowerCase();
+      const displayQty = isDiffUnit
+        ? `-${s.quantity} ${s.unit} (-${stockQty} ${baseUnit})`
+        : `-${s.quantity} ${s.unit || baseUnit}`;
+
+      return {
+        id: `s-${s.sale_id}`,
+        date: s.date,
+        type: "Sale",
+        reference_no: s.reference_no || `INV-${s.sale_id}`,
+        entity_id: s.sale_id,
+        entity_type: "sale",
+        party_name: s.customer_name || "Customer",
+        quantity: displayQty.trim(),
+      };
+    }),
     ...adjustments.map((a) => ({
       id: `a-${a.adjustment_id}`,
       date: a.date,
@@ -446,7 +479,10 @@ export function getProductHistory(productId) {
       entity_id: a.adjustment_id,
       entity_type: "adjustment",
       party_name: a.adjusted_by || "System",
-      quantity: a.quantity > 0 ? `+${a.quantity}` : `${a.quantity}`,
+      quantity:
+        a.quantity > 0
+          ? `+${a.quantity} ${baseUnit}`
+          : `${a.quantity} ${baseUnit}`,
       adjustment_details: {
         category: a.category,
         reason: a.reason,
@@ -458,16 +494,41 @@ export function getProductHistory(productId) {
     })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const totalPurchased = purchases.reduce((sum, p) => sum + p.quantity, 0);
-  const totalGstSold = gstSales.reduce((sum, s) => sum + s.quantity, 0);
-  const totalAdjusted = adjustments.reduce((sum, a) => sum + a.quantity, 0);
+  const totalPurchased =
+    Math.round(
+      purchases.reduce((sum, p) => {
+        const stockQty = convertToStockQuantity(
+          p.quantity,
+          p.unit || baseUnit,
+          product,
+        );
+        return sum + (Number(stockQty) || 0);
+      }, 0) * 10000,
+    ) / 10000;
+
+  const totalGstSold =
+    Math.round(
+      gstSales.reduce((sum, s) => {
+        const stockQty = convertToStockQuantity(
+          s.quantity,
+          s.unit || baseUnit,
+          product,
+        );
+        return sum + (Number(stockQty) || 0);
+      }, 0) * 10000,
+    ) / 10000;
+
+  const totalAdjusted =
+    Math.round(
+      adjustments.reduce((sum, a) => sum + (Number(a.quantity) || 0), 0) *
+        10000,
+    ) / 10000;
+
   const totalSold = totalGstSold;
-  // Note: Expected Quantity calculation here is simplistic because it assumes
-  // quantity stored in sales/purchase items is already normalized to base units.
-  // If not, we would need unitService to convert them here.
-  // For now, assuming Service Layer handles conversion BEFORE insert.
-  const expectedQuantity = totalPurchased - totalSold + totalAdjusted;
-  const discrepancy = product.quantity - expectedQuantity;
+  const expectedQuantity =
+    Math.round((totalPurchased - totalSold + totalAdjusted) * 10000) / 10000;
+  const discrepancy =
+    Math.round((product.quantity - expectedQuantity) * 10000) / 10000;
 
   let unmarkedAdded = 0;
   let unmarkedRemoved = 0;

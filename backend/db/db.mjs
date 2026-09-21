@@ -669,6 +669,7 @@ export function initializeDatabase(dbPath) {
       margin REAL DEFAULT 0,
       mop REAL DEFAULT 0,
       mfw_price TEXT,
+      return_quantity REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
       FOREIGN KEY (product_id) REFERENCES products(id)
@@ -761,6 +762,8 @@ export function initializeDatabase(dbPath) {
       use_default_customer INTEGER DEFAULT 1,
       auto_print_after_save INTEGER DEFAULT 0,
       send_whatsapp_invoice INTEGER DEFAULT 0,
+      whatsapp_template_id INTEGER,
+      whatsapp_template_name TEXT,
       payment_marking_timing TEXT DEFAULT 'pre_save',
       enable_split_payments INTEGER DEFAULT 1,
       updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
@@ -769,7 +772,99 @@ export function initializeDatabase(dbPath) {
     INSERT OR IGNORE INTO sales_billing_settings (
       id, use_queue, queue_type, use_default_customer, auto_print_after_save, send_whatsapp_invoice, payment_marking_timing, enable_split_payments
     ) VALUES (1, 1, 'fefo', 1, 0, 0, 'pre_save', 1);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      official_enabled INTEGER DEFAULT 0,
+      official_provider TEXT DEFAULT 'msg91',
+      msg91_auth_key TEXT DEFAULT '',
+      msg91_integrated_number TEXT DEFAULT '',
+      official_phone_number_id TEXT DEFAULT '',
+      official_waba_id TEXT DEFAULT '',
+      official_access_token TEXT DEFAULT '',
+      official_business_number TEXT DEFAULT '',
+      route_invoice TEXT DEFAULT 'unofficial',
+      route_ledgers TEXT DEFAULT 'unofficial',
+      route_marketing TEXT DEFAULT 'unofficial',
+      route_outstandings TEXT DEFAULT 'unofficial',
+      updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+    );
+
+    INSERT OR IGNORE INTO whatsapp_settings (id) VALUES (1);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      provider TEXT NOT NULL,
+      category TEXT NOT NULL,
+      recipient TEXT,
+      status TEXT NOT NULL,
+      error_message TEXT,
+      created_at DATETIME DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS whatsapp_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      is_default INTEGER DEFAULT 0,
+      content TEXT NOT NULL,
+      body_text TEXT DEFAULT '',
+      meta_template_name TEXT,
+      meta_status TEXT DEFAULT 'LOCAL_ONLY',
+      language TEXT DEFAULT 'en_US',
+      created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+      updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+    );
   `);
+
+  safeMigrate(db, "whatsapp_settings", "official_enabled", "INTEGER DEFAULT 0");
+  safeMigrate(db, "whatsapp_settings", "official_provider", "TEXT DEFAULT 'msg91'");
+  safeMigrate(db, "whatsapp_settings", "msg91_auth_key", "TEXT DEFAULT ''");
+  safeMigrate(db, "whatsapp_settings", "msg91_integrated_number", "TEXT DEFAULT ''");
+  safeMigrate(db, "whatsapp_settings", "official_phone_number_id", "TEXT DEFAULT ''");
+  safeMigrate(db, "whatsapp_settings", "official_waba_id", "TEXT DEFAULT ''");
+  safeMigrate(db, "whatsapp_settings", "official_access_token", "TEXT DEFAULT ''");
+  safeMigrate(db, "whatsapp_settings", "official_business_number", "TEXT DEFAULT ''");
+  safeMigrate(db, "whatsapp_settings", "route_invoice", "TEXT DEFAULT 'unofficial'");
+  safeMigrate(db, "whatsapp_settings", "route_ledgers", "TEXT DEFAULT 'unofficial'");
+  safeMigrate(db, "whatsapp_settings", "route_marketing", "TEXT DEFAULT 'unofficial'");
+  safeMigrate(db, "whatsapp_settings", "route_outstandings", "TEXT DEFAULT 'unofficial'");
+
+  safeMigrate(db, "sales_billing_settings", "whatsapp_template_id", "INTEGER");
+  safeMigrate(db, "sales_billing_settings", "whatsapp_template_name", "TEXT");
+
+  safeMigrate(db, "whatsapp_templates", "name", "TEXT");
+  safeMigrate(db, "whatsapp_templates", "category", "TEXT");
+  safeMigrate(db, "whatsapp_templates", "is_default", "INTEGER DEFAULT 0");
+  safeMigrate(db, "whatsapp_templates", "content", "TEXT DEFAULT ''");
+  safeMigrate(db, "whatsapp_templates", "body_text", "TEXT DEFAULT ''");
+  safeMigrate(db, "whatsapp_templates", "meta_template_name", "TEXT");
+  safeMigrate(db, "whatsapp_templates", "meta_status", "TEXT DEFAULT 'LOCAL_ONLY'");
+  safeMigrate(db, "whatsapp_templates", "language", "TEXT DEFAULT 'en_US'");
+
+  try {
+    db.prepare(`
+      INSERT OR IGNORE INTO whatsapp_settings (
+        id, official_enabled, official_provider, msg91_auth_key, msg91_integrated_number,
+        official_phone_number_id, official_waba_id, official_access_token, official_business_number,
+        route_invoice, route_ledgers, route_marketing, route_outstandings
+      ) VALUES (
+        1, 0, 'msg91', '', '',
+        '', '', '', '',
+        'unofficial', 'unofficial', 'unofficial', 'unofficial'
+      )
+    `).run();
+  } catch (e) {
+    console.warn("[DB] whatsapp_settings seed notice:", e.message);
+  }
+
+  try {
+    import("../repositories/whatsappTemplateRepository.mjs").then((repo) => {
+      if (repo.seedDefaultTemplates) repo.seedDefaultTemplates();
+    });
+  } catch (e) {
+    console.warn("[DB] whatsapp templates seed deferred");
+  }
 
   /*
   customer_name TEXT,

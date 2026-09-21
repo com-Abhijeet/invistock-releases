@@ -94,16 +94,7 @@ export default function NGSalesPage() {
   const handleWhatsAppShare = async (saleId: number) => {
     const toastId = toast.loading("Preparing WhatsApp message...");
     try {
-      // 1. Check connection status
-      const wsStatus = await electron.getWhatsAppStatus();
-      if (wsStatus.status !== "ready") {
-        toast.error("WhatsApp not connected. Please scan QR in Settings.", {
-          id: toastId,
-        });
-        return;
-      }
-
-      // 2. Fetch Sale & Shop Data
+      // Fetch Sale & Shop Data
       // We assume getNonGstSaleById exists in your service, similar to getSaleById
       const [saleRes, shop] = await Promise.all([
         getNonGstSaleById(saleId),
