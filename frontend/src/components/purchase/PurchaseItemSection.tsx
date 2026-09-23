@@ -48,12 +48,14 @@ interface Props {
   items: ExtendedPurchaseItem[];
   onItemsChange: (items: ExtendedPurchaseItem[]) => void;
   readOnly?: boolean;
+  supplierId?: number | string | null;
 }
 
 const PurchaseItemSection = ({
   items,
   onItemsChange,
   readOnly = false,
+  supplierId,
 }: Props) => {
   const theme = useTheme();
   const [products, setProducts] = useState<Product[]>([]);
@@ -116,6 +118,7 @@ const PurchaseItemSection = ({
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [addProductModalOpen, setAddProductModalOpen] = useState(false);
+  const [quickAddProduct, setQuickAddProduct] = useState<Product | null>(null);
 
   // Bulk Serial Modal State
   const [serialModalOpen, setSerialModalOpen] = useState(false);
@@ -154,14 +157,16 @@ const PurchaseItemSection = ({
     if (readOnly) return;
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Ctrl + A : Open Bulk Add
-      if (e.ctrlKey && e.key === "a") {
+      if (batchModalOpen || addProductModalOpen) return;
+
+      // Ctrl + A / Cmd + A : Open Bulk Add (PurchaseBatchModal)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
         e.preventDefault();
         handleBulkAdd();
       }
 
       // Ctrl + Delete : Remove Active Row
-      if (e.ctrlKey && e.key === "Delete" && activeRowIndex !== null) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Delete" && activeRowIndex !== null) {
         e.preventDefault();
         handleRemoveItem(activeRowIndex);
       }
@@ -169,7 +174,7 @@ const PurchaseItemSection = ({
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [activeRowIndex, items, readOnly]);
+  }, [activeRowIndex, items, readOnly, batchModalOpen, addProductModalOpen]);
 
   const handleCellKeyDown = (
     e: React.KeyboardEvent,
@@ -791,19 +796,36 @@ const PurchaseItemSection = ({
 
       <PurchaseBatchModal
         open={batchModalOpen}
-        onClose={() => setBatchModalOpen(false)}
+        onClose={() => {
+          setBatchModalOpen(false);
+          setQuickAddProduct(null);
+        }}
         products={products}
-        onAddItems={handleModalAddItems}
+        supplierId={supplierId}
+        initialProduct={quickAddProduct}
+        onOpenAddProduct={() => {
+          setAddProductModalOpen(true);
+        }}
+        onAddItems={(newItems) => {
+          handleModalAddItems(newItems);
+          setQuickAddProduct(null);
+        }}
         editItem={editingItemIndex !== null ? items[editingItemIndex] : null}
       />
 
       <AddProductModal
         open={addProductModalOpen}
         onClose={() => setAddProductModalOpen(false)}
-        onSuccess={(product) => {
+        onSuccess={(product, isQuickAdd) => {
           setProducts((prev) => [product, ...prev]);
           setAddProductModalOpen(false);
+          if (isQuickAdd) {
+            setEditingItemIndex(null);
+            setQuickAddProduct(product);
+            setBatchModalOpen(true);
+          }
         }}
+        isQuickAdd={true}
         mode="add"
       />
 

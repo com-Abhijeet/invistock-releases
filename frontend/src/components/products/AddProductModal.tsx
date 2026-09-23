@@ -59,9 +59,10 @@ type Mode = "add" | "edit";
 type Props = {
   open: boolean;
   onClose: () => void;
-  onSuccess: (product: Product) => void;
+  onSuccess: (product: Product, isQuickAdd?: boolean) => void;
   initialData?: Partial<Product>;
   mode?: Mode;
+  isQuickAdd?: boolean;
 };
 
 const defaultForm: Partial<Product> = {
@@ -116,6 +117,7 @@ export default function AddEditProductModal({
   onSuccess,
   initialData = {},
   mode = "add",
+  isQuickAdd = false,
 }: Props) {
   const [activeStep, setActiveStep] = useState(0);
   const [form, setForm] = useState<Partial<Product>>({
@@ -701,7 +703,7 @@ export default function AddEditProductModal({
         toast.error("Failed to save product.");
         return;
       }
-      onSuccess(result);
+      onSuccess(result, isQuickAdd);
       setForm(defaultForm);
       localStorage.removeItem("cached_products");
       onClose();

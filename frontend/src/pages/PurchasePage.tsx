@@ -270,6 +270,7 @@ const PurchasePage = () => {
       >
         <PurchaseItemSection
           items={purchase.items}
+          supplierId={purchase.supplier_id}
           onItemsChange={
             isView
               ? () => {}

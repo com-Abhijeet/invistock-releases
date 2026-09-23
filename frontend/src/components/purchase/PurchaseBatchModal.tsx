@@ -22,6 +22,7 @@ import {
   RefreshCw,
   CheckCircle,
   AlertCircle,
+  PlusCircle,
 } from "lucide-react";
 import type { Product } from "../../lib/types/product";
 import type { PurchaseItem } from "../../lib/types/purchaseTypes";
@@ -60,6 +61,9 @@ interface Props {
   products: Product[];
   onAddItems: (items: ExtendedPurchaseItem[]) => void;
   editItem?: ExtendedPurchaseItem | null;
+  initialProduct?: Product | null;
+  supplierId?: number | string | null;
+  onOpenAddProduct?: () => void;
 }
 
 interface FormDataState {
@@ -96,9 +100,13 @@ const initialFormData: FormDataState = {
   serial_numbers: "",
 };
 
-const generateBatchNumber = (productId?: number) => {
-  const stamp = Date.now().toString().slice(-6);
-  return productId ? `${productId}-${stamp}` : `BT-${stamp}`;
+const generateBatchNumber = (supplierId?: number | string | null) => {
+  const stamp = Date.now().toString().slice(-5);
+  const supp =
+    supplierId !== undefined && supplierId !== null && supplierId !== ""
+      ? String(supplierId)
+      : "0";
+  return `BT-${supp}-${stamp}`;
 };
 
 export default function PurchaseBatchModal({
@@ -107,6 +115,9 @@ export default function PurchaseBatchModal({
   products,
   onAddItems,
   editItem,
+  initialProduct,
+  supplierId,
+  onOpenAddProduct,
 }: Props) {
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [formData, setFormData] = useState<FormDataState>(initialFormData);
@@ -138,35 +149,30 @@ export default function PurchaseBatchModal({
 
   const handleProductSearch = (query: string) => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (!query || query.trim().length === 0) {
+    if (!query.trim()) {
       setProductsList(products);
       return;
     }
+
     searchTimerRef.current = setTimeout(() => {
       getAllProducts({
-        page: 1,
-        limit: 100,
         query: query.trim(),
-        all: false,
+        limit: 15,
+        page: 1,
+        isActive: 1,
       }).then((data) => {
-        const records = data?.records || [];
-        if (records.length > 0) {
-          setProductsList((prev) => {
-            const map = new Map<number, Product>();
-            prev.forEach((p) => {
-              if (p.id) map.set(p.id, p);
-            });
-            records.forEach((p: Product) => {
-              if (p.id) map.set(p.id, p);
-            });
-            return Array.from(map.values());
-          });
-        }
+        const searched = data.records || [];
+        setProductsList((prev) => {
+          const map = new Map<number, Product>();
+          prev.forEach((p) => map.set(p.id!, p));
+          searched.forEach((p: Product) => map.set(p.id!, p));
+          return Array.from(map.values());
+        });
       });
-    }, 150);
+    }, 300);
   };
 
-  const [mrpGap, setMrpGap] = useState<number | "">(0);
+  const [mrpGap, setMrpGap] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [barcodeStatus, setBarcodeStatus] = useState<
     "idle" | "checking" | "available" | "duplicate"
@@ -175,6 +181,56 @@ export default function PurchaseBatchModal({
   // Refs
   const productInputRef = useRef<HTMLInputElement>(null);
   const rateInputRef = useRef<HTMLInputElement>(null);
+  const newProductBtnRef = useRef<HTMLButtonElement>(null);
+
+  const applyProductSelection = (
+    prod: Product,
+    suppId?: number | string | null,
+  ) => {
+    const isStandard = !prod.tracking_type || prod.tracking_type === "none";
+    const defaultBatch =
+      prod.tracking_type === "batch" ? generateBatchNumber(suppId) : "";
+
+    setFormData((prev) => ({
+      ...prev,
+      batch_number: prev.batch_number || defaultBatch,
+      gst_rate:
+        prod.gst_rate !== undefined && prod.gst_rate !== null
+          ? prod.gst_rate
+          : "",
+      unit: prod.base_unit || prev.unit || "pcs",
+      mrp: isStandard && prod.mrp ? Number(prod.mrp) : isStandard ? "" : prev.mrp,
+      mop: isStandard && prod.mop ? Number(prod.mop) : isStandard ? "" : prev.mop,
+      mfw_price:
+        isStandard && prod.mfw_price
+          ? String(prod.mfw_price)
+          : isStandard
+          ? ""
+          : prev.mfw_price,
+      rate:
+        isStandard && ((prod as any).cost_price || (prod as any).purchase_rate)
+          ? Number((prod as any).cost_price || (prod as any).purchase_rate)
+          : isStandard
+          ? ""
+          : prev.rate,
+    }));
+  };
+
+  // Ctrl+A shortcut inside PurchaseBatchModal opens AddProductModal
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onOpenAddProduct) {
+          onOpenAddProduct();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [open, onOpenAddProduct]);
 
   // Initialize form
   useEffect(() => {
@@ -188,31 +244,59 @@ export default function PurchaseBatchModal({
           expiry_date: editItem.expiry_date || "",
           mfg_date: editItem.mfg_date || "",
           location: editItem.location || "",
-          rate: editItem.rate !== undefined && editItem.rate !== null ? editItem.rate : "",
+          rate:
+            editItem.rate !== undefined && editItem.rate !== null
+              ? editItem.rate
+              : "",
           quantity: editItem.quantity ?? 1,
           unit: editItem.unit || "",
-          margin: editItem.margin !== undefined && editItem.margin !== null ? editItem.margin : "",
-          mrp: editItem.mrp !== undefined && editItem.mrp !== null ? editItem.mrp : "",
-          mop: editItem.mop !== undefined && editItem.mop !== null ? editItem.mop : "",
+          margin:
+            editItem.margin !== undefined && editItem.margin !== null
+              ? editItem.margin
+              : "",
+          mrp:
+            editItem.mrp !== undefined && editItem.mrp !== null
+              ? editItem.mrp
+              : "",
+          mop:
+            editItem.mop !== undefined && editItem.mop !== null
+              ? editItem.mop
+              : "",
           mfw_price: editItem.mfw_price || "",
           barcode: editItem.barcode || "",
-          gst_rate: editItem.gst_rate !== undefined && editItem.gst_rate !== null ? editItem.gst_rate : "",
+          gst_rate:
+            editItem.gst_rate !== undefined && editItem.gst_rate !== null
+              ? editItem.gst_rate
+              : "",
           serial_numbers: editItem.serial_numbers?.join("\n") || "",
         });
         setMrpGap(0);
         if (editItem.barcode) checkBarcode(editItem.barcode, true);
+        setTimeout(() => {
+          rateInputRef.current?.focus();
+        }, 100);
+      } else if (initialProduct) {
+        // Quick Add Initial Product Mode
+        setSelectedProducts([initialProduct]);
+        setFormData(initialFormData);
+        setMrpGap(0);
+        setBarcodeStatus("idle");
+        applyProductSelection(initialProduct, supplierId);
+        setTimeout(() => {
+          rateInputRef.current?.focus();
+        }, 100);
       } else {
-        // Add Mode
+        // Standard Add Mode
         setSelectedProducts([]);
         setFormData(initialFormData);
         setMrpGap(0);
         setBarcodeStatus("idle");
+        setTimeout(() => {
+          productInputRef.current?.focus();
+        }, 100);
       }
-      setTimeout(() => {
-        productInputRef.current?.focus();
-      }, 100);
     }
-  }, [open, editItem, products]);
+  }, [open, editItem, initialProduct, products, supplierId]);
 
   // --- BARCODE LOGIC ---
   const checkBarcode = async (code: string, isInitialLoad = false) => {
@@ -515,58 +599,60 @@ export default function PurchaseBatchModal({
           <Grid container spacing={2}>
             {/* Product Selection */}
             <Grid item xs={12}>
-              <AutoSuggestInput
-                id="purchase-batch-product-input"
-                label="Select Product *"
-                value={selectedProducts[0]?.id || null}
-                options={productOptions}
-                placeholder="Type name, barcode, or product code..."
-                disabled={loading}
-                allowCreate={false}
-                variant="outlined"
-                inputRef={(el) => {
-                  (productInputRef as any).current = el;
-                }}
-                onSearch={handleProductSearch}
-                onChange={(val) => {
-                  const prod =
-                    productsList.find((p) => p.id === val) ||
-                    products.find((p) => p.id === val) ||
-                    null;
-                  setSelectedProducts(prod ? [prod] : []);
-                  if (prod) {
-                    setFormData((prev) => ({
-                      ...prev,
-                      gst_rate:
-                        prod.gst_rate !== undefined && prod.gst_rate !== null
-                          ? prod.gst_rate
-                          : "",
-                      mrp: prod.mrp ? Number(prod.mrp) : "",
-                      unit: prod.base_unit || prev.unit || "pcs",
-                      rate: "",
-                      margin: "",
-                      mop: "",
-                      mfw_price: "",
-                    }));
-                  } else {
-                    setFormData((prev) => ({
-                      ...prev,
-                      gst_rate: "",
-                      mrp: "",
-                      rate: "",
-                      margin: "",
-                      mop: "",
-                      mfw_price: "",
-                    }));
-                  }
-                }}
-                onNext={() => {
-                  setTimeout(() => {
-                    rateInputRef.current?.focus();
-                    rateInputRef.current?.select();
-                  }, 50);
-                }}
-              />
+              <Box display="flex" gap={1} alignItems="center">
+                <Box flex={1}>
+                  <AutoSuggestInput
+                    id="purchase-batch-product-input"
+                    label="Select Product *"
+                    value={selectedProducts[0]?.id || null}
+                    options={productOptions}
+                    placeholder="Type name, barcode, or product code..."
+                    disabled={loading}
+                    allowCreate={false}
+                    variant="outlined"
+                    inputRef={(el) => {
+                      (productInputRef as any).current = el;
+                    }}
+                    onSearch={handleProductSearch}
+                    onChange={(val) => {
+                      const prod =
+                        productsList.find((p) => p.id === val) ||
+                        products.find((p) => p.id === val) ||
+                        null;
+                      setSelectedProducts(prod ? [prod] : []);
+                      if (prod) {
+                        applyProductSelection(prod, supplierId);
+                      } else {
+                        setFormData((prev) => ({
+                          ...prev,
+                          rate: "",
+                          margin: "",
+                          mop: "",
+                          mfw_price: "",
+                        }));
+                      }
+                    }}
+                    onNext={() => {
+                      setTimeout(() => {
+                        rateInputRef.current?.focus();
+                        rateInputRef.current?.select();
+                      }, 50);
+                    }}
+                  />
+                </Box>
+                {onOpenAddProduct && (
+                  <Button
+                    ref={newProductBtnRef}
+                    variant="outlined"
+                    size="small"
+                    startIcon={<PlusCircle size={16} />}
+                    onClick={onOpenAddProduct}
+                    sx={{ height: 40, whiteSpace: "nowrap" }}
+                  >
+                    + New Product
+                  </Button>
+                )}
+              </Box>
             </Grid>
 
             {/* Core Pricing & Margin */}

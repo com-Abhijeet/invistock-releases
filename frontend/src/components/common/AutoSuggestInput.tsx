@@ -623,6 +623,17 @@ export default function AutoSuggestInput({
     }
   };
 
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (containerRef.current && containerRef.current.contains(e.relatedTarget as Node)) {
+      return;
+    }
+    if (isOpen) {
+      setIsOpen(false);
+      setSearchQuery(null);
+      commitValue(inputValue);
+    }
+  };
+
   const handleClickAway = () => {
     if (isOpen) {
       setIsOpen(false);
@@ -647,6 +658,7 @@ export default function AutoSuggestInput({
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
+          onBlur={handleBlur}
           autoComplete="off"
           sx={sx}
           error={error}

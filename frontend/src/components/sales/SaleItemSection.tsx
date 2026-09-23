@@ -271,8 +271,8 @@ export default function SaleItemSection({
       if (items.length > prevItemsLength.current) {
         setActiveRowIndex(lastIndex);
 
-        // Only trigger auto-focus if it's a completely newly generated blank row
-        if (items[lastIndex].product_id === 0) {
+        // Only trigger auto-focus if it's a newly added blank row after initial mount
+        if (prevItemsLength.current > 0 && items[lastIndex].product_id === 0) {
           if (!isQuickBarcodeScan.current) {
             setTimeout(() => {
               focusInput(lastIndex, "product");
