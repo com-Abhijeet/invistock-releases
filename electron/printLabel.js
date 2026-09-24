@@ -44,6 +44,60 @@ const createPrintWindow = async (payload) => {
     return;
   }
 
+  const {
+    getCustomFolderTemplateContent,
+  } = require("./templates/customTemplateLoader.js");
+  const folderPrnTemplate = getCustomFolderTemplateContent("barcode");
+  const folderHtmlTemplate = getCustomFolderTemplateContent("label_html");
+
+  let localSettings = {};
+  try {
+    if (shop.app_print_settings) {
+      localSettings =
+        typeof shop.app_print_settings === "string"
+          ? JSON.parse(shop.app_print_settings)
+          : shop.app_print_settings;
+    }
+  } catch (e) {}
+
+  const prnContent = folderPrnTemplate || localSettings.custom_prn_template_content;
+  const usePrn = folderPrnTemplate || localSettings.use_custom_prn_template;
+
+  // ⚡ CUSTOM PRN LABEL ENGINE (TSPL/ZPL 1-Up, 2-Up, 3-Up RAW PRINTING)
+  if (usePrn && prnContent) {
+    const { renderPRNLabels } = require("./templates/prnLabelEngine.js");
+    const { sendRawToPrinter } = require("./utils/rawPrinter.js");
+
+    const formattedItems = itemsList.map((it) => ({
+      product: it.product || it,
+      barcode: it.customBarcode || it.product?.barcode || it.barcode || "",
+      print_qty: Number(it.copies || it.print_qty || 1),
+      name: it.product?.name || it.name || "",
+      mrp: it.product?.mrp || it.mrp || 0,
+      price: it.product?.selling_price || it.product?.price || it.price || 0,
+    }));
+
+    const rawPrnOutput = renderPRNLabels(prnContent, formattedItems, shop, {
+      multiUp: localSettings.label_multi_up || 1,
+      cipherKey: localSettings.cipher_key || "MONEYTALKS",
+    });
+
+    console.log(
+      "🖨️ [Custom .PRN Label] Sending RAW TSPL commands directly to printer spooler:\n",
+      rawPrnOutput.slice(0, 150),
+    );
+
+    const printerName = shop.label_printer_name?.trim();
+    const result = await sendRawToPrinter(printerName, rawPrnOutput);
+
+    if (result.success) {
+      console.log("✅ Custom .PRN label printed successfully via RAW spooler!");
+    } else {
+      console.error("❌ Custom .PRN label printing failed:", result.error);
+    }
+    return;
+  }
+
   const printerWidth = Number(shop.label_printer_width_mm) || 50;
   const printerHeight = Number(shop.label_printer_height_mm) || 25;
   const templateId = shop.label_template_id || "lbl_standard";
@@ -51,8 +105,13 @@ const createPrintWindow = async (payload) => {
   let labelsHtml = "";
   let baseStyle = "";
 
+  const customHtmlTemplate =
+    folderHtmlTemplate || localSettings.custom_label_template_content;
+  const useCustomHtml =
+    folderHtmlTemplate || localSettings.use_custom_label_template;
+
   for (const itemJob of itemsList) {
-    const product = itemJob.product;
+    const product = itemJob.product || itemJob;
     if (!product) continue;
 
     const code =
@@ -69,20 +128,38 @@ const createPrintWindow = async (payload) => {
       console.error("Barcode generation failed:", error);
     }
 
-    const { style, content } = createLabelHTML(
-      product,
-      shop,
-      barcodeBase64,
-      printerWidth,
-      templateId,
-      printerHeight,
-    );
+    let style = "";
+    let content = "";
+
+    if (useCustomHtml && customHtmlTemplate) {
+      const Handlebars = require("handlebars");
+      const compiled = Handlebars.compile(customHtmlTemplate);
+      content = compiled({
+        product,
+        shop,
+        barcode: barcodeBase64,
+        code,
+        mrp: product.mrp || 0,
+        price: product.selling_price || product.price || product.mrp || 0,
+      });
+    } else {
+      const labelRes = createLabelHTML(
+        product,
+        shop,
+        barcodeBase64,
+        printerWidth,
+        templateId,
+        printerHeight,
+      );
+      style = labelRes.style;
+      content = labelRes.content;
+    }
 
     if (!baseStyle && style) {
       baseStyle = style;
     }
 
-    const totalCopies = Math.max(1, Number(itemJob.copies) || 1);
+    const totalCopies = Math.max(1, Number(itemJob.copies || itemJob.print_qty) || 1);
     for (let i = 0; i < totalCopies; i++) {
       labelsHtml += `
         <div class="label-page">
