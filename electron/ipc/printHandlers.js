@@ -22,11 +22,46 @@ const {
 } = require("../transactionPrintTemplate.js");
 const { printCheck } = require("../checkPrinter.js");
 
+const {
+  ensureCustomTemplateDirectories,
+  getCustomFolderTemplateContent,
+} = require("../templates/customTemplateLoader.js");
+
 function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
   ipcMain.handle("print-bulk-labels", async (event, items) => {
     try {
       const shop = await getShop();
       if (!shop) throw new Error("Shop settings not found");
+
+      let localSettings = {};
+      try {
+        if (shop.app_print_settings) {
+          localSettings = JSON.parse(shop.app_print_settings);
+        }
+      } catch (e) {}
+
+      const folderPrnTemplate = getCustomFolderTemplateContent("barcode");
+      const prnContent = folderPrnTemplate || localSettings.custom_prn_template_content;
+      const usePrn = folderPrnTemplate || localSettings.use_custom_prn_template;
+
+      if (usePrn && prnContent) {
+        const { renderPRNLabels } = require("../templates/prnLabelEngine.js");
+        const { sendRawToPrinter } = require("../utils/rawPrinter.js");
+        const rawPrnOutput = renderPRNLabels(
+          prnContent,
+          items,
+          shop,
+          {
+            multiUp: localSettings.label_multi_up || 1,
+            cipherKey: localSettings.cipher_key || "MONEYTALKS",
+          },
+        );
+        console.log("🖨️ Custom .PRN barcode generated:", rawPrnOutput.slice(0, 100));
+        const printerName = shop.label_printer_name?.trim();
+        const rawResult = await sendRawToPrinter(printerName, rawPrnOutput);
+        return rawResult;
+      }
+
       await printBulkLabels(items, shop, shop.label_printer_width_mm);
       return { success: true };
     } catch (error) {
@@ -47,7 +82,28 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
 
   ipcMain.on("print-invoice", async (event, payload) => {
     try {
-      console.log("🖨️ Printing invoice for sale:", payload.sale.reference_no);
+      console.log("🖨️ Printing invoice for sale:", payload?.sale?.reference_no);
+      const folderTemplate = getCustomFolderTemplateContent("invoice");
+      const customInvoiceTemplate =
+        folderTemplate ||
+        payload?.localSettings?.custom_invoice_template_content;
+      const useCustomTemplate =
+        folderTemplate ||
+        payload?.localSettings?.use_custom_invoice_template;
+
+      if (customInvoiceTemplate && useCustomTemplate) {
+        const {
+          renderCustomInvoiceHTML,
+        } = require("../templates/invoiceHandlebarsEngine.js");
+        const renderedHtml = renderCustomInvoiceHTML(
+          customInvoiceTemplate,
+          payload,
+        );
+        const { printCustomInvoice } = require("../invoicePrinter.js");
+        await printCustomInvoice(renderedHtml, payload);
+        return;
+      }
+
       await printInvoice(payload);
     } catch (err) {
       console.error("❌ Invoice printing failed:", err);

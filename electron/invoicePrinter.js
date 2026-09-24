@@ -120,4 +120,65 @@ async function printInvoice(payload) {
   });
 }
 
-module.exports = { printInvoice };
+async function printCustomInvoice(htmlContent, payload = {}) {
+  const { sale, shop, copies = 1 } = payload;
+  const refNo = sale?.reference_no || "Bill";
+
+  const printWin = printWindowManager.getWindow("invoice", {
+    show: !Boolean(shop?.silent_printing),
+    title: `Invoice #${refNo}`,
+    width: 900,
+    height: 1000,
+  });
+
+  if (printWin && !printWin.isDestroyed()) {
+    printWin.setTitle(`Invoice_${refNo}`);
+  }
+
+  printWin.webContents.session.webRequest.onHeadersReceived(
+    (details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          "Content-Security-Policy": ["img-src 'self' data:"],
+        },
+      });
+    },
+  );
+
+  const blobUrl = `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
+  printWin.loadURL(blobUrl);
+
+  return new Promise((resolve, reject) => {
+    printWin.webContents.once("did-finish-load", () => {
+      const sanitizedRefNo = String(refNo).replace(/[^a-zA-Z0-9_-]/g, "_");
+      printWin.webContents
+        .executeJavaScript(`document.title = "Invoice_${sanitizedRefNo}";`)
+        .catch(() => {});
+
+      const printOptions = {
+        silent: Boolean(shop?.silent_printing),
+        printBackground: true,
+        deviceName: shop?.invoice_printer_name || undefined,
+        copies: copies > 0 ? copies : 1,
+        margins: { marginType: "none" },
+      };
+
+      printWin.webContents.print(printOptions, (success, errorType) => {
+        if (!success) {
+          console.error("❌ Custom invoice print failed:", errorType);
+          reject(new Error(errorType || "Print failed"));
+        } else {
+          resolve();
+        }
+
+        setTimeout(() => {
+          printWindowManager.recycleWindow("invoice");
+        }, 300);
+      });
+    });
+  });
+}
+
+module.exports = { printInvoice, printCustomInvoice };
+
