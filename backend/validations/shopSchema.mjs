@@ -59,6 +59,7 @@ export const shopSchema = z.object({
   language: z.string().default("en"),
   round_off_total: z.boolean().default(true),
   show_discount_column: z.boolean().default(true),
+  enable_item_wise_sid: z.coerce.boolean().optional().nullable().default(false),
   barcode_prefix: z.string(),
   enable_auto_backup: z.boolean().default(false),
   backup_path: z.string().optional(),

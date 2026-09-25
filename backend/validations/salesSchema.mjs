@@ -42,6 +42,10 @@ export const saleItemSchema = z.object({
   batch_id: z.number().int().optional().nullable(),
   serial_id: z.number().int().optional().nullable(),
 
+  // Salesperson / SID Fields
+  employee_id: z.number().int().optional().nullable(),
+  employee_name: z.string().optional().nullable(),
+
   //unit
   unit: z.string().optional().nullable(),
   return_quantity: z.number().optional().nullable(),

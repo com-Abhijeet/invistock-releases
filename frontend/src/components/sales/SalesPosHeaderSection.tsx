@@ -107,7 +107,7 @@ export default function SalesPosHeaderSection({
   const employeeOptions: AutoSuggestOption[] = useMemo(() => {
     return employees.map((e) => ({
       id: e.id,
-      name: e.name,
+      name: `#${e.id} - ${e.name}`,
       code: e.role,
     }));
   }, [employees]);
@@ -363,12 +363,16 @@ export default function SalesPosHeaderSection({
           {/* 4. Personnel Selection (Extra Width) */}
           <Box sx={{ ...containerSx, flexGrow: 1.5, minWidth: 180 }}>
             <Briefcase size={14} color={theme.palette.text.disabled} />
-            <Typography sx={labelSx}>STAFF</Typography>
+            <Typography sx={labelSx}>STAFF / SID</Typography>
             <AutoSuggestInput
               id="pos-staff-input"
-              value={selectedEmployee ? selectedEmployee.name : ""}
+              value={
+                selectedEmployee
+                  ? `#${selectedEmployee.id} - ${selectedEmployee.name}`
+                  : ""
+              }
               options={employeeOptions}
-              placeholder="Billed By..."
+              placeholder="Search ID or Name..."
               disabled={mode === "view"}
               allowCreate={false}
               variant="standard"
@@ -377,14 +381,34 @@ export default function SalesPosHeaderSection({
                 (employeeInputRef as any).current = el;
               }}
               onChange={(val) => {
+                if (!val) {
+                  handleFieldChange("employee_id", null);
+                  return;
+                }
+                const strVal = String(val).trim().toLowerCase();
+                const cleanId = strVal.replace(/^#/, "").split(" ")[0];
                 const emp = employees.find(
                   (e) =>
                     e.id === val ||
-                    e.name.toLowerCase() === String(val).toLowerCase(),
+                    String(e.id) === cleanId ||
+                    e.name.toLowerCase() === strVal ||
+                    `#${e.id} - ${e.name}`.toLowerCase() === strVal,
                 );
                 handleFieldChange("employee_id", emp ? emp.id : null);
               }}
               onNext={() => {
+                const focusFirstItemField = () => {
+                  const candidateIds = ["sid-0", "product-0"];
+                  for (const id of candidateIds) {
+                    const el = document.getElementById(id);
+                    if (el && !el.hasAttribute("disabled")) {
+                      el.focus();
+                      return true;
+                    }
+                  }
+                  return false;
+                };
+
                 if (showMore) {
                   const firstExpanded = document.getElementById(
                     "billing-gstin-override",
@@ -395,10 +419,8 @@ export default function SalesPosHeaderSection({
                   }
                 }
 
-                // Details are collapsed: proceed directly to line item
-                const firstProductInput = document.getElementById("product-0");
-                if (firstProductInput) {
-                  firstProductInput.focus();
+                // Details are collapsed: proceed directly to first available line item field
+                if (focusFirstItemField()) {
                   return;
                 }
 
@@ -407,7 +429,7 @@ export default function SalesPosHeaderSection({
                 if (addLineBtn) {
                   addLineBtn.click();
                   setTimeout(() => {
-                    document.getElementById("product-0")?.focus();
+                    focusFirstItemField();
                   }, 120);
                   return;
                 }

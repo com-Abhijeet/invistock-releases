@@ -55,6 +55,9 @@ function enrichInvoiceData(payload) {
     return {
       sl_no: idx + 1,
       ...item,
+      sid: item.employee_id || sale.employee_id || "",
+      employee_id: item.employee_id || sale.employee_id || "",
+      employee_name: item.employee_name || sale.employee_name || "",
       name: item.product_name || item.name || "Item",
       code: item.barcode || item.product_code || "",
       hsn: item.hsn || item.hsn_code || item.hsn_sac || item.product?.hsn || "",

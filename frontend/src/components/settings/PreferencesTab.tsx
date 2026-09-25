@@ -168,6 +168,22 @@ export default function PreferencesTab({ data, onChange }: Props) {
                         </Typography>
                       }
                     />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={Boolean(data.enable_item_wise_sid)}
+                          onChange={(e) =>
+                            onChange("enable_item_wise_sid", e.target.checked)
+                          }
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          Enable Item-Wise Salesperson (SID) Tracking
+                        </Typography>
+                      }
+                    />
                   </Stack>
                 </Box>
               </Stack>

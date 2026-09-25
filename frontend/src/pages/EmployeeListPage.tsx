@@ -149,6 +149,19 @@ export default function EmployeeListPage() {
 
   const columns = [
     {
+      key: "id",
+      label: "ID / SID",
+      format: (val: number) => (
+        <Chip
+          label={`#${val}`}
+          size="small"
+          color="primary"
+          variant="outlined"
+          sx={{ fontWeight: "bold" }}
+        />
+      ),
+    },
+    {
       key: "name",
       label: "Name",
       format: (val: string, row: Employee) => (

@@ -147,8 +147,13 @@ export function createSaleWithItems(saleData) {
     }
 
     // 4. Record Employee Commission
-    if (employee_id && !is_quote) {
-      EmployeeSalesService.recordCommission(saleId, employee_id, total_amount);
+    if (!is_quote) {
+      EmployeeSalesService.recordSaleCommissions(
+        saleId,
+        items,
+        employee_id,
+        total_amount,
+      );
     }
 
     // 5. Create Payment Transaction
@@ -242,14 +247,12 @@ export async function updateSaleWithItemsService(saleId, newData) {
 
     // 4. Handle Commission Changes
     if (!newData.is_quote) {
-      db.prepare("DELETE FROM employee_sales WHERE sale_id = ?").run(saleId);
-      if (newData.employee_id) {
-        EmployeeSalesService.recordCommission(
-          saleId,
-          newData.employee_id,
-          newData.total_amount,
-        );
-      }
+      EmployeeSalesService.recordSaleCommissions(
+        saleId,
+        newData.items,
+        newData.employee_id,
+        newData.total_amount,
+      );
     }
 
     // 5. Handle Payment Delta
@@ -308,6 +311,7 @@ export async function deleteSaleByIdService(saleId) {
   for (const item of items) {
     await updateProductStockById(item.product_id, item.quantity);
   }
+  EmployeeSalesService.recordSaleCommissions(saleId, [], null, 0);
   await deleteSale(saleId);
   return { message: "Sale and items deleted with stock rollback" };
 }

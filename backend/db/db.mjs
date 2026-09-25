@@ -401,6 +401,7 @@ export function initializeDatabase(dbPath) {
       barcode_prefix TEXT,
       enable_auto_backup INTEGER DEFAULT 0,
       backup_path TEXT,
+      enable_item_wise_sid INTEGER DEFAULT 0,
       shop_alias TEXT,
       use_alias_on_bills INTEGER DEFAULT 0,
       sale_invoice_counter INTEGER DEFAULT 0,
@@ -902,11 +903,13 @@ export function initializeDatabase(dbPath) {
     console.warn("[DB] customer_phone backfill warning:", e.message);
   }
 
+  safeMigrate(db, "shop", "enable_item_wise_sid", "INTEGER DEFAULT 0");
   safeMigrate(db, "sales_items", "product_name", "TEXT");
   safeMigrate(db, "sales_items", "description", "TEXT");
   safeMigrate(db, "sales_items", "barcode", "TEXT");
   safeMigrate(db, "sales_items", "hsn", "TEXT");
   safeMigrate(db, "sales_items", "return_quantity", "INTEGER");
+  safeMigrate(db, "sales_items", "employee_id", "INTEGER");
   safeMigrate(db, "purchase_items", "return_quantity", "REAL DEFAULT 0");
 
   // 6. EXECUTE NON-GST SCHEMA (Standard Default)

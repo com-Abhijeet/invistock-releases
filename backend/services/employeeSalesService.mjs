@@ -31,6 +31,57 @@ export function recordCommission(saleId, employeeId, saleAmount) {
 }
 
 /**
+ * Calculates and records employee commissions for a sale (item-wise or header fallback).
+ * Automatically handles multiple employees per voucher if items belong to different SIDs.
+ */
+export function recordSaleCommissions(
+  saleId,
+  items = [],
+  headerEmployeeId = null,
+  totalSaleAmount = 0,
+) {
+  // Clear any existing commission records for this sale
+  EmployeeSalesRepo.deleteEmployeeSalesBySaleId(saleId);
+
+  const employeeTotals = new Map();
+
+  if (Array.isArray(items) && items.length > 0) {
+    for (const item of items) {
+      const empId = item.employee_id || headerEmployeeId;
+      if (empId) {
+        const itemPrice = parseFloat(item.price || 0);
+        const currentTotal = employeeTotals.get(empId) || 0;
+        employeeTotals.set(empId, currentTotal + itemPrice);
+      }
+    }
+  }
+
+  // Fallback to header employee if items were empty or produced no employee totals
+  if (employeeTotals.size === 0 && headerEmployeeId && totalSaleAmount > 0) {
+    employeeTotals.set(headerEmployeeId, parseFloat(totalSaleAmount));
+  }
+
+  const results = [];
+  for (const [empId, saleAmount] of employeeTotals.entries()) {
+    const employee = EmployeeRepo.getEmployeeById(empId);
+    if (employee) {
+      const commissionRate = parseFloat(employee.commission_rate || 0);
+      const commissionAmount = (saleAmount * commissionRate) / 100;
+
+      const created = EmployeeSalesRepo.createEmployeeSale({
+        employee_id: empId,
+        sale_id: saleId,
+        sale_amount: saleAmount,
+        commission_amount: commissionAmount,
+      });
+      results.push(created);
+    }
+  }
+
+  return results;
+}
+
+/**
  * Retrieves all employee sales records.
  */
 export function getAllEmployeeSales() {

@@ -89,6 +89,15 @@ export function updateEmployeeSale(id, data) {
 }
 
 /**
+ * Deletes all employee sale records for a given sale_id.
+ */
+export function deleteEmployeeSalesBySaleId(saleId) {
+  const stmt = db.prepare("DELETE FROM employee_sales WHERE sale_id = ?");
+  const result = stmt.run(saleId);
+  return result.changes > 0;
+}
+
+/**
  * Deletes an employee sale record.
  */
 export function deleteEmployeeSale(id) {
