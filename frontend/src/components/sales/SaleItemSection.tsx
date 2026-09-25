@@ -102,7 +102,7 @@ const UNIT_GROUPS = [
   ["pcs", "doz", "gross"],
 ];
 
-const defaultItem = (): SaleItemRow => ({
+const defaultItem = (headerEmployeeId?: number | null): SaleItemRow => ({
   sr_no: "",
   product_id: 0,
   product_name: "",
@@ -118,12 +118,15 @@ const defaultItem = (): SaleItemRow => ({
   unit: "pcs",
   barcode: "",
   description: "",
+  employee_id: headerEmployeeId || null,
 });
 
 interface SaleItemSectionProps {
   items: SaleItemRow[];
   onItemsChange: (items: SaleItemRow[]) => void;
   mode: "new" | "view";
+  employees?: any[];
+  headerEmployeeId?: number | null;
   onOpenOverview: (productId: string) => void;
   isOverviewOpen?: boolean;
   onCloseOverview?: () => void;
@@ -133,6 +136,8 @@ export default function SaleItemSection({
   items,
   onItemsChange,
   mode,
+  employees,
+  headerEmployeeId,
 }: SaleItemSectionProps) {
   const theme = useTheme();
   const [productsList, setProductsList] = useState<Product[]>([]);
@@ -177,13 +182,21 @@ export default function SaleItemSection({
     localStorage.setItem("kosh_pos_show_desc", showDescriptionRow.toString());
   }, [showDescriptionRow]);
 
+  const getFirstRowField = (): string => {
+    return shop?.enable_item_wise_sid ? "sid" : "product";
+  };
+
   const focusInput = (rowIdx: number, field: string) => {
-    const key = `${rowIdx}-${field}`;
-    const el = gridRefs.current[key];
+    const targetField = field === "first" ? getFirstRowField() : field;
+    const key = `${rowIdx}-${targetField}`;
+    const el =
+      gridRefs.current[key] || document.getElementById(`${targetField}-${rowIdx}`);
     if (el) {
       el.focus();
-      if (el.tagName === "INPUT") el.select();
+      if ((el as any).tagName === "INPUT") (el as any).select();
+      return true;
     }
+    return false;
   };
 
   // Keyboard Shortcuts
@@ -198,12 +211,12 @@ export default function SaleItemSection({
         if (!lastItem || lastItem.product_id !== 0) {
           onItemsChange([
             ...items,
-            { ...defaultItem(), price_type: globalPriceType },
+            { ...defaultItem(headerEmployeeId), price_type: globalPriceType },
           ]);
           toast.success("New line added");
         } else {
           toast.error("Complete the current row first");
-          focusInput(items.length - 1, "product");
+          focusInput(items.length - 1, "first");
         }
       }
 
@@ -214,7 +227,7 @@ export default function SaleItemSection({
           const newItems = [...items];
           newItems.splice(activeRowIndex, 1);
           if (newItems.length === 0) {
-            newItems.push({ ...defaultItem(), price_type: globalPriceType });
+            newItems.push({ ...defaultItem(headerEmployeeId), price_type: globalPriceType });
           }
           onItemsChange(newItems);
 
@@ -235,7 +248,7 @@ export default function SaleItemSection({
   // Always ensure at least 1 item row exists in new/edit mode
   useEffect(() => {
     if (mode !== "view" && items.length === 0) {
-      onItemsChange([{ ...defaultItem(), price_type: globalPriceType }]);
+      onItemsChange([{ ...defaultItem(headerEmployeeId), price_type: globalPriceType }]);
     }
   }, [items.length, mode, globalPriceType, onItemsChange]);
 
@@ -275,7 +288,7 @@ export default function SaleItemSection({
         if (prevItemsLength.current > 0 && items[lastIndex].product_id === 0) {
           if (!isQuickBarcodeScan.current) {
             setTimeout(() => {
-              focusInput(lastIndex, "product");
+              focusInput(lastIndex, "first");
             }, 100); // slight delay to allow the new row to render in DOM
           } else {
             isQuickBarcodeScan.current = false;
@@ -607,7 +620,7 @@ export default function SaleItemSection({
             newItems[existingIndex],
           );
           if (!newItems.some((i) => !i.product_id)) {
-            newItems.push({ ...defaultItem(), price_type: globalPriceType });
+            newItems.push({ ...defaultItem(headerEmployeeId), price_type: globalPriceType });
           }
           onItemsChange(newItems);
           toast.success(`Incremented quantity: ${result.product.name}`);
@@ -618,7 +631,7 @@ export default function SaleItemSection({
 
           if (emptyIndex === -1) {
             emptyIndex = newItems.length;
-            newItems.push({ ...defaultItem(), price_type: globalPriceType });
+            newItems.push({ ...defaultItem(headerEmployeeId), price_type: globalPriceType });
           }
 
           const currentItem = newItems[emptyIndex];
@@ -685,7 +698,7 @@ export default function SaleItemSection({
 
           // Always ensure there is an empty row at the bottom for manual entry
           if (emptyIndex === newItems.length - 1) {
-            newItems.push({ ...defaultItem(), price_type: globalPriceType });
+            newItems.push({ ...defaultItem(headerEmployeeId), price_type: globalPriceType });
           }
 
           onItemsChange(newItems);
@@ -817,7 +830,7 @@ export default function SaleItemSection({
     const newItems = [...items];
     newItems.splice(idx, 1);
     if (newItems.length === 0) {
-      newItems.push({ ...defaultItem(), price_type: globalPriceType });
+      newItems.push({ ...defaultItem(headerEmployeeId), price_type: globalPriceType });
     }
     onItemsChange(newItems);
   };
@@ -875,6 +888,7 @@ export default function SaleItemSection({
     if (mode === "view") return;
 
     const getNextField = (curField: string): string | null => {
+      if (curField === "sid") return "product";
       if (curField === "product" || curField === "barcode") return "quantity";
       if (curField === "quantity") return "unit";
       if (curField === "unit") return "rate";
@@ -889,7 +903,8 @@ export default function SaleItemSection({
       if (curField === "rate") return "unit";
       if (curField === "unit") return "quantity";
       if (curField === "quantity") return "barcode";
-      if (curField === "barcode") return "product";
+      if (curField === "barcode" || curField === "product")
+        return shop?.enable_item_wise_sid ? "sid" : null;
       return null;
     };
 
@@ -931,10 +946,10 @@ export default function SaleItemSection({
         if (idx === items.length - 1 && items[idx].product_id !== 0) {
           onItemsChange([
             ...items,
-            { ...defaultItem(), price_type: globalPriceType },
+            { ...defaultItem(headerEmployeeId), price_type: globalPriceType },
           ]);
         } else if (idx < items.length - 1) {
-          focusInput(idx + 1, "product");
+          focusInput(idx + 1, "first");
         }
       }
     } else if (e.key === "ArrowDown" && idx < items.length - 1) {
@@ -1155,6 +1170,9 @@ export default function SaleItemSection({
               {!!shop?.hsn_required && (
                 <TableCell sx={{ ...headerSx, width: "8%" }}>HSN</TableCell>
               )}
+              {!!shop?.enable_item_wise_sid && (
+                <TableCell sx={{ ...headerSx, width: "7%" }}>SID</TableCell>
+              )}
               <TableCell sx={{ ...headerSx, width: "20%" }}>
                 PRODUCT SEARCH
               </TableCell>
@@ -1225,6 +1243,81 @@ export default function SaleItemSection({
                         }}
                       >
                         {item.hsn || product?.hsn || "—"}
+                      </TableCell>
+                    )}
+                    {!!shop?.enable_item_wise_sid && (
+                      <TableCell>
+                        <Box sx={fieldBoxSx(isActive)}>
+                          {mode === "view" ? (
+                            <Typography
+                              variant="body2"
+                              sx={{ fontSize: "0.8rem", fontWeight: 700 }}
+                            >
+                              {item.employee_id
+                                ? `#${item.employee_id} ${
+                                    item.employee_name ||
+                                    employees?.find(
+                                      (e: any) => e.id === item.employee_id,
+                                    )?.name ||
+                                    ""
+                                  }`
+                                : "—"}
+                            </Typography>
+                          ) : (
+                            <TextField
+                              id={`sid-${idx}`}
+                              inputRef={(el) => (gridRefs.current[`${idx}-sid`] = el)}
+                              variant="standard"
+                              size="small"
+                              placeholder="ID"
+                              value={
+                                item.employee_id ? String(item.employee_id) : ""
+                              }
+                              onChange={(e) => {
+                                const rawVal = e.target.value
+                                  .trim()
+                                  .replace(/^#/, "");
+                                const parsedId = rawVal
+                                  ? parseInt(rawVal, 10)
+                                  : null;
+                                const emp = employees?.find(
+                                  (emp: any) =>
+                                    emp.id === parsedId ||
+                                    String(emp.id) === rawVal ||
+                                    emp.name.toLowerCase() ===
+                                      rawVal.toLowerCase(),
+                                );
+                                const newItems = [...items];
+                                newItems[idx] = {
+                                  ...newItems[idx],
+                                  employee_id: emp
+                                    ? emp.id
+                                    : parsedId && !isNaN(parsedId)
+                                      ? parsedId
+                                      : null,
+                                  employee_name: emp ? emp.name : undefined,
+                                };
+                                onItemsChange(newItems);
+                              }}
+                              onKeyDown={(e) => handleGridKeyDown(e, idx, "sid")}
+                              InputProps={{
+                                disableUnderline: true,
+                                sx: {
+                                  fontSize: "0.8rem",
+                                  fontWeight: 700,
+                                  px: 0.5,
+                                },
+                              }}
+                              title={
+                                item.employee_id
+                                  ? employees?.find(
+                                      (e: any) => e.id === item.employee_id,
+                                    )?.name || "Employee #" + item.employee_id
+                                  : "Salesperson ID"
+                              }
+                            />
+                          )}
+                        </Box>
                       </TableCell>
                     )}
 
@@ -1710,7 +1803,7 @@ export default function SaleItemSection({
             onClick={() =>
               onItemsChange([
                 ...items,
-                { ...defaultItem(), price_type: globalPriceType },
+                { ...defaultItem(headerEmployeeId), price_type: globalPriceType },
               ])
             }
             sx={{

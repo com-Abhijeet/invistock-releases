@@ -15,6 +15,8 @@ export interface SaleItemPayload {
   unit?: string | null;
   batch_id?: number | null;
   serial_id?: number | null;
+  employee_id?: number | null;
+  employee_name?: string | null;
 }
 
 /**
@@ -87,6 +89,8 @@ export interface SaleItem {
   unit?: string | null;
   batch_id?: number | null;
   serial_id?: number | null;
+  employee_id?: number | null;
+  employee_name?: string | null;
 
   // Joined fields from repository
   base_unit?: string | null;

@@ -111,6 +111,7 @@ export default function ShopSetupWizard({ onSuccess }: Props) {
     language: "en",
     round_off_total: true,
     show_discount_column: true,
+    enable_item_wise_sid: false,
     barcode_prefix: "",
     enable_auto_backup: true,
     backup_path: "",

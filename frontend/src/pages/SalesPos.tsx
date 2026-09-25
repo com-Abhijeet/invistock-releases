@@ -871,8 +871,11 @@ export default function SalesPos() {
             ...item,
             batch_id: item.batch_id ?? undefined,
             serial_id: item.serial_id ?? undefined,
+            employee_id: item.employee_id ?? undefined,
           }))}
           onItemsChange={handleItemsChange}
+          employees={employees}
+          headerEmployeeId={sale.employee_id}
           mode={mode === "edit" ? "new" : mode}
           onOpenOverview={handleOpenOverview}
         />

@@ -60,6 +60,7 @@ export type ShopSetupForm = {
   language: string;
   round_off_total: boolean;
   show_discount_column: boolean;
+  enable_item_wise_sid?: boolean;
   barcode_prefix: string;
   enable_auto_backup: boolean;
   backup_path: string;
