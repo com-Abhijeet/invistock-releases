@@ -680,7 +680,7 @@ export default function AutoSuggestInput({
           style={{
             minWidth: Math.max(containerRef.current?.clientWidth || 0, 260),
             width: containerRef.current?.clientWidth || "auto",
-            zIndex: 1200,
+            zIndex: 1400,
           }}
         >
           <Paper
