@@ -63,11 +63,46 @@ export interface UserReleaseNote {
  */
 export const USER_PATCH_NOTES: UserReleaseNote[] = [
   {
-    version: rootPackageJson.version || "2.0.5",
+    version: rootPackageJson.version || "2.1.0",
+    date: "September 27, 2026",
+    title:
+      "Direct Variant POS Selector, Multi-Column Label Printing & Manual Variant Matrix",
+    isLatest: true,
+    howToUse: [
+      {
+        title: "Direct Variant Selector in POS Billing",
+        desc: "When selecting tracked products in POS Billing, choose directly between 'By Variants' and 'By Batches' tabs. View Article No, Size, Color, Barcode, Stock Qty, MRP, and Selling Price live. Filter variants instantly with the search bar or navigate with Arrow keys + Enter.",
+        shortcut: "POS Variant Selector",
+      },
+      {
+        title: "Multi-Column Barcode Label Printing (2-Up / 3-Up)",
+        desc: "Configure global Label Print Settings for 1-Up, 2-Up, or 3-Up sticker sheets. Set column counts, gaps, and margins to print labels seamlessly across Products, Batches, Variants, and Purchase vouchers.",
+        shortcut: "Multi-Col Label Printing",
+      },
+      {
+        title: "Variant Matrix in Manual Batch Entry",
+        desc: "Add size and color variants directly during manual batch creation without requiring a purchase voucher. Open the Variant Matrix modal inside Create Batch.",
+        shortcut: "Manual Variant Entry",
+      },
+    ],
+    whatImproved: [
+      "0ms Instant Selector Speed: Product variants and batches are cached in memory so re-opening the item selector in POS Billing loads with zero waiting time.",
+      "Smart Tab Memory: POS Billing automatically remembers your preferred view ('By Variants' vs 'By Batches') across sessions.",
+      "Accurate Barcode Scanning: Scanning different variants of the same product (e.g. Size S vs Size L) adds them as distinct individual line items with their respective prices.",
+      "Clean Label Pricing: Displays MRP in bold strikethrough only when a lower offer price (MOP) is set, keeping standard labels clean and readable.",
+      "Streamlined Product View Layout: Opening a product detail page from the stock table now starts smoothly at the top with organized action dropdown menus.",
+    ],
+    whatFixed: [
+      "POS Selector Overlay Fix: Resolved an issue where product search popups overlapped the selection modal, ensuring clicks and Enter key selections work instantly.",
+      "Correct Variant Line Items: Prevented different variant barcodes from merging quantity into wrong item rows during quick barcode scanning.",
+    ],
+  },
+  {
+    version: "2.0.5",
     date: "September 20, 2026",
     title:
       "WhatsApp API Integration, Superfast Keyboard Entry & Tally Navigator",
-    isLatest: true,
+    isLatest: false,
     howToUse: [
       {
         title: "WhatsApp API & Automated Invoicing",
