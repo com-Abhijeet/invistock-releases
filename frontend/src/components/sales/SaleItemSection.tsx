@@ -30,10 +30,13 @@ import {
   FormControlLabel,
   Divider,
   Tooltip,
+  InputAdornment,
 } from "@mui/material";
 import { useEffect, useRef, useState, Fragment, useMemo, useCallback } from "react";
 import { getAllProducts } from "../../lib/api/productService";
 import { getProductBatches, scanBarcodeItem } from "../../lib/api/batchService";
+import { getVariantsByProductId } from "../../lib/api/variantService";
+import type { BatchVariant } from "../../types/variant";
 import type { Product } from "../../lib/types/product";
 import type { SaleItemPayload } from "../../lib/types/salesTypes";
 import { getShopData } from "../../lib/api/shopService";
@@ -46,6 +49,10 @@ import {
   MessageSquareText,
   ChevronDown,
   RotateCcw,
+  Layers,
+  Boxes,
+  Search,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import AutoSuggestInput, {
@@ -61,6 +68,11 @@ type SaleItemRow = SaleItemPayload & {
   serial_id?: number;
   batch_number?: string;
   serial_number?: string;
+
+  // Variant attributes
+  article_no?: string;
+  dim1_value?: string;
+  dim2_value?: string;
 
   // Pricing snapshots
   batch_mrp?: number;
@@ -162,11 +174,61 @@ export default function SaleItemSection({
   );
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [availableBatches, setAvailableBatches] = useState<any[]>([]);
+  const [availableVariants, setAvailableVariants] = useState<BatchVariant[]>([]);
+  const [selectorViewMode, setSelectorViewMode] = useState<"variants" | "batches">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("pos_selector_view_mode");
+      if (saved === "batches" || saved === "variants") return saved;
+    }
+    return "variants";
+  });
+  const [selectorSearch, setSelectorSearch] = useState("");
+  const batchCacheRef = useRef<Record<number, any[]>>({});
+  const variantCacheRef = useRef<Record<number, BatchVariant[]>>({});
+
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [scanningRowIndex, setScanningRowIndex] = useState<number | null>(null);
   const [focusedBatchIndex, setFocusedBatchIndex] = useState(0);
+
+  const handleViewModeChange = (mode: "variants" | "batches") => {
+    setSelectorViewMode(mode);
+    setFocusedBatchIndex(0);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("pos_selector_view_mode", mode);
+    }
+  };
+
+  const filteredVariants = useMemo(() => {
+    if (!selectorSearch.trim()) return availableVariants;
+    const q = selectorSearch.toLowerCase().trim();
+    return availableVariants.filter((v) => {
+      const art = (v.article_no || "").toLowerCase();
+      const s = (v.dim1_value || "").toLowerCase();
+      const c = (v.dim2_value || "").toLowerCase();
+      const b = (v.barcode || "").toLowerCase();
+      const bn = (v.batch_number || "").toLowerCase();
+      return (
+        art.includes(q) ||
+        s.includes(q) ||
+        c.includes(q) ||
+        b.includes(q) ||
+        bn.includes(q)
+      );
+    });
+  }, [availableVariants, selectorSearch]);
+
+  const filteredBatches = useMemo(() => {
+    if (!selectorSearch.trim()) return availableBatches;
+    const q = selectorSearch.toLowerCase().trim();
+    return availableBatches.filter((b) => {
+      const bn = (b.batch_number || "").toLowerCase();
+      const sn = (b.serial_number || "").toLowerCase();
+      const mrp = String(b.mrp || "");
+      return bn.includes(q) || sn.includes(q) || mrp.includes(q);
+    });
+  }, [availableBatches, selectorSearch]);
 
   const prevItemsLength = useRef(items.length);
 
@@ -416,56 +478,97 @@ export default function SaleItemSection({
     product: Product | null,
   ) => {
     if (!product) return;
-    setProductCache((prev) => ({ ...prev, [product.id!]: product }));
-    if (
-      product.tracking_type === "batch" ||
-      product.tracking_type === "serial"
-    ) {
-      setLoadingBatches(true);
-      try {
-        const batchData = await getProductBatches(
-          product.id!,
-          product.tracking_type,
-        );
-
-        let useQueue = true;
-        if (typeof window !== "undefined") {
-          const storedQueue = localStorage.getItem("pos_use_queue");
-          if (storedQueue !== null) {
-            useQueue = storedQueue === "true";
-          }
-        }
-
-        // If Queue is ON and product is batch-tracked, auto-pick top batch without asking
-        if (
-          product.tracking_type === "batch" &&
-          useQueue &&
-          batchData &&
-          batchData.length > 0
-        ) {
-          const topBatch = batchData[0];
-          addItemToTable(index, product, topBatch);
-          toast.success(
-            `Auto-selected Queue batch: ${topBatch.batch_number || "DEFAULT"}`,
-          );
-          setTimeout(() => focusInput(index, "quantity"), 50);
-          return;
-        }
-
-        // Otherwise (queue OFF or serial tracked), show manual selection modal
-        setPendingItemIndex(index);
-        setPendingProduct(product);
-        setAvailableBatches(batchData);
-        setFocusedBatchIndex(0);
-        setBatchModalOpen(true);
-      } catch (err) {
-        toast.error("Failed to load batches");
-      } finally {
-        setLoadingBatches(false);
-      }
-      return;
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
     }
-    addItemToTable(index, product);
+    setProductCache((prev) => ({ ...prev, [product.id!]: product }));
+    setLoadingBatches(true);
+    try {
+      const productId = product.id!;
+      let batchData = batchCacheRef.current[productId];
+      let variantData = variantCacheRef.current[productId];
+
+      if (!batchData || !variantData) {
+        const [fetchedBatches, fetchedVariants] = await Promise.all([
+          getProductBatches(productId, product.tracking_type === "serial" ? "serial" : "batch").catch(() => []),
+          getVariantsByProductId(productId).catch(() => []),
+        ]);
+        batchData = fetchedBatches || [];
+        variantData = fetchedVariants || [];
+        batchCacheRef.current[productId] = batchData;
+        variantCacheRef.current[productId] = variantData;
+      }
+
+      // If untracked product with 0 variants and 0 batches, add directly to table!
+      if (
+        product.tracking_type !== "batch" &&
+        product.tracking_type !== "serial" &&
+        variantData.length === 0 &&
+        batchData.length === 0
+      ) {
+        addItemToTable(index, product);
+        setTimeout(() => focusInput(index, "quantity"), 50);
+        return;
+      }
+
+      let useQueue = true;
+      if (typeof window !== "undefined") {
+        const storedQueue = localStorage.getItem("pos_use_queue");
+        if (storedQueue !== null) {
+          useQueue = storedQueue === "true";
+        }
+      }
+
+      // If Queue is ON, product is batch-tracked, active mode is batches, and batches exist: auto-pick top batch
+      if (
+        product.tracking_type === "batch" &&
+        useQueue &&
+        selectorViewMode === "batches" &&
+        batchData &&
+        batchData.length > 0
+      ) {
+        const topBatch = batchData[0];
+        addItemToTable(index, product, topBatch);
+        toast.success(
+          `Auto-selected Queue batch: ${topBatch.batch_number || "DEFAULT"}`,
+        );
+        setTimeout(() => focusInput(index, "quantity"), 50);
+        return;
+      }
+
+      // Otherwise, open selection modal for variants / batches
+      setPendingItemIndex(index);
+      setPendingProduct(product);
+      setAvailableBatches(batchData);
+      setAvailableVariants(variantData);
+      setSelectorSearch("");
+      setFocusedBatchIndex(0);
+      setBatchModalOpen(true);
+    } catch (err) {
+      toast.error("Failed to load product batches & variants");
+    } finally {
+      setLoadingBatches(false);
+    }
+  };
+
+  const handleVariantSelect = (variant: BatchVariant) => {
+    const variantInfo = {
+      ...variant,
+      variant_id: variant.id,
+      batch_id: variant.batch_id,
+      batch_number: variant.batch_number,
+      article_no: variant.article_no,
+      dim1_value: variant.dim1_value,
+      dim2_value: variant.dim2_value,
+      mrp: variant.mrp,
+      mop: variant.mop,
+      barcode: variant.barcode,
+    };
+    if (pendingItemIndex !== null && pendingProduct) {
+      addItemToTable(pendingItemIndex, pendingProduct, variantInfo, variant.barcode || "");
+      setTimeout(() => focusInput(pendingItemIndex, "quantity"), 50);
+    }
+    setBatchModalOpen(false);
   };
 
   const handleBarcodeScan = async (index: number, code: string) => {
@@ -484,8 +587,20 @@ export default function SaleItemSection({
             : [result.product, ...prev],
         );
         let batchInfo = null;
-        if (result.type === "batch") batchInfo = result.batch;
-        else if (result.type === "serial" && result.serial) {
+        if (result.type === "batch") {
+          batchInfo = result.batch;
+        } else if (result.type === "variant") {
+          batchInfo = {
+            ...result.batch,
+            variant_id: result.variant?.id,
+            article_no: result.variant?.article_no,
+            dim1_value: result.variant?.dim1_value,
+            dim2_value: result.variant?.dim2_value,
+            mrp: result.variant?.mrp ?? result.batch?.mrp ?? result.product?.mrp,
+            mop: result.variant?.mop ?? result.variant?.cost_price ?? result.batch?.mop ?? result.product?.mop,
+            mfw_price: result.batch?.mfw_price ?? result.product?.mfw_price,
+          };
+        } else if (result.type === "serial" && result.serial) {
           batchInfo = {
             ...result.batch,
             id: result.serial.id,
@@ -539,14 +654,18 @@ export default function SaleItemSection({
       product_id: product.id!,
       product_name: product.name,
       hsn: product.hsn || currentItem.hsn || "",
-      barcode: scannedBarcode || product.barcode || currentItem.barcode || "",
+      barcode: batchInfo?.barcode || scannedBarcode || product.barcode || currentItem.barcode || "",
       description: currentItem.description || product.description || "",
       rate: baseRate,
       gst_rate: product.gst_rate ?? 0,
       quantity: 1,
       unit: defaultUnit,
       tracking_type: product.tracking_type,
-      batch_id: batchInfo?.id,
+      batch_id: batchInfo?.batch_id || batchInfo?.id,
+      variant_id: batchInfo?.variant_id || (batchInfo?.id && batchInfo?.article_no ? batchInfo.id : undefined),
+      article_no: batchInfo?.article_no || undefined,
+      dim1_value: batchInfo?.dim1_value || undefined,
+      dim2_value: batchInfo?.dim2_value || undefined,
       batch_number: batchInfo?.batch_number,
       serial_number: batchInfo?.serial_number,
       batch_mrp: bMrp,
@@ -560,7 +679,7 @@ export default function SaleItemSection({
       newItem.serial_id = batchInfo.id;
       if (batchInfo.batch_id) newItem.batch_id = batchInfo.batch_id;
     } else if (product.tracking_type === "batch" && batchInfo) {
-      newItem.batch_id = batchInfo.id;
+      newItem.batch_id = batchInfo.batch_id || batchInfo.id;
     }
 
     newItem.price = calculateItemPrice(newItem);
@@ -593,8 +712,20 @@ export default function SaleItemSection({
         }));
 
         let batchInfo = null;
-        if (result.type === "batch") batchInfo = result.batch;
-        else if (result.type === "serial" && result.serial) {
+        if (result.type === "batch") {
+          batchInfo = result.batch;
+        } else if (result.type === "variant") {
+          batchInfo = {
+            ...result.batch,
+            variant_id: result.variant?.id,
+            article_no: result.variant?.article_no,
+            dim1_value: result.variant?.dim1_value,
+            dim2_value: result.variant?.dim2_value,
+            mrp: result.variant?.mrp ?? result.batch?.mrp ?? result.product?.mrp,
+            mop: result.variant?.mop ?? result.variant?.cost_price ?? result.batch?.mop ?? result.product?.mop,
+            mfw_price: result.batch?.mfw_price ?? result.product?.mfw_price,
+          };
+        } else if (result.type === "serial" && result.serial) {
           batchInfo = {
             ...result.batch,
             id: result.serial.id,
@@ -603,11 +734,35 @@ export default function SaleItemSection({
           };
         }
 
-        const existingIndex = items.findIndex(
-          (i) =>
-            i.product_id === result.product.id &&
-            (!batchInfo || i.batch_id === batchInfo.id),
-        );
+        const targetBatchId = batchInfo?.batch_id || batchInfo?.id || undefined;
+        const targetVariantId = batchInfo?.variant_id || undefined;
+        const targetSerialNumber = batchInfo?.serial_number || undefined;
+        const targetBarcode = code || result.variant?.barcode || result.batch?.barcode || result.product?.barcode;
+
+        const existingIndex = items.findIndex((i) => {
+          if (!i.product_id || i.product_id !== result.product.id) return false;
+
+          // If variant item, compare variant_id or barcode
+          if (targetVariantId || i.variant_id) {
+            return (
+              i.variant_id === targetVariantId ||
+              (Boolean(i.barcode && targetBarcode) && i.barcode === targetBarcode)
+            );
+          }
+
+          // If serial item, compare serial_number
+          if (targetSerialNumber || i.serial_number) {
+            return i.serial_number === targetSerialNumber;
+          }
+
+          // If batch item (without variant/serial), compare batch_id
+          if (targetBatchId || i.batch_id) {
+            return i.batch_id === targetBatchId;
+          }
+
+          // Non-tracked item (no batch, variant, or serial)
+          return !i.batch_id && !i.variant_id && !i.serial_number;
+        });
 
         if (existingIndex !== -1) {
           // Increment quantity
@@ -676,7 +831,8 @@ export default function SaleItemSection({
             quantity: 1,
             unit: defaultUnit,
             tracking_type: result.product.tracking_type,
-            batch_id: batchInfo?.id,
+            batch_id: batchInfo?.batch_id || batchInfo?.id,
+            variant_id: batchInfo?.variant_id || undefined,
             batch_number: batchInfo?.batch_number,
             serial_number: batchInfo?.serial_number,
             batch_mrp: bMrp,
@@ -690,7 +846,7 @@ export default function SaleItemSection({
             newItem.serial_id = batchInfo.id;
             if (batchInfo.batch_id) newItem.batch_id = batchInfo.batch_id;
           } else if (result.product.tracking_type === "batch" && batchInfo) {
-            newItem.batch_id = batchInfo.id;
+            newItem.batch_id = batchInfo.batch_id || batchInfo.id;
           }
 
           newItem.price = calculateItemPrice(newItem);
@@ -1881,53 +2037,299 @@ export default function SaleItemSection({
       <Dialog
         open={batchModalOpen}
         onClose={() => setBatchModalOpen(false)}
-        maxWidth="xs"
+        maxWidth="md"
         fullWidth
         onKeyDown={(e) => {
+          const listLen =
+            selectorViewMode === "variants"
+              ? filteredVariants.length
+              : filteredBatches.length;
           if (e.key === "ArrowDown") {
             e.preventDefault();
-            setFocusedBatchIndex((p) =>
-              Math.min(p + 1, availableBatches.length - 1),
-            );
+            setFocusedBatchIndex((p) => Math.min(p + 1, listLen - 1));
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
             setFocusedBatchIndex((p) => Math.max(p - 1, 0));
           } else if (e.key === "Enter") {
             e.preventDefault();
-            if (availableBatches[focusedBatchIndex]) {
-              handleBatchSelect(availableBatches[focusedBatchIndex]);
+            if (selectorViewMode === "variants") {
+              if (filteredVariants[focusedBatchIndex]) {
+                handleVariantSelect(filteredVariants[focusedBatchIndex]);
+              }
+            } else {
+              if (filteredBatches[focusedBatchIndex]) {
+                handleBatchSelect(filteredBatches[focusedBatchIndex]);
+              }
             }
           }
         }}
         PaperProps={{
-          sx: { borderRadius: "12px", boxShadow: theme.shadows[10] },
+          sx: { borderRadius: "12px", boxShadow: theme.shadows[10], overflow: "hidden" },
         }}
       >
-        <DialogTitle
-          sx={{ fontWeight: 800, fontSize: "0.9rem", color: "text.secondary" }}
-        >
-          SELECT BATCH / SERIAL
+        <DialogTitle sx={{ p: 2, pb: 1.5 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+            <Box>
+              <Typography variant="h6" fontWeight={800} fontSize="1rem">
+                Select Variant / Batch
+              </Typography>
+              {pendingProduct && (
+                <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                  {pendingProduct.name} {pendingProduct.product_code ? `(${pendingProduct.product_code})` : ""}
+                </Typography>
+              )}
+            </Box>
+            <IconButton size="small" onClick={() => setBatchModalOpen(false)}>
+              <X size={18} />
+            </IconButton>
+          </Stack>
+
+          {/* Mode Tabs & Search Bar */}
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems="center" mt={1}>
+            <Stack direction="row" spacing={1} sx={{ bgcolor: alpha(theme.palette.action.hover, 0.08), p: 0.5, borderRadius: 2 }}>
+              <Button
+                size="small"
+                variant={selectorViewMode === "variants" ? "contained" : "text"}
+                color="primary"
+                onClick={() => handleViewModeChange("variants")}
+                startIcon={<Layers size={14} />}
+                sx={{
+                  fontWeight: 700,
+                  fontSize: "0.75rem",
+                  borderRadius: "6px",
+                  boxShadow: selectorViewMode === "variants" ? theme.shadows[1] : "none",
+                }}
+              >
+                By Variants ({availableVariants.length})
+              </Button>
+              <Button
+                size="small"
+                variant={selectorViewMode === "batches" ? "contained" : "text"}
+                color="primary"
+                onClick={() => handleViewModeChange("batches")}
+                startIcon={<Boxes size={14} />}
+                sx={{
+                  fontWeight: 700,
+                  fontSize: "0.75rem",
+                  borderRadius: "6px",
+                  boxShadow: selectorViewMode === "batches" ? theme.shadows[1] : "none",
+                }}
+              >
+                By Batches ({availableBatches.length})
+              </Button>
+            </Stack>
+
+            <TextField
+              size="small"
+              fullWidth
+              placeholder={
+                selectorViewMode === "variants"
+                  ? "Search Art No, Size, Color, Barcode..."
+                  : "Search Batch / Serial number..."
+              }
+              value={selectorSearch}
+              onChange={(e) => {
+                setSelectorSearch(e.target.value);
+                setFocusedBatchIndex(0);
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={16} color={theme.palette.text.secondary} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: "8px",
+                  bgcolor: "background.paper",
+                },
+              }}
+            />
+          </Stack>
         </DialogTitle>
-        <DialogContent
-          dividers
-          sx={{ p: 0, maxHeight: 400, overflowY: "auto" }}
-        >
+
+        <Divider />
+
+        <DialogContent sx={{ p: 0, maxHeight: 420, overflowY: "auto" }}>
           {loadingBatches ? (
             <Box p={4} textAlign="center">
-              <CircularProgress size={24} />
+              <CircularProgress size={28} />
+              <Typography variant="body2" color="text.secondary" mt={1} fontWeight={600}>
+                Loading item inventory details...
+              </Typography>
+            </Box>
+          ) : selectorViewMode === "variants" ? (
+            filteredVariants.length === 0 ? (
+              <Box p={4} textAlign="center">
+                <Typography color="text.secondary" variant="body2" fontWeight={600}>
+                  {availableVariants.length === 0
+                    ? "No variant matrix records available for this product."
+                    : `No variants found matching "${selectorSearch}".`}
+                </Typography>
+                {availableVariants.length === 0 && availableBatches.length > 0 && (
+                  <Button
+                    size="small"
+                    sx={{ mt: 1.5, fontWeight: 700 }}
+                    onClick={() => handleViewModeChange("batches")}
+                  >
+                    Switch to Batches View ({availableBatches.length})
+                  </Button>
+                )}
+              </Box>
+            ) : (
+              <List dense disablePadding>
+                {filteredVariants.map((v, idx) => {
+                  const isSelected = focusedBatchIndex === idx;
+                  const inStock = (v.quantity || 0) > 0;
+                  return (
+                    <ListItemButton
+                      key={v.id}
+                      selected={isSelected}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleVariantSelect(v);
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleVariantSelect(v);
+                      }}
+                      sx={{
+                        py: 1.5,
+                        px: 2.5,
+                        borderBottom: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                        bgcolor: isSelected ? alpha(theme.palette.primary.main, 0.08) : "transparent",
+                        "&:hover": {
+                          bgcolor: alpha(theme.palette.primary.main, 0.05),
+                        },
+                      }}
+                      ref={(el) => {
+                        if (el && isSelected) {
+                          el.scrollIntoView({ block: "nearest" });
+                        }
+                      }}
+                    >
+                      <Box display="flex" flexDirection={{ xs: "column", sm: "row" }} alignItems="center" justifyContent="space-between" width="100%" gap={1.5}>
+                        <Box sx={{ flex: { xs: "1 1 100%", sm: "0 0 25%" } }}>
+                          <Typography variant="subtitle2" fontWeight={800} color="text.primary">
+                            {v.article_no || "N/A"}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Batch: {v.batch_number || "DEFAULT"}
+                          </Typography>
+                        </Box>
+
+                        <Box sx={{ flex: { xs: "1 1 100%", sm: "0 0 25%" } }}>
+                          <Stack direction="row" spacing={1} flexWrap="wrap">
+                            {v.dim1_value && (
+                              <Chip
+                                label={`Size: ${v.dim1_value}`}
+                                size="small"
+                                sx={{
+                                  fontWeight: 700,
+                                  fontSize: "0.7rem",
+                                  bgcolor: alpha(theme.palette.info.main, 0.1),
+                                  color: theme.palette.info.dark,
+                                }}
+                              />
+                            )}
+                            {v.dim2_value && (
+                              <Chip
+                                label={`Color: ${v.dim2_value}`}
+                                size="small"
+                                sx={{
+                                  fontWeight: 700,
+                                  fontSize: "0.7rem",
+                                  bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                                  color: theme.palette.secondary.dark,
+                                }}
+                              />
+                            )}
+                          </Stack>
+                        </Box>
+
+                        <Box sx={{ flex: { xs: "1 1 100%", sm: "0 0 20%" } }}>
+                          <Typography variant="caption" fontWeight={700} color="text.secondary" display="block">
+                            Barcode: {v.barcode || "N/A"}
+                          </Typography>
+                          <Chip
+                            label={`Stock: ${v.quantity ?? 0}`}
+                            size="small"
+                            color={inStock ? "success" : "error"}
+                            variant="outlined"
+                            sx={{ fontWeight: 800, height: 20, fontSize: "0.65rem", mt: 0.5 }}
+                          />
+                        </Box>
+
+                        <Box sx={{ flex: { xs: "1 1 100%", sm: "0 0 25%" } }} textAlign={{ xs: "left", sm: "right" }}>
+                          <Typography variant="body2" fontWeight={800} color="primary.main">
+                            MOP: ₹{v.mop ?? v.mrp ?? 0}
+                          </Typography>
+                          {v.mrp && v.mrp > (v.mop ?? 0) && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ textDecoration: "line-through", mr: 1 }}
+                            >
+                              MRP: ₹{v.mrp}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    </ListItemButton>
+                  );
+                })}
+              </List>
+            )
+          ) : filteredBatches.length === 0 ? (
+            <Box p={4} textAlign="center">
+              <Typography color="text.secondary" variant="body2" fontWeight={600}>
+                {availableBatches.length === 0
+                  ? "No batches recorded for this product."
+                  : `No batches found matching "${selectorSearch}".`}
+              </Typography>
+              {availableBatches.length === 0 && availableVariants.length > 0 && (
+                <Button
+                  size="small"
+                  sx={{ mt: 1.5, fontWeight: 700 }}
+                  onClick={() => handleViewModeChange("variants")}
+                >
+                  Switch to Variants View ({availableVariants.length})
+                </Button>
+              )}
             </Box>
           ) : (
-            <List dense>
-              {availableBatches.map((b: any, idx: number) => {
+            <List dense disablePadding>
+              {filteredBatches.map((b: any, idx: number) => {
                 const isSerial = !!b.serial_number;
+                const isSelected = focusedBatchIndex === idx;
                 return (
                   <ListItemButton
                     key={b.id}
-                    selected={focusedBatchIndex === idx}
-                    onClick={() => handleBatchSelect(b)}
-                    sx={{ py: 1.5 }}
+                    selected={isSelected}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleBatchSelect(b);
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleBatchSelect(b);
+                    }}
+                    sx={{
+                      py: 1.5,
+                      px: 2.5,
+                      borderBottom: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                      bgcolor: isSelected ? alpha(theme.palette.primary.main, 0.08) : "transparent",
+                      "&:hover": {
+                        bgcolor: alpha(theme.palette.primary.main, 0.05),
+                      },
+                    }}
                     ref={(el) => {
-                      if (el && focusedBatchIndex === idx) {
+                      if (el && isSelected) {
                         el.scrollIntoView({ block: "nearest" });
                       }
                     }}
@@ -1940,8 +2342,8 @@ export default function SaleItemSection({
                       }
                       secondary={
                         isSerial
-                          ? `Stock: 1 | MRP: ₹${b.mrp}`
-                          : `Stock: ${b.quantity} | MRP: ₹${b.mrp}`
+                          ? `Stock: 1 | MRP: ₹${b.mrp || 0} | MOP: ₹${b.mop || b.mrp || 0}`
+                          : `Stock: ${b.quantity} | MRP: ₹${b.mrp || 0} | MOP: ₹${b.mop || b.mrp || 0}`
                       }
                       primaryTypographyProps={{
                         fontWeight: 800,
@@ -1955,7 +2357,8 @@ export default function SaleItemSection({
                     <Chip
                       label="Select"
                       size="small"
-                      variant="outlined"
+                      color="primary"
+                      variant={isSelected ? "filled" : "outlined"}
                       sx={{ fontWeight: 800, fontSize: "0.65rem" }}
                     />
                   </ListItemButton>

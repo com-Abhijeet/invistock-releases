@@ -1,10 +1,6 @@
 // --- SHARED UTILITIES FOR LABEL TEMPLATES ---
 
-const BRANDING_HTML = `
-  <div class="branding" style="text-align: center; color: #888; font-family: sans-serif; letter-spacing: 0.5px; line-height: 1;">
-    Powered by KOSH
-  </div>
-`;
+const BRANDING_HTML = "";
 
 /**
  * Generates base styles with dynamic scaling based on label height.
@@ -86,32 +82,71 @@ const getPriceDetails = (item) => {
   const rateNum = Number(item.rate || 0);
   const priceNum = Number(item.price || 0);
 
-  // MRP is the absolute truth for label price when available (> 0)
-  const mainPriceVal =
-    mrpNum > 0 ? mrpNum : [mopNum, rateNum, priceNum].find((p) => p > 0) || 0;
-  const mainPrice = Math.round(mainPriceVal);
-
-  const mrp = Math.round(mrpNum > 0 ? mrpNum : mainPriceVal);
-  const sellingPrice =
+  // Selling price (MOP) is the prominent price shown in bold on the label
+  const sellingPriceVal =
     mopNum > 0 ? mopNum : rateNum > 0 ? rateNum : priceNum > 0 ? priceNum : 0;
-  const showStrike = sellingPrice > 0 && mrp > sellingPrice;
+
+  // MRP value
+  const mrp = Math.round(mrpNum > 0 ? mrpNum : sellingPriceVal);
+
+  // Main price (bold text on label): Selling price if set (> 0), otherwise fall back to MRP
+  const mainPrice = Math.round(sellingPriceVal > 0 ? sellingPriceVal : mrp);
+
+  // Strikethrough MRP only when MOP/sellingPrice is set (> 0), MRP is set (> 0), and MRP > sellingPrice
+  const showStrike = sellingPriceVal > 0 && mrpNum > 0 && mrpNum > sellingPriceVal;
 
   const encoded = item.mfw_price ? encodePrice(item.mfw_price) : "";
   return { mainPrice, mrp, showStrike, encoded };
 };
 
 const formatDisplayName = (item) => {
-  const name = item.name || "Product";
-  const batchOrTag = item.batch_number || item.batch_no || item.size || "";
-  if (!batchOrTag) {
-    return `<div class="truncate" style="text-align: center; width: 100%; font-weight: 700;">${name}</div>`;
-  }
-  return `
-    <div style="display: flex; justify-content: center; align-items: center; width: 100%; overflow: hidden; white-space: nowrap; gap: 4px;">
-      <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; min-width: 0; font-weight: 700;">${name}</span>
-      <span style="flex-shrink: 0; font-weight: 700; white-space: nowrap;">- ${batchOrTag}</span>
-    </div>
-  `;
+  let name = item.product_name || item.name || item.label || "Product";
+  name = name.split(" - Art:")[0].split(" - Size:")[0].split(" - Color:")[0].trim();
+  return `<div class="truncate" style="text-align: center; width: 100%; font-weight: 700; line-height: 1.1; margin: 0;">${name}</div>`;
+};
+
+const formatItemSubheader = (item, scale = 1) => {
+  const details = [];
+  const article = item.article_no || "";
+  const batch = item.batch_number || item.batch_no || "";
+  const size = item.size || item.dim1_value || "";
+  const color = item.color || item.dim2_value || "";
+
+  if (article) details.push(`Art: ${article}`);
+  else if (batch) details.push(`Batch: ${batch}`);
+
+  if (color) details.push(color);
+  if (size) details.push(size);
+
+  if (details.length === 0) return "";
+  const fontSize = Math.max(7, Math.round(8.5 * scale));
+  return `<div class="sub-header truncate" style="text-align: center; width: 100%; font-size: ${fontSize}px; font-weight: 600; color: #222; line-height: 1.1; margin: 1px 0 2px 0; flex-shrink: 0;">${details.join(" &bull; ")}</div>`;
+};
+
+const getItemMetadata = (item) => {
+  let name = item.product_name || item.name || item.label || "Product";
+  name = name.split(" - Art:")[0].split(" - Size:")[0].split(" - Color:")[0].trim();
+
+  const article = item.article_no || "";
+  const batch = item.batch_number || item.batch_no || "";
+  const size = item.size || item.dim1_value || "";
+  const color = item.color || item.dim2_value || "";
+
+  let topRightText = "";
+  if (article) topRightText = `Art: ${article}`;
+  else if (batch) topRightText = `B: ${batch}`;
+
+  const variantBadges = [color, size].filter(Boolean).join(" • ");
+
+  return {
+    cleanName: name,
+    article,
+    batch,
+    size,
+    color,
+    topRightText,
+    variantBadges,
+  };
 };
 
 module.exports = {
@@ -120,4 +155,6 @@ module.exports = {
   encodePrice,
   getPriceDetails,
   formatDisplayName,
+  formatItemSubheader,
+  getItemMetadata,
 };

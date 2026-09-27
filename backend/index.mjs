@@ -38,8 +38,12 @@ import businessRoutes from "./routes/businessRoutes.mjs";
 import tallyRoutes from "./routes/tallyRoutes.mjs";
 import tallySseRoutes from "./routes/tallySseRoutes.mjs";
 import salesBillingSettingsRoutes from "./routes/salesBillingSettingsRoutes.mjs";
+import attributePresetRoutes from "./routes/attributePresetRoutes.mjs";
+import variantRoutes from "./routes/variantRoutes.mjs";
+import labelPrintSettingsRoutes from "./routes/labelPrintSettingsRoutes.mjs";
 
 // ✅ NEW: Import the Sync Routes for Mobile
+
 import syncRoutes from "./routes/syncRoutes.mjs";
 
 import { initializeDatabase, closeDatabase } from "./db/db.mjs";
@@ -146,8 +150,12 @@ export function startServer(dbPath, userDataPath) {
   app.use("/api/tally", tallyRoutes);
   app.use("/api/business", businessRoutes);
   app.use("/api/settings/sales-billing", salesBillingSettingsRoutes);
+  app.use("/api/attribute-presets", attributePresetRoutes);
+  app.use("/api/variants", variantRoutes);
+  app.use("/api/label-print-settings", labelPrintSettingsRoutes);
 
   // ✅ Register Sync Routes
+
   app.use("/api/sync", syncRoutes);
 
   // Mobile HTML (Optional now, but kept if you still need the web view)

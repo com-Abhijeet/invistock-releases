@@ -8,19 +8,41 @@ import {
   DialogTitle,
   DialogContent,
   IconButton,
+  Chip,
+  Tooltip,
+  ToggleButtonGroup,
+  ToggleButton,
+  alpha,
 } from "@mui/material";
-import { Plus, FileDown, X, FolderTree, Tags } from "lucide-react";
+import {
+  Plus,
+  FileDown,
+  X,
+  FolderTree,
+  Tags,
+  Folder,
+  Layers,
+  Pencil,
+  Trash2,
+  Table as TableIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
 import CategoryTable from "../components/category/CategoryTable";
 import CategoryModalForm from "../components/category/CategoryModalForm";
+import DataTable from "../components/DataTable";
+import type { Column, Action } from "../lib/types/DataTableTypes";
 import {
   getCategories,
   createCategory,
   updateCategory,
   deleteCategory,
 } from "../lib/api/categoryService";
+import {
+  getAttributePresets,
+  AttributePreset,
+} from "../lib/api/attributePresetService";
 import type { Category } from "../lib/types/categoryTypes";
 import DashboardHeader from "../components/DashboardHeader";
 import KbdButton from "../components/ui/Button";
@@ -29,19 +51,35 @@ const { ipcRenderer } = window.electron || {};
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [presets, setPresets] = useState<AttributePreset[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [openModal, setOpenModal] = useState(false);
   const [editCategory, setEditCategory] = useState<Category | null>(null);
+
+  // View Mode: 'datatable' or 'tree'
+  const [viewMode, setViewMode] = useState<"datatable" | "tree">("datatable");
+
+  // Pagination for DataTable
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   // Format selection pop-up state
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const fetchCategories = async () => {
+    setLoading(true);
     try {
-      const data = await getCategories();
-      setCategories(data);
+      const [catData, presetData] = await Promise.all([
+        getCategories(),
+        getAttributePresets().catch(() => []),
+      ]);
+      setCategories(catData);
+      setPresets(presetData);
     } catch (err) {
       toast.error("Failed to load categories");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -117,15 +155,153 @@ export default function CategoriesPage() {
     }
   };
 
-  const filtered = categories.filter((cat) =>
-    cat.name.toLowerCase().includes(search.toLowerCase()),
+  const filtered = categories.filter(
+    (cat) =>
+      cat.name.toLowerCase().includes(search.toLowerCase()) ||
+      cat.code.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const paginatedRows = filtered.slice(
+    page * rowsPerPage,
+    page * rowsPerPage + rowsPerPage,
+  );
+
+  // DataTable Columns
+  const columns: Column[] = [
+    {
+      key: "name",
+      label: "Category Details",
+      format: (_, cat: Category) => (
+        <Stack direction="row" alignItems="center" spacing={1.5}>
+          <Box
+            sx={{
+              p: 1,
+              borderRadius: 2,
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
+              color: "text.primary",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Folder size={18} />
+          </Box>
+          <Box>
+            <Typography variant="body2" fontWeight={600} color="text.primary">
+              {cat.name}
+            </Typography>
+            <Typography
+              variant="caption"
+              fontFamily="monospace"
+              color="text.secondary"
+              sx={{ letterSpacing: 0.5 }}
+            >
+              {cat.code}
+            </Typography>
+          </Box>
+        </Stack>
+      ),
+    },
+    {
+      key: "default_preset_id",
+      label: "Default Matrix Preset",
+      format: (presetId: any) => {
+        const p = presets.find((pr) => pr.id === Number(presetId));
+        if (!p) {
+          return (
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ fontStyle: "italic" }}
+            >
+              None
+            </Typography>
+          );
+        }
+        return (
+          <Chip
+            icon={<Layers size={14} />}
+            label={`${p.name}`}
+            size="small"
+            color="primary"
+            variant="outlined"
+            sx={{ fontWeight: 600, borderRadius: 2 }}
+          />
+        );
+      },
+    },
+    {
+      key: "subcategories",
+      label: "Subcategories",
+      format: (subs: any) => {
+        const subList = Array.isArray(subs) ? subs : [];
+        if (subList.length === 0) {
+          return (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontStyle: "italic" }}
+            >
+              No Subcategories
+            </Typography>
+          );
+        }
+        return (
+          <Stack
+            direction="row"
+            spacing={0.5}
+            flexWrap="wrap"
+            useFlexGap
+            sx={{ py: 0.5 }}
+          >
+            {subList.slice(0, 3).map((sub: any) => (
+              <Chip
+                key={sub.id || sub.code}
+                label={`${sub.name}`}
+                size="small"
+                variant="outlined"
+                sx={{ fontSize: "0.725rem", height: 22, fontWeight: 500 }}
+              />
+            ))}
+            {subList.length > 3 && (
+              <Tooltip
+                title={subList
+                  .map((s: any) => `${s.name} (${s.code})`)
+                  .join(", ")}
+              >
+                <Chip
+                  label={`+${subList.length - 3} more`}
+                  size="small"
+                  color="primary"
+                  sx={{ fontSize: "0.725rem", height: 22, fontWeight: 700 }}
+                />
+              </Tooltip>
+            )}
+          </Stack>
+        );
+      },
+    },
+  ];
+
+  // DataTable Actions
+  const actions: Action[] = [
+    {
+      label: "Edit Category",
+      icon: <Pencil size={15} />,
+      onClick: (cat: Category) => handleOpenEdit(cat),
+    },
+    {
+      label: "Delete Category",
+      icon: <Trash2 size={15} color="#ef4444" />,
+      onClick: (cat: Category) => handleDeleteCategory(cat.id!),
+    },
+  ];
 
   return (
     <Box
       p={3}
       sx={{
-        bgcolor: 'background.default',
+        bgcolor: "background.default",
         minHeight: "100vh",
       }}
     >
@@ -136,7 +312,28 @@ export default function CategoriesPage() {
         onSearch={setSearch}
         onRefresh={fetchCategories}
         actions={
-          <Stack direction="row" spacing={1.5}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={(_, val) => val && setViewMode(val)}
+              size="small"
+              sx={{
+                bgcolor: "background.paper",
+                borderRadius: 2,
+                "& .MuiToggleButton-root": { py: 0.75 },
+              }}
+            >
+              <ToggleButton value="datatable" sx={{ textTransform: "none", gap: 1, px: 2 }}>
+                <TableIcon size={16} />
+                Data Table
+              </ToggleButton>
+              <ToggleButton value="tree" sx={{ textTransform: "none", gap: 1, px: 2 }}>
+                <FolderTree size={16} />
+                Tree / Collapsible
+              </ToggleButton>
+            </ToggleButtonGroup>
+
             <KbdButton
               variant="secondary"
               label="Export"
@@ -206,7 +403,7 @@ export default function CategoriesPage() {
                   p: 1.5,
                   borderRadius: "12px",
                   bgcolor: "#E3F2FD",
-                  color: 'text.primary',
+                  color: "text.primary",
                 }}
               >
                 <FolderTree size={24} />
@@ -263,13 +460,26 @@ export default function CategoriesPage() {
         </DialogContent>
       </Dialog>
 
-      {filtered.length === 0 ? (
-        <Typography color="text.secondary" mt={3} align="center">
-          No categories found.
-        </Typography>
+      {/* Main Table Views */}
+      {viewMode === "datatable" ? (
+        <DataTable
+          rows={paginatedRows}
+          columns={columns}
+          actions={actions}
+          loading={loading}
+          total={filtered.length}
+          page={page}
+          rowsPerPage={rowsPerPage}
+          onPageChange={(newPage) => setPage(newPage)}
+          onRowsPerPageChange={(newLimit) => {
+            setRowsPerPage(newLimit);
+            setPage(0);
+          }}
+        />
       ) : (
         <CategoryTable
           categories={filtered}
+          presets={presets}
           onEdit={handleOpenEdit}
           onDelete={handleDeleteCategory}
         />

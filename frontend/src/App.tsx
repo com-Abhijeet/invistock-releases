@@ -71,6 +71,7 @@ import CustomerLedgerPage from "./pages/CustomerLedgerPage";
 import TitleBar from "./components/TitleBar";
 import TrackerPage from "./pages/TrackerPage";
 import ProductBatchesPage from "./pages/ProductBatchesPage";
+import ProductVariantsPage from "./pages/ProductVariantsPage";
 import BatchAnalysisPage from "./pages/BatchAnalysisPage";
 import CustomerAccountsPage from "./pages/CustomerAccountsPage";
 import PendingBillsByCustomerPage from "./pages/PendingBillsByCustomerPage";
@@ -469,6 +470,14 @@ function AppLayout() {
                     element={
                       <PermissionGuard requiredPermission="products">
                         <ProductBatchesPage />
+                      </PermissionGuard>
+                    }
+                  />
+                  <Route
+                    path="/products/:id/variants"
+                    element={
+                      <PermissionGuard requiredPermission="products">
+                        <ProductVariantsPage />
                       </PermissionGuard>
                     }
                   />

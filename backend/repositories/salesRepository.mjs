@@ -92,8 +92,8 @@ export function createSale(saleData, items) {
         // Updated to include snapshot fields (product_name, description, barcode, hsn)
         const itemStmt = db.prepare(`
           INSERT INTO sales_items (
-            sale_id, product_id, product_name, description, barcode, hsn, sr_no, rate, quantity, gst_rate, discount, price, unit, batch_id, serial_id, employee_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            sale_id, product_id, product_name, description, barcode, hsn, sr_no, rate, quantity, gst_rate, discount, price, unit, batch_id, serial_id, variant_id, employee_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         items.forEach((item) => {
@@ -113,6 +113,7 @@ export function createSale(saleData, items) {
             normalizeItemUnit(item.unit),
             item.batch_id || null,
             item.serial_id || null,
+            item.variant_id || null,
             item.employee_id || null,
           );
         });
@@ -178,6 +179,12 @@ export function processSalesReturn(payload) {
       if (returnToStock) {
         const newQty = currentProduct.quantity + qtyInStockUnits;
         ProductRepo.updateProductQuantity(saleItem.product_id, newQty);
+
+        if (saleItem.variant_id) {
+          db.prepare(
+            "UPDATE batch_variants SET quantity = quantity + ? WHERE id = ?",
+          ).run(qtyInStockUnits, saleItem.variant_id);
+        }
 
         if (saleItem.batch_id) {
           db.prepare(
@@ -300,11 +307,15 @@ export function getSaleWithItemsById(saleId) {
         COALESCE(si.hsn, p.hsn) AS hsn, 
         p.base_unit,
         pb.batch_number, ps.serial_number,
+        bv.article_no as variant_article_no,
+        bv.dim1_value as variant_dim1_value,
+        bv.dim2_value as variant_dim2_value,
         emp.name AS employee_name
       FROM sales_items si
       LEFT JOIN products p ON si.product_id = p.id
       LEFT JOIN product_batches pb ON si.batch_id = pb.id
       LEFT JOIN product_serials ps ON si.serial_id = ps.id
+      LEFT JOIN batch_variants bv ON si.variant_id = bv.id
       LEFT JOIN employees emp ON si.employee_id = emp.id
       WHERE si.sale_id = ?
       ORDER BY si.sr_no ASC
@@ -498,8 +509,8 @@ export function replaceSaleItems(saleId, items) {
   // Updated to include snapshot fields and employee_id
   const insertStmt = db.prepare(`
     INSERT INTO sales_items (
-      sale_id, product_id, product_name, description, barcode, hsn, sr_no, rate, quantity, gst_rate, discount, price, batch_id, serial_id, unit, employee_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sale_id, product_id, product_name, description, barcode, hsn, sr_no, rate, quantity, gst_rate, discount, price, batch_id, serial_id, variant_id, unit, employee_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const item of items) {
@@ -518,6 +529,7 @@ export function replaceSaleItems(saleId, items) {
       item.price,
       item.batch_id || null,
       item.serial_id || null,
+      item.variant_id || null,
       normalizeItemUnit(item.unit),
       item.employee_id || null,
     );

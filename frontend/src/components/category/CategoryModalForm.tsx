@@ -14,6 +14,10 @@ import {
   Divider,
   InputAdornment,
   Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { Plus, Trash2, Tag, Layers, Hash, Info } from "lucide-react";
@@ -24,6 +28,10 @@ import {
   isDuplicateCategoryCode,
   isDuplicateSubCode,
 } from "../../utils/codeGenerator";
+import {
+  getAttributePresets,
+  AttributePreset,
+} from "../../lib/api/attributePresetService";
 import toast from "react-hot-toast";
 
 interface CategoryModalProps {
@@ -34,7 +42,7 @@ interface CategoryModalProps {
   initialData?: Category | null;
 }
 
-const defaultCategory = { name: "", code: "" };
+const defaultCategory = { name: "", code: "", default_preset_id: null as number | null };
 const defaultSubcategory = { name: "", code: "" };
 
 export default function CategoryModalForm({
@@ -44,10 +52,15 @@ export default function CategoryModalForm({
   existingCategories,
   initialData,
 }: CategoryModalProps) {
-  const [category, setCategory] = useState(defaultCategory);
+  const [category, setCategory] = useState<{
+    name: string;
+    code: string;
+    default_preset_id: number | null;
+  }>(defaultCategory);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([
     defaultSubcategory,
   ]);
+  const [presets, setPresets] = useState<AttributePreset[]>([]);
 
   // State for validation errors
   const [codeError, setCodeError] = useState(false);
@@ -57,12 +70,25 @@ export default function CategoryModalForm({
   const [isCategoryCodeEdited, setIsCategoryCodeEdited] = useState(false);
   const [isSubCodeEdited, setIsSubCodeEdited] = useState<boolean[]>([false]);
 
+  // ✅ EFFECT 0: Fetch Attribute Presets
+  useEffect(() => {
+    if (open) {
+      getAttributePresets()
+        .then((res: AttributePreset[]) => setPresets(res))
+        .catch(() => {});
+    }
+  }, [open]);
+
   // ✅ EFFECT 1: Populate form for Add/Edit mode
   useEffect(() => {
     if (open) {
       if (initialData) {
         // Edit Mode
-        setCategory({ name: initialData.name, code: initialData.code });
+        setCategory({
+          name: initialData.name,
+          code: initialData.code,
+          default_preset_id: initialData.default_preset_id ?? null,
+        });
         setSubcategories(
           initialData.subcategories.length > 0
             ? initialData.subcategories
@@ -261,6 +287,33 @@ export default function CategoryModalForm({
                     ),
                   }}
                 />
+              </Grid>
+              <Grid item xs={12}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Default Size/Variant Preset</InputLabel>
+                  <Select
+                    value={category.default_preset_id || ""}
+                    onChange={(e) =>
+                      setCategory((prev) => ({
+                        ...prev,
+                        default_preset_id: e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      }))
+                    }
+                    label="Default Size/Variant Preset"
+                    sx={{ borderRadius: 2 }}
+                  >
+                    <MenuItem value="">
+                      <em>None (No Default Matrix)</em>
+                    </MenuItem>
+                    {presets.map((preset) => (
+                      <MenuItem key={preset.id} value={preset.id}>
+                        {preset.name} ({preset.industry})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
             </Grid>
           </Box>

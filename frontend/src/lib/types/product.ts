@@ -34,6 +34,11 @@ export interface Product {
   tracking_type?: "none" | "batch" | "serial";
   serial_numbers?: string[];
 
+  // Variant fields
+  article_no?: string | null;
+  preset_id?: number | null;
+  is_variant_product?: boolean | number | null;
+
   created_at?: string;
   updated_at?: string;
 }

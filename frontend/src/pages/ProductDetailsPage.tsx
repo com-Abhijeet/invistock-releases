@@ -17,6 +17,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import {
@@ -32,6 +36,8 @@ import {
   ExternalLink,
   BarChart3,
   Plus,
+  Layers,
+  ChevronDown,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -67,6 +73,16 @@ export default function ProductDetailPage() {
   const [selectedAdjustment, setSelectedAdjustment] = useState<any | null>(null);
   const [adjDetailOpen, setAdjDetailOpen] = useState(false);
 
+  // Action Menu state
+  const [actionMenuAnchor, setActionMenuAnchor] = useState<null | HTMLElement>(null);
+  const actionMenuOpen = Boolean(actionMenuAnchor);
+  const handleActionMenuOpen = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setActionMenuAnchor(event.currentTarget);
+  };
+  const handleActionMenuClose = () => {
+    setActionMenuAnchor(null);
+  };
+
   const fetchData = async () => {
     if (!id) return;
     setLoading(true);
@@ -81,6 +97,7 @@ export default function ProductDetailPage() {
   };
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     fetchData();
   }, [id]);
 
@@ -230,54 +247,7 @@ export default function ProductDetailPage() {
         onRefresh={fetchData}
         showDateFilters={false}
         actions={
-          <Stack direction="row" spacing={1.5}>
-            {/* NEW Analysis Button */}
-            <Button
-              variant="outlined"
-              color="primary"
-              onClick={() => navigate(`/products/${id}/analysis`)}
-              startIcon={<BarChart3 size={18} />}
-              sx={{
-                borderRadius: "12px",
-                textTransform: "none",
-                fontWeight: 600,
-              }}
-            >
-              Analysis
-            </Button>
-
-            {/* Batch View & Create Buttons */}
-            {(product.tracking_type === "batch" ||
-              product.tracking_type === "serial") && (
-              <>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={() => setCreateBatchOpen(true)}
-                  startIcon={<Plus size={18} />}
-                  sx={{
-                    borderRadius: "12px",
-                    textTransform: "none",
-                    fontWeight: 600,
-                  }}
-                >
-                  Manual Stock Entry
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="secondary"
-                  onClick={() => navigate(`/products/${id}/batches`)}
-                  startIcon={<Boxes size={18} />}
-                  sx={{
-                    borderRadius: "12px",
-                    textTransform: "none",
-                    fontWeight: 600,
-                  }}
-                >
-                  View Batches
-                </Button>
-              </>
-            )}
+          <Stack direction="row" spacing={1} alignItems="center">
             <Button
               variant="outlined"
               color="warning"
@@ -299,11 +269,104 @@ export default function ProductDetailPage() {
                 borderRadius: "12px",
                 textTransform: "none",
                 fontWeight: 600,
-                px: 3,
+                px: 2.5,
               }}
             >
               Edit Product
             </Button>
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={handleActionMenuOpen}
+              endIcon={<ChevronDown size={18} />}
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                fontWeight: 600,
+                px: 2,
+              }}
+            >
+              More Actions
+            </Button>
+            <Menu
+              anchorEl={actionMenuAnchor}
+              open={actionMenuOpen}
+              onClose={handleActionMenuClose}
+              transformOrigin={{ horizontal: "right", vertical: "top" }}
+              anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+              PaperProps={{
+                elevation: 3,
+                sx: {
+                  mt: 1,
+                  borderRadius: "14px",
+                  minWidth: 190,
+                  border: `1px solid ${theme.palette.divider}`,
+                },
+              }}
+            >
+              <MenuItem
+                onClick={() => {
+                  handleActionMenuClose();
+                  navigate(`/products/${id}/analysis`);
+                }}
+              >
+                <ListItemIcon>
+                  <BarChart3 size={18} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Analysis"
+                  primaryTypographyProps={{ fontWeight: 600, fontSize: "0.875rem" }}
+                />
+              </MenuItem>
+              {(product.tracking_type === "batch" ||
+                product.tracking_type === "serial") && [
+                <MenuItem
+                  key="manual-stock"
+                  onClick={() => {
+                    handleActionMenuClose();
+                    setCreateBatchOpen(true);
+                  }}
+                >
+                  <ListItemIcon>
+                    <Plus size={18} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Manual Stock Entry"
+                    primaryTypographyProps={{ fontWeight: 600, fontSize: "0.875rem" }}
+                  />
+                </MenuItem>,
+                <MenuItem
+                  key="view-batches"
+                  onClick={() => {
+                    handleActionMenuClose();
+                    navigate(`/products/${id}/batches`);
+                  }}
+                >
+                  <ListItemIcon>
+                    <Boxes size={18} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="View Batches"
+                    primaryTypographyProps={{ fontWeight: 600, fontSize: "0.875rem" }}
+                  />
+                </MenuItem>,
+                <MenuItem
+                  key="view-variants"
+                  onClick={() => {
+                    handleActionMenuClose();
+                    navigate(`/products/${id}/variants`);
+                  }}
+                >
+                  <ListItemIcon>
+                    <Layers size={18} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="View Variants"
+                    primaryTypographyProps={{ fontWeight: 600, fontSize: "0.875rem" }}
+                  />
+                </MenuItem>,
+              ]}
+            </Menu>
           </Stack>
         }
       />

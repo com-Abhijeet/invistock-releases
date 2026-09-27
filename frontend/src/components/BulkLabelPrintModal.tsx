@@ -11,32 +11,21 @@ import {
   Chip,
   Box,
   Stack,
-  ToggleButton,
-  ToggleButtonGroup,
   Paper,
-  Divider,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Checkbox,
   IconButton,
-  Collapse,
+  Tooltip,
 } from "@mui/material";
-import {
-  Printer,
-  Package,
-  ScanBarcode,
-  Tag,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { Printer, X, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
-import {
-  fetchPurchaseItemsForLabels,
-  LabelItem,
-} from "../lib/api/purchaseService";
+import { fetchPurchaseItemsForLabels } from "../lib/api/purchaseService";
+import { printLabel } from "../lib/printLabel";
 import KoshSpinningLoader from "./KoshSpinningLoader";
-// Keep this as fallback only if absolutely needed, but we prioritize DB values now
-
-// Safety check for Electron
-// @ts-ignore
-const ipcRenderer = window.electron?.ipcRenderer;
 
 interface Props {
   open: boolean;
@@ -44,14 +33,21 @@ interface Props {
   purchaseId: number | null;
 }
 
-// Extend LabelItem to support our complex UI state per item
-interface ExtendedLabelItem extends LabelItem {
-  printMode: "product" | "batch" | "serial";
-  parsedSerials: string[]; // List of available serials from backend string
-  selectedSerials: string[]; // List of serials selected for printing
-  customQuantity: number; // Quantity for Product/Batch mode
-  copies: number; // Copies per label
-  batch_barcode?: string; // Explicitly map this from API
+export interface PrintableRow {
+  rowId: string;
+  itemType: "standard" | "batch" | "variant";
+  productId: number;
+  productName: string;
+  articleNo?: string;
+  dim1Value?: string;
+  dim2Value?: string;
+  batchNumber?: string;
+  barcode: string;
+  mrp: number;
+  quantity: number;
+  copiesPerQty: number; // Multiplier
+  totalCopies: number;  // Qty * copiesPerQty (editable)
+  selected: boolean;
 }
 
 export default function BulkLabelPrintModal({
@@ -59,7 +55,7 @@ export default function BulkLabelPrintModal({
   onClose,
   purchaseId,
 }: Props) {
-  const [items, setItems] = useState<ExtendedLabelItem[]>([]);
+  const [rows, setRows] = useState<PrintableRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
 
@@ -68,588 +64,599 @@ export default function BulkLabelPrintModal({
     if (open && purchaseId) {
       setLoading(true);
       fetchPurchaseItemsForLabels(purchaseId)
-        .then((data) => {
-          const initialized: ExtendedLabelItem[] = data.map((i: any) => {
-            let defaultMode: "product" | "batch" | "serial" = "product";
+        .then((data: any[]) => {
+          const printableList: PrintableRow[] = [];
 
-            // Smart Default: If tracked, default to that mode
-            if (i.tracking_type === "serial") defaultMode = "serial";
-            else if (i.tracking_type === "batch") defaultMode = "batch";
+          data.forEach((item, itemIdx) => {
+            const hasVariants = item.variants && item.variants.length > 0;
 
-            // Safely parse serial numbers, handling arrays or stringified JSON arrays
-            let rawSerials = i.serial_numbers || "";
-            let serialList: string[] = [];
-
-            if (Array.isArray(rawSerials)) {
-              serialList = rawSerials;
+            if (hasVariants) {
+              // Expand variant rows individually
+              item.variants.forEach((v: any, vIdx: number) => {
+                const qty = Math.max(1, Number(v.quantity) || Number(item.purchase_quantity) || 1);
+                printableList.push({
+                  rowId: `var_${v.id || `${itemIdx}_${vIdx}`}`,
+                  itemType: "variant",
+                  productId: item.product_id,
+                  productName: item.name,
+                  articleNo: v.article_no || "",
+                  dim1Value: v.dim1_value || "",
+                  dim2Value: v.dim2_value || "",
+                  batchNumber: item.batch_number || "",
+                  barcode: v.barcode || v.sku || item.barcode || item.product_code || "0000",
+                  mrp: Number(v.mrp) || Number(item.mrp) || 0,
+                  quantity: qty,
+                  copiesPerQty: 1,
+                  totalCopies: qty,
+                  selected: true,
+                });
+              });
+            } else if (item.tracking_type === "batch") {
+              // Batch item row
+              const qty = Math.max(1, Number(item.purchase_quantity) || 1);
+              printableList.push({
+                rowId: `batch_${item.batch_id || item.purchase_item_id || itemIdx}`,
+                itemType: "batch",
+                productId: item.product_id,
+                productName: item.name,
+                articleNo: "",
+                dim1Value: "",
+                dim2Value: "",
+                batchNumber: item.batch_number || "",
+                barcode: item.batch_barcode || item.barcode || item.product_code || "0000",
+                mrp: Number(item.mrp) || 0,
+                quantity: qty,
+                copiesPerQty: 1,
+                totalCopies: qty,
+                selected: true,
+              });
             } else {
-              // Strip JSON array brackets, double quotes, and single quotes before splitting
-              serialList = String(rawSerials)
-                .replace(/[\[\]"']/g, "")
-                .split(/[\n,]+/);
+              // Standard untracked product row
+              const qty = Math.max(1, Number(item.purchase_quantity) || 1);
+              printableList.push({
+                rowId: `std_${item.product_id || itemIdx}`,
+                itemType: "standard",
+                productId: item.product_id,
+                productName: item.name,
+                articleNo: "",
+                dim1Value: "",
+                dim2Value: "",
+                batchNumber: "",
+                barcode: item.barcode || item.product_code || "0000",
+                mrp: Number(item.mrp) || 0,
+                quantity: qty,
+                copiesPerQty: 1,
+                totalCopies: qty,
+                selected: true,
+              });
             }
-
-            serialList = serialList
-              .map((s: string) => s.trim())
-              .filter((s: string) => s !== "");
-
-            return {
-              ...i,
-              printMode: defaultMode,
-              parsedSerials: serialList,
-              selectedSerials: serialList, // Default select all
-              customQuantity: i.purchase_quantity || 1, // Default to full qty
-              copies: 1,
-              tracking_type: i.tracking_type || "none",
-              // Ensure we capture the batch barcode if the API provides it
-              batch_barcode: i.batch_barcode || i.barcode,
-            };
           });
-          setItems(initialized);
+
+          setRows(printableList);
         })
         .catch((err) => {
           console.error(err);
-          toast.error("Failed to load items");
+          toast.error("Failed to load purchase items for printing");
         })
         .finally(() => setLoading(false));
     }
   }, [open, purchaseId]);
 
-  console.log("items to print", items);
+  // Totals calculations
+  const selectedRows = useMemo(() => rows.filter((r) => r.selected), [rows]);
 
-  const updateItem = (index: number, updates: Partial<ExtendedLabelItem>) => {
-    setItems((prev) => {
-      const newItems = [...prev];
-      newItems[index] = { ...newItems[index], ...updates };
-      return newItems;
-    });
+  const summary = useMemo(() => {
+    const totalItems = selectedRows.length;
+    const totalQty = selectedRows.reduce((sum, r) => sum + r.quantity, 0);
+    const grandTotalLabels = selectedRows.reduce(
+      (sum, r) => sum + Math.max(0, Number(r.totalCopies) || 0),
+      0,
+    );
+    return { totalItems, totalQty, grandTotalLabels };
+  }, [selectedRows]);
+
+  // Handlers
+  const handleToggleSelect = (rowId: string) => {
+    setRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, selected: !r.selected } : r)),
+    );
   };
 
-  const handleToggleSerial = (index: number, serial: string) => {
-    const item = items[index];
-    const currentSelected = item.selectedSerials;
-    const isSelected = currentSelected.includes(serial);
-
-    let newSelected;
-    if (isSelected) {
-      newSelected = currentSelected.filter((s) => s !== serial);
-    } else {
-      newSelected = [...currentSelected, serial];
-    }
-    updateItem(index, { selectedSerials: newSelected });
+  const handleToggleSelectAll = () => {
+    const allSelected = rows.every((r) => r.selected);
+    setRows((prev) => prev.map((r) => ({ ...r, selected: !allSelected })));
   };
 
-  const handleSelectAllSerials = (index: number, select: boolean) => {
-    const item = items[index];
-    updateItem(index, {
-      selectedSerials: select ? [...item.parsedSerials] : [],
-    });
+  const handleCopiesPerQtyChange = (rowId: string, val: number) => {
+    const mult = Math.max(1, val || 1);
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.rowId !== rowId) return r;
+        return {
+          ...r,
+          copiesPerQty: mult,
+          totalCopies: r.quantity * mult,
+        };
+      }),
+    );
   };
 
-  // Calculate Total Labels for the Footer Summary
-  const totalLabels = useMemo(() => {
-    return items.reduce((acc, item) => {
-      const copies = item.copies || 1;
-      let qty = 0;
-      if (item.printMode === "serial") {
-        qty = item.selectedSerials.length;
-      } else {
-        qty = item.customQuantity || 0;
-      }
-      return acc + qty * copies;
-    }, 0);
-  }, [items]);
+  const handleQuantityChange = (rowId: string, newQty: number) => {
+    const qty = Math.max(1, newQty || 1);
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.rowId !== rowId) return r;
+        return {
+          ...r,
+          quantity: qty,
+          totalCopies: qty * r.copiesPerQty,
+        };
+      }),
+    );
+  };
+
+  const handleTotalCopiesChange = (rowId: string, newTotal: number) => {
+    const total = Math.max(0, newTotal || 0);
+    setRows((prev) =>
+      prev.map((r) => (r.rowId === rowId ? { ...r, totalCopies: total } : r)),
+    );
+  };
+
+  const handleSetAllMultiplier = (mult: number) => {
+    setRows((prev) =>
+      prev.map((r) => ({
+        ...r,
+        copiesPerQty: mult,
+        totalCopies: r.quantity * mult,
+      })),
+    );
+    toast.success(`Set ${mult}x copies per quantity for all items`);
+  };
+
+  const handleResetQty = () => {
+    setRows((prev) =>
+      prev.map((r) => ({
+        ...r,
+        copiesPerQty: 1,
+        totalCopies: r.quantity,
+      })),
+    );
+    toast.success("Reset label counts to purchase stock quantity");
+  };
 
   const handlePrint = async () => {
-    if (!ipcRenderer) return toast.error("Printer not available");
-
-    setPrinting(true);
-    const itemsToPrint: any[] = [];
-
-    items.forEach((item) => {
-      // 1. Determine Barcode & Label based on Mode
-      // User Request: Use ACTUAL batch barcode, not generated.
-
-      // SERIAL MODE
-      if (item.printMode === "serial") {
-        if (item.selectedSerials.length === 0) return;
-
-        item.selectedSerials.forEach((sn) => {
-          itemsToPrint.push({
-            ...item,
-            printQuantity: 1, // 1 label per serial logic
-            copies: item.copies,
-            customBarcode: sn, // The Serial IS the barcode
-            label: `${item.name} (SN: ${sn})`,
-          });
-        });
-      }
-      // BATCH MODE
-      else if (item.printMode === "batch") {
-        if (item.customQuantity <= 0) return;
-
-        // Priority: Batch Barcode > Batch Number > Batch UID > Fallback Gen
-        const batchCode = item.batch_barcode;
-        console.log("product barcode =", batchCode);
-
-        itemsToPrint.push({
-          ...item,
-          printQuantity: item.customQuantity,
-          copies: item.copies,
-          customBarcode: batchCode,
-          label: `${item.name} (Batch: ${item.batch_number})`,
-        });
-      }
-      // PRODUCT MODE
-      else {
-        if (item.customQuantity <= 0) return;
-
-        const productCode =
-          item.barcode || item.product_code || `PROD-${item.id}`;
-
-        itemsToPrint.push({
-          ...item,
-          printQuantity: item.customQuantity,
-          copies: item.copies,
-          customBarcode: productCode,
-          label: item.name,
-        });
-      }
-    });
-
-    if (itemsToPrint.length === 0) {
-      setPrinting(false);
-      return toast.error("No labels selected to print");
+    if (selectedRows.length === 0) {
+      toast.error("Please select at least one item to print");
+      return;
+    }
+    if (summary.grandTotalLabels === 0) {
+      toast.error("Total copies to print must be greater than 0");
+      return;
     }
 
-    toast.loading(`Sending ${itemsToPrint.length} jobs to printer...`);
+    setPrinting(true);
     try {
-      const res = await ipcRenderer.invoke("print-bulk-labels", itemsToPrint);
-      toast.dismiss();
+      const labelJobs = selectedRows
+        .filter((r) => r.totalCopies > 0)
+        .map((r) => ({
+          name: r.productName,
+          article_no: r.articleNo,
+          dim1_value: r.dim1Value,
+          dim2_value: r.dim2Value,
+          batch_number: r.batchNumber,
+          barcode: r.barcode,
+          mrp: r.mrp,
+          price: r.mrp,
+          copies: r.totalCopies,
+        }));
+
+      await printLabel(labelJobs);
+      toast.success(
+        `Sent ${summary.grandTotalLabels} barcode label(s) to printer!`,
+      );
+      onClose();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to print labels");
+    } finally {
       setPrinting(false);
-      if (res.success) {
-        toast.success("Print job sent successfully!");
-        onClose();
-      } else {
-        toast.error("Print failed: " + res.error);
-      }
-    } catch (e) {
-      toast.dismiss();
-      setPrinting(false);
-      console.error(e);
-      toast.error("Printer communication error");
     }
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle sx={{ pb: 1 }}>
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-        >
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          boxShadow: 24,
+          maxHeight: "90vh",
+        },
+      }}
+    >
+      {/* Dialog Header */}
+      <DialogTitle
+        sx={{
+          m: 0,
+          p: 2.5,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          bgcolor: "background.paper",
+        }}
+      >
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Box
+            sx={{
+              p: 1,
+              borderRadius: 2,
+              bgcolor: "primary.main",
+              color: "primary.contrastText",
+              display: "flex",
+            }}
+          >
+            <Printer size={22} />
+          </Box>
           <Box>
-            <Typography variant="h6" fontWeight={600}>
-              Print Labels
+            <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
+              Bulk & Post-Purchase Barcode Label Printer
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Purchase Order #{purchaseId}
+              Print standard, batch, or variant barcodes for purchase items
             </Typography>
           </Box>
-          <Chip
-            icon={<Printer size={14} />}
-            label={`${totalLabels} Labels Total`}
-            color="primary"
-            variant="filled"
-            sx={{ fontWeight: 600 }}
-          />
         </Stack>
+        <IconButton onClick={onClose} size="small">
+          <X size={20} />
+        </IconButton>
       </DialogTitle>
 
-      <Divider />
-
-      <DialogContent sx={{ bgcolor: "#F3F4F6", p: 2 }}>
+      {/* Dialog Content */}
+      <DialogContent sx={{ p: 2.5, bgcolor: "background.default" }}>
         {loading ? (
-          <KoshSpinningLoader />
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              py: 8,
+            }}
+          >
+            <KoshSpinningLoader size={48} />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              Loading purchase items and barcode specs...
+            </Typography>
+          </Box>
+        ) : rows.length === 0 ? (
+          <Box sx={{ textCenter: "center", py: 6 }}>
+            <Typography color="text.secondary">
+              No printable items found for this purchase.
+            </Typography>
+          </Box>
         ) : (
-          <Stack spacing={2}>
-            {items.map((item, idx) => (
-              <BulkPrintItemCard
-                key={idx}
-                item={item}
-                index={idx}
-                onUpdate={updateItem}
-                onToggleSerial={handleToggleSerial}
-                onSelectAllSerials={handleSelectAllSerials}
-              />
-            ))}
-            {items.length === 0 && (
-              <Box textAlign="center" py={5}>
-                <Typography color="text.secondary">
-                  No items found in this purchase.
-                </Typography>
-              </Box>
-            )}
+          <Stack spacing={2.5}>
+            {/* Summary Statistics Banner */}
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 2,
+                borderRadius: 2.5,
+                bgcolor: "background.paper",
+                borderColor: "divider",
+              }}
+            >
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                alignItems={{ xs: "flex-start", sm: "center" }}
+                justifyContent="space-between"
+                spacing={2}
+              >
+                <Stack direction="row" spacing={3} alignItems="center">
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      fontWeight={600}
+                    >
+                      SELECTED ITEMS
+                    </Typography>
+                    <Typography variant="h6" fontWeight={800} color="primary.main">
+                      {summary.totalItems} / {rows.length}
+                    </Typography>
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      fontWeight={600}
+                    >
+                      TOTAL STOCK QTY
+                    </Typography>
+                    <Typography variant="h6" fontWeight={800} color="text.primary">
+                      {summary.totalQty} Pcs
+                    </Typography>
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      fontWeight={600}
+                    >
+                      TOTAL LABELS TO PRINT
+                    </Typography>
+                    <Typography variant="h5" fontWeight={900} color="secondary.main">
+                      {summary.grandTotalLabels}
+                    </Typography>
+                  </Box>
+                </Stack>
+
+                {/* Quick Preset Action Buttons */}
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Tooltip title="Reset to purchase stock quantities (1x multiplier)">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="inherit"
+                      onClick={handleResetQty}
+                      startIcon={<RotateCcw size={14} />}
+                    >
+                      1x Qty
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title="Set 2 copies per unit quantity for all items">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="primary"
+                      onClick={() => handleSetAllMultiplier(2)}
+                    >
+                      2x Copies
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title="Set 4 copies per unit quantity for all items">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="primary"
+                      onClick={() => handleSetAllMultiplier(4)}
+                    >
+                      4x Copies
+                    </Button>
+                  </Tooltip>
+                </Stack>
+              </Stack>
+            </Paper>
+
+            {/* Printable Items Table */}
+            <Paper
+              variant="outlined"
+              sx={{ borderRadius: 2.5, overflow: "hidden", borderColor: "divider" }}
+            >
+              <Table size="small">
+                <TableHead sx={{ bgcolor: "action.hover" }}>
+                  <TableRow>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        size="small"
+                        checked={rows.length > 0 && rows.every((r) => r.selected)}
+                        indeterminate={
+                          rows.some((r) => r.selected) &&
+                          !rows.every((r) => r.selected)
+                        }
+                        onChange={handleToggleSelectAll}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Item & Specs</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Barcode & Type</TableCell>
+                    <TableCell sx={{ fontWeight: 700, textAlign: "right" }}>MRP</TableCell>
+                    <TableCell sx={{ fontWeight: 700, textAlign: "center", width: 90 }}>
+                      Qty
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, textAlign: "center", width: 110 }}>
+                      Copies/Qty
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, textAlign: "center", width: 110 }}>
+                      Total Labels
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {rows.map((row) => {
+                    return (
+                      <TableRow
+                        key={row.rowId}
+                        hover
+                        selected={row.selected}
+                        sx={{
+                          opacity: row.selected ? 1 : 0.5,
+                          transition: "opacity 0.2s",
+                        }}
+                      >
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            size="small"
+                            checked={row.selected}
+                            onChange={() => handleToggleSelect(row.rowId)}
+                          />
+                        </TableCell>
+
+                        {/* Item Name & Specs */}
+                        <TableCell>
+                          <Typography variant="subtitle2" fontWeight={700}>
+                            {row.productName}
+                          </Typography>
+                          <Stack direction="row" spacing={0.5} mt={0.5} flexWrap="wrap">
+                            {row.articleNo && (
+                              <Chip
+                                label={`Art: ${row.articleNo}`}
+                                size="small"
+                                color="secondary"
+                                variant="outlined"
+                                sx={{ height: 20, fontSize: "0.7rem", fontWeight: 700 }}
+                              />
+                            )}
+                            {row.dim1Value && (
+                              <Chip
+                                label={`Size: ${row.dim1Value}`}
+                                size="small"
+                                color="primary"
+                                variant="outlined"
+                                sx={{ height: 20, fontSize: "0.7rem", fontWeight: 700 }}
+                              />
+                            )}
+                            {row.dim2Value && (
+                              <Chip
+                                label={`Color: ${row.dim2Value}`}
+                                size="small"
+                                color="info"
+                                variant="outlined"
+                                sx={{ height: 20, fontSize: "0.7rem", fontWeight: 700 }}
+                              />
+                            )}
+                            {row.batchNumber && (
+                              <Chip
+                                label={`Batch: ${row.batchNumber}`}
+                                size="small"
+                                color="default"
+                                variant="outlined"
+                                sx={{ height: 20, fontSize: "0.7rem" }}
+                              />
+                            )}
+                          </Stack>
+                        </TableCell>
+
+                        {/* Barcode & Type Badge */}
+                        <TableCell>
+                          <Typography
+                            variant="body2"
+                            fontFamily="monospace"
+                            fontWeight={700}
+                          >
+                            {row.barcode}
+                          </Typography>
+                          <Chip
+                            label={row.itemType.toUpperCase()}
+                            size="small"
+                            color={
+                              row.itemType === "variant"
+                                ? "secondary"
+                                : row.itemType === "batch"
+                                  ? "warning"
+                                  : "default"
+                            }
+                            sx={{ height: 18, fontSize: "0.65rem", fontWeight: 800, mt: 0.3 }}
+                          />
+                        </TableCell>
+
+                        {/* MRP */}
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>
+                          ₹{row.mrp.toFixed(2)}
+                        </TableCell>
+
+                        {/* Quantity (Q) */}
+                        <TableCell align="center">
+                          <TextField
+                            type="number"
+                            size="small"
+                            value={row.quantity}
+                            onChange={(e) =>
+                              handleQuantityChange(
+                                row.rowId,
+                                parseInt(e.target.value) || 1,
+                              )
+                            }
+                            inputProps={{ min: 1, style: { textAlign: "center", padding: "4px 8px" } }}
+                            sx={{ width: 65 }}
+                          />
+                        </TableCell>
+
+                        {/* Copies per Qty Multiplier (C) */}
+                        <TableCell align="center">
+                          <TextField
+                            type="number"
+                            size="small"
+                            value={row.copiesPerQty}
+                            onChange={(e) =>
+                              handleCopiesPerQtyChange(
+                                row.rowId,
+                                parseInt(e.target.value) || 1,
+                              )
+                            }
+                            inputProps={{ min: 1, style: { textAlign: "center", padding: "4px 8px" } }}
+                            sx={{ width: 75 }}
+                          />
+                        </TableCell>
+
+                        {/* Total Barcodes (T = Q * C, Editable) */}
+                        <TableCell align="center">
+                          <TextField
+                            type="number"
+                            size="small"
+                            value={row.totalCopies}
+                            onChange={(e) =>
+                              handleTotalCopiesChange(
+                                row.rowId,
+                                parseInt(e.target.value) || 0,
+                              )
+                            }
+                            inputProps={{
+                              min: 0,
+                              style: {
+                                textAlign: "center",
+                                fontWeight: 800,
+                                color: "#10b981",
+                                padding: "4px 8px",
+                              },
+                            }}
+                            sx={{ width: 85 }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Paper>
           </Stack>
         )}
       </DialogContent>
 
-      <Divider />
-
-      <DialogActions sx={{ px: 3, py: 2, bgcolor: 'background.paper' }}>
-        <Stack
-          direction="row"
-          width="100%"
-          justifyContent="space-between"
-          alignItems="center"
+      {/* Dialog Footer Actions */}
+      <DialogActions
+        sx={{
+          p: 2,
+          px: 3,
+          borderTop: "1px solid",
+          borderColor: "divider",
+          bgcolor: "background.paper",
+          justifyContent: "space-between",
+        }}
+      >
+        <Button variant="outlined" color="inherit" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          color="primary"
+          size="large"
+          onClick={handlePrint}
+          disabled={printing || loading || summary.grandTotalLabels === 0}
+          startIcon={<Printer size={20} />}
+          sx={{ px: 4, fontWeight: 800, borderRadius: 2 }}
         >
-          <Typography variant="body2" color="text.secondary">
-            Make sure printer is connected and calibrated.
-          </Typography>
-          <Stack direction="row" spacing={2}>
-            <Button onClick={onClose} disabled={printing} color="inherit">
-              Cancel
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<Printer size={18} />}
-              onClick={handlePrint}
-              disabled={printing || totalLabels === 0}
-              sx={{ px: 4 }}
-            >
-              {printing ? "Printing..." : `Print ${totalLabels} Labels`}
-            </Button>
-          </Stack>
-        </Stack>
+          {printing
+            ? "Printing..."
+            : `PRINT ${summary.grandTotalLabels} LABEL(S)`}
+        </Button>
       </DialogActions>
     </Dialog>
-  );
-}
-
-// --- SUB-COMPONENT: Item Card ---
-function BulkPrintItemCard({
-  item,
-  index,
-  onUpdate,
-  onToggleSerial,
-  onSelectAllSerials,
-}: {
-  item: ExtendedLabelItem;
-  index: number;
-  onUpdate: (index: number, updates: Partial<ExtendedLabelItem>) => void;
-  onToggleSerial: (index: number, serial: string) => void;
-  onSelectAllSerials: (index: number, select: boolean) => void;
-}) {
-  const isTracked = ["batch", "serial"].includes(item.tracking_type || "");
-  const isSerial = item.tracking_type === "serial";
-  const [expanded, setExpanded] = useState(true);
-
-  // Styling for the Mode Toggle
-  const toggleSx = {
-    py: 0.5,
-    px: 2,
-    textTransform: "none",
-    fontWeight: 500,
-    fontSize: "0.85rem",
-    "&.Mui-selected": {
-      bgcolor: "primary.soft",
-      color: 'text.primary',
-      borderColor: "primary.main",
-    },
-  };
-
-  return (
-    <Paper
-      elevation={0}
-      variant="outlined"
-      sx={{
-        overflow: "hidden",
-        borderRadius: 2,
-        borderColor: "divider",
-        transition: "all 0.2s",
-        "&:hover": {
-          borderColor: "primary.light",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-        },
-      }}
-    >
-      {/* Header Row */}
-      <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
-        <Stack direction="row" alignItems="start" spacing={2}>
-          {/* Icon Box */}
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: 1,
-              bgcolor: isSerial
-                ? "purple.50"
-                : isTracked
-                  ? "orange.50"
-                  : "blue.50",
-              color: isSerial
-                ? "purple.600"
-                : isTracked
-                  ? "orange.600"
-                  : "blue.600",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {isSerial ? (
-              <ScanBarcode size={20} />
-            ) : isTracked ? (
-              <Package size={20} />
-            ) : (
-              <Tag size={20} />
-            )}
-          </Box>
-
-          <Box sx={{ flex: 1 }}>
-            <Stack
-              direction="row"
-              justifyContent="space-between"
-              alignItems="center"
-            >
-              <Box>
-                <Typography
-                  variant="subtitle1"
-                  fontWeight={600}
-                  lineHeight={1.2}
-                >
-                  {item.name}
-                </Typography>
-                <Stack direction="row" spacing={1} mt={0.5}>
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      bgcolor: "grey.100",
-                      px: 0.8,
-                      borderRadius: 0.5,
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    {item.product_code || "No Code"}
-                  </Typography>
-                  {item.batch_number && (
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        bgcolor: "orange.50",
-                        color: "orange.800",
-                        px: 0.8,
-                        borderRadius: 0.5,
-                      }}
-                    >
-                      Batch: {item.batch_number}
-                    </Typography>
-                  )}
-                </Stack>
-              </Box>
-              <IconButton size="small" onClick={() => setExpanded(!expanded)}>
-                {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-              </IconButton>
-            </Stack>
-          </Box>
-        </Stack>
-
-        <Collapse in={expanded}>
-          <Box mt={2}>
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={3}
-              alignItems="start"
-            >
-              {/* Left: Mode Selection */}
-              <Box flex={1} width="100%">
-                <Typography
-                  variant="caption"
-                  fontWeight={600}
-                  color="text.secondary"
-                  mb={1}
-                  display="block"
-                >
-                  PRINT TARGET
-                </Typography>
-                <ToggleButtonGroup
-                  value={item.printMode}
-                  exclusive
-                  onChange={(_, val) =>
-                    val && onUpdate(index, { printMode: val })
-                  }
-                  size="small"
-                  fullWidth
-                  sx={{ mb: 2 }}
-                >
-                  <ToggleButton value="product" sx={toggleSx}>
-                    Product
-                  </ToggleButton>
-                  {isTracked && (
-                    <ToggleButton value="batch" sx={toggleSx}>
-                      Batch
-                    </ToggleButton>
-                  )}
-                  {isSerial && (
-                    <ToggleButton value="serial" sx={toggleSx}>
-                      Serials
-                    </ToggleButton>
-                  )}
-                </ToggleButtonGroup>
-
-                {/* Conditional Inputs */}
-                {item.printMode !== "serial" ? (
-                  <Stack direction="row" spacing={2}>
-                    <TextField
-                      label="Total Labels"
-                      type="number"
-                      size="small"
-                      fullWidth
-                      value={item.customQuantity}
-                      onChange={(e) =>
-                        onUpdate(index, {
-                          customQuantity: Math.max(
-                            0,
-                            parseInt(e.target.value) || 0,
-                          ),
-                        })
-                      }
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="caption" color="text.secondary">
-                            Qty
-                          </Typography>
-                        ),
-                      }}
-                    />
-                    <TextField
-                      label="Copies"
-                      type="number"
-                      size="small"
-                      fullWidth
-                      value={item.copies}
-                      onChange={(e) =>
-                        onUpdate(index, {
-                          copies: Math.max(1, parseInt(e.target.value) || 1),
-                        })
-                      }
-                      InputProps={{
-                        endAdornment: (
-                          <Typography variant="caption" color="text.secondary">
-                            Each
-                          </Typography>
-                        ),
-                      }}
-                    />
-                  </Stack>
-                ) : (
-                  <TextField
-                    label="Copies Per Serial"
-                    type="number"
-                    size="small"
-                    fullWidth
-                    value={item.copies}
-                    onChange={(e) =>
-                      onUpdate(index, {
-                        copies: Math.max(1, parseInt(e.target.value) || 1),
-                      })
-                    }
-                  />
-                )}
-              </Box>
-
-              {/* Right: Serial Selection (Only for Serial Mode) */}
-              {item.printMode === "serial" && (
-                <Box
-                  flex={1.5}
-                  width="100%"
-                  sx={{
-                    border: "1px solid",
-                    borderColor: "divider",
-                    borderRadius: 2,
-                    p: 1.5,
-                    bgcolor: "grey.50",
-                  }}
-                >
-                  <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    mb={1}
-                  >
-                    <Typography variant="caption" fontWeight={700}>
-                      SELECT SERIALS ({item.selectedSerials.length}/
-                      {item.parsedSerials.length})
-                    </Typography>
-                    <Stack direction="row" spacing={0.5}>
-                      <Button
-                        size="small"
-                        variant="text"
-                        sx={{ fontSize: "0.7rem", minWidth: "auto", p: 0.5 }}
-                        onClick={() => onSelectAllSerials(index, true)}
-                      >
-                        All
-                      </Button>
-                      <Typography variant="caption" color="text.disabled">
-                        |
-                      </Typography>
-                      <Button
-                        size="small"
-                        variant="text"
-                        sx={{ fontSize: "0.7rem", minWidth: "auto", p: 0.5 }}
-                        onClick={() => onSelectAllSerials(index, false)}
-                      >
-                        None
-                      </Button>
-                    </Stack>
-                  </Stack>
-
-                  <Box
-                    sx={{
-                      maxHeight: 150,
-                      overflowY: "auto",
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 0.5,
-                    }}
-                  >
-                    {item.parsedSerials.length === 0 ? (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ p: 1 }}
-                      >
-                        No serials available.
-                      </Typography>
-                    ) : (
-                      item.parsedSerials.map((sn) => {
-                        const isSelected = item.selectedSerials.includes(sn);
-                        return (
-                          <Chip
-                            key={sn}
-                            label={sn}
-                            size="small"
-                            onClick={() => onToggleSerial(index, sn)}
-                            variant={isSelected ? "filled" : "outlined"}
-                            color={isSelected ? "primary" : "default"}
-                            sx={{
-                              borderRadius: 1,
-                              height: 24,
-                              fontSize: "0.75rem",
-                              bgcolor: isSelected ? "primary.main" : "white",
-                            }}
-                          />
-                        );
-                      })
-                    )}
-                  </Box>
-                </Box>
-              )}
-            </Stack>
-          </Box>
-        </Collapse>
-      </Box>
-    </Paper>
   );
 }

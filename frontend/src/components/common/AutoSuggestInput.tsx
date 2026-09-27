@@ -218,6 +218,7 @@ export default function AutoSuggestInput({
         }
       }
     }
+    setIsOpen(false);
   };
 
   const focusNextElement = () => {
@@ -679,7 +680,7 @@ export default function AutoSuggestInput({
           style={{
             minWidth: Math.max(containerRef.current?.clientWidth || 0, 260),
             width: containerRef.current?.clientWidth || "auto",
-            zIndex: 1400,
+            zIndex: 1200,
           }}
         >
           <Paper

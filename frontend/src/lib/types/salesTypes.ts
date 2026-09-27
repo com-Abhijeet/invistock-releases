@@ -15,6 +15,7 @@ export interface SaleItemPayload {
   unit?: string | null;
   batch_id?: number | null;
   serial_id?: number | null;
+  variant_id?: number | null;
   employee_id?: number | null;
   employee_name?: string | null;
 }

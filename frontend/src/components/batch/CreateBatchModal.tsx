@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -19,7 +19,7 @@ import {
   Chip,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
-import { Plus, Sparkles, Zap } from "lucide-react";
+import { Plus, Sparkles, Zap, Grid as GridIcon } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { Product } from "../../lib/types/product";
@@ -30,6 +30,10 @@ import {
   CreateBatchPayload,
 } from "../../lib/api/batchService";
 import FastSerialScannerInput from "./FastSerialScannerInput";
+import VariantMatrixModal, { VariantMatrixCell } from "../matrix/VariantMatrixModal";
+import { getAttributePresets, AttributePreset } from "../../lib/api/attributePresetService";
+import { getCategories } from "../../lib/api/categoryService";
+import { Category } from "../../lib/types/categoryTypes";
 
 interface CreateBatchModalProps {
   open: boolean;
@@ -50,6 +54,12 @@ export default function CreateBatchModal({
 }: CreateBatchModalProps) {
   const [loading, setLoading] = useState(false);
   const isEditMode = !!initialBatch;
+
+  // Variant Matrix state
+  const [matrixModalOpen, setMatrixModalOpen] = useState(false);
+  const [matrixVariants, setMatrixVariants] = useState<VariantMatrixCell[]>([]);
+  const [presets, setPresets] = useState<AttributePreset[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   // Stock mode: 'new_stock' (increments total product.quantity) vs 'untracked_stock' (converts general stock)
   const [stockMode, setStockMode] = useState<"new_stock" | "untracked_stock">(
@@ -85,6 +95,56 @@ export default function CreateBatchModal({
   });
 
   const batchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      getAttributePresets()
+        .then((res: AttributePreset[]) => setPresets(res))
+        .catch(() => {});
+      getCategories()
+        .then((res: Category[]) => setCategories(res))
+        .catch(() => {});
+    } else {
+      setMatrixVariants([]);
+    }
+  }, [open]);
+
+  const resolvedPreset = useMemo(() => {
+    if (!product) return presets[0] || null;
+
+    if (product.preset_id) {
+      const p = presets.find((pr) => pr.id === Number(product.preset_id));
+      if (p) return p;
+    }
+
+    const catId =
+      typeof product.category === "number"
+        ? product.category
+        : (product as any).category_id
+        ? Number((product as any).category_id)
+        : typeof product.category === "string" && !isNaN(Number(product.category))
+        ? Number(product.category)
+        : null;
+
+    const matchedCategory = categories.find(
+      (c) =>
+        (catId !== null && c.id === catId) ||
+        (product.category && String(c.name).toLowerCase() === String(product.category).toLowerCase()) ||
+        ((product as any).category_name && String(c.name).toLowerCase() === String((product as any).category_name).toLowerCase()),
+    );
+
+    if (matchedCategory?.default_preset_id) {
+      const p = presets.find((pr) => pr.id === Number(matchedCategory.default_preset_id));
+      if (p) return p;
+    }
+
+    if ((product as any).category_default_preset_id) {
+      const p = presets.find((pr) => pr.id === Number((product as any).category_default_preset_id));
+      if (p) return p;
+    }
+
+    return presets[0] || null;
+  }, [product, presets, categories]);
 
   const formatDateForInput = (d: any): string => {
     if (!d) return "";
@@ -201,6 +261,14 @@ export default function CreateBatchModal({
     handleChange("expiryDate", dateStr);
   };
 
+  const handleMatrixSave = (matrixData: VariantMatrixCell[]) => {
+    setMatrixVariants(matrixData);
+    const totalQty = matrixData.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    if (totalQty > 0) {
+      handleChange("quantity", totalQty);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!product?.id) {
       toast.error("Invalid Product ID");
@@ -286,6 +354,7 @@ export default function CreateBatchModal({
           calcMargin(Number(formData.mrp), Number(formData.mop)),
         location: formData.location.trim() || undefined,
         serials: isSerial ? formData.serials : undefined,
+        variants: matrixVariants.length > 0 ? matrixVariants : undefined,
         increaseProductStock: stockMode === "new_stock",
       };
 
@@ -308,337 +377,390 @@ export default function CreateBatchModal({
   const isSerialTracked = product.tracking_type === "serial";
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle
-        sx={{
-          bgcolor: "#f8fafc",
-          borderBottom: "1px solid",
-          borderColor: "divider",
-          pb: 1.5,
-        }}
-      >
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
+    <>
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle
+          sx={{
+            bgcolor: "#f8fafc",
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            pb: 1.5,
+          }}
         >
-          <Box>
-            <Typography variant="h6" fontWeight={700}>
-              {isEditMode ? "Edit Batch Details" : "Manual Stock Entry"}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Product: <b>{product.name}</b> (
-              {product.tracking_type?.toUpperCase()} TRACKED)
-            </Typography>
-          </Box>
-          <Chip
-            icon={<Zap size={14} />}
-            label="Ctrl+Enter to Save"
-            size="small"
-            color="primary"
-            variant="outlined"
-            sx={{ fontWeight: 600 }}
-          />
-        </Stack>
-      </DialogTitle>
-
-      <DialogContent dividers>
-        <Stack spacing={2.5} pt={1}>
-          {/* Stock Mode Switch - only show when creating new batch */}
-          {!isEditMode && (
-            <Box
-              sx={{
-                p: 2,
-                borderRadius: 2,
-                bgcolor:
-                  stockMode === "new_stock" ? "primary.50" : "warning.50",
-                border: "1px solid",
-                borderColor:
-                  stockMode === "new_stock" ? "primary.200" : "warning.200",
-              }}
-            >
-              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
-                Stock Source Selection
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+          >
+            <Box>
+              <Typography variant="h6" fontWeight={700}>
+                {isEditMode ? "Edit Batch Details" : "Manual Stock Entry"}
               </Typography>
-              <RadioGroup
-                row
-                value={stockMode}
-                onChange={(e) =>
-                  setStockMode(
-                    e.target.value as "new_stock" | "untracked_stock",
-                  )
-                }
-              >
-                <FormControlLabel
-                  value="new_stock"
-                  control={<Radio size="small" />}
-                  label={
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>
-                        🟢 Add New Stock
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Creates batch AND increases total product inventory
-                      </Typography>
-                    </Box>
-                  }
-                />
-                <FormControlLabel
-                  value="untracked_stock"
-                  control={<Radio size="small" />}
-                  disabled={untrackedQuantity <= 0}
-                  label={
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>
-                        🟡 Assign Untracked Stock ({untrackedQuantity}{" "}
-                        Available)
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Converts general inventory into tracked batch without
-                        double counting
-                      </Typography>
-                    </Box>
-                  }
-                />
-              </RadioGroup>
+              <Typography variant="caption" color="text.secondary">
+                Product: <b>{product.name}</b> (
+                {product.tracking_type?.toUpperCase()} TRACKED)
+              </Typography>
             </Box>
-          )}
-
-          {isEditMode && (
-            <TextField
-              label="Stock Adjustment Reason / Note"
-              fullWidth
+            <Chip
+              icon={<Zap size={14} />}
+              label="Ctrl+Enter to Save"
               size="small"
-              value={formData.reason}
-              onChange={(e) => handleChange("reason", e.target.value)}
-              placeholder="e.g. Audit correction, Damaged stock removed, Quantity reconciled"
-              helperText="Logged in Stock Adjustments history if batch quantity is modified"
+              color="primary"
+              variant="outlined"
+              sx={{ fontWeight: 600 }}
             />
-          )}
+          </Stack>
+        </DialogTitle>
 
-          <Grid container spacing={2}>
-            {/* Batch Number */}
-            <Grid item xs={12} sm={6}>
-              <TextField
-                inputRef={batchInputRef}
-                label="Batch Number"
-                fullWidth
-                size="small"
-                value={formData.batchNumber}
-                onChange={(e) => handleChange("batchNumber", e.target.value)}
-                required
-                onFocus={(e) => e.target.select()}
-              />
-            </Grid>
-
-            {/* Barcode with Auto-Generate */}
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Barcode / UID"
-                fullWidth
-                size="small"
-                value={formData.barcode}
-                onChange={(e) => handleChange("barcode", e.target.value)}
-                placeholder="Scan or generate..."
-                InputProps={{
-                  endAdornment: (
-                    <Tooltip title="Generate Unique Barcode">
-                      <IconButton
-                        size="small"
-                        onClick={handleGenerateBarcode}
-                        color="primary"
-                      >
-                        <Sparkles size={18} />
-                      </IconButton>
-                    </Tooltip>
-                  ),
+        <DialogContent dividers>
+          <Stack spacing={2.5} pt={1}>
+            {/* Stock Mode Switch - only show when creating new batch */}
+            {!isEditMode && (
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor:
+                    stockMode === "new_stock" ? "primary.50" : "warning.50",
+                  border: "1px solid",
+                  borderColor:
+                    stockMode === "new_stock" ? "primary.200" : "warning.200",
                 }}
-              />
-            </Grid>
+              >
+                <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                  Stock Source Selection
+                </Typography>
+                <RadioGroup
+                  row
+                  value={stockMode}
+                  onChange={(e) =>
+                    setStockMode(
+                      e.target.value as "new_stock" | "untracked_stock",
+                    )
+                  }
+                >
+                  <FormControlLabel
+                    value="new_stock"
+                    control={<Radio size="small" />}
+                    label={
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          🟢 Add New Stock
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Creates batch AND increases total product inventory
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  <FormControlLabel
+                    value="untracked_stock"
+                    control={<Radio size="small" />}
+                    disabled={untrackedQuantity <= 0}
+                    label={
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          🟡 Assign Untracked Stock ({untrackedQuantity}{" "}
+                          Available)
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Converts general inventory into tracked batch without
+                          double counting
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                </RadioGroup>
+              </Box>
+            )}
 
-            {/* Quantity (for batch tracked) */}
-            {!isSerialTracked && (
+            {isEditMode && (
+              <TextField
+                label="Stock Adjustment Reason / Note"
+                fullWidth
+                size="small"
+                value={formData.reason}
+                onChange={(e) => handleChange("reason", e.target.value)}
+                placeholder="e.g. Audit correction, Damaged stock removed, Quantity reconciled"
+                helperText="Logged in Stock Adjustments history if batch quantity is modified"
+              />
+            )}
+
+            {!isSerialTracked && !isEditMode && (
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: "background.paper",
+                  border: "1px dashed",
+                  borderColor: matrixVariants.length > 0 ? "secondary.main" : "divider",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={700}>
+                    Variant Matrix Entry
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {matrixVariants.length > 0
+                      ? `${matrixVariants.length} variant combination(s) defined (${matrixVariants.reduce((acc, curr) => acc + (curr.quantity || 0), 0)} pcs total)`
+                      : "Optionally enter stock quantities per size, color, or preset variants"}
+                  </Typography>
+                </Box>
+                <Button
+                  variant={matrixVariants.length > 0 ? "contained" : "outlined"}
+                  color="secondary"
+                  size="small"
+                  startIcon={<GridIcon size={16} />}
+                  onClick={() => setMatrixModalOpen(true)}
+                  sx={{ borderRadius: "10px", textTransform: "none", fontWeight: 600 }}
+                >
+                  {matrixVariants.length > 0 ? "Edit Matrix" : "Open Variant Matrix"}
+                </Button>
+              </Box>
+            )}
+
+            <Grid container spacing={2}>
+              {/* Batch Number */}
               <Grid item xs={12} sm={6}>
                 <TextField
-                  label="Batch Quantity"
+                  inputRef={batchInputRef}
+                  label="Batch Number"
+                  fullWidth
+                  size="small"
+                  value={formData.batchNumber}
+                  onChange={(e) => handleChange("batchNumber", e.target.value)}
+                  required
+                  onFocus={(e) => e.target.select()}
+                />
+              </Grid>
+
+              {/* Barcode with Auto-Generate */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Barcode / UID"
+                  fullWidth
+                  size="small"
+                  value={formData.barcode}
+                  onChange={(e) => handleChange("barcode", e.target.value)}
+                  placeholder="Scan or generate..."
+                  InputProps={{
+                    endAdornment: (
+                      <Tooltip title="Generate Unique Barcode">
+                        <IconButton
+                          size="small"
+                          onClick={handleGenerateBarcode}
+                          color="primary"
+                        >
+                          <Sparkles size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    ),
+                  }}
+                />
+              </Grid>
+
+              {/* Quantity (for batch tracked) */}
+              {!isSerialTracked && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Batch Quantity"
+                    type="number"
+                    fullWidth
+                    size="small"
+                    value={formData.quantity}
+                    onChange={(e) =>
+                      handleChange("quantity", Number(e.target.value))
+                    }
+                    required
+                    onFocus={(e) => e.target.select()}
+                    helperText={
+                      matrixVariants.length > 0
+                        ? `Auto-set from Variant Matrix (${matrixVariants.reduce((acc, curr) => acc + (curr.quantity || 0), 0)} pcs)`
+                        : stockMode === "untracked_stock"
+                        ? `Max available untracked: ${untrackedQuantity}`
+                        : "Units to add to inventory"
+                    }
+                  />
+                </Grid>
+              )}
+
+              {/* Storage Location */}
+              <Grid item xs={12} sm={isSerialTracked ? 6 : 6}>
+                <TextField
+                  label="Storage Location / Shelf"
+                  fullWidth
+                  size="small"
+                  value={formData.location}
+                  onChange={(e) => handleChange("location", e.target.value)}
+                  placeholder="e.g. Aisle 3, Shelf B"
+                />
+              </Grid>
+
+              {/* Dates & Presets */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Mfg Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                  size="small"
+                  value={formData.mfgDate}
+                  onChange={(e) => handleChange("mfgDate", e.target.value)}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Expiry Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                  size="small"
+                  value={formData.expiryDate}
+                  onChange={(e) => handleChange("expiryDate", e.target.value)}
+                />
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  mt={0.8}
+                  flexWrap="wrap"
+                  gap={0.5}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    alignSelf="center"
+                  >
+                    Quick Expiry:
+                  </Typography>
+                  <Chip
+                    label="+3M"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => applyExpiryPreset(3)}
+                    sx={{ cursor: "pointer", height: 20, fontSize: "0.7rem" }}
+                  />
+                  <Chip
+                    label="+6M"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => applyExpiryPreset(6)}
+                    sx={{ cursor: "pointer", height: 20, fontSize: "0.7rem" }}
+                  />
+                  <Chip
+                    label="+1Y"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => applyExpiryPreset(12)}
+                    sx={{ cursor: "pointer", height: 20, fontSize: "0.7rem" }}
+                  />
+                  <Chip
+                    label="+2Y"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => applyExpiryPreset(24)}
+                    sx={{ cursor: "pointer", height: 20, fontSize: "0.7rem" }}
+                  />
+                </Stack>
+              </Grid>
+
+              {/* Pricing Overrides */}
+              <Grid item xs={12}>
+                <Typography
+                  variant="caption"
+                  fontWeight={700}
+                  color="text.secondary"
+                  sx={{ textTransform: "uppercase", letterSpacing: "0.5px" }}
+                >
+                  Batch Pricing (Defaulted from master product)
+                </Typography>
+              </Grid>
+
+              <Grid item xs={4}>
+                <TextField
+                  label="MRP (₹)"
                   type="number"
                   fullWidth
                   size="small"
-                  value={formData.quantity}
-                  onChange={(e) =>
-                    handleChange("quantity", Number(e.target.value))
-                  }
-                  required
+                  value={formData.mrp}
+                  onChange={(e) => handleChange("mrp", Number(e.target.value))}
                   onFocus={(e) => e.target.select()}
-                  helperText={
-                    stockMode === "untracked_stock"
-                      ? `Max available untracked: ${untrackedQuantity}`
-                      : "Units to add to inventory"
-                  }
                 />
               </Grid>
+
+              <Grid item xs={4}>
+                <TextField
+                  label="MOP / Selling (₹)"
+                  type="number"
+                  fullWidth
+                  size="small"
+                  value={formData.mop}
+                  onChange={(e) => handleChange("mop", Number(e.target.value))}
+                  onFocus={(e) => e.target.select()}
+                />
+              </Grid>
+
+              <Grid item xs={4}>
+                <TextField
+                  label="MFW / Wholesale (₹)"
+                  type="number"
+                  fullWidth
+                  size="small"
+                  value={formData.mfwPrice}
+                  onChange={(e) =>
+                    handleChange("mfwPrice", Number(e.target.value))
+                  }
+                  onFocus={(e) => e.target.select()}
+                />
+              </Grid>
+            </Grid>
+
+            {/* Serial Number Scanner (For serial tracked products) */}
+            {isSerialTracked && (
+              <FastSerialScannerInput
+                serials={formData.serials}
+                onChange={(newSerials) => handleChange("serials", newSerials)}
+              />
             )}
+          </Stack>
+        </DialogContent>
 
-            {/* Storage Location */}
-            <Grid item xs={12} sm={isSerialTracked ? 6 : 6}>
-              <TextField
-                label="Storage Location / Shelf"
-                fullWidth
-                size="small"
-                value={formData.location}
-                onChange={(e) => handleChange("location", e.target.value)}
-                placeholder="e.g. Aisle 3, Shelf B"
-              />
-            </Grid>
+        <DialogActions sx={{ p: 2, bgcolor: "#f8fafc" }}>
+          <Button onClick={onClose} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            color="primary"
+            startIcon={isEditMode ? undefined : <Plus size={18} />}
+            disabled={loading}
+            sx={{ px: 3, fontWeight: 700 }}
+          >
+            {loading
+              ? "Saving..."
+              : isEditMode
+                ? "Update Batch Details (Ctrl+Enter)"
+                : "Save Stock Entry (Ctrl+Enter)"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-            {/* Dates & Presets */}
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Mfg Date"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                size="small"
-                value={formData.mfgDate}
-                onChange={(e) => handleChange("mfgDate", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Expiry Date"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                size="small"
-                value={formData.expiryDate}
-                onChange={(e) => handleChange("expiryDate", e.target.value)}
-              />
-              <Stack
-                direction="row"
-                spacing={0.5}
-                mt={0.8}
-                flexWrap="wrap"
-                gap={0.5}
-              >
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  alignSelf="center"
-                >
-                  Quick Expiry:
-                </Typography>
-                <Chip
-                  label="+3M"
-                  size="small"
-                  variant="outlined"
-                  onClick={() => applyExpiryPreset(3)}
-                  sx={{ cursor: "pointer", height: 20, fontSize: "0.7rem" }}
-                />
-                <Chip
-                  label="+6M"
-                  size="small"
-                  variant="outlined"
-                  onClick={() => applyExpiryPreset(6)}
-                  sx={{ cursor: "pointer", height: 20, fontSize: "0.7rem" }}
-                />
-                <Chip
-                  label="+1Y"
-                  size="small"
-                  variant="outlined"
-                  onClick={() => applyExpiryPreset(12)}
-                  sx={{ cursor: "pointer", height: 20, fontSize: "0.7rem" }}
-                />
-                <Chip
-                  label="+2Y"
-                  size="small"
-                  variant="outlined"
-                  onClick={() => applyExpiryPreset(24)}
-                  sx={{ cursor: "pointer", height: 20, fontSize: "0.7rem" }}
-                />
-              </Stack>
-            </Grid>
-
-            {/* Pricing Overrides */}
-            <Grid item xs={12}>
-              <Typography
-                variant="caption"
-                fontWeight={700}
-                color="text.secondary"
-                sx={{ textTransform: "uppercase", letterSpacing: "0.5px" }}
-              >
-                Batch Pricing (Defaulted from master product)
-              </Typography>
-            </Grid>
-
-            <Grid item xs={4}>
-              <TextField
-                label="MRP (₹)"
-                type="number"
-                fullWidth
-                size="small"
-                value={formData.mrp}
-                onChange={(e) => handleChange("mrp", Number(e.target.value))}
-                onFocus={(e) => e.target.select()}
-              />
-            </Grid>
-
-            <Grid item xs={4}>
-              <TextField
-                label="MOP / Selling (₹)"
-                type="number"
-                fullWidth
-                size="small"
-                value={formData.mop}
-                onChange={(e) => handleChange("mop", Number(e.target.value))}
-                onFocus={(e) => e.target.select()}
-              />
-            </Grid>
-
-            <Grid item xs={4}>
-              <TextField
-                label="MFW / Wholesale (₹)"
-                type="number"
-                fullWidth
-                size="small"
-                value={formData.mfwPrice}
-                onChange={(e) =>
-                  handleChange("mfwPrice", Number(e.target.value))
-                }
-                onFocus={(e) => e.target.select()}
-              />
-            </Grid>
-          </Grid>
-
-          {/* Serial Number Scanner (For serial tracked products) */}
-          {isSerialTracked && (
-            <FastSerialScannerInput
-              serials={formData.serials}
-              onChange={(newSerials) => handleChange("serials", newSerials)}
-            />
-          )}
-        </Stack>
-      </DialogContent>
-
-      <DialogActions sx={{ p: 2, bgcolor: "#f8fafc" }}>
-        <Button onClick={onClose} color="inherit">
-          Cancel
-        </Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          color="primary"
-          startIcon={isEditMode ? undefined : <Plus size={18} />}
-          disabled={loading}
-          sx={{ px: 3, fontWeight: 700 }}
-        >
-          {loading
-            ? "Saving..."
-            : isEditMode
-              ? "Update Batch Details (Ctrl+Enter)"
-              : "Save Stock Entry (Ctrl+Enter)"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+      <VariantMatrixModal
+        open={matrixModalOpen}
+        onClose={() => setMatrixModalOpen(false)}
+        onSave={handleMatrixSave}
+        preset={resolvedPreset}
+        presets={presets}
+        productName={product?.name || ""}
+        articleNo={product?.product_code || ""}
+        initialVariants={matrixVariants}
+        defaultMrp={formData.mrp ? Number(formData.mrp) : undefined}
+        defaultMop={formData.mop ? Number(formData.mop) : undefined}
+      />
+    </>
   );
 }

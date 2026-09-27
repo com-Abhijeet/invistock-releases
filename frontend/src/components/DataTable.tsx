@@ -85,7 +85,7 @@ export default function DataTable({
       if (!isUserTyping) {
         const firstRow = tableRef.current?.childNodes[0] as HTMLElement;
         if (firstRow) {
-          firstRow.focus();
+          firstRow.focus({ preventScroll: true });
         }
       }
     }

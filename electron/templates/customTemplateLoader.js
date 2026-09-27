@@ -50,7 +50,6 @@ function getCustomFolderTemplateContent(type) {
     process.env.APPDATA
       ? path.join(process.env.APPDATA, "kosh", "custom_templates")
       : null,
-    path.join(rootDir, "custom_templates"),
   ].filter(Boolean);
 
   for (const baseDir of baseDirs) {

@@ -35,6 +35,7 @@ import {
   ListOrdered,
   Wand2,
   PlusCircle,
+  Grid,
 } from "lucide-react";
 import { getAllProducts } from "../../lib/api/productService";
 import { getShopData } from "../../lib/api/shopService";
@@ -43,6 +44,8 @@ import type { ShopSetupForm } from "../../lib/types/shopTypes";
 import { getUnitsForProduct } from "../../lib/services/unitService";
 import PurchaseBatchModal, { ExtendedPurchaseItem } from "./PurchaseBatchModal";
 import AddProductModal from "../products/AddProductModal";
+import VariantMatrixModal, { VariantMatrixCell } from "../matrix/VariantMatrixModal";
+import { getAttributePresets, AttributePreset } from "../../lib/api/attributePresetService";
 
 interface Props {
   items: ExtendedPurchaseItem[];
@@ -131,6 +134,11 @@ const PurchaseItemSection = ({
   const [genStartNum, setGenStartNum] = useState<number | "">(1);
   const [genCount, setGenCount] = useState<number | "">(10);
 
+  // Matrix Modal State
+  const [matrixModalOpen, setMatrixModalOpen] = useState(false);
+  const [matrixRowIndex, setMatrixRowIndex] = useState<number | null>(null);
+  const [presets, setPresets] = useState<AttributePreset[]>([]);
+
   // --- FOCUS MANAGEMENT ---
   const focusInput = (rowIdx: number, field: string) => {
     const key = `${rowIdx}-${field}`;
@@ -150,7 +158,27 @@ const PurchaseItemSection = ({
     }).then((data) => setProducts(data?.records || []));
 
     getShopData().then((res) => setShop(res));
+    getAttributePresets()
+      .then((res: AttributePreset[]) => setPresets(res))
+      .catch(() => {});
   }, []);
+
+  const handleOpenMatrixModal = (idx: number) => {
+    setMatrixRowIndex(idx);
+    setMatrixModalOpen(true);
+  };
+
+  const handleSaveMatrix = (matrixData: VariantMatrixCell[]) => {
+    if (matrixRowIndex === null) return;
+    const totalQty = matrixData.reduce((sum, v) => sum + (v.quantity || 0), 0);
+    const updated = [...items];
+    updated[matrixRowIndex].variants = matrixData;
+    updated[matrixRowIndex].quantity = totalQty;
+    updated[matrixRowIndex].price = calculatePrice(updated[matrixRowIndex]);
+    onItemsChange(updated);
+    setMatrixModalOpen(false);
+    setMatrixRowIndex(null);
+  };
 
   // --- KEYBOARD SHORTCUTS & NAVIGATION ---
   useEffect(() => {
@@ -574,6 +602,21 @@ const PurchaseItemSection = ({
                         {item.batch_number || "Details"}
                       </Button>
 
+                      {Boolean(product?.is_variant_product || product?.preset_id) && (
+                        <Button
+                          size="small"
+                          variant={item.variants && item.variants.length > 0 ? "contained" : "outlined"}
+                          color="primary"
+                          onClick={() => handleOpenMatrixModal(idx)}
+                          startIcon={<Grid size={14} />}
+                          sx={{ fontSize: "0.7rem", py: 0.5 }}
+                        >
+                          {item.variants && item.variants.length > 0
+                            ? `${item.variants.length} Variants`
+                            : "Matrix Entry"}
+                        </Button>
+                      )}
+
                       {isSerialTracked && (
                         <Button
                           size="small"
@@ -960,6 +1003,32 @@ const PurchaseItemSection = ({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* --- VARIANT MATRIX MODAL --- */}
+      {matrixModalOpen && matrixRowIndex !== null && (
+        <VariantMatrixModal
+          open={matrixModalOpen}
+          onClose={() => {
+            setMatrixModalOpen(false);
+            setMatrixRowIndex(null);
+          }}
+          onSave={handleSaveMatrix}
+          preset={presets.find(
+            (p) =>
+              p.id ===
+              products.find((prod) => prod.id === items[matrixRowIndex]?.product_id)
+                ?.preset_id
+          )}
+          productName={items[matrixRowIndex]?.product_name || "Product"}
+          articleNo={
+            products.find((prod) => prod.id === items[matrixRowIndex]?.product_id)
+              ?.article_no || undefined
+          }
+          initialVariants={items[matrixRowIndex]?.variants || []}
+          defaultMrp={items[matrixRowIndex]?.mrp}
+          defaultPurchaseRate={items[matrixRowIndex]?.rate}
+        />
+      )}
     </Box>
   );
 };

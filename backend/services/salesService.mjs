@@ -128,10 +128,11 @@ export function createSaleWithItems(saleData) {
       );
       updateProductQuantity(item.product_id, product.quantity - deductionQty);
 
-      if (item.batch_id || item.serial_id) {
+      if (item.batch_id || item.serial_id || item.variant_id) {
         batchService.processSaleItemStockDeduction({
           batchId: item.batch_id,
           serialId: item.serial_id,
+          variantId: item.variant_id,
           quantity: deductionQty,
         });
       }
@@ -202,10 +203,11 @@ export async function updateSaleWithItemsService(saleId, newData) {
         );
 
         updateProductQuantity(item.product_id, product.quantity + addBackQty);
-        if (item.batch_id || item.serial_id) {
+        if (item.batch_id || item.serial_id || item.variant_id) {
           batchService.processSaleReturnStockAddition({
             batchId: item.batch_id,
             serialId: item.serial_id,
+            variantId: item.variant_id,
             quantity: addBackQty,
           });
         }
@@ -224,10 +226,11 @@ export async function updateSaleWithItemsService(saleId, newData) {
       );
 
       updateProductQuantity(item.product_id, product.quantity - deductionQty);
-      if (item.batch_id || item.serial_id) {
+      if (item.batch_id || item.serial_id || item.variant_id) {
         batchService.processSaleItemStockDeduction({
           batchId: item.batch_id,
           serialId: item.serial_id,
+          variantId: item.variant_id,
           quantity: deductionQty,
         });
       }

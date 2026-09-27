@@ -27,13 +27,23 @@ class BarcodeCache {
 
     try {
       // Generate SVG (much faster than PNG)
-      const svg = bwipjs.toSVG({
+      let svg = bwipjs.toSVG({
         bcid: "code128",
         text: text,
-        scale: 3,
-        height: 10,
-        includetext: true,
-        textxalign: "center",
+        scale: 5,
+        height: 25,
+        includetext: false,
+      });
+
+      // Stretch barcode to 100% width and height of container
+      svg = svg.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
+        let cleanAttrs = attrs
+          .replace(/\bwidth="[^"]*"/gi, 'width="100%"')
+          .replace(/\bheight="[^"]*"/gi, 'height="100%"');
+        if (!cleanAttrs.includes("preserveAspectRatio")) {
+          cleanAttrs += ' preserveAspectRatio="none"';
+        }
+        return `<svg ${cleanAttrs}>`;
       });
 
       // Encode as data URL

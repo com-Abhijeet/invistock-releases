@@ -19,6 +19,7 @@ import {
   DatabaseBackup,
   Smartphone,
   Printer,
+  Layers,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -28,6 +29,7 @@ import PreferencesTab from "../components/settings/PreferencesTab";
 import PrintSettingsTab from "../components/settings/PrintSettingsTab"; // ✅ New Import
 import BackupRestoreTab from "../components/settings/BackupRestoreTab";
 import MobileAccessTab from "../components/settings/MobileAccessTab";
+import AttributePresetsTab from "../components/settings/AttributePresetsTab";
 
 import type { ShopSetupForm } from "../lib/types/shopTypes";
 import { getShopData, updateShopData } from "../lib/api/shopService";
@@ -143,6 +145,7 @@ export default function SettingsPage() {
               <Tab icon={<SettingsIcon size={18} />} iconPosition="start" label="Preferences" />
               <Tab icon={<DatabaseBackup size={18} />} iconPosition="start" label="Backup" />
               <Tab icon={<Smartphone size={18} />} iconPosition="start" label="Mobile" />
+              <Tab icon={<Layers size={18} />} iconPosition="start" label="Variant Presets" />
             </Tabs>
         </Box>
 
@@ -178,6 +181,7 @@ export default function SettingsPage() {
                 <BackupRestoreTab data={shopData} onChange={handleChange} />
               )}
               {activeTab === 5 && <MobileAccessTab />}
+              {activeTab === 6 && <AttributePresetsTab />}
             </Box>
           </Fade>
           </Box>
