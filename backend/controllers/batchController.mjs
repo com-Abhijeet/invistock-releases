@@ -244,11 +244,17 @@ export function checkBarcode(req, res) {
 
 /**
  * GET /api/batches/generate-barcode
- * Generates a unique 10-digit numeric barcode.
+ * Generates a unique 8-digit barcode.
  */
 export function generateBarcode(req, res) {
   try {
-    const barcode = BatchService.generateUniqueBarcode();
+    const { type, productId, batchId, variantIndex } = req.query;
+    const barcode = BatchService.generate8DigitBarcode({
+      type: type || "variant",
+      productId: productId ? Number(productId) : 1,
+      batchId: batchId ? Number(batchId) : 1,
+      variantIndex: variantIndex ? Number(variantIndex) : 1,
+    });
     res.json({ status: "success", barcode });
   } catch (error) {
     console.error("generateBarcode -", error);

@@ -1,6 +1,20 @@
 import { z } from "zod";
 
-// Purchase Item Schema (Updated with Batch/Serial Fields)
+// Variant Item Schema for Purchase Matrix Entries
+const variantItemSchema = z.object({
+  article_no: z.string().optional().nullable(),
+  dim1_value: z.string().optional().nullable(),
+  dim2_value: z.string().optional().nullable(),
+  quantity: z.number().min(0),
+  mrp: z.number().optional().nullable(),
+  mop: z.number().optional().nullable(),
+  purchase_rate: z.number().optional().nullable(),
+  cost_price: z.number().optional().nullable(),
+  barcode: z.string().optional().nullable(),
+  sku: z.string().optional().nullable(),
+});
+
+// Purchase Item Schema (Updated with Batch/Serial/Variant Fields)
 const purchaseItemSchema = z.object({
   product_id: z.number(),
   quantity: z.number().min(1),
@@ -20,10 +34,16 @@ const purchaseItemSchema = z.object({
   mop: z.number().optional(),
   mfw_price: z.string().optional(),
 
+  // Variants Matrix Array
+  variants: z.array(variantItemSchema).optional().nullable(),
+
   // Serial numbers can be an array of strings (from frontend) or null
   serial_numbers: z.array(z.string()).optional().nullable(),
 
   unit: z.string().optional().nullable(),
+  article_no: z.string().optional().nullable(),
+  category_id: z.number().optional().nullable(),
+  preset_id: z.number().optional().nullable(),
 });
 
 // Enum definitions for reuse

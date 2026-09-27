@@ -41,6 +41,8 @@ import {
   Factory,
   ShieldAlert,
   Edit,
+  Layers,
+  Tag,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -285,6 +287,15 @@ export default function ProductBatchesPage() {
                 Manual Stock Entry
               </Button>
             )}
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<Layers size={18} />}
+              onClick={() => navigate(`/products/${id}/variants`)}
+              sx={{ borderRadius: "12px", textTransform: "none", fontWeight: 600 }}
+            >
+              Search All Variants
+            </Button>
             <Button
               variant="outlined"
               startIcon={<Printer size={18} />}
@@ -658,6 +669,18 @@ export default function ProductBatchesPage() {
                     )}
 
                     <Stack direction="row" spacing={1} alignItems="center">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="secondary"
+                        startIcon={<Tag size={14} />}
+                        onClick={() =>
+                          navigate(`/products/${id}/variants?batchId=${batch.batch_id}`)
+                        }
+                        sx={{ fontSize: "0.75rem", textTransform: "none", fontWeight: 600 }}
+                      >
+                        View Variants
+                      </Button>
                       {product.tracking_type === "serial" && (
                         <Button
                           size="small"

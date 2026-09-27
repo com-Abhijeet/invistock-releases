@@ -24,13 +24,16 @@ import {
   ChevronDown,
   Folder,
   GitCommitHorizontal,
+  Layers,
 } from "lucide-react";
 import { useState } from "react";
 import type { Category } from "../../lib/types/categoryTypes";
+import type { AttributePreset } from "../../lib/api/attributePresetService";
 import React from "react";
 
 interface Props {
   categories: Category[];
+  presets?: AttributePreset[];
   onEdit: (category: Category) => void;
   onDelete: (id: number) => void;
 }
@@ -40,16 +43,22 @@ interface Props {
  */
 function Row({
   category,
+  presets,
   onEdit,
   onDelete,
 }: {
   category: Category;
+  presets?: AttributePreset[];
   onEdit: (cat: Category) => void;
   onDelete: (id: number) => void;
 }) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+  const matchedPreset = presets?.find(
+    (p) => p.id === Number(category.default_preset_id),
+  );
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
@@ -98,7 +107,7 @@ function Row({
                 p: 1,
                 borderRadius: 2,
                 bgcolor: alpha(theme.palette.primary.main, 0.1),
-                color: 'text.primary',
+                color: "text.primary",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -120,6 +129,27 @@ function Row({
               </Typography>
             </Box>
           </Stack>
+        </TableCell>
+
+        <TableCell>
+          {matchedPreset ? (
+            <Chip
+              icon={<Layers size={14} />}
+              label={`${matchedPreset.name}`}
+              size="small"
+              color="primary"
+              variant="outlined"
+              sx={{
+                fontWeight: 600,
+                borderRadius: 2,
+                bgcolor: alpha(theme.palette.primary.main, 0.04),
+              }}
+            />
+          ) : (
+            <Typography variant="body2" color="text.secondary" fontStyle="italic">
+              None
+            </Typography>
+          )}
         </TableCell>
 
         <TableCell>
@@ -197,7 +227,7 @@ function Row({
             paddingLeft: 0,
             paddingRight: 0,
           }}
-          colSpan={6}
+          colSpan={5}
         >
           <Collapse in={open} timeout="auto" unmountOnExit>
             <Box
@@ -284,7 +314,12 @@ function Row({
   );
 }
 
-export default function CategoryTable({ categories, onEdit, onDelete }: Props) {
+export default function CategoryTable({
+  categories,
+  presets,
+  onEdit,
+  onDelete,
+}: Props) {
   const theme = useTheme();
 
   return (
@@ -323,6 +358,18 @@ export default function CategoryTable({ categories, onEdit, onDelete }: Props) {
                 py: 2,
               }}
             >
+              Default Matrix Preset
+            </TableCell>
+            <TableCell
+              sx={{
+                fontWeight: 700,
+                color: "text.secondary",
+                fontSize: "0.75rem",
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+                py: 2,
+              }}
+            >
               Structure
             </TableCell>
             <TableCell
@@ -346,6 +393,7 @@ export default function CategoryTable({ categories, onEdit, onDelete }: Props) {
             <Row
               key={cat.id}
               category={cat}
+              presets={presets}
               onEdit={onEdit}
               onDelete={onDelete}
             />
@@ -355,3 +403,4 @@ export default function CategoryTable({ categories, onEdit, onDelete }: Props) {
     </TableContainer>
   );
 }
+

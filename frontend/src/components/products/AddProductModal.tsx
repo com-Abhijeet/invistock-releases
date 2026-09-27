@@ -35,6 +35,10 @@ import {
   fetchNextProductCode,
   lookupBarcodeProduct,
 } from "../../lib/api/productService";
+import {
+  getAttributePresets,
+  AttributePreset,
+} from "../../lib/api/attributePresetService";
 import { generateProductCode } from "../../utils/generateProductCode";
 import {
   PackagePlus,
@@ -128,6 +132,7 @@ export default function AddEditProductModal({
   const [availableCategories, setAvailableCategories] = useState<Category[]>(
     [],
   );
+  const [presets, setPresets] = useState<AttributePreset[]>([]);
   const [cachedPreferences, setCachedPreferences] = useState(() => {
     if (typeof window === "undefined") return {} as Record<string, string>;
     try {
@@ -360,23 +365,35 @@ export default function AddEditProductModal({
   useEffect(() => {
     if (open) {
       loadCategories();
+      getAttributePresets()
+        .then((res: AttributePreset[]) => setPresets(res))
+        .catch(() => {});
     }
   }, [open]);
 
   useEffect(() => {
+    let selected: Category | undefined;
     if (form.category && typeof form.category === "number") {
-      const selected = availableCategories.find(
+      selected = availableCategories.find(
         (cat) => cat.id === Number(form.category),
       );
       setFilteredSubcategories(selected?.subcategories || []);
     } else if (typeof form.category === "string") {
       const normalizedCategoryName = form.category.trim().toLowerCase();
-      const selected = availableCategories.find(
+      selected = availableCategories.find(
         (cat) => cat.name.toLowerCase() === normalizedCategoryName,
       );
       setFilteredSubcategories(selected?.subcategories || []);
     } else {
       setFilteredSubcategories([]);
+    }
+
+    if (selected?.default_preset_id && !form.preset_id) {
+      setForm((prev) => ({
+        ...prev,
+        preset_id: selected?.default_preset_id ?? null,
+        is_variant_product: true,
+      }));
     }
   }, [form.category, availableCategories]);
 
@@ -983,6 +1000,57 @@ export default function AddEditProductModal({
                   />
                 </FormField>
               </Grid>
+
+              {/* --- Variant & Matrix Settings --- */}
+              <Grid item xs={12} sm={4}>
+                <FormField label="Article No / Model Code">
+                  <TextField
+                    fullWidth
+                    size="small"
+                    variant="outlined"
+                    value={form.article_no || ""}
+                    onChange={(e) => handleChange("article_no", e.target.value)}
+                    placeholder="e.g. ART-9042"
+                  />
+                </FormField>
+              </Grid>
+
+              <Grid item xs={12} sm={4}>
+                <FormField label="Has Size/Color Variants">
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={Boolean(form.is_variant_product)}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            is_variant_product: e.target.checked,
+                          }))
+                        }
+                      />
+                    }
+                    label={form.is_variant_product ? "Yes (Matrix Item)" : "No"}
+                  />
+                </FormField>
+              </Grid>
+
+              {Boolean(form.is_variant_product) && (
+                <Grid item xs={12} sm={4}>
+                  <FormField label="Size/Variant Preset">
+                    <AutoSuggestInput
+                      id="preset_id"
+                      value={form.preset_id ?? null}
+                      options={presets.map((p) => ({
+                        id: p.id,
+                        name: `${p.name} (${p.industry})`,
+                      }))}
+                      placeholder="Select Variant Preset"
+                      allowCreate={false}
+                      onChange={(newVal) => handleChange("preset_id", newVal)}
+                    />
+                  </FormField>
+                </Grid>
+              )}
 
               <Grid item xs={12}>
                 <Typography

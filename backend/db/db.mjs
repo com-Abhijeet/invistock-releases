@@ -417,7 +417,8 @@ export function initializeDatabase(dbPath) {
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
-      code TEXT UNIQUE NOT NULL
+      code TEXT UNIQUE NOT NULL,
+      default_preset_id INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS subcategories (
@@ -500,6 +501,9 @@ export function initializeDatabase(dbPath) {
       size TEXT,
       weight TEXT,
       tracking_type TEXT CHECK(tracking_type IN ('none', 'batch', 'serial')) DEFAULT 'none',
+      article_no TEXT,
+      preset_id INTEGER,
+      is_variant_product INTEGER DEFAULT 0,
       FOREIGN KEY (category) REFERENCES categories(id) ON DELETE SET NULL,
       FOREIGN KEY (subcategory) REFERENCES subcategories(id) ON DELETE SET NULL
     );
@@ -549,6 +553,46 @@ export function initializeDatabase(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_serials_batch_id ON product_serials(batch_id);
     CREATE INDEX IF NOT EXISTS idx_serials_number ON product_serials(serial_number);
 
+    CREATE TABLE IF NOT EXISTS attribute_presets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      dimension_label TEXT NOT NULL,
+      created_at DATETIME DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS attribute_preset_values (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      preset_id INTEGER NOT NULL,
+      value TEXT NOT NULL,
+      display_order INTEGER DEFAULT 0,
+      FOREIGN KEY (preset_id) REFERENCES attribute_presets(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS batch_variants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batch_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      article_no TEXT,
+      dim1_value TEXT,
+      dim2_value TEXT,
+      sku TEXT,
+      barcode TEXT UNIQUE,
+      mrp REAL,
+      mop REAL,
+      purchase_rate REAL,
+      cost_price REAL,
+      quantity REAL DEFAULT 0,
+      initial_quantity REAL DEFAULT 0,
+      created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bv_batch_id ON batch_variants(batch_id);
+    CREATE INDEX IF NOT EXISTS idx_bv_product_id ON batch_variants(product_id);
+    CREATE INDEX IF NOT EXISTS idx_bv_barcode ON batch_variants(barcode);
+    CREATE INDEX IF NOT EXISTS idx_bv_sku ON batch_variants(sku);
+
     CREATE TABLE IF NOT EXISTS sales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER,
@@ -595,11 +639,14 @@ export function initializeDatabase(dbPath) {
       price REAL NOT NULL,
       batch_id INTEGER,
       serial_id INTEGER,
+      variant_id INTEGER,
+      employee_id INTEGER,
       return_quantity INTEGER DEFAULT 0,
       FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
       FOREIGN KEY (product_id) REFERENCES products(id),
       FOREIGN KEY (batch_id) REFERENCES product_batches(id),
-      FOREIGN KEY (serial_id) REFERENCES product_serials(id)
+      FOREIGN KEY (serial_id) REFERENCES product_serials(id),
+      FOREIGN KEY (variant_id) REFERENCES batch_variants(id)
     );
     CREATE INDEX IF NOT EXISTS idx_sales_items_sale_id ON sales_items (sale_id);
 
@@ -630,8 +677,10 @@ export function initializeDatabase(dbPath) {
       discount REAL DEFAULT 0,
       batch_id INTEGER,
       serial_id INTEGER,
+      variant_id INTEGER,
       FOREIGN KEY (sales_order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
-      FOREIGN KEY (product_id) REFERENCES products(id)
+      FOREIGN KEY (product_id) REFERENCES products(id),
+      FOREIGN KEY (variant_id) REFERENCES batch_variants(id)
     );
 
     CREATE TABLE IF NOT EXISTS purchases (
@@ -774,7 +823,30 @@ export function initializeDatabase(dbPath) {
       id, use_queue, queue_type, use_default_customer, auto_print_after_save, send_whatsapp_invoice, payment_marking_timing, enable_split_payments
     ) VALUES (1, 1, 'fefo', 1, 0, 0, 'pre_save', 1);
 
+    CREATE TABLE IF NOT EXISTS label_print_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      label_printer_name TEXT DEFAULT '',
+      label_printer_width_mm REAL DEFAULT 50,
+      label_printer_height_mm REAL DEFAULT 25,
+      label_cols_per_row INTEGER DEFAULT 1,
+      label_gap_between_cols REAL DEFAULT 2,
+      label_horizontal_offset REAL DEFAULT 0,
+      label_vertical_offset REAL DEFAULT 0,
+      label_template_id TEXT DEFAULT 'gen_standard',
+      silent_printing INTEGER DEFAULT 0,
+      updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
+    );
+
+    INSERT OR IGNORE INTO label_print_settings (
+      id, label_printer_name, label_printer_width_mm, label_printer_height_mm,
+      label_cols_per_row, label_gap_between_cols, label_horizontal_offset,
+      label_vertical_offset, label_template_id, silent_printing
+    ) VALUES (
+      1, '', 50, 25, 1, 2, 0, 0, 'gen_standard', 0
+    );
+
     CREATE TABLE IF NOT EXISTS whatsapp_settings (
+
       id INTEGER PRIMARY KEY CHECK (id = 1),
       official_enabled INTEGER DEFAULT 0,
       official_provider TEXT DEFAULT 'msg91',
@@ -819,17 +891,62 @@ export function initializeDatabase(dbPath) {
   `);
 
   safeMigrate(db, "whatsapp_settings", "official_enabled", "INTEGER DEFAULT 0");
-  safeMigrate(db, "whatsapp_settings", "official_provider", "TEXT DEFAULT 'msg91'");
+  safeMigrate(
+    db,
+    "whatsapp_settings",
+    "official_provider",
+    "TEXT DEFAULT 'msg91'",
+  );
   safeMigrate(db, "whatsapp_settings", "msg91_auth_key", "TEXT DEFAULT ''");
-  safeMigrate(db, "whatsapp_settings", "msg91_integrated_number", "TEXT DEFAULT ''");
-  safeMigrate(db, "whatsapp_settings", "official_phone_number_id", "TEXT DEFAULT ''");
+  safeMigrate(
+    db,
+    "whatsapp_settings",
+    "msg91_integrated_number",
+    "TEXT DEFAULT ''",
+  );
+  safeMigrate(
+    db,
+    "whatsapp_settings",
+    "official_phone_number_id",
+    "TEXT DEFAULT ''",
+  );
   safeMigrate(db, "whatsapp_settings", "official_waba_id", "TEXT DEFAULT ''");
-  safeMigrate(db, "whatsapp_settings", "official_access_token", "TEXT DEFAULT ''");
-  safeMigrate(db, "whatsapp_settings", "official_business_number", "TEXT DEFAULT ''");
-  safeMigrate(db, "whatsapp_settings", "route_invoice", "TEXT DEFAULT 'unofficial'");
-  safeMigrate(db, "whatsapp_settings", "route_ledgers", "TEXT DEFAULT 'unofficial'");
-  safeMigrate(db, "whatsapp_settings", "route_marketing", "TEXT DEFAULT 'unofficial'");
-  safeMigrate(db, "whatsapp_settings", "route_outstandings", "TEXT DEFAULT 'unofficial'");
+  safeMigrate(
+    db,
+    "whatsapp_settings",
+    "official_access_token",
+    "TEXT DEFAULT ''",
+  );
+  safeMigrate(
+    db,
+    "whatsapp_settings",
+    "official_business_number",
+    "TEXT DEFAULT ''",
+  );
+  safeMigrate(
+    db,
+    "whatsapp_settings",
+    "route_invoice",
+    "TEXT DEFAULT 'unofficial'",
+  );
+  safeMigrate(
+    db,
+    "whatsapp_settings",
+    "route_ledgers",
+    "TEXT DEFAULT 'unofficial'",
+  );
+  safeMigrate(
+    db,
+    "whatsapp_settings",
+    "route_marketing",
+    "TEXT DEFAULT 'unofficial'",
+  );
+  safeMigrate(
+    db,
+    "whatsapp_settings",
+    "route_outstandings",
+    "TEXT DEFAULT 'unofficial'",
+  );
 
   safeMigrate(db, "sales_billing_settings", "whatsapp_template_id", "INTEGER");
   safeMigrate(db, "sales_billing_settings", "whatsapp_template_name", "TEXT");
@@ -840,11 +957,17 @@ export function initializeDatabase(dbPath) {
   safeMigrate(db, "whatsapp_templates", "content", "TEXT DEFAULT ''");
   safeMigrate(db, "whatsapp_templates", "body_text", "TEXT DEFAULT ''");
   safeMigrate(db, "whatsapp_templates", "meta_template_name", "TEXT");
-  safeMigrate(db, "whatsapp_templates", "meta_status", "TEXT DEFAULT 'LOCAL_ONLY'");
+  safeMigrate(
+    db,
+    "whatsapp_templates",
+    "meta_status",
+    "TEXT DEFAULT 'LOCAL_ONLY'",
+  );
   safeMigrate(db, "whatsapp_templates", "language", "TEXT DEFAULT 'en_US'");
 
   try {
-    db.prepare(`
+    db.prepare(
+      `
       INSERT OR IGNORE INTO whatsapp_settings (
         id, official_enabled, official_provider, msg91_auth_key, msg91_integrated_number,
         official_phone_number_id, official_waba_id, official_access_token, official_business_number,
@@ -854,7 +977,8 @@ export function initializeDatabase(dbPath) {
         '', '', '', '',
         'unofficial', 'unofficial', 'unofficial', 'unofficial'
       )
-    `).run();
+    `,
+    ).run();
   } catch (e) {
     console.warn("[DB] whatsapp_settings seed notice:", e.message);
   }
@@ -892,25 +1016,113 @@ export function initializeDatabase(dbPath) {
 
   // Backfill customer_phone from customers table for existing sales records
   try {
-    db.prepare(`
+    db.prepare(
+      `
       UPDATE sales
       SET customer_phone = (
         SELECT phone FROM customers WHERE customers.id = sales.customer_id
       )
       WHERE (customer_phone IS NULL OR customer_phone = '') AND customer_id IS NOT NULL;
-    `).run();
+    `,
+    ).run();
   } catch (e) {
     console.warn("[DB] customer_phone backfill warning:", e.message);
   }
 
   safeMigrate(db, "shop", "enable_item_wise_sid", "INTEGER DEFAULT 0");
+  safeMigrate(db, "label_print_settings", "label_printer_name", "TEXT DEFAULT ''");
+  safeMigrate(db, "label_print_settings", "label_printer_width_mm", "REAL DEFAULT 50");
+  safeMigrate(db, "label_print_settings", "label_printer_height_mm", "REAL DEFAULT 25");
+  safeMigrate(db, "label_print_settings", "label_cols_per_row", "INTEGER DEFAULT 1");
+  safeMigrate(db, "label_print_settings", "label_gap_between_cols", "REAL DEFAULT 2");
+  safeMigrate(db, "label_print_settings", "label_horizontal_offset", "REAL DEFAULT 0");
+  safeMigrate(db, "label_print_settings", "label_vertical_offset", "REAL DEFAULT 0");
+  safeMigrate(db, "label_print_settings", "label_template_id", "TEXT DEFAULT 'gen_standard'");
+  safeMigrate(db, "label_print_settings", "silent_printing", "INTEGER DEFAULT 0");
+  safeMigrate(db, "categories", "default_preset_id", "INTEGER");
+
+  safeMigrate(db, "products", "article_no", "TEXT");
+  safeMigrate(db, "products", "preset_id", "INTEGER");
+  safeMigrate(db, "products", "is_variant_product", "INTEGER DEFAULT 0");
+  safeMigrate(db, "batch_variants", "article_no", "TEXT");
+  safeMigrate(db, "batch_variants", "dim1_value", "TEXT");
+  safeMigrate(db, "batch_variants", "dim2_value", "TEXT");
+  safeMigrate(db, "batch_variants", "sku", "TEXT");
+  safeMigrate(db, "batch_variants", "barcode", "TEXT");
+  safeMigrate(db, "batch_variants", "mrp", "REAL");
+  safeMigrate(db, "batch_variants", "mop", "REAL");
+  safeMigrate(db, "batch_variants", "purchase_rate", "REAL");
+  safeMigrate(db, "batch_variants", "cost_price", "REAL");
+  safeMigrate(db, "batch_variants", "quantity", "REAL DEFAULT 0");
+  safeMigrate(db, "batch_variants", "initial_quantity", "REAL DEFAULT 0");
   safeMigrate(db, "sales_items", "product_name", "TEXT");
   safeMigrate(db, "sales_items", "description", "TEXT");
   safeMigrate(db, "sales_items", "barcode", "TEXT");
   safeMigrate(db, "sales_items", "hsn", "TEXT");
   safeMigrate(db, "sales_items", "return_quantity", "INTEGER");
   safeMigrate(db, "sales_items", "employee_id", "INTEGER");
+  safeMigrate(db, "sales_items", "variant_id", "INTEGER");
+  safeMigrate(db, "sales_order_items", "variant_id", "INTEGER");
+  safeMigrate(db, "sales_items_non_gst", "variant_id", "INTEGER");
   safeMigrate(db, "purchase_items", "return_quantity", "REAL DEFAULT 0");
+
+  // Seed Default Attribute Presets
+  try {
+    const presetCount =
+      db.prepare("SELECT count(*) as count FROM attribute_presets").get()
+        ?.count || 0;
+    if (presetCount === 0) {
+      const seedPresets = [
+        {
+          name: "Garment Standard Sizes",
+          dimension_label: "Size",
+          values: ["S", "M", "L", "XL", "2XL", "3XL"],
+        },
+        {
+          name: "Waist / Jeans Sizes",
+          dimension_label: "Waist Size",
+          values: ["28", "30", "32", "34", "36", "38", "40"],
+        },
+        {
+          name: "Footwear Sizes (UK)",
+          dimension_label: "Shoe Size",
+          values: ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10", "UK 11"],
+        },
+        {
+          name: "Grocery / Kirana Weights",
+          dimension_label: "Pack Weight",
+          values: ["50g", "100g", "250g", "500g", "1kg", "5kg"],
+        },
+        {
+          name: "Liquid Volumes",
+          dimension_label: "Volume",
+          values: ["100ml", "250ml", "500ml", "1L", "2L", "5L"],
+        },
+        {
+          name: "Mobile Storage",
+          dimension_label: "Storage",
+          values: ["64GB", "128GB", "256GB", "512GB", "1TB"],
+        },
+      ];
+
+      const insertPreset = db.prepare(
+        "INSERT INTO attribute_presets (name, dimension_label) VALUES (?, ?)",
+      );
+      const insertValue = db.prepare(
+        "INSERT INTO attribute_preset_values (preset_id, value, display_order) VALUES (?, ?, ?)",
+      );
+
+      for (const p of seedPresets) {
+        const info = insertPreset.run(p.name, p.dimension_label);
+        const presetId = info.lastInsertRowid;
+        p.values.forEach((val, idx) => {
+          insertValue.run(presetId, val, idx + 1);
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("[DB] attribute presets seed notice:", e.message);
+  }
 
   // 6. EXECUTE NON-GST SCHEMA (Standard Default)
   nonGstDb.exec(`
@@ -938,6 +1150,7 @@ export function initializeDatabase(dbPath) {
       discount REAL DEFAULT 0,
       price REAL NOT NULL,
       batch_details TEXT,
+      variant_id INTEGER,
       FOREIGN KEY (sale_id) REFERENCES sales_non_gst(id) ON DELETE CASCADE
     );
   `);

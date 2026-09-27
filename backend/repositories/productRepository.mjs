@@ -139,8 +139,9 @@ export const createProduct = (product) => {
         name, product_code, hsn, gst_rate, mrp, mop, category, subcategory,
         storage_location, quantity, description, brand, barcode,
         image_url, is_active, average_purchase_price, mfw_price, low_stock_threshold, size, weight,
-        tracking_type, base_unit, secondary_unit, conversion_factor
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        tracking_type, base_unit, secondary_unit, conversion_factor,
+        article_no, preset_id, is_variant_product
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     const info = stmt.run(
@@ -168,6 +169,9 @@ export const createProduct = (product) => {
       product.base_unit || "pcs",
       product.secondary_unit || null,
       product.conversion_factor || 1,
+      product.article_no || null,
+      product.preset_id || null,
+      product.is_variant_product ? 1 : 0,
     );
 
     const productId = info.lastInsertRowid;
@@ -230,7 +234,8 @@ export const updateProduct = (id, product) => {
         category = ?, subcategory = ?, storage_location = ?, quantity = ?,
         description = ?, brand = ?, barcode = ?, image_url = ?,
         is_active = ?, updated_at = datetime('now'), average_purchase_price = ?, mfw_price=?, low_stock_threshold = ?, size = ?, weight=?,
-        tracking_type = ?, base_unit = ?, secondary_unit = ?, conversion_factor = ?
+        tracking_type = ?, base_unit = ?, secondary_unit = ?, conversion_factor = ?,
+        article_no = ?, preset_id = ?, is_variant_product = ?
        WHERE id = ?`,
     ).run(
       product.name,
@@ -257,6 +262,9 @@ export const updateProduct = (id, product) => {
       product.base_unit || "pcs",
       product.secondary_unit || null,
       product.conversion_factor || 1,
+      product.article_no || null,
+      product.preset_id || null,
+      product.is_variant_product ? 1 : 0,
       id,
     );
 
@@ -300,7 +308,7 @@ export function getAllProducts(options) {
     const limitStatement = all ? "" : "LIMIT ? OFFSET ?";
 
     const mainQuery = `
-      SELECT p.*, c.name as category_name
+      SELECT p.*, c.name as category_name, c.default_preset_id as category_default_preset_id
       FROM products p
       LEFT JOIN categories c ON p.category = c.id
       ${whereStatement}
@@ -335,6 +343,7 @@ export const getProductById = (id) => {
       SELECT 
         p.*,
         cat.name AS category_name,
+        cat.default_preset_id AS category_default_preset_id,
         subcat.name AS subcategory_name,
         (SELECT pi.rate 
          FROM purchase_items pi

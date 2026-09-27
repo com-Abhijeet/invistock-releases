@@ -28,35 +28,44 @@ function replaceLabelPlaceholders(templateStr, item, shop, cipherKey) {
   const product = item.product || {};
   const batch = item.batch || {};
   const serial = item.serial || {};
+  const variant = item.variant || {};
 
-  const name = product.name || item.name || "Product";
+  const name = product.product_name || product.name || item.product_name || item.name || "Product";
   const code = product.product_code || product.code || "";
-  const barcode = item.barcode || batch.barcode || product.barcode || "";
-  const mrp = Number(batch.mrp || product.mrp || item.mrp || 0).toFixed(2);
+  const barcode = item.barcode || variant.barcode || batch.barcode || product.barcode || "";
+  const mrp = Number(variant.mrp || batch.mrp || product.mrp || item.mrp || 0).toFixed(2);
   const price = Number(
-    batch.mop || product.selling_price || product.price || item.price || mrp,
+    variant.mop || variant.mrp || batch.mop || product.selling_price || product.price || item.price || mrp,
   ).toFixed(2);
-  const cost = Number(batch.purchase_rate || product.cost_price || 0);
+  const cost = Number(variant.cost_price || batch.purchase_rate || product.cost_price || 0);
   const cipher = encodeCostCipher(cost, cipherKey);
-  const batchNo = batch.batch_number || item.batch_number || "";
+  const batchNo = item.batch_number || batch.batch_number || "";
   const expDate = batch.expiry_date || item.expiry_date || "";
-  const size = product.size || item.size || batch.size || "";
-  const shopName = shop.name || "";
+  const articleNo = item.article_no || product.article_no || "";
+  const size = item.size || item.dim1_value || variant.dim1_value || product.size || "";
+  const color = item.color || item.dim2_value || variant.dim2_value || "";
+  const displayCode = item.display_code || articleNo || batchNo || "";
+  const sku = item.sku || variant.sku || "";
+  const variantTitle = [size, color].filter(Boolean).join(" / ");
+  const shopName = shop.shop_name || shop.name || "";
 
   return templateStr
-    .replace(/\{\{SHOP_NAME\}\}/g, shopName)
-    .replace(/\{\{NAME\}\}/g, name)
-    .replace(/\{\{ITEM_NAME\}\}/g, name)
-    .replace(/\{\{PRODUCT_CODE\}\}/g, code)
-    .replace(/\{\{BARCODE\}\}/g, barcode)
-    .replace(/\{\{MRP\}\}/g, mrp)
-    .replace(/\{\{PRICE\}\}/g, price)
-    .replace(/\{\{SELLING_PRICE\}\}/g, price)
-    .replace(/\{\{BATCH_NO\}\}/g, batchNo)
-    .replace(/\{\{EXPIRY_DATE\}\}/g, expDate)
-    .replace(/\{\{SIZE\}\}/g, size)
-    .replace(/\{\{SERIAL_NO\}\}/g, serial.serial_number || "")
-    .replace(/\{\{SECRET_COST_CIPHER\}\}/g, cipher);
+    .replace(/\{\{(SHOP_NAME|shop_name)\}\}/g, shopName)
+    .replace(/\{\{(NAME|ITEM_NAME|product_name)\}\}/g, name)
+    .replace(/\{\{(PRODUCT_CODE|product_code)\}\}/g, code)
+    .replace(/\{\{(BARCODE|barcode)\}\}/g, barcode)
+    .replace(/\{\{(MRP|mrp)\}\}/g, mrp)
+    .replace(/\{\{(PRICE|SELLING_PRICE|MOP|mop)\}\}/g, price)
+    .replace(/\{\{(BATCH_NO|BATCH_NUMBER|batch_number)\}\}/g, batchNo)
+    .replace(/\{\{(EXPIRY_DATE|expiry_date)\}\}/g, expDate)
+    .replace(/\{\{(SIZE|dim1_value|size)\}\}/g, size)
+    .replace(/\{\{(COLOR|dim2_value|color)\}\}/g, color)
+    .replace(/\{\{(ARTICLE_NO|article_no)\}\}/g, articleNo)
+    .replace(/\{\{(DISPLAY_CODE|display_code)\}\}/g, displayCode)
+    .replace(/\{\{(SKU|sku)\}\}/g, sku)
+    .replace(/\{\{(VARIANT_TITLE|variant_title)\}\}/g, variantTitle)
+    .replace(/\{\{(SERIAL_NO|serial_no)\}\}/g, serial.serial_number || "")
+    .replace(/\{\{(SECRET_COST_CIPHER|secret_cost_cipher)\}\}/g, cipher);
 }
 
 /**
@@ -111,44 +120,55 @@ function renderPRNLabels(prnTemplate, items, shop = {}, options = {}) {
       const product = currentItem.product || {};
       const batch = currentItem.batch || {};
       const serial = currentItem.serial || {};
+      const variant = currentItem.variant || {};
 
-      const name = product.name || currentItem.name || "";
+      const name = product.product_name || product.name || currentItem.product_name || currentItem.name || "";
       const code = product.product_code || product.code || "";
       const barcode =
-        currentItem.barcode || batch.barcode || product.barcode || "";
+        currentItem.barcode || variant.barcode || batch.barcode || product.barcode || "";
       const mrp = name
-        ? Number(batch.mrp || product.mrp || currentItem.mrp || 0).toFixed(2)
+        ? Number(variant.mrp || batch.mrp || product.mrp || currentItem.mrp || 0).toFixed(2)
         : "";
       const price = name
         ? Number(
-            batch.mop ||
+            variant.mop ||
+              variant.mrp ||
+              batch.mop ||
               product.selling_price ||
               product.price ||
               currentItem.price ||
               mrp,
           ).toFixed(2)
         : "";
-      const cost = Number(batch.purchase_rate || product.cost_price || 0);
+      const cost = Number(variant.cost_price || batch.purchase_rate || product.cost_price || 0);
       const cipher = name ? encodeCostCipher(cost, cipherKey) : "";
-      const batchNo = batch.batch_number || currentItem.batch_number || "";
+      const batchNo = currentItem.batch_number || batch.batch_number || "";
       const expDate = batch.expiry_date || currentItem.expiry_date || "";
-      const size = product.size || currentItem.size || batch.size || "";
-      const shopName = shop.name || "";
+      const articleNo = currentItem.article_no || product.article_no || "";
+      const size = currentItem.size || currentItem.dim1_value || variant.dim1_value || product.size || "";
+      const color = currentItem.color || currentItem.dim2_value || variant.dim2_value || "";
+      const displayCode = currentItem.display_code || articleNo || batchNo || "";
+      const sku = currentItem.sku || variant.sku || "";
+      const variantTitle = [size, color].filter(Boolean).join(" / ");
+      const shopName = shop.shop_name || shop.name || "";
 
       block = block
-        .replace(new RegExp(`\\{\\{${prefix}SHOP_NAME\\}\\}`, "g"), shopName)
-        .replace(new RegExp(`\\{\\{${prefix}NAME\\}\\}`, "g"), name)
-        .replace(new RegExp(`\\{\\{${prefix}ITEM_NAME\\}\\}`, "g"), name)
-        .replace(new RegExp(`\\{\\{${prefix}PRODUCT_CODE\\}\\}`, "g"), code)
-        .replace(new RegExp(`\\{\\{${prefix}BARCODE\\}\\}`, "g"), barcode)
-        .replace(new RegExp(`\\{\\{${prefix}MRP\\}\\}`, "g"), mrp)
-        .replace(new RegExp(`\\{\\{${prefix}PRICE\\}\\}`, "g"), price)
-        .replace(new RegExp(`\\{\\{${prefix}SELLING_PRICE\\}\\}`, "g"), price)
-        .replace(new RegExp(`\\{\\{${prefix}BATCH_NO\\}\\}`, "g"), batchNo)
-        .replace(new RegExp(`\\{\\{${prefix}EXPIRY_DATE\\}\\}`, "g"), expDate)
-        .replace(new RegExp(`\\{\\{${prefix}SIZE\\}\\}`, "g"), size)
+        .replace(new RegExp(`\\{\\{${prefix}(SHOP_NAME|shop_name)\\}\\}`, "g"), shopName)
+        .replace(new RegExp(`\\{\\{${prefix}(NAME|ITEM_NAME|product_name)\\}\\}`, "g"), name)
+        .replace(new RegExp(`\\{\\{${prefix}(PRODUCT_CODE|product_code)\\}\\}`, "g"), code)
+        .replace(new RegExp(`\\{\\{${prefix}(BARCODE|barcode)\\}\\}`, "g"), barcode)
+        .replace(new RegExp(`\\{\\{${prefix}(MRP|mrp)\\}\\}`, "g"), mrp)
+        .replace(new RegExp(`\\{\\{${prefix}(PRICE|SELLING_PRICE|MOP|mop)\\}\\}`, "g"), price)
+        .replace(new RegExp(`\\{\\{${prefix}(BATCH_NO|BATCH_NUMBER|batch_number)\\}\\}`, "g"), batchNo)
+        .replace(new RegExp(`\\{\\{${prefix}(EXPIRY_DATE|expiry_date)\\}\\}`, "g"), expDate)
+        .replace(new RegExp(`\\{\\{${prefix}(SIZE|dim1_value|size)\\}\\}`, "g"), size)
+        .replace(new RegExp(`\\{\\{${prefix}(COLOR|dim2_value|color)\\}\\}`, "g"), color)
+        .replace(new RegExp(`\\{\\{${prefix}(ARTICLE_NO|article_no)\\}\\}`, "g"), articleNo)
+        .replace(new RegExp(`\\{\\{${prefix}(DISPLAY_CODE|display_code)\\}\\}`, "g"), displayCode)
+        .replace(new RegExp(`\\{\\{${prefix}(SKU|sku)\\}\\}`, "g"), sku)
+        .replace(new RegExp(`\\{\\{${prefix}(VARIANT_TITLE|variant_title)\\}\\}`, "g"), variantTitle)
         .replace(
-          new RegExp(`\\{\\{${prefix}SECRET_COST_CIPHER\\}\\}`, "g"),
+          new RegExp(`\\{\\{${prefix}(SECRET_COST_CIPHER|secret_cost_cipher)\\}\\}`, "g"),
           cipher,
         );
     }

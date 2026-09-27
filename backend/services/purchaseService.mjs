@@ -70,6 +70,7 @@ export async function createPurchase(purchaseData) {
           quantity: baseQty,
           serialNumbers: item.serial_numbers,
           location: "Store",
+          variants: item.variants,
         });
       }
     }
@@ -196,9 +197,14 @@ export async function updatePurchase(id, purchaseData) {
           batchNumber: item.batch_number,
           quantity: addQty,
           mrp: item.mrp,
+          mop: item.mop,
+          costPrice: item.rate,
+          margin: item.margin,
+          barcode: item.barcode,
           expiryDate: item.expiry_date,
           mfgDate: item.mfg_date,
           serialNumbers: item.serial_numbers,
+          variants: item.variants,
         });
       }
     }

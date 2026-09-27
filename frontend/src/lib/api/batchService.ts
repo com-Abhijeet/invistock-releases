@@ -104,6 +104,8 @@ export async function assignStockToBatch(payload: AssignStockPayload) {
   }
 }
 
+import type { VariantMatrixCell } from "../../components/matrix/VariantMatrixModal";
+
 export interface CreateBatchPayload {
   productId: number;
   batchNumber: string;
@@ -117,6 +119,7 @@ export interface CreateBatchPayload {
   margin?: number;
   location?: string;
   serials?: string[];
+  variants?: VariantMatrixCell[];
   increaseProductStock?: boolean;
 }
 
@@ -212,17 +215,31 @@ export const getBatchAnalytics = async (
 
 // --- New Barcode Methods ---
 
-export const generateBarcode = async (): Promise<string> => {
+export const generateBarcode = async (options?: {
+  type?: "product" | "batch" | "variant";
+  productId?: number;
+  batchId?: number;
+  variantIndex?: number;
+}): Promise<string> => {
   try {
-    const res = await api.get(`/api/batches/generate-barcode`);
+    const params = new URLSearchParams();
+    if (options?.type) params.append("type", options.type);
+    if (options?.productId)
+      params.append("productId", String(options.productId));
+    if (options?.batchId) params.append("batchId", String(options.batchId));
+    if (options?.variantIndex)
+      params.append("variantIndex", String(options.variantIndex));
+
+    const queryStr = params.toString();
+    const url = `/api/batches/generate-barcode${queryStr ? `?${queryStr}` : ""}`;
+    const res = await api.get(url);
     if (res.data.status === "success") {
       return res.data.barcode;
     }
     throw new Error(res.data.error || "Failed to generate barcode");
   } catch (error) {
     console.error("Barcode generation failed:", error);
-    // Fallback to safe timestamp-based string if API fails
-    return Date.now().toString().slice(-10);
+    return Date.now().toString().slice(-8);
   }
 };
 

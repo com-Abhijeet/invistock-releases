@@ -14,6 +14,7 @@ export function createSaleItem({
   discount,
   batch_id, // New
   serial_id, // New
+  variant_id,
 }) {
   try {
     const stmt = db.prepare(`
@@ -27,8 +28,9 @@ export function createSaleItem({
       discount,
       price,
       batch_id,
-      serial_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      serial_id,
+      variant_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
     stmt.run([
@@ -42,6 +44,7 @@ export function createSaleItem({
       price,
       batch_id || null, // Allow null for non-tracked items
       serial_id || null, // Allow null
+      variant_id || null,
     ]);
   } catch (error) {
     console.error("error in sales item repo", error);

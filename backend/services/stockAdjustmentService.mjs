@@ -22,6 +22,7 @@ export function adjustStockService({
   reason,
   batchId,
   serialId,
+  variantId,
 }) {
   const transaction = db.transaction(() => {
     // 1. Get current stock
@@ -35,6 +36,9 @@ export function adjustStockService({
     ProductRepo.updateProductQuantity(productId, newQuantity);
 
     // 3. Handle Tracked Inventory Updates
+    if (variantId) {
+      db.prepare("UPDATE batch_variants SET quantity = quantity + ? WHERE id = ?").run(adjustment, variantId);
+    }
     // A. Negative Adjustment (Loss/Damage)
     if (adjustment < 0) {
       if (serialId) {

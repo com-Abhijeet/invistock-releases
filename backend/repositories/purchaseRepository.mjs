@@ -161,6 +161,27 @@ export function getPurchaseById(id) {
       const netQty = Math.max(0, item.quantity - returnQty);
       const unitPrice = item.quantity > 0 ? item.price / item.quantity : item.rate;
       const netPrice = parseFloat((unitPrice * netQty).toFixed(2));
+
+      // Fetch linked batch variants if any
+      let variants = [];
+      try {
+        const batch = db
+          .prepare(
+            `SELECT id FROM product_batches WHERE purchase_id = ? AND product_id = ?`
+          )
+          .get(id, item.product_id);
+
+        if (batch) {
+          variants = db
+            .prepare(
+              `SELECT article_no, dim1_value, dim2_value, quantity, mrp, mop, cost_price, barcode, sku FROM batch_variants WHERE batch_id = ?`
+            )
+            .all(batch.id);
+        }
+      } catch (e) {
+        variants = [];
+      }
+
       return {
         ...item,
         return_quantity: returnQty,
@@ -169,6 +190,7 @@ export function getPurchaseById(id) {
         serial_numbers: item.serial_numbers
           ? JSON.parse(item.serial_numbers)
           : [],
+        variants,
       };
     });
 
@@ -217,13 +239,15 @@ export function getPurchaseById(id) {
 }
 
 export function getPurchaseItemsForLabels(purchaseId) {
-  return db
+  const items = db
     .prepare(
       `
     SELECT 
-      p.id, 
+      pi.id as purchase_item_id,
+      p.id as product_id, 
       p.name, 
       p.product_code, 
+      p.is_variant_product,
       COALESCE(NULLIF(pi.barcode, ''), NULLIF(p.barcode, ''), p.product_code) as barcode,
       COALESCE(pb.mrp, pi.mrp, p.mrp) as mrp, 
       pi.mop, 
@@ -235,6 +259,7 @@ export function getPurchaseItemsForLabels(purchaseId) {
       pi.unit as purchase_unit,
       COALESCE(pb.batch_uid, pi.batch_uid) as batch_uid,
       COALESCE(pb.batch_number, pi.batch_number) as batch_number,
+      pb.id as batch_id,
       pb.barcode as batch_barcode, 
       pi.serial_numbers,
       pi.margin
@@ -245,6 +270,25 @@ export function getPurchaseItemsForLabels(purchaseId) {
   `,
     )
     .all(purchaseId);
+
+  return items.map((item) => {
+    let variants = [];
+    if (item.batch_id) {
+      variants = db
+        .prepare(
+          `
+        SELECT id, article_no, dim1_value, dim2_value, barcode, sku, mrp, mop, cost_price, quantity
+        FROM batch_variants
+        WHERE batch_id = ?
+      `,
+        )
+        .all(item.batch_id);
+    }
+    return {
+      ...item,
+      variants,
+    };
+  });
 }
 
 export async function deletePurchase(id) {

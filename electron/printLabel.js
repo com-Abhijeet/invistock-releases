@@ -60,7 +60,8 @@ const createPrintWindow = async (payload) => {
     }
   } catch (e) {}
 
-  const prnContent = folderPrnTemplate || localSettings.custom_prn_template_content;
+  const prnContent =
+    folderPrnTemplate || localSettings.custom_prn_template_content;
   const usePrn = folderPrnTemplate || localSettings.use_custom_prn_template;
 
   // ⚡ CUSTOM PRN LABEL ENGINE (TSPL/ZPL 1-Up, 2-Up, 3-Up RAW PRINTING)
@@ -98,11 +99,23 @@ const createPrintWindow = async (payload) => {
     return;
   }
 
-  const printerWidth = Number(shop.label_printer_width_mm) || 50;
-  const printerHeight = Number(shop.label_printer_height_mm) || 25;
-  const templateId = shop.label_template_id || "lbl_standard";
+  let labelSettings = {};
+  try {
+    const { getLabelPrintSettings } = require("../backend/repositories/labelPrintSettingsRepository.mjs");
+    labelSettings = getLabelPrintSettings() || {};
+  } catch (e) {
+    console.warn("[Print] Could not load label_print_settings:", e.message);
+  }
 
-  let labelsHtml = "";
+  const printerWidth = Number(payload.width || labelSettings.label_printer_width_mm || shop.label_printer_width_mm) || 50;
+  const printerHeight = Number(payload.height || labelSettings.label_printer_height_mm || shop.label_printer_height_mm) || 25;
+  const colsPerRow = Math.max(1, Number(payload.colsPerRow || labelSettings.label_cols_per_row) || 1);
+  const gapBetweenCols = Number(payload.gapBetweenCols !== undefined ? payload.gapBetweenCols : labelSettings.label_gap_between_cols) || 2;
+  const horizontalOffset = Number(payload.horizontalOffset !== undefined ? payload.horizontalOffset : labelSettings.label_horizontal_offset) || 0;
+  const verticalOffset = Number(payload.verticalOffset !== undefined ? payload.verticalOffset : labelSettings.label_vertical_offset) || 0;
+  const templateId = payload.templateId || labelSettings.label_template_id || shop.label_template_id || "gen_standard";
+
+  const allLabels = [];
   let baseStyle = "";
 
   const customHtmlTemplate =
@@ -159,15 +172,28 @@ const createPrintWindow = async (payload) => {
       baseStyle = style;
     }
 
-    const totalCopies = Math.max(1, Number(itemJob.copies || itemJob.print_qty) || 1);
+    const totalCopies = Math.max(
+      1,
+      Number(itemJob.copies || itemJob.print_qty) || 1,
+    );
     for (let i = 0; i < totalCopies; i++) {
-      labelsHtml += `
-        <div class="label-page">
-          <div class="label-container">
-            ${content}
-          </div>
-        </div>`;
+      allLabels.push(content);
     }
+  }
+
+  // Precise Multi-Up Layout Calculation
+  const rowContentWidth = printerWidth * colsPerRow + gapBetweenCols * (colsPerRow - 1);
+  const pageWidth = rowContentWidth + Math.max(0, horizontalOffset);
+  const pageHeight = printerHeight + Math.max(0, verticalOffset);
+
+  // Group label HTMLs into Rows
+  let rowsHtml = "";
+  for (let i = 0; i < allLabels.length; i += colsPerRow) {
+    let rowItems = "";
+    for (let c = 0; c < colsPerRow && (i + c) < allLabels.length; c++) {
+      rowItems += `<div class="label-wrapper">${allLabels[i + c]}</div>`;
+    }
+    rowsHtml += `<div class="label-row">${rowItems}</div>`;
   }
 
   const fullHtml = `
@@ -179,7 +205,7 @@ const createPrintWindow = async (payload) => {
         <style>
           @page { 
             margin: 0 !important; 
-            size: ${printerWidth}mm ${printerHeight}mm !important; 
+            size: ${pageWidth}mm ${pageHeight}mm !important; 
           }
           * { 
             box-sizing: border-box; 
@@ -190,31 +216,37 @@ const createPrintWindow = async (payload) => {
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-            width: ${printerWidth}mm !important;
+            width: ${pageWidth}mm !important;
             background: white;
             zoom: 1.0 !important;
             font-size: 0;
             overflow: visible !important; 
           }
-          .label-page {
-            width: ${printerWidth}mm;
+          body {
+            padding-left: ${horizontalOffset}mm !important;
+            padding-top: ${verticalOffset}mm !important;
+          }
+          .label-row {
+            width: ${rowContentWidth}mm;
             height: ${printerHeight}mm;
+            display: block;
             page-break-after: always;
-            overflow: hidden;
-            display: block;
-            position: relative;
+            break-after: page;
             clear: both;
+            font-size: 0;
           }
-          .label-container {
-            position: absolute;
-            top: 0;
-            left: 0;
+          .label-wrapper {
             width: ${printerWidth}mm;
             height: ${printerHeight}mm;
+            margin-right: ${gapBetweenCols}mm;
+            display: inline-block;
+            vertical-align: top;
             overflow: hidden;
-            display: block;
+            position: relative;
           }
-          /* Reset wrapper margins to prevent double-page-break creep */
+          .label-wrapper:nth-child(${colsPerRow}n) {
+            margin-right: 0 !important;
+          }
           .wrapper {
              page-break-after: avoid !important;
              margin: 0 !important;
@@ -222,122 +254,73 @@ const createPrintWindow = async (payload) => {
         </style>
       </head>
       <body>
-        ${labelsHtml}
+        ${rowsHtml}
       </body>
     </html>
   `;
 
   // ===================================================
-  // PRINT SETTINGS
+  // PRINT SETTINGS & EXECUTION
   // ===================================================
 
-  let isSilent = Boolean(shop.silent_printing);
-  let printerName = shop.label_printer_name?.trim();
-  let isPdf = false;
+  let isSilent =
+    labelSettings.silent_printing !== undefined
+      ? Boolean(labelSettings.silent_printing)
+      : Boolean(shop.silent_printing);
+  const printerName = (labelSettings.label_printer_name || shop.label_printer_name)?.trim();
 
+  // Force non-silent for PDF printers
   if (printerName?.toLowerCase().includes("pdf")) {
-    isPdf = true;
-    isSilent = true; // No dialog for PDF
+    isSilent = false;
   }
 
-  // ⚡ OPTIMIZED: Reuse window from pool instead of creating new one (saves 2-3s)
-  const win = printWindowManager.getWindow("label", {
-    show: isPdf ? false : !isSilent,
+  const win = new BrowserWindow({
+    show: false,
+    width: 400,
+    height: 400,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
   });
 
-  // ⚡ OPTIMIZED: Use temp file instead of data URI to fix blank PDF bug
-  const tempFile = path.join(os.tmpdir(), `standard-label-${Date.now()}.html`);
-  fs.writeFileSync(tempFile, fullHtml);
-
-  await win.loadFile(tempFile);
-
-  // Wait for images
-  await win.webContents.executeJavaScript(`
-    new Promise(resolve => {
-      const imgs = [...document.images];
-      if (!imgs.length) resolve();
-      let done = 0;
-      imgs.forEach(img => {
-        if (img.complete) done++;
-        else img.onload = img.onerror = () => {
-          done++;
-          if (done === imgs.length) resolve();
-        };
-      });
-      if (done === imgs.length) resolve();
-    });
-  `);
-
-  const options = {
-    silent: isSilent,
-    printBackground: true,
-    copies: 1, // ALWAYS 1, because we physically duplicated the pages in HTML
-    deviceName: isSilent ? printerName : undefined,
-    pageSize: {
-      width: Math.round(printerWidth * 1000),
-      height: Math.round(printerHeight * 1000),
-    },
-    margins: {
-      marginType: "none",
-    },
-  };
-
-  // ===================================================
-  // PRINT OR SAVE PDF
-  // ===================================================
-
-  if (isPdf) {
-    // Save as PDF automatically
-    const pdfOptions = {
-      marginsType: 0, // none
+  win.webContents.on("did-finish-load", () => {
+    const printerOptions = {
+      silent: isSilent,
       printBackground: true,
+      copies: 1,
       pageSize: {
-        width: Math.round(printerWidth * 1000),
-        height: Math.round(printerHeight * 1000),
+        width: Math.round(pageWidth * 1000),
+        height: Math.round(pageHeight * 1000),
       },
+      margins: { marginType: "none" },
     };
 
-    const pdfPath = path.join(os.tmpdir(), `label-${Date.now()}.pdf`);
+    if (printerName) {
+      printerOptions.deviceName = printerName;
+    }
 
-    win.webContents
-      .printToPDF(pdfOptions)
-      .then((data) => {
-        fs.writeFile(pdfPath, data, (err) => {
-          if (err) {
-            console.error("❌ PDF save failed:", err);
-          } else {
-            console.log("✅ PDF saved to:", pdfPath);
-            shell.openPath(pdfPath); // Opens the PDF in default viewer
-          }
-          // ⚡ OPTIMIZED: Recycle window instead of closing (reuse for next print)
-          setTimeout(() => {
-            printWindowManager.recycleWindow("label");
-            fs.unlink(tempFile, () => {});
-          }, 1000);
-        });
-      })
-      .catch((err) => {
-        console.error("❌ PDF generation failed:", err);
-        printWindowManager.recycleWindow("label");
-        fs.unlink(tempFile, () => {});
-      });
-  } else {
-    // Print to physical printer
-    win.webContents.print(options, (success, errorType) => {
+    if (!isSilent) {
+      win.show();
+    }
+
+    win.webContents.print(printerOptions, (success, errorType) => {
       if (!success) {
         console.error("❌ Label print failed:", errorType);
       }
-
-      // ⚡ OPTIMIZED: Recycle window instead of closing (reuse for next print)
       setTimeout(
         () => {
-          printWindowManager.recycleWindow("label");
-          fs.unlink(tempFile, () => {});
+          if (!win.isDestroyed()) win.close();
         },
-        isSilent ? 400 : 1500,
+        isSilent ? 500 : 1500,
       );
     });
-  }
+  });
+
+  await win.loadURL(
+    "data:text/html;charset=utf-8," + encodeURIComponent(fullHtml),
+  );
 };
+
 
 module.exports = { createPrintWindow };

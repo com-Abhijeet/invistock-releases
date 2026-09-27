@@ -27,6 +27,12 @@ import { useState, useEffect } from "react";
 import { Eye, X, Receipt, Tag, Printer, Columns, Scale } from "lucide-react";
 import toast from "react-hot-toast";
 import InvoiceSettingsModal from "./InvoiceSettingsModal";
+import {
+  getLabelPrintSettings,
+  updateLabelPrintSettings,
+} from "../../lib/api/labelPrintSettingsService";
+import type { LabelPrintSettings } from "../../lib/types/labelPrintSettingsTypes";
+
 
 const { ipcRenderer } = window.electron;
 
@@ -145,11 +151,45 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
     "invoice",
   );
 
-  // Local storage state for extra print settings
   const [localSettings, setLocalSettings] = useState<LocalPrintSettings>(
     DEFAULT_LOCAL_SETTINGS,
   );
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
+
+  // Dedicated DB table settings for label print (cols_per_row, gap, offsets)
+  const [dbLabelSettings, setDbLabelSettings] = useState<LabelPrintSettings>({
+    label_printer_name: "",
+    label_printer_width_mm: 50,
+    label_printer_height_mm: 25,
+    label_cols_per_row: 1,
+    label_gap_between_cols: 2,
+    label_horizontal_offset: 0,
+    label_vertical_offset: 0,
+    label_template_id: "gen_standard",
+    silent_printing: false,
+  });
+
+  useEffect(() => {
+    getLabelPrintSettings()
+      .then((settings) => {
+        if (settings) {
+          setDbLabelSettings(settings);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLabelSettingChange = (
+    field: keyof LabelPrintSettings,
+    value: any,
+  ) => {
+    setDbLabelSettings((prev) => {
+      const updated = { ...prev, [field]: value };
+      updateLabelPrintSettings({ [field]: value }).catch(() => {});
+      return updated;
+    });
+  };
+
 
   useEffect(() => {
     async function fetchPrinters() {
@@ -364,10 +404,11 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
                         select
                         fullWidth
                         size="small"
-                        value={data.label_printer_name || ""}
-                        onChange={(e) =>
-                          onChange("label_printer_name", e.target.value)
-                        }
+                        value={dbLabelSettings.label_printer_name || data.label_printer_name || ""}
+                        onChange={(e) => {
+                          onChange("label_printer_name", e.target.value);
+                          handleLabelSettingChange("label_printer_name", e.target.value);
+                        }}
                       >
                         <MenuItem value="">System Default</MenuItem>
                         {availablePrinters.map((p: any) => (
@@ -378,20 +419,99 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
                       </TextField>
                     </FormField>
                   </Grid>
+
                   <Grid item xs={6}>
                     <FormField label="Label Width (mm)">
                       <TextField
                         type="number"
                         fullWidth
                         size="small"
-                        value={data.label_printer_width_mm || ""}
-                        onChange={(e) =>
-                          onChange(
-                            "label_printer_width_mm",
-                            Number(e.target.value),
-                          )
-                        }
+                        value={dbLabelSettings.label_printer_width_mm || data.label_printer_width_mm || 50}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          onChange("label_printer_width_mm", val);
+                          handleLabelSettingChange("label_printer_width_mm", val);
+                        }}
                         placeholder="e.g. 50"
+                      />
+                    </FormField>
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <FormField label="Label Height (mm)">
+                      <TextField
+                        type="number"
+                        fullWidth
+                        size="small"
+                        value={dbLabelSettings.label_printer_height_mm || 25}
+                        onChange={(e) =>
+                          handleLabelSettingChange("label_printer_height_mm", Number(e.target.value))
+                        }
+                        placeholder="e.g. 25"
+                      />
+                    </FormField>
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <FormField label="Columns / Layout (1-Up, 2-Up, 3-Up)">
+                      <TextField
+                        select
+                        fullWidth
+                        size="small"
+                        value={dbLabelSettings.label_cols_per_row || 1}
+                        onChange={(e) =>
+                          handleLabelSettingChange("label_cols_per_row", Number(e.target.value))
+                        }
+                      >
+                        <MenuItem value={1}>1-Up (Single Roll)</MenuItem>
+                        <MenuItem value={2}>2-Up (Dual Column Roll)</MenuItem>
+                        <MenuItem value={3}>3-Up (Triple Column Roll)</MenuItem>
+                        <MenuItem value={4}>4-Up (4 Columns)</MenuItem>
+                      </TextField>
+                    </FormField>
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <FormField label="Gap Between Cols (mm)">
+                      <TextField
+                        type="number"
+                        fullWidth
+                        size="small"
+                        value={dbLabelSettings.label_gap_between_cols ?? 2}
+                        onChange={(e) =>
+                          handleLabelSettingChange("label_gap_between_cols", Number(e.target.value))
+                        }
+                        placeholder="e.g. 2"
+                      />
+                    </FormField>
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <FormField label="Horizontal Offset (mm)">
+                      <TextField
+                        type="number"
+                        fullWidth
+                        size="small"
+                        value={dbLabelSettings.label_horizontal_offset ?? 0}
+                        onChange={(e) =>
+                          handleLabelSettingChange("label_horizontal_offset", Number(e.target.value))
+                        }
+                        placeholder="e.g. 0"
+                      />
+                    </FormField>
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <FormField label="Vertical Offset (mm)">
+                      <TextField
+                        type="number"
+                        fullWidth
+                        size="small"
+                        value={dbLabelSettings.label_vertical_offset ?? 0}
+                        onChange={(e) =>
+                          handleLabelSettingChange("label_vertical_offset", Number(e.target.value))
+                        }
+                        placeholder="e.g. 0"
                       />
                     </FormField>
                   </Grid>
@@ -403,10 +523,11 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
                       select
                       fullWidth
                       size="small"
-                      value={data.label_template_id || "gen_standard"}
-                      onChange={(e) =>
-                        onChange("label_template_id", e.target.value)
-                      }
+                      value={dbLabelSettings.label_template_id || data.label_template_id || "gen_standard"}
+                      onChange={(e) => {
+                        onChange("label_template_id", e.target.value);
+                        handleLabelSettingChange("label_template_id", e.target.value);
+                      }}
                       SelectProps={{ MenuProps: { sx: { maxHeight: 400 } } }}
                     >
                       {LABEL_TEMPLATES.map((group) => [
@@ -434,6 +555,7 @@ export default function PrintSettingsTab({ data, onChange }: Props) {
                     </Tooltip>
                   </Stack>
                 </FormField>
+
               </Stack>
             </CardContent>
           </Card>

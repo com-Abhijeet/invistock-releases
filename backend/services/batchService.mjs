@@ -18,6 +18,7 @@ export function createNewBatch({
   location,
   barcode,
   margin,
+  variants,
 }) {
   const createTransaction = db.transaction(() => {
     const countStmt = db.prepare(
@@ -79,6 +80,65 @@ export function createNewBatch({
     });
 
     const batchId = info.lastInsertRowid;
+
+    if (variants && Array.isArray(variants) && variants.length > 0) {
+      const insertVariant = db.prepare(`
+        INSERT INTO batch_variants (
+          batch_id,
+          product_id,
+          article_no,
+          dim1_value,
+          dim2_value,
+          quantity,
+          initial_quantity,
+          mrp,
+          mop,
+          cost_price,
+          barcode,
+          sku
+        ) VALUES (
+          @batchId,
+          @productId,
+          @articleNo,
+          @dim1Value,
+          @dim2Value,
+          @quantity,
+          @initialQuantity,
+          @mrp,
+          @mop,
+          @costPrice,
+          @barcode,
+          @sku
+        )
+      `);
+
+      for (let i = 0; i < variants.length; i++) {
+        const v = variants[i];
+        if (v.quantity <= 0) continue;
+        const generatedBarcode =
+          v.barcode ||
+          generate8DigitBarcode({
+            type: "variant",
+            productId,
+            batchId,
+            variantIndex: i + 1,
+          });
+        insertVariant.run({
+          batchId,
+          productId,
+          articleNo: v.article_no || null,
+          dim1Value: v.dim1_value || null,
+          dim2Value: v.dim2_value || null,
+          quantity: v.quantity || 0,
+          initialQuantity: v.quantity || 0,
+          mrp: v.mrp ?? mrp ?? 0,
+          mop: v.mop ?? mop ?? 0,
+          costPrice: v.cost_price ?? costPrice ?? 0,
+          barcode: generatedBarcode,
+          sku: v.sku || null,
+        });
+      }
+    }
 
     if (serialNumbers) {
       let serialList = [];
@@ -210,13 +270,106 @@ export function addOrUpdatePurchaseBatch(params) {
         existing.id,
       );
 
+      // Add/update variants if any
+      if (
+        params.variants &&
+        Array.isArray(params.variants) &&
+        params.variants.length > 0
+      ) {
+        const insertVariant = db.prepare(`
+          INSERT INTO batch_variants (
+            batch_id,
+            product_id,
+            article_no,
+            dim1_value,
+            dim2_value,
+            quantity,
+            initial_quantity,
+            mrp,
+            mop,
+            cost_price,
+            barcode,
+            sku
+          ) VALUES (
+            @batchId,
+            @productId,
+            @articleNo,
+            @dim1Value,
+            @dim2Value,
+            @quantity,
+            @initialQuantity,
+            @mrp,
+            @mop,
+            @costPrice,
+            @barcode,
+            @sku
+          )
+        `);
+
+        for (let i = 0; i < params.variants.length; i++) {
+          const v = params.variants[i];
+          if (v.quantity <= 0) continue;
+
+          const existingVar = db
+            .prepare(
+              `
+            SELECT id, quantity FROM batch_variants
+            WHERE batch_id = ? AND article_no IS ? AND dim1_value IS ? AND dim2_value IS ?
+          `,
+            )
+            .get(
+              existing.id,
+              v.article_no || null,
+              v.dim1_value || null,
+              v.dim2_value || null,
+            );
+
+          if (existingVar) {
+            db.prepare(
+              `
+              UPDATE batch_variants
+              SET quantity = quantity + ?, mrp = ?, mop = ?
+              WHERE id = ?
+            `,
+            ).run(
+              v.quantity || 0,
+              v.mrp ?? params.mrp ?? 0,
+              v.mop ?? params.mop ?? 0,
+              existingVar.id,
+            );
+          } else {
+            const generatedBarcode =
+              v.barcode ||
+              generate8DigitBarcode({
+                type: "variant",
+                productId,
+                batchId: existing.id,
+                variantIndex: i + 1,
+              });
+            insertVariant.run({
+              batchId: existing.id,
+              productId,
+              articleNo: v.article_no || null,
+              dim1Value: v.dim1_value || null,
+              dim2Value: v.dim2_value || null,
+              quantity: v.quantity || 0,
+              initialQuantity: v.quantity || 0,
+              mrp: v.mrp ?? params.mrp ?? 0,
+              mop: v.mop ?? params.mop ?? 0,
+              costPrice: v.cost_price ?? params.costPrice ?? 0,
+              barcode: generatedBarcode,
+              sku: v.sku || null,
+            });
+          }
+        }
+      }
+
       // Add new serials if any
       if (params.serialNumbers && params.serialNumbers.length > 0) {
         const insertSerial = db.prepare(`
           INSERT OR IGNORE INTO product_serials (product_id, batch_id, serial_number, status) 
           VALUES (?, ?, ?, 'available')
         `);
-        // We use INSERT OR IGNORE to avoid errors if serial exists (though unlikely if we reverted correctly)
         for (const sn of params.serialNumbers) {
           insertSerial.run(productId, existing.id, sn);
         }
@@ -365,6 +518,7 @@ export function createManualBatch({
   quantity,
   location,
   serials,
+  variants,
   increaseProductStock = true,
 }) {
   const transaction = db.transaction(() => {
@@ -384,6 +538,16 @@ export function createManualBatch({
     }
 
     let finalQty = Number(quantity) || 0;
+    if (variants && Array.isArray(variants) && variants.length > 0) {
+      const variantQtySum = variants.reduce(
+        (sum, v) => sum + (Number(v.quantity) || 0),
+        0
+      );
+      if (variantQtySum > 0) {
+        finalQty = variantQtySum;
+      }
+    }
+
     if (product.tracking_type === "serial") {
       if (serialList.length === 0) {
         throw new Error(
@@ -470,6 +634,65 @@ export function createManualBatch({
     });
 
     const batchId = info.lastInsertRowid;
+
+    if (variants && Array.isArray(variants) && variants.length > 0) {
+      const insertVariant = db.prepare(`
+        INSERT INTO batch_variants (
+          batch_id,
+          product_id,
+          article_no,
+          dim1_value,
+          dim2_value,
+          quantity,
+          initial_quantity,
+          mrp,
+          mop,
+          cost_price,
+          barcode,
+          sku
+        ) VALUES (
+          @batchId,
+          @productId,
+          @articleNo,
+          @dim1Value,
+          @dim2Value,
+          @quantity,
+          @initialQuantity,
+          @mrp,
+          @mop,
+          @costPrice,
+          @barcode,
+          @sku
+        )
+      `);
+
+      for (let i = 0; i < variants.length; i++) {
+        const v = variants[i];
+        if (v.quantity <= 0) continue;
+        const generatedBarcode =
+          v.barcode ||
+          generate8DigitBarcode({
+            type: "variant",
+            productId,
+            batchId,
+            variantIndex: i + 1,
+          });
+        insertVariant.run({
+          batchId,
+          productId,
+          articleNo: v.article_no || null,
+          dim1Value: v.dim1_value || null,
+          dim2Value: v.dim2_value || null,
+          quantity: v.quantity || 0,
+          initialQuantity: v.quantity || 0,
+          mrp: v.mrp ?? mrp ?? 0,
+          mop: v.mop ?? mop ?? 0,
+          costPrice: v.cost_price ?? mop ?? 0,
+          barcode: generatedBarcode,
+          sku: v.sku || null,
+        });
+      }
+    }
 
     if (product.tracking_type === "serial" && serialList.length > 0) {
       const insertSerial = db.prepare(`
@@ -640,7 +863,10 @@ export function addSerialsToExistingBatch({
   return transaction();
 }
 
-export function processSaleItemStockDeduction({ batchId, serialId, quantity }) {
+export function processSaleItemStockDeduction({ batchId, serialId, variantId, quantity }) {
+  if (variantId) {
+    db.prepare("UPDATE batch_variants SET quantity = quantity - ? WHERE id = ?").run(Math.abs(quantity), variantId);
+  }
   if (serialId) {
     BatchRepo.updateSerialStatus(serialId, "sold");
     if (batchId) {
@@ -654,8 +880,12 @@ export function processSaleItemStockDeduction({ batchId, serialId, quantity }) {
 export function processSaleReturnStockAddition({
   batchId,
   serialId,
+  variantId,
   quantity,
 }) {
+  if (variantId) {
+    db.prepare("UPDATE batch_variants SET quantity = quantity + ? WHERE id = ?").run(Math.abs(quantity), variantId);
+  }
   if (serialId) {
     BatchRepo.updateSerialStatus(serialId, "available");
     if (batchId) BatchRepo.updateBatchQuantity(batchId, 1);
@@ -688,6 +918,10 @@ export function checkBarcodeExistence(code) {
     .prepare("SELECT 1 FROM product_batches WHERE barcode = ?")
     .get(code);
   if (batchCheck) return true;
+  const variantCheck = db
+    .prepare("SELECT 1 FROM batch_variants WHERE barcode = ? OR sku = ?")
+    .get(code, code);
+  if (variantCheck) return true;
   const serialCheck = db
     .prepare("SELECT 1 FROM product_serials WHERE serial_number = ?")
     .get(code);
@@ -695,21 +929,61 @@ export function checkBarcodeExistence(code) {
   return false;
 }
 
-export function generateUniqueBarcode() {
-  let unique = false;
-  let barcode = "";
-  let attempts = 0;
-  while (!unique && attempts < 5) {
-    barcode = Math.floor(1000000000 + Math.random() * 9000000000).toString();
-    if (!checkBarcodeExistence(barcode)) {
-      unique = true;
+/**
+ * Central 8-Digit Unique Barcode Generator
+ * 
+ * Prefixes:
+ * - Product (starts with 1): '1' + zeroPadding + productId
+ * - Batch (starts with 2):   '2' + zeroPadding + productId + batchId
+ * - Variant (starts with 3): '3' + zeroPadding + productId + batchId + variantIndex
+ */
+export function generate8DigitBarcode({
+  type = "variant",
+  productId = 1,
+  batchId = 1,
+  variantIndex = 1,
+} = {}) {
+  let prefix = "3";
+  let coreStr = "";
+
+  const p = String(productId != null ? productId : 1);
+  const b = String(batchId != null ? batchId : 1);
+  const v = String(variantIndex != null ? variantIndex : 1);
+
+  if (type === "product") {
+    prefix = "1";
+    coreStr = p;
+  } else if (type === "batch") {
+    prefix = "2";
+    coreStr = p + b;
+  } else {
+    // variant
+    prefix = "3";
+    coreStr = p + b + v;
+  }
+
+  if (coreStr.length > 7) {
+    coreStr = coreStr.slice(-7);
+  }
+
+  const paddingLength = Math.max(0, 7 - coreStr.length);
+  const zeroPadding = "0".repeat(paddingLength);
+  let candidate = `${prefix}${zeroPadding}${coreStr}`;
+
+  let numericVal = BigInt(candidate);
+  while (checkBarcodeExistence(candidate)) {
+    numericVal++;
+    candidate = numericVal.toString();
+    if (candidate.length > 8) {
+      candidate = candidate.slice(-8);
     }
-    attempts++;
   }
-  if (!unique) {
-    throw new Error("Failed to generate unique barcode after 5 attempts");
-  }
-  return barcode;
+
+  return candidate;
+}
+
+export function generateUniqueBarcode(options = {}) {
+  return generate8DigitBarcode(options);
 }
 
 // --- NEW FEATURES ---
@@ -832,6 +1106,42 @@ export async function scanBarcode(code) {
 
   const trimmedCode = code.trim();
 
+  // 0. Check Batch Variants (Exact Match on 'barcode' or 'sku')
+  const variantCheck = db
+    .prepare(
+      `
+    SELECT bv.*, pb.batch_number, pb.mrp as batch_mrp, pb.expiry_date, pb.mop as batch_mop, pb.mfw_price as batch_mfw
+    FROM batch_variants bv
+    JOIN product_batches pb ON bv.batch_id = pb.id
+    WHERE bv.barcode = ? OR bv.sku = ?
+  `,
+    )
+    .get(trimmedCode, trimmedCode);
+
+  if (variantCheck) {
+    const product = db
+      .prepare("SELECT * FROM products WHERE id = ?")
+      .get(variantCheck.product_id);
+
+    const effectiveMrp = variantCheck.mrp ?? variantCheck.batch_mrp ?? product.mrp ?? 0;
+    const effectiveMop = variantCheck.mop ?? variantCheck.cost_price ?? variantCheck.batch_mop ?? product.mop ?? 0;
+    const effectiveMfw = variantCheck.batch_mfw ?? product.mfw_price ?? 0;
+
+    return {
+      type: "variant",
+      product: product,
+      batch: {
+        id: variantCheck.batch_id,
+        batch_number: variantCheck.batch_number,
+        mrp: effectiveMrp,
+        mop: effectiveMop,
+        mfw_price: effectiveMfw,
+        expiry_date: variantCheck.expiry_date,
+      },
+      variant: variantCheck,
+    };
+  }
+
   // 1. Check Serial Numbers (Exact Match)
   // We fetch full product separately to ensure all fields (unit, hsn, tax) are present
   const serialCheck = db
@@ -886,14 +1196,14 @@ export async function scanBarcode(code) {
     };
   }
 
-  // 3. Check Products (Exact Match on 'barcode' or 'product_code')
+  // 3. Check Products (Exact Match on 'barcode', 'product_code', or 'article_no')
   const productCheck = db
     .prepare(
       `
-    SELECT * FROM products WHERE barcode = ? OR product_code = ?
+    SELECT * FROM products WHERE barcode = ? OR product_code = ? OR article_no = ?
   `,
     )
-    .get(trimmedCode, trimmedCode);
+    .get(trimmedCode, trimmedCode, trimmedCode);
 
   if (productCheck) {
     return {

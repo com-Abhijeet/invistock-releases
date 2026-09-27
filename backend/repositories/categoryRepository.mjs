@@ -21,19 +21,22 @@ export function getCategoryByCode(code) {
 }
 
 // CREATE category
-export function insertCategory({ name, code }) {
-  const stmt = db.prepare("INSERT INTO categories (name, code) VALUES (?, ?)");
-  const info = stmt.run(name, code);
+export function insertCategory({ name, code, default_preset_id = null }) {
+  const stmt = db.prepare(
+    "INSERT INTO categories (name, code, default_preset_id) VALUES (?, ?, ?)"
+  );
+  const info = stmt.run(name, code, default_preset_id ?? null);
   return info.lastInsertRowid;
 }
 
 // UPDATE category
-export function updateCategory(id, { name, code }) {
+export function updateCategory(id, { name, code, default_preset_id = null }) {
   const stmt = db.prepare(
-    "UPDATE categories SET name = ?, code = ? WHERE id = ?"
+    "UPDATE categories SET name = ?, code = ?, default_preset_id = ? WHERE id = ?"
   );
-  stmt.run(name, code, id);
+  stmt.run(name, code, default_preset_id ?? null, id);
 }
+
 
 // DELETE category (and subcategories)
 export function deleteCategory(id) {

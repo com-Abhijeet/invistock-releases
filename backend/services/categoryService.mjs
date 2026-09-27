@@ -16,6 +16,7 @@ export async function fetchAllCategories() {
 export async function createCategoryWithSubcategories({
   name,
   code,
+  default_preset_id,
   subcategories,
 }) {
   // Validate no duplicate category code
@@ -24,7 +25,7 @@ export async function createCategoryWithSubcategories({
     throw new Error("Category code must be unique");
   }
 
-  const categoryId = insertCategory({ name, code });
+  const categoryId = insertCategory({ name, code, default_preset_id });
 
   const usedCodes = new Set();
   for (const sub of subcategories) {
@@ -44,14 +45,14 @@ export async function createCategoryWithSubcategories({
 
 export async function updateCategoryWithSubcategories(
   id,
-  { name, code, subcategories }
+  { name, code, default_preset_id, subcategories }
 ) {
   const existing = getCategoryByCode(code);
   if (existing && existing.id !== id) {
     throw new Error("Another category with same code exists");
   }
 
-  updateCategory(id, { name, code });
+  updateCategory(id, { name, code, default_preset_id });
 
   deleteSubcategoriesByCategoryId(id);
 
