@@ -72,10 +72,6 @@ export default function AutoSuggestInput({
 
   // Sync displayed inputValue with external `value` prop
   useEffect(() => {
-    if (ignoreSyncRef.current) {
-      ignoreSyncRef.current = false;
-      return;
-    }
     // If menu is open and user is actively typing, do not overwrite inputValue
     if (isOpen && searchQuery !== null) {
       return;

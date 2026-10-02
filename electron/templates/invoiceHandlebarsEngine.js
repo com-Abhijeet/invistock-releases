@@ -25,7 +25,9 @@ Handlebars.registerHelper("multiply", function (a, b) {
 });
 
 Handlebars.registerHelper("ifEquals", function (arg1, arg2, options) {
-  return String(arg1) === String(arg2) ? options.fn(this) : options.inverse(this);
+  return String(arg1) === String(arg2)
+    ? options.fn(this)
+    : options.inverse(this);
 });
 
 Handlebars.registerHelper("calculateSavings", function (items) {

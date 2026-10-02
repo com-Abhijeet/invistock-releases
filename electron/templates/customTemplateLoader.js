@@ -35,7 +35,8 @@ function ensureCustomTemplateDirectories() {
 function getCustomFolderTemplateContent(type) {
   ensureCustomTemplateDirectories();
 
-  const folderNames = type === "invoice" ? ["invoices"] : ["barcodes", "labels"];
+  const folderNames =
+    type === "invoice" ? ["invoices"] : ["barcodes", "labels"];
   const ext = type === "invoice" || type === "label_html" ? ".html" : ".prn";
   const rootDir = process.cwd();
 
@@ -59,7 +60,10 @@ function getCustomFolderTemplateContent(type) {
         const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(ext));
         if (files.length > 0) {
           const filePath = path.join(dirPath, files[0]);
-          console.log(`📁 Loaded custom ${type} template from folder:`, filePath);
+          console.log(
+            `📁 Loaded custom ${type} template from folder:`,
+            filePath,
+          );
           return fs.readFileSync(filePath, "utf-8");
         }
       }

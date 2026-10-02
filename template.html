@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Pre-Printed Invoice Template - Riddhi Siddhi Textile (A5 B&W)</title>
+  <style>
+    /* Global Page Setup - Tailored for A5 Pre-printed Letterhead (21cm x 15cm) */
+    @page {
+      size: 21cm 15cm;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+    }
+
+    body {
+      font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+      font-size: 11.5px;
+      color: #000000;
+      background-color: #ffffff;
+      margin: 0;
+      padding-top: 2.8cm;
+      /* 2.8 cm top header clearance */
+      padding-bottom: 2.7cm;
+      /* Clearance for pre-printed footer */
+      padding-left: 0.25cm;
+      /* Side clearance for 20.5cm workable width */
+      padding-right: 0.25cm;
+      width: 21cm;
+      height: 15cm;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Fixed Printable Body Container (20.5 cm Width x 9.5 cm Height Printable Area) */
+    .printable-body {
+      position: relative;
+      width: 20.5cm;
+      height: 9.5cm;
+      margin: 0 auto;
+    }
+
+    /* 1. Header Metadata Bar - No Borders, Clean B&W Typography */
+    .invoice-meta-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 0 0 6px 0;
+      margin-bottom: 4px;
+      border: none;
+      /* Borderless header as requested */
+    }
+
+    .meta-col {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .meta-item {
+      font-size: 11.5px;
+      color: #000000;
+    }
+
+    .meta-label {
+      font-weight: 700;
+      font-size: 10.5px;
+      text-transform: uppercase;
+    }
+
+    .meta-value {
+      font-weight: 600;
+    }
+
+    /* 2. Items Table - Fixed Height Container with Grid Borders (Vertical & Horizontal) */
+    .items-table-wrapper {
+      width: 100%;
+      height: 5.8cm;
+      /* Fixed height for items table area */
+      overflow: hidden;
+      border: 1px solid #000000;
+      /* Outer table border */
+    }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .items-table th {
+      background-color: #f2f2f2;
+      color: #000000;
+      font-weight: 700;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      padding: 5px 6px;
+      border: 1px solid #000000;
+      /* Vertical & horizontal solid header border */
+      text-align: left;
+    }
+
+    .items-table th.text-center,
+    .items-table td.text-center {
+      text-align: center;
+    }
+
+    .items-table th.text-right,
+    .items-table td.text-right {
+      text-align: right;
+    }
+
+    .items-table td {
+      padding: 4px 6px;
+      border: 1px solid #000000;
+      /* Vertical & horizontal solid grid cell border */
+      font-size: 11px;
+      color: #000000;
+    }
+
+    /* 3. Summary Container - Always Locked to Bottom of 9.5cm Printable Area */
+    .summary-container {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2.5cm;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-top: 1px solid #000000;
+      padding-top: 4px;
+    }
+
+    .notice-box {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-right: 12px;
+    }
+
+    .savings-line {
+      font-weight: 800;
+      font-size: 12px;
+      color: #000000;
+      border: 1px solid #000000;
+      padding: 4px 8px;
+      display: inline-block;
+    }
+
+    .gst-notice {
+      font-size: 10px;
+      color: #000000;
+      font-style: italic;
+    }
+
+    /* Right Totals Box */
+    .totals-box {
+      width: 210px;
+      border: 1px solid #000000;
+    }
+
+    .totals-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: #000000;
+      border-bottom: 1px solid #000000;
+    }
+
+    .totals-row:last-child {
+      border-bottom: none;
+    }
+
+    .totals-row.grand-total {
+      font-weight: 800;
+      font-size: 12.5px;
+      background-color: transparent;
+      color: #000000;
+      border-top: 1px solid #000000;
+    }
+
+    @media print {
+      body {
+        padding-top: 2.8cm;
+        padding-bottom: 2.7cm;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="printable-body">
+
+    <!-- 1. Header Metadata Bar (Borderless) -->
+    <div class="invoice-meta-container">
+      <div class="meta-col">
+        <div class="meta-item">
+          <span class="meta-label">Invoice No:</span>
+          <span class="meta-value">#{{sale.reference_no}}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Date:</span>
+          <span class="meta-value">{{sale.date}}</span>
+        </div>
+      </div>
+
+      <div class="meta-col" style="text-align: right;">
+        <div class="meta-item">
+          <span class="meta-label">Customer:</span>
+          <span class="meta-value">{{sale.customer_name}}</span>
+        </div>
+        {{#if sale.customer_mobile}}
+        <div class="meta-item">
+          <span class="meta-label">Contact No:</span>
+          <span class="meta-value">{{sale.customer_mobile}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- 2. Items Table (Fixed Height Container with Full Grid Borders & HSN Column) -->
+    <div class="items-table-wrapper">
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th class="text-center" style="width: 5%;">Sr.</th>
+            <th class="text-center" style="width: 11%;">HSN</th>
+            <th style="width: 36%;">Item Description</th>
+            <th class="text-center" style="width: 9%;">Qty</th>
+            <th class="text-right" style="width: 12%;">MRP (₹)</th>
+            <th class="text-right" style="width: 13%;">Disc. Price (₹)</th>
+            <th class="text-right" style="width: 14%;">Amount (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each items}}
+          <tr>
+            <td class="text-center">{{this.sl_no}}</td>
+            <td class="text-center">{{this.hsn}}</td>
+            <td><strong>{{this.name}}</strong></td>
+            <td class="text-center">{{this.quantity}} {{this.unit}}</td>
+            <td class="text-right">₹{{this.mrp}}</td>
+            <td class="text-right">₹{{this.discounted_unit_price}}</td>
+            <td class="text-right"><strong>₹{{this.total_price}}</strong></td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 3. Summary & Totals Box (Locked to Bottom of 9.5cm Printable Area) -->
+    <div class="summary-container">
+      <div class="notice-box">
+        {{#if summary.total_savings}}
+        <div>
+          <span class="savings-line">
+            YOU SAVED RS. {{summary.total_savings}} ON THIS INVOICE!
+          </span>
+        </div>
+        {{/if}}
+        <div class="gst-notice">
+          * All prices displayed are inclusive of GST.
+        </div>
+      </div>
+
+      <div class="totals-box">
+        <div class="totals-row">
+          <span>Total Items:</span>
+          <span><strong>{{summary.total_qty}}</strong></span>
+        </div>
+        <div class="totals-row grand-total">
+          <span>TOTAL AMOUNT:</span>
+          <span>₹{{summary.final_amount}}</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+
+</html>

@@ -159,7 +159,8 @@ export function getPurchaseById(id) {
     const itemsWithSerials = items.map((item) => {
       const returnQty = item.return_quantity || 0;
       const netQty = Math.max(0, item.quantity - returnQty);
-      const unitPrice = item.quantity > 0 ? item.price / item.quantity : item.rate;
+      const unitPrice =
+        item.quantity > 0 ? item.price / item.quantity : item.rate;
       const netPrice = parseFloat((unitPrice * netQty).toFixed(2));
 
       // Fetch linked batch variants if any
@@ -167,14 +168,14 @@ export function getPurchaseById(id) {
       try {
         const batch = db
           .prepare(
-            `SELECT id FROM product_batches WHERE purchase_id = ? AND product_id = ?`
+            `SELECT id FROM product_batches WHERE purchase_id = ? AND product_id = ?`,
           )
           .get(id, item.product_id);
 
         if (batch) {
           variants = db
             .prepare(
-              `SELECT article_no, dim1_value, dim2_value, quantity, mrp, mop, cost_price, barcode, sku FROM batch_variants WHERE batch_id = ?`
+              `SELECT article_no, dim1_value, dim2_value, quantity, mrp, mop, cost_price, barcode, sku FROM batch_variants WHERE batch_id = ?`,
             )
             .all(batch.id);
         }
@@ -205,7 +206,10 @@ export function getPurchaseById(id) {
 
     const totalPaid = summary.total_paid || 0;
     const debitNotes = summary.total_debit_notes || 0;
-    const adjustedTotal = Math.max(0, (purchase.total_amount || 0) - debitNotes);
+    const adjustedTotal = Math.max(
+      0,
+      (purchase.total_amount || 0) - debitNotes,
+    );
     const balance = adjustedTotal - totalPaid;
 
     let paymentStatus = "pending";
@@ -598,14 +602,18 @@ export function getPurchaseStats() {
 
 export function getPurchaseOrderMetrics(filters) {
   const { where, params } = getDateFilter({ ...filters, alias: "p" });
-  const row = db.prepare(`
+  const row = db
+    .prepare(
+      `
     SELECT
       COUNT(*) AS purchaseCount,
       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingCount,
       SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS paidCount,
       COUNT(DISTINCT supplier_id) AS uniqueSuppliers
     FROM purchases p WHERE ${where}
-  `).get(...params);
+  `,
+    )
+    .get(...params);
 
   return {
     purchaseCount: row.purchaseCount || 0,
@@ -635,7 +643,7 @@ export function getTopPurchasedProducts({ limit = 5, ...filters }) {
 export function getPurchasePaymentModeBreakdown(filters) {
   const { where, params } = getDateFilter({ ...filters, alias: "p" });
   const totalStmt = db.prepare(
-    `SELECT SUM(paid_amount) AS total FROM purchases p WHERE ${where}`
+    `SELECT SUM(paid_amount) AS total FROM purchases p WHERE ${where}`,
   );
   const total = totalStmt.get(...params)?.total || 0;
 
@@ -657,7 +665,8 @@ export function getPurchasePaymentModeBreakdown(filters) {
  * and creates a Debit Note transaction that reduces the purchase bill balance.
  */
 export function processPurchaseReturn(payload) {
-  const { purchaseId, returnItems, note, customTotalAmount, gstAmount } = payload;
+  const { purchaseId, returnItems, note, customTotalAmount, gstAmount } =
+    payload;
 
   const transaction = db.transaction(() => {
     // 1. Get original purchase & supplier info

@@ -22,9 +22,9 @@ function enrichInvoiceData(payload) {
     const rate = Number(item.rate || 0);
     const discount = Number(item.discount || 0);
     const gstRate = Number(item.gst_rate || 0);
-    const totalPrice = Number(item.price || item.total_amount || (rate * qty));
+    const totalPrice = Number(item.price || item.total_amount || rate * qty);
 
-    const discountedUnitPrice = rate - (discount > 0 ? (discount / qty) : 0);
+    const discountedUnitPrice = rate - (discount > 0 ? discount / qty : 0);
     const unitSavings = Math.max(0, mrp - discountedUnitPrice);
     const itemTotalMrp = mrp * qty;
     const itemTotalSavings = unitSavings * qty;
@@ -97,7 +97,8 @@ function enrichInvoiceData(payload) {
       ...sale,
       reference_no: sale.reference_no || sale.invoice_no || "",
       date: sale.date || new Date().toLocaleDateString("en-IN"),
-      customer_name: sale.customer_name || sale.customer?.name || "Walk-in Customer",
+      customer_name:
+        sale.customer_name || sale.customer?.name || "Walk-in Customer",
       customer_mobile: sale.customer_mobile || sale.customer?.mobile || "",
       customer_address: sale.customer_address || sale.customer?.address || "",
       customer_gstin: sale.customer_gstin || sale.customer?.gstin || "",

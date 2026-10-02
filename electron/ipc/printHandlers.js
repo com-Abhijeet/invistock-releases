@@ -41,22 +41,21 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
       } catch (e) {}
 
       const folderPrnTemplate = getCustomFolderTemplateContent("barcode");
-      const prnContent = folderPrnTemplate || localSettings.custom_prn_template_content;
+      const prnContent =
+        folderPrnTemplate || localSettings.custom_prn_template_content;
       const usePrn = folderPrnTemplate || localSettings.use_custom_prn_template;
 
       if (usePrn && prnContent) {
         const { renderPRNLabels } = require("../templates/prnLabelEngine.js");
         const { sendRawToPrinter } = require("../utils/rawPrinter.js");
-        const rawPrnOutput = renderPRNLabels(
-          prnContent,
-          items,
-          shop,
-          {
-            multiUp: localSettings.label_multi_up || 1,
-            cipherKey: localSettings.cipher_key || "MONEYTALKS",
-          },
+        const rawPrnOutput = renderPRNLabels(prnContent, items, shop, {
+          multiUp: localSettings.label_multi_up || 1,
+          cipherKey: localSettings.cipher_key || "MONEYTALKS",
+        });
+        console.log(
+          "🖨️ Custom .PRN barcode generated:",
+          rawPrnOutput.slice(0, 100),
         );
-        console.log("🖨️ Custom .PRN barcode generated:", rawPrnOutput.slice(0, 100));
         const printerName = shop.label_printer_name?.trim();
         const rawResult = await sendRawToPrinter(printerName, rawPrnOutput);
         return rawResult;
@@ -88,8 +87,7 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
         folderTemplate ||
         payload?.localSettings?.custom_invoice_template_content;
       const useCustomTemplate =
-        folderTemplate ||
-        payload?.localSettings?.use_custom_invoice_template;
+        folderTemplate || payload?.localSettings?.use_custom_invoice_template;
 
       if (customInvoiceTemplate && useCustomTemplate) {
         const {
