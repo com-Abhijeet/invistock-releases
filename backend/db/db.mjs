@@ -695,6 +695,7 @@ export function initializeDatabase(dbPath) {
       paid_amount REAL NOT NULL,
       payment_mode TEXT DEFAULT 'Cash',
       is_reverse_charge INTEGER DEFAULT 0,
+      is_inclusive_tax INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
     );
@@ -1039,6 +1040,7 @@ export function initializeDatabase(dbPath) {
   safeMigrate(db, "label_print_settings", "label_vertical_offset", "REAL DEFAULT 0");
   safeMigrate(db, "label_print_settings", "label_template_id", "TEXT DEFAULT 'gen_standard'");
   safeMigrate(db, "label_print_settings", "silent_printing", "INTEGER DEFAULT 0");
+  safeMigrate(db, "purchases", "is_inclusive_tax", "INTEGER DEFAULT 0");
   safeMigrate(db, "categories", "default_preset_id", "INTEGER");
 
   safeMigrate(db, "products", "article_no", "TEXT");

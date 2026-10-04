@@ -19,8 +19,10 @@ import {
   FileText,
 } from "lucide-react";
 import { getSuppliers as getAllSuppliers } from "../../lib/api/supplierService";
+import { getShopData } from "../../lib/api/shopService";
 import type { PurchasePayload } from "../../lib/types/purchaseTypes";
 import type { SupplierType as Supplier } from "../../lib/types/supplierTypes";
+import type { ShopSetupForm } from "../../lib/types/shopTypes";
 import AutoSuggestInput, { AutoSuggestOption } from "../common/AutoSuggestInput";
 
 interface Props {
@@ -36,6 +38,7 @@ export default function PurchaseHeaderSection({
 }: Props) {
   const theme = useTheme();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [_shop, setShop] = useState<ShopSetupForm | null>(null);
   const [showMore, setShowMore] = useState(false);
 
   const billNoRef = useRef<HTMLInputElement>(null);
@@ -47,6 +50,10 @@ export default function PurchaseHeaderSection({
     getAllSuppliers({ limit: 50 })
       .then((data) => setSuppliers(data || []))
       .catch((err) => console.error("Error loading suppliers:", err));
+
+    getShopData()
+      .then((res) => setShop(res))
+      .catch(() => {});
 
     return () => {
       if (supplierSearchTimerRef.current) {

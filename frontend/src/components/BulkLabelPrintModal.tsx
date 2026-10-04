@@ -114,7 +114,7 @@ export default function BulkLabelPrintModal({
               // Standard untracked product row
               const qty = Math.max(1, Number(item.purchase_quantity) || 1);
               printableList.push({
-                rowId: `std_${item.product_id || itemIdx}`,
+                rowId: `std_${item.purchase_item_id || `${item.product_id}_${itemIdx}`}`,
                 itemType: "standard",
                 productId: item.product_id,
                 productName: item.name,

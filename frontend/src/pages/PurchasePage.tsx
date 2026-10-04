@@ -12,6 +12,8 @@ import {
   IconButton,
   Chip,
   Button,
+  Switch,
+  alpha,
 } from "@mui/material";
 import {
   Close as CloseIcon,
@@ -26,6 +28,7 @@ import PurchaseHeaderSection from "../components/purchase/PurchaseHeaderSection"
 import PurchaseItemSection from "../components/purchase/PurchaseItemSection";
 import PurchaseSummarySection from "../components/purchase/PurchaseSummarySection";
 import { getPurchaseById } from "../lib/api/purchaseService";
+import { getShopData } from "../lib/api/shopService";
 import type { PurchaseItem, PurchasePayload } from "../lib/types/purchaseTypes";
 
 interface SavedPurchaseDraft {
@@ -136,7 +139,12 @@ const PurchasePage = () => {
         setLoading(true);
         try {
           const data = await getPurchaseById(id);
-          if (data) setPurchase(data.data);
+          if (data) {
+            setPurchase({
+              ...data.data,
+              is_inclusive_tax: Boolean(data.data.is_inclusive_tax),
+            });
+          }
         } catch (err) {
           console.error("Failed to fetch purchase:", err);
         } finally {
@@ -145,23 +153,108 @@ const PurchasePage = () => {
       };
       fetchPurchase();
     } else {
-      setPurchase(generateInitialPurchase());
+      getShopData()
+        .then((shop) => {
+          setPurchase({
+            ...generateInitialPurchase(),
+            is_inclusive_tax: Boolean(shop?.inclusive_tax_pricing),
+          });
+        })
+        .catch(() => {
+          setPurchase(generateInitialPurchase());
+        });
     }
   }, [action, id]);
 
   useEffect(() => {
     if (success && !action) {
-      setPurchase(generateInitialPurchase());
+      getShopData()
+        .then((shop) => {
+          setPurchase({
+            ...generateInitialPurchase(),
+            is_inclusive_tax: Boolean(shop?.inclusive_tax_pricing),
+          });
+        })
+        .catch(() => {
+          setPurchase(generateInitialPurchase());
+        });
     }
   }, [success, action]);
 
   useEffect(() => {
     if (!purchase) return;
-    const total = purchase.items.reduce((acc, item) => acc + item.price, 0);
+    const total = purchase.items.reduce((acc, item) => {
+      const rate = Number(item.rate) || 0;
+      const qty = Number(item.quantity) || 0;
+      const gstRate = Number(item.gst_rate) || 0;
+      const discountPct = Number(item.discount) || 0;
+
+      const baseAmount = rate * qty;
+      const discountAmount = (baseAmount * discountPct) / 100;
+      const amountAfterDiscount = baseAmount - discountAmount;
+
+      let finalPrice = amountAfterDiscount;
+      if (gstRate > 0) {
+        if (purchase.is_inclusive_tax) {
+          finalPrice = amountAfterDiscount;
+        } else {
+          const gstAmount = (amountAfterDiscount * gstRate) / 100;
+          finalPrice = amountAfterDiscount + gstAmount;
+        }
+      }
+      return acc + finalPrice;
+    }, 0);
+
+    const roundedTotal = parseFloat(total.toFixed(2));
+    if (purchase.total_amount !== roundedTotal) {
+      setPurchase((prev) =>
+        prev ? { ...prev, total_amount: roundedTotal } : null,
+      );
+    }
+  }, [purchase?.items, purchase?.is_inclusive_tax]);
+
+  const handleTaxModeChange = (newIsInclusive: boolean) => {
+    if (isView || !purchase) return;
+
+    const calculateItemPrice = (item: any, isInclusive: boolean) => {
+      const rate = Number(item.rate) || 0;
+      const qty = Number(item.quantity) || 0;
+      const gstRate = Number(item.gst_rate) || 0;
+      const discountPct = Number(item.discount) || 0;
+
+      const baseAmount = rate * qty;
+      const discountAmount = (baseAmount * discountPct) / 100;
+      const amountAfterDiscount = baseAmount - discountAmount;
+
+      let finalPrice = amountAfterDiscount;
+      if (gstRate > 0) {
+        if (isInclusive) {
+          finalPrice = amountAfterDiscount;
+        } else {
+          const gstAmount = (amountAfterDiscount * gstRate) / 100;
+          finalPrice = amountAfterDiscount + gstAmount;
+        }
+      }
+      return parseFloat(finalPrice.toFixed(2));
+    };
+
+    const updatedItems = (purchase.items || []).map((item) => ({
+      ...item,
+      price: calculateItemPrice(item, newIsInclusive),
+    }));
+    const total = updatedItems.reduce((acc, item) => acc + item.price, 0);
+
     setPurchase((prev) =>
-      prev ? { ...prev, total_amount: parseFloat(total.toFixed(2)) } : null,
+      prev
+        ? {
+            ...prev,
+            is_inclusive_tax: newIsInclusive,
+            items: updatedItems,
+            total_amount: parseFloat(total.toFixed(2)),
+          }
+        : null,
     );
-  }, [purchase?.items]);
+  };
 
   if (!purchase) return null;
 
@@ -180,7 +273,7 @@ const PurchasePage = () => {
       <Box
         sx={{
           display: "flex",
-          justifyContent: "flex-end",
+          justifyContent: "space-between",
           alignItems: "center",
           m: 0,
           p: 0,
@@ -189,44 +282,109 @@ const PurchasePage = () => {
           zIndex: 10,
         }}
       >
-        {!isView && !isEdit && (
-          <>
-            <Button
-              variant="text"
-              color="primary"
-              onClick={saveDraft}
-              startIcon={<SaveIcon sx={{ fontSize: "0.9rem !important" }} />}
+        <Box display="flex" alignItems="center">
+          {!isView && !isEdit && (
+            <>
+              <Button
+                variant="text"
+                color="primary"
+                onClick={saveDraft}
+                startIcon={<SaveIcon sx={{ fontSize: "0.9rem !important" }} />}
+                sx={{
+                  fontSize: "0.65rem",
+                  textTransform: "none",
+                  py: 0.5,
+                  px: 1.5,
+                  minWidth: "auto",
+                  borderRadius: 0,
+                  borderRight: `1px solid ${theme.palette.divider}`,
+                }}
+              >
+                Save Draft
+              </Button>
+              <Button
+                variant="text"
+                color="primary"
+                onClick={() => setDraftsModalOpen(true)}
+                startIcon={<FolderIcon sx={{ fontSize: "0.9rem !important" }} />}
+                sx={{
+                  fontSize: "0.65rem",
+                  textTransform: "none",
+                  py: 0.5,
+                  px: 1.5,
+                  minWidth: "auto",
+                  borderRadius: 0,
+                  borderRight: `1px solid ${theme.palette.divider}`,
+                }}
+              >
+                View Drafts
+              </Button>
+            </>
+          )}
+
+          {/* Tax Mode Toggle: EXCLUSIVE <Switch> INCLUSIVE */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              ml: 1,
+              my: 0.25,
+              px: 1,
+              py: 0.1,
+              borderRadius: 1,
+              bgcolor: purchase.is_inclusive_tax
+                ? alpha(theme.palette.primary.main, 0.08)
+                : alpha(theme.palette.primary.main, 0.04),
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+            }}
+          >
+            <Typography
+              variant="caption"
               sx={{
-                fontSize: "0.65rem",
-                textTransform: "none",
-                py: 0.5,
-                px: 1.5,
-                minWidth: "auto",
-                borderRadius: 0,
-                borderRight: `1px solid ${theme.palette.divider}`,
+                fontSize: "0.7rem",
+                fontWeight: !purchase.is_inclusive_tax ? 800 : 500,
+                color: !purchase.is_inclusive_tax ? "primary.main" : "text.secondary",
+                userSelect: "none",
+                cursor: isView ? "default" : "pointer",
+              }}
+              onClick={() => {
+                if (!isView) handleTaxModeChange(false);
               }}
             >
-              Save Draft
-            </Button>
-            <Button
-              variant="text"
+              EXCLUSIVE
+            </Typography>
+
+            <Switch
+              size="small"
+              checked={purchase.is_inclusive_tax || false}
+              disabled={isView}
+              onChange={(e) => handleTaxModeChange(e.target.checked)}
               color="primary"
-              onClick={() => setDraftsModalOpen(true)}
-              startIcon={<FolderIcon sx={{ fontSize: "0.9rem !important" }} />}
               sx={{
-                fontSize: "0.65rem",
-                textTransform: "none",
-                py: 0.5,
-                px: 1.5,
-                minWidth: "auto",
-                borderRadius: 0,
-                borderRight: `1px solid ${theme.palette.divider}`,
+                scale: "0.8",
+                mx: -0.5,
+              }}
+            />
+
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: "0.7rem",
+                fontWeight: purchase.is_inclusive_tax ? 800 : 500,
+                color: purchase.is_inclusive_tax ? "primary.main" : "text.secondary",
+                userSelect: "none",
+                cursor: isView ? "default" : "pointer",
+              }}
+              onClick={() => {
+                if (!isView) handleTaxModeChange(true);
               }}
             >
-              View Drafts
-            </Button>
-          </>
-        )}
+              INCLUSIVE
+            </Typography>
+          </Box>
+        </Box>
+
         <Button
           variant="text"
           color="info"
@@ -271,6 +429,7 @@ const PurchasePage = () => {
         <PurchaseItemSection
           items={purchase.items}
           supplierId={purchase.supplier_id}
+          isInclusiveTax={purchase.is_inclusive_tax}
           onItemsChange={
             isView
               ? () => {}

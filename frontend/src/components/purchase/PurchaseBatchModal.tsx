@@ -188,14 +188,20 @@ export default function PurchaseBatchModal({
   }, [selectedProducts, presets, categories]);
 
   const productOptions: AutoSuggestOption[] = useMemo(() => {
-    return productsList.map((p) => ({
+    const list = [...productsList];
+    selectedProducts.forEach((sp) => {
+      if (sp && sp.id && !list.some((p) => p.id === sp.id)) {
+        list.unshift(sp);
+      }
+    });
+    return list.map((p) => ({
       ...p,
       id: p.id,
-      name: p.name,
+      name: p.name || (p as any).product_name || "Product",
       code: p.product_code || p.barcode || "",
       group: (p as any).category_name || "",
     }));
-  }, [productsList]);
+  }, [productsList, selectedProducts]);
 
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -595,12 +601,7 @@ export default function PurchaseBatchModal({
       if (!editItem) {
         setSelectedProducts([]);
         setFormData(initialFormData);
-        setMatrixVariants((prev) =>
-          prev.map((v) => ({
-            ...v,
-            quantity: 0,
-          })),
-        );
+        setMatrixVariants([]);
         setMrpGap(0);
         setBarcodeStatus("idle");
         setTimeout(() => {
@@ -630,6 +631,10 @@ export default function PurchaseBatchModal({
       setLoading(false);
     }
   };
+
+  const activeMatrixVariants = useMemo(() => {
+    return matrixVariants.filter((v) => (v.quantity || 0) > 0);
+  }, [matrixVariants]);
 
   const availableUnits =
     selectedProducts.length === 1
@@ -720,12 +725,7 @@ export default function PurchaseBatchModal({
                         products.find((p) => p.id === val) ||
                         null;
                       setSelectedProducts(prod ? [prod] : []);
-                      setMatrixVariants((prev) =>
-                        prev.map((v) => ({
-                          ...v,
-                          quantity: 0,
-                        })),
-                      );
+                      setMatrixVariants([]);
                       if (prod) {
                         applyProductSelection(prod, supplierId);
                       } else {
@@ -761,15 +761,15 @@ export default function PurchaseBatchModal({
 
                 {selectedProducts.length > 0 && (
                   <Button
-                    variant={matrixVariants.length > 0 ? "contained" : "outlined"}
+                    variant={activeMatrixVariants.length > 0 ? "contained" : "outlined"}
                     color="primary"
                     size="small"
                     startIcon={<GridIcon size={16} />}
                     onClick={() => setMatrixModalOpen(true)}
                     sx={{ height: 40, whiteSpace: "nowrap", fontWeight: 700 }}
                   >
-                    {matrixVariants.length > 0
-                      ? `Matrix (${formData.quantity} Pcs / ${matrixVariants.length} Variants)`
+                    {activeMatrixVariants.length > 0
+                      ? `Matrix (${formData.quantity} Pcs / ${activeMatrixVariants.length} Variants)`
                       : "⚡ Size / Variant Matrix"}
                   </Button>
                 )}

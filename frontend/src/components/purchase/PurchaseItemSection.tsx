@@ -24,6 +24,8 @@ import {
   Alert,
   Collapse,
   alpha,
+  Stack,
+  Divider,
 } from "@mui/material";
 import {
   Trash2,
@@ -52,6 +54,7 @@ interface Props {
   onItemsChange: (items: ExtendedPurchaseItem[]) => void;
   readOnly?: boolean;
   supplierId?: number | string | null;
+  isInclusiveTax?: boolean;
 }
 
 const PurchaseItemSection = ({
@@ -59,10 +62,11 @@ const PurchaseItemSection = ({
   onItemsChange,
   readOnly = false,
   supplierId,
+  isInclusiveTax,
 }: Props) => {
   const theme = useTheme();
   const [products, setProducts] = useState<Product[]>([]);
-  const [shop, setShop] = useState<ShopSetupForm | null>(null);
+  const [_shop, setShop] = useState<ShopSetupForm | null>(null);
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(0);
 
@@ -211,7 +215,15 @@ const PurchaseItemSection = ({
   ) => {
     if (readOnly) return;
 
-    const fields = ["quantity", "unit", "rate", "margin", "mrp"];
+    const fields = [
+      "quantity",
+      "unit",
+      "rate",
+      "discount",
+      "gst_rate",
+      "margin",
+      "mrp",
+    ];
     const currentIdx = fields.indexOf(field);
 
     switch (e.key) {
@@ -252,7 +264,11 @@ const PurchaseItemSection = ({
       case "Backspace": {
         const target = e.target as HTMLInputElement;
         const isSelect = target.tagName === "SELECT";
-        const isEmpty = isSelect || !target.value || target.value.trim() === "" || target.value === "0";
+        const isEmpty =
+          isSelect ||
+          !target.value ||
+          target.value.trim() === "" ||
+          target.value === "0";
         if (isEmpty) {
           if (currentIdx > 0) {
             e.preventDefault();
@@ -269,7 +285,6 @@ const PurchaseItemSection = ({
   };
 
   const calculatePrice = (item: ExtendedPurchaseItem) => {
-    if (!shop) return 0;
     const rate = Number(item.rate) || 0;
     const qty = Number(item.quantity) || 0;
     const gstRate = Number(item.gst_rate) || 0;
@@ -279,9 +294,11 @@ const PurchaseItemSection = ({
     const discountAmount = (baseAmount * discountPct) / 100;
     const amountAfterDiscount = baseAmount - discountAmount;
 
+    const isInclusive = Boolean(isInclusiveTax);
+
     let finalPrice = amountAfterDiscount;
-    if (shop.gst_enabled) {
-      if (shop.inclusive_tax_pricing) {
+    if (gstRate > 0) {
+      if (isInclusive) {
         finalPrice = amountAfterDiscount;
       } else {
         const gstAmount = (amountAfterDiscount * gstRate) / 100;
@@ -440,24 +457,33 @@ const PurchaseItemSection = ({
     .filter(Boolean).length;
 
   return (
-    <Box overflow="hidden">
+    <Box
+      sx={{
+        bgcolor: theme.palette.background.paper,
+        borderTop: `1px solid ${theme.palette.divider}`,
+        border: `1px solid #ccc`,
+      }}
+    >
       {!readOnly && (
         <Box
           sx={{
-            p: 2,
+            px: 2,
+            py: 1,
+            borderBottom: `1px solid ${theme.palette.divider}`,
             display: "flex",
-            gap: 2,
-            alignItems: "center",
             justifyContent: "space-between",
+            alignItems: "center",
+            bgcolor: alpha(theme.palette.action.hover, 0.02),
           }}
         >
-          <Box display="flex" gap={2} alignItems="center">
+          <Stack direction="row" spacing={2} alignItems="center">
             <Button
               data-action="add-item"
               onClick={handleBulkAdd}
               variant="contained"
               color="primary"
-              startIcon={<Layers size={18} />}
+              startIcon={<Layers size={16} />}
+              sx={{ fontSize: "0.75rem", fontWeight: 700, py: 0.5, px: 1.5 }}
             >
               Add Item
             </Button>
@@ -465,54 +491,151 @@ const PurchaseItemSection = ({
               onClick={() => setAddProductModalOpen(true)}
               variant="outlined"
               color="primary"
-              startIcon={<PlusCircle size={18} />}
+              startIcon={<PlusCircle size={16} />}
+              sx={{ fontSize: "0.75rem", fontWeight: 700, py: 0.5, px: 1.5 }}
             >
               Quick Add Product
             </Button>
-            <Typography variant="caption" color="text.secondary">
-              Add a product and keep it available for this purchase.
-            </Typography>
-          </Box>
-          <Box display="flex" gap={1}>
-            <Chip
-              label="Ctrl+A: Add"
-              size="small"
-              variant="outlined"
-              icon={<Keyboard size={12} />}
+
+            <Divider
+              orientation="vertical"
+              flexItem
+              sx={{ height: 16, alignSelf: "center", mx: 0.5 }}
             />
-            <Chip
-              label="Ctrl+Del: Remove"
-              size="small"
-              variant="outlined"
-              icon={<Keyboard size={12} />}
-            />
-          </Box>
+
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip
+                label="Ctrl+A: Add"
+                size="small"
+                variant="outlined"
+                icon={<Keyboard size={12} />}
+                sx={{ height: 22, fontSize: "0.65rem" }}
+              />
+              <Chip
+                label="Ctrl+Del: Remove"
+                size="small"
+                variant="outlined"
+                icon={<Keyboard size={12} />}
+                sx={{ height: 22, fontSize: "0.65rem" }}
+              />
+            </Stack>
+          </Stack>
+
+          <Typography
+            variant="caption"
+            sx={{ color: "text.disabled", fontWeight: 700, letterSpacing: 0.5 }}
+          >
+            {items.filter((i) => (i.product_id || 0) > 0).length} LINE ITEMS
+          </Typography>
         </Box>
       )}
 
-      <TableContainer>
-        <Table size="small">
+      <TableContainer
+        sx={{
+          overflowX: "auto",
+          maxWidth: "100%",
+        }}
+      >
+        <Table size="small" sx={{ minWidth: 1300, tableLayout: "fixed" }}>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ ...headerSx, width: "5%" }} align="center">
+              <TableCell
+                sx={{
+                  ...headerSx,
+                  position: "sticky",
+                  left: 0,
+                  zIndex: 4,
+                  bgcolor: theme.palette.background.paper,
+                  width: 40,
+                  minWidth: 40,
+                  maxWidth: 40,
+                }}
+                align="center"
+              >
                 #
               </TableCell>
-              <TableCell sx={{ ...headerSx, width: "20%" }}>PRODUCT</TableCell>
-              <TableCell sx={{ ...headerSx, width: "10%" }}>
-                BATCH INFO
-              </TableCell>
-              <TableCell sx={{ ...headerSx, width: "8%" }}>QTY</TableCell>
-              <TableCell sx={{ ...headerSx, width: "8%" }}>UNIT</TableCell>
-              <TableCell sx={{ ...headerSx, width: "10%" }}>COST</TableCell>
-              <TableCell sx={{ ...headerSx, width: "8%" }}>MARGIN%</TableCell>
-              <TableCell sx={{ ...headerSx, width: "10%" }}>MRP</TableCell>
               <TableCell
-                sx={{ ...headerSx, width: "15%", pr: 2 }}
+                sx={{
+                  ...headerSx,
+                  position: "sticky",
+                  left: 40,
+                  zIndex: 4,
+                  bgcolor: theme.palette.background.paper,
+                  width: 200,
+                  minWidth: 200,
+                  maxWidth: 200,
+                  borderRight: `2px solid ${theme.palette.divider}`,
+                }}
+              >
+                PRODUCT
+              </TableCell>
+              <TableCell sx={{ ...headerSx, width: 110, minWidth: 110 }}>
+                BATCH / DETAILS
+              </TableCell>
+              <TableCell sx={{ ...headerSx, width: 75, minWidth: 75 }}>
+                QTY
+              </TableCell>
+              <TableCell sx={{ ...headerSx, width: 75, minWidth: 75 }}>
+                UNIT
+              </TableCell>
+              <TableCell sx={{ ...headerSx, width: 110, minWidth: 110 }}>
+                PURCHASE RATE (₹)
+              </TableCell>
+              <TableCell sx={{ ...headerSx, width: 75, minWidth: 75 }}>
+                DISC %
+              </TableCell>
+              <TableCell
+                sx={{ ...headerSx, width: 100, minWidth: 100 }}
                 align="right"
               >
-                AMOUNT
+                TAXABLE (₹)
               </TableCell>
-              <TableCell sx={{ ...headerSx, width: "5%" }}></TableCell>
+              <TableCell sx={{ ...headerSx, width: 75, minWidth: 75 }}>
+                GST %
+              </TableCell>
+              <TableCell
+                sx={{ ...headerSx, width: 100, minWidth: 100 }}
+                align="right"
+              >
+                GST AMT (₹)
+              </TableCell>
+              <TableCell sx={{ ...headerSx, width: 80, minWidth: 80 }}>
+                MARGIN %
+              </TableCell>
+              <TableCell sx={{ ...headerSx, width: 95, minWidth: 95 }}>
+                MRP (₹)
+              </TableCell>
+              <TableCell
+                sx={{
+                  ...headerSx,
+                  position: "sticky",
+                  right: 45,
+                  zIndex: 4,
+                  bgcolor: theme.palette.background.paper,
+                  width: 140,
+                  minWidth: 140,
+                  maxWidth: 140,
+                  borderLeft: `2px solid ${theme.palette.divider}`,
+                  pr: 1.5,
+                  whiteSpace: "nowrap",
+                }}
+                align="right"
+              >
+                AMOUNT (₹)
+              </TableCell>
+              <TableCell
+                sx={{
+                  ...headerSx,
+                  position: "sticky",
+                  right: 0,
+                  zIndex: 4,
+                  bgcolor: theme.palette.background.paper,
+                  width: 45,
+                  minWidth: 45,
+                  maxWidth: 45,
+                }}
+                align="center"
+              ></TableCell>
             </TableRow>
           </TableHead>
 
@@ -527,6 +650,46 @@ const PurchaseItemSection = ({
               const quantityMismatch =
                 isSerialTracked && serialCount !== item.quantity;
 
+              const rate = Number(item.rate) || 0;
+              const qty =
+                readOnly && (item.return_quantity || 0) > 0
+                  ? Math.max(0, item.quantity - (item.return_quantity || 0))
+                  : Number(item.quantity) || 0;
+              const gstRate = Number(item.gst_rate) || 0;
+              const discountPct = Number(item.discount) || 0;
+
+              const baseAmount = rate * qty;
+              const discountAmount = (baseAmount * discountPct) / 100;
+              const amountAfterDiscount = baseAmount - discountAmount;
+
+              const isInclusive = Boolean(isInclusiveTax);
+
+              let taxableAmount = amountAfterDiscount;
+              let gstAmount = 0;
+
+              if (isInclusive) {
+                taxableAmount =
+                  gstRate > 0
+                    ? amountAfterDiscount / (1 + gstRate / 100)
+                    : amountAfterDiscount;
+                gstAmount = amountAfterDiscount - taxableAmount;
+              } else {
+                taxableAmount = amountAfterDiscount;
+                gstAmount = (taxableAmount * gstRate) / 100;
+              }
+
+              const rowBg =
+                activeRowIndex === idx
+                  ? alpha(theme.palette.primary.main, 0.04)
+                  : theme.palette.background.paper;
+
+              const stickyCellBg =
+                activeRowIndex === idx
+                  ? theme.palette.mode === "dark"
+                    ? "#1e293b"
+                    : "#f0f4ff"
+                  : theme.palette.background.paper;
+
               return (
                 <TableRow
                   key={idx}
@@ -534,16 +697,20 @@ const PurchaseItemSection = ({
                   selected={activeRowIndex === idx}
                   onClick={() => setActiveRowIndex(idx)}
                   sx={{
-                    "& > td": { border: 0, py: 0.5 },
-                    bgcolor:
-                      activeRowIndex === idx
-                        ? alpha(theme.palette.primary.main, 0.01)
-                        : "transparent",
+                    "& > td": { py: 0.5 },
+                    bgcolor: rowBg,
                   }}
                 >
                   <TableCell
                     align="center"
                     sx={{
+                      position: "sticky",
+                      left: 0,
+                      zIndex: 2,
+                      bgcolor: stickyCellBg,
+                      width: 40,
+                      minWidth: 40,
+                      maxWidth: 40,
                       color: "text.disabled",
                       fontWeight: 800,
                       fontSize: "0.7rem",
@@ -552,18 +719,44 @@ const PurchaseItemSection = ({
                     {item.sr_no}
                   </TableCell>
 
-                  <TableCell sx={{ p: 1 }}>
-                    <Typography variant="body2" fontWeight={600}>
-                      {product?.name || "Unknown Product"}
+                  <TableCell
+                    sx={{
+                      position: "sticky",
+                      left: 40,
+                      zIndex: 2,
+                      bgcolor: stickyCellBg,
+                      width: 200,
+                      minWidth: 200,
+                      maxWidth: 200,
+                      borderRight: `2px solid ${theme.palette.divider}`,
+                      p: 1,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      noWrap
+                      sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      {product?.name || item.product_name || "Unknown Product"}
                     </Typography>
-                    <Box display="flex" gap={1} alignItems="center" mt={0.5}>
-                      {item.tracking_type !== "none" && (
+                    <Box
+                      display="flex"
+                      gap={1}
+                      alignItems="center"
+                      mt={0.5}
+                      sx={{ overflow: "hidden" }}
+                    >
+                      {item.tracking_type !== "none" && item.barcode && (
                         <Typography
                           variant="caption"
                           color="primary"
                           display="flex"
                           alignItems="center"
                           gap={0.5}
+                          noWrap
+                          sx={{ fontSize: "0.65rem" }}
                         >
                           <ScanBarcode size={10} /> {item.barcode}
                         </Typography>
@@ -579,7 +772,7 @@ const PurchaseItemSection = ({
                           }
                         >
                           <AlertCircle
-                            size={14}
+                            size={12}
                             color={
                               needsSerials || quantityMismatch ? "red" : "gray"
                             }
@@ -589,31 +782,37 @@ const PurchaseItemSection = ({
                     </Box>
                   </TableCell>
 
-                  <TableCell sx={{ p: 1 }}>
-                    <Box display="flex" flexDirection="column" gap={1}>
+                  <TableCell sx={{ p: 1, width: 110, minWidth: 110 }}>
+                    <Box display="flex" flexDirection="column" gap={0.5}>
                       <Button
                         size="small"
                         variant="outlined"
                         color="inherit"
                         onClick={() => handleEditItemBatch(idx)}
-                        startIcon={<Settings size={14} />}
-                        sx={{ fontSize: "0.7rem", py: 0.5 }}
+                        startIcon={<Settings size={12} />}
+                        sx={{ fontSize: "0.65rem", py: 0.25, px: 0.5 }}
                       >
                         {item.batch_number || "Details"}
                       </Button>
 
-                      {Boolean(product?.is_variant_product || product?.preset_id) && (
+                      {Boolean(
+                        product?.is_variant_product || product?.preset_id,
+                      ) && (
                         <Button
                           size="small"
-                          variant={item.variants && item.variants.length > 0 ? "contained" : "outlined"}
+                          variant={
+                            item.variants && item.variants.length > 0
+                              ? "contained"
+                              : "outlined"
+                          }
                           color="primary"
                           onClick={() => handleOpenMatrixModal(idx)}
-                          startIcon={<Grid size={14} />}
-                          sx={{ fontSize: "0.7rem", py: 0.5 }}
+                          startIcon={<Grid size={12} />}
+                          sx={{ fontSize: "0.65rem", py: 0.25, px: 0.5 }}
                         >
                           {item.variants && item.variants.length > 0
-                            ? `${item.variants.length} Variants`
-                            : "Matrix Entry"}
+                            ? `${item.variants.length} Var`
+                            : "Matrix"}
                         </Button>
                       )}
 
@@ -631,18 +830,18 @@ const PurchaseItemSection = ({
                               : "success"
                           }
                           onClick={() => handleOpenSerialModal(idx)}
-                          startIcon={<ListOrdered size={14} />}
-                          sx={{ fontSize: "0.7rem", py: 0.5 }}
+                          startIcon={<ListOrdered size={12} />}
+                          sx={{ fontSize: "0.65rem", py: 0.25, px: 0.5 }}
                         >
                           {serialCount > 0
-                            ? `${serialCount} Serials`
-                            : "Add Serials"}
+                            ? `${serialCount} SN`
+                            : "Add SN"}
                         </Button>
                       )}
                     </Box>
                   </TableCell>
 
-                  <TableCell sx={{ p: 1 }}>
+                  <TableCell sx={{ p: 1, width: 75, minWidth: 75 }}>
                     <Box sx={fieldBoxSx(activeRowIndex === idx)}>
                       <TextField
                         inputRef={(el) =>
@@ -653,7 +852,10 @@ const PurchaseItemSection = ({
                         fullWidth
                         value={
                           readOnly && (item.return_quantity || 0) > 0
-                            ? Math.max(0, item.quantity - (item.return_quantity || 0))
+                            ? Math.max(
+                                0,
+                                item.quantity - (item.return_quantity || 0),
+                              )
                             : item.quantity === 0
                               ? ""
                               : item.quantity
@@ -668,7 +870,6 @@ const PurchaseItemSection = ({
                             e.target.value === "" ? 0 : Number(e.target.value),
                           )
                         }
-                        // Make readonly if serial tracked so users use the modal to dictate quantity
                         InputProps={{
                           disableUnderline: true,
                           readOnly: readOnly || isSerialTracked,
@@ -688,7 +889,7 @@ const PurchaseItemSection = ({
                     )}
                   </TableCell>
 
-                  <TableCell sx={{ p: 1 }}>
+                  <TableCell sx={{ p: 1, width: 75, minWidth: 75 }}>
                     <Box sx={fieldBoxSx(activeRowIndex === idx)}>
                       <TextField
                         inputRef={(el) =>
@@ -715,7 +916,7 @@ const PurchaseItemSection = ({
                     </Box>
                   </TableCell>
 
-                  <TableCell sx={{ p: 1 }}>
+                  <TableCell sx={{ p: 1, width: 110, minWidth: 110 }}>
                     <Box sx={fieldBoxSx(activeRowIndex === idx)}>
                       <TextField
                         inputRef={(el) =>
@@ -740,7 +941,89 @@ const PurchaseItemSection = ({
                     </Box>
                   </TableCell>
 
-                  <TableCell sx={{ p: 1 }}>
+                  <TableCell sx={{ p: 1, width: 75, minWidth: 75 }}>
+                    <Box sx={fieldBoxSx(activeRowIndex === idx)}>
+                      <TextField
+                        inputRef={(el) =>
+                          (gridRefs.current[`${idx}-discount`] = el)
+                        }
+                        type="number"
+                        variant="standard"
+                        fullWidth
+                        value={item.discount === 0 ? "" : item.discount}
+                        onKeyDown={(e) => handleCellKeyDown(e, idx, "discount")}
+                        onFocus={(e) => (e.target as HTMLInputElement).select()}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            idx,
+                            "discount",
+                            e.target.value === "" ? 0 : Number(e.target.value),
+                          )
+                        }
+                        InputProps={{ disableUnderline: true, readOnly }}
+                        sx={inputSx}
+                      />
+                    </Box>
+                  </TableCell>
+
+                  <TableCell
+                    sx={{ p: 1, width: 100, minWidth: 100 }}
+                    align="right"
+                  >
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      color="text.secondary"
+                    >
+                      {taxableAmount.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </Typography>
+                  </TableCell>
+
+                  <TableCell sx={{ p: 1, width: 75, minWidth: 75 }}>
+                    <Box sx={fieldBoxSx(activeRowIndex === idx)}>
+                      <TextField
+                        inputRef={(el) =>
+                          (gridRefs.current[`${idx}-gst_rate`] = el)
+                        }
+                        type="number"
+                        variant="standard"
+                        fullWidth
+                        value={item.gst_rate === 0 ? "" : item.gst_rate}
+                        onKeyDown={(e) => handleCellKeyDown(e, idx, "gst_rate")}
+                        onFocus={(e) => (e.target as HTMLInputElement).select()}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            idx,
+                            "gst_rate",
+                            e.target.value === "" ? 0 : Number(e.target.value),
+                          )
+                        }
+                        InputProps={{ disableUnderline: true, readOnly }}
+                        sx={inputSx}
+                      />
+                    </Box>
+                  </TableCell>
+
+                  <TableCell
+                    sx={{ p: 1, width: 100, minWidth: 100 }}
+                    align="right"
+                  >
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      color="text.secondary"
+                    >
+                      {gstAmount.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </Typography>
+                  </TableCell>
+
+                  <TableCell sx={{ p: 1, width: 80, minWidth: 80 }}>
                     <Box sx={fieldBoxSx(activeRowIndex === idx)}>
                       <TextField
                         inputRef={(el) =>
@@ -770,7 +1053,7 @@ const PurchaseItemSection = ({
                     </Box>
                   </TableCell>
 
-                  <TableCell sx={{ p: 1 }}>
+                  <TableCell sx={{ p: 1, width: 95, minWidth: 95 }}>
                     <Box sx={fieldBoxSx(activeRowIndex === idx)}>
                       <TextField
                         inputRef={(el) => (gridRefs.current[`${idx}-mrp`] = el)}
@@ -800,24 +1083,61 @@ const PurchaseItemSection = ({
                     </Box>
                   </TableCell>
 
-                  <TableCell align="right" sx={{ pr: 2 }}>
-                    <Typography fontWeight={800} color="text.primary">
-                      {((readOnly && (item.return_quantity || 0) > 0)
-                        ? (item.net_price ?? calculatePrice({ ...item, quantity: item.quantity - (item.return_quantity || 0) }))
-                        : item.price
+                  <TableCell
+                    align="right"
+                    sx={{
+                      position: "sticky",
+                      right: 45,
+                      zIndex: 2,
+                      bgcolor: stickyCellBg,
+                      width: 140,
+                      minWidth: 140,
+                      maxWidth: 140,
+                      borderLeft: `2px solid ${theme.palette.divider}`,
+                      pr: 1.5,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <Typography fontWeight={800} color="text.primary" sx={{ whiteSpace: "nowrap" }}>
+                      {(readOnly && (item.return_quantity || 0) > 0
+                        ? (item.net_price ??
+                          calculatePrice({
+                            ...item,
+                            quantity:
+                              item.quantity - (item.return_quantity || 0),
+                          }))
+                        : calculatePrice(item)
                       ).toLocaleString("en-IN", {
                         style: "currency",
                         currency: "INR",
                       })}
                     </Typography>
                     {readOnly && (item.return_quantity || 0) > 0 && (
-                      <Typography variant="caption" color="text.disabled" sx={{ textDecoration: "line-through", display: "block" }}>
-                        {item.price.toLocaleString("en-IN", { style: "currency", currency: "INR" })}
+                      <Typography
+                        variant="caption"
+                        color="text.disabled"
+                        sx={{ textDecoration: "line-through", display: "block", whiteSpace: "nowrap" }}
+                      >
+                        {calculatePrice(item).toLocaleString("en-IN", {
+                          style: "currency",
+                          currency: "INR",
+                        })}
                       </Typography>
                     )}
                   </TableCell>
 
-                  <TableCell align="center">
+                  <TableCell
+                    align="center"
+                    sx={{
+                      position: "sticky",
+                      right: 0,
+                      zIndex: 2,
+                      bgcolor: stickyCellBg,
+                      width: 45,
+                      minWidth: 45,
+                      maxWidth: 45,
+                    }}
+                  >
                     {!readOnly && (
                       <Tooltip title="Remove (Ctrl+Del)">
                         <IconButton

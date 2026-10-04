@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import type { DashboardFilter } from "../../lib/types/inventoryDashboardTypes";
 import BulkLabelPrintModal from "../BulkLabelPrintModal";
 import PurchaseReturnModal from "./PurchaseReturnModal";
+import DeletePurchaseModal from "./DeletePurchaseModal";
 import { PurchasePayload } from "../../lib/types/purchaseTypes";
 
 interface PurchaseTableProps {
@@ -30,6 +31,10 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
   // State for Purchase Return / Debit Note modal
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [selectedReturnPurchase, setSelectedReturnPurchase] = useState<any>(null);
+
+  // State for Delete Purchase Modal
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [selectedDeletePurchase, setSelectedDeletePurchase] = useState<any>(null);
 
   const [page, setPage] = useState(0);
   const [limit, setLimit] = useState(10);
@@ -130,11 +135,11 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
       },
     },
     {
-      icon: <Delete size={16} />,
+      icon: <Delete size={16} color={theme.palette.error.main} />,
       label: "Delete",
       onClick: (row: any) => {
-        console.log("Delete", row);
-        // TODO: Implement delete logic
+        setSelectedDeletePurchase(row);
+        setDeleteModalOpen(true);
       },
     },
   ];
@@ -182,6 +187,17 @@ export default function PurchaseTable({ filters, onMarkPayment }: PurchaseTableP
           purchase={selectedReturnPurchase}
         />
       )}
+
+      {/* Delete Purchase Modal with Admin Role and Password Check */}
+      <DeletePurchaseModal
+        open={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setSelectedDeletePurchase(null);
+        }}
+        purchase={selectedDeletePurchase}
+        onSuccess={fetchData}
+      />
     </Box>
   );
 }

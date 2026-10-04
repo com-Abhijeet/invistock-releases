@@ -59,8 +59,18 @@ function replaceLabelPlaceholders(templateStr, item, shop, cipherKey) {
   const expDate = batch.expiry_date || item.expiry_date || "";
   const articleNo = item.article_no || product.article_no || "";
   const size =
-    item.size || item.dim1_value || variant.dim1_value || product.size || "";
-  const color = item.color || item.dim2_value || variant.dim2_value || "";
+    item.size ||
+    item.dim1_value ||
+    variant.dim1_value ||
+    product.dim1_value ||
+    product.size ||
+    "";
+  const color =
+    item.color ||
+    item.dim2_value ||
+    variant.dim2_value ||
+    product.dim2_value ||
+    "";
   const displayCode = item.display_code || articleNo || batchNo || "";
   const sku = item.sku || variant.sku || "";
   const variantTitle = [size, color].filter(Boolean).join(" / ");

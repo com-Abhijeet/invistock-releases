@@ -19,8 +19,8 @@ function normalizeItemUnit(unit, fallback = "pcs") {
 export function createPurchase(purchaseData, items) {
   try {
     const insertPurchaseStmt = db.prepare(
-      `INSERT INTO purchases (supplier_id, reference_no, internal_ref_no, date, status, note, total_amount, paid_amount, payment_mode, is_reverse_charge)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO purchases (supplier_id, reference_no, internal_ref_no, date, status, note, total_amount, paid_amount, payment_mode, is_reverse_charge, is_inclusive_tax)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     const purchase = normalizeBooleans(purchaseData);
@@ -34,7 +34,8 @@ export function createPurchase(purchaseData, items) {
       purchase.total_amount,
       purchase.paid_amount,
       purchase.payment_mode,
-      purchase.is_reverse_charge,
+      purchase.is_reverse_charge ? 1 : 0,
+      purchase.is_inclusive_tax ? 1 : 0,
     );
 
     const purchase_id = insertPurchaseStmtResponse.lastInsertRowid;
@@ -134,7 +135,7 @@ export function getPurchaseById(id) {
     const purchaseStmt = db.prepare(`
       SELECT 
         p.id, p.reference_no, p.date, p.supplier_id, s.name AS supplier_name,
-        p.note, p.total_amount, p.paid_amount, p.status
+        p.note, p.total_amount, p.paid_amount, p.status, p.is_inclusive_tax, p.is_reverse_charge
       FROM purchases p
       JOIN suppliers s ON p.supplier_id = s.id
       WHERE p.id = ?
@@ -159,8 +160,12 @@ export function getPurchaseById(id) {
     const itemsWithSerials = items.map((item) => {
       const returnQty = item.return_quantity || 0;
       const netQty = Math.max(0, item.quantity - returnQty);
+      const storedPrice =
+        item.price !== undefined && item.price !== null && item.price > 0
+          ? item.price
+          : parseFloat(((item.rate || 0) * (item.quantity || 0)).toFixed(2));
       const unitPrice =
-        item.quantity > 0 ? item.price / item.quantity : item.rate;
+        item.quantity > 0 ? storedPrice / item.quantity : item.rate;
       const netPrice = parseFloat((unitPrice * netQty).toFixed(2));
 
       // Fetch linked batch variants if any
@@ -185,6 +190,7 @@ export function getPurchaseById(id) {
 
       return {
         ...item,
+        price: storedPrice,
         return_quantity: returnQty,
         net_quantity: netQty,
         net_price: netPrice,
@@ -269,7 +275,18 @@ export function getPurchaseItemsForLabels(purchaseId) {
       pi.margin
     FROM purchase_items pi
     JOIN products p ON pi.product_id = p.id
-    LEFT JOIN product_batches pb ON pb.purchase_id = pi.purchase_id AND pb.product_id = pi.product_id
+    LEFT JOIN product_batches pb ON pb.id = (
+      SELECT id FROM product_batches 
+      WHERE purchase_id = pi.purchase_id 
+        AND product_id = pi.product_id
+        AND (
+          (pi.batch_uid IS NOT NULL AND batch_uid = pi.batch_uid)
+          OR (pi.batch_number IS NOT NULL AND batch_number = pi.batch_number)
+          OR (pi.batch_uid IS NULL AND pi.batch_number IS NULL)
+        )
+      ORDER BY id ASC
+      LIMIT 1
+    )
     WHERE pi.purchase_id = ?
   `,
     )
@@ -295,34 +312,34 @@ export function getPurchaseItemsForLabels(purchaseId) {
   });
 }
 
-export async function deletePurchase(id) {
-  await db.run("BEGIN");
-  const items = await db.all(
-    `SELECT product_id, quantity, unit FROM purchase_items WHERE purchase_id = ?`,
-    [id],
-  );
+// export async function deletePurchase(id) {
+//   await db.run("BEGIN");
+//   const items = await db.all(
+//     `SELECT product_id, quantity, unit FROM purchase_items WHERE purchase_id = ?`,
+//     [id],
+//   );
 
-  const getProductStmt = db.prepare(
-    "SELECT base_unit, secondary_unit, conversion_factor FROM products WHERE id = ?",
-  );
+//   const getProductStmt = db.prepare(
+//     "SELECT base_unit, secondary_unit, conversion_factor FROM products WHERE id = ?",
+//   );
 
-  for (const item of items) {
-    const product = getProductStmt.get(item.product_id);
-    let qtyToDeduct = item.quantity;
-    if (product) {
-      qtyToDeduct = convertToStockQuantity(item.quantity, item.unit, product);
-    }
+//   for (const item of items) {
+//     const product = getProductStmt.get(item.product_id);
+//     let qtyToDeduct = item.quantity;
+//     if (product) {
+//       qtyToDeduct = convertToStockQuantity(item.quantity, item.unit, product);
+//     }
 
-    await db.run(`UPDATE products SET quantity = quantity - ? WHERE id = ?`, [
-      qtyToDeduct,
-      item.product_id,
-    ]);
-  }
-  await db.run(`DELETE FROM purchase_items WHERE purchase_id = ?`, [id]);
-  await db.run(`DELETE FROM purchases WHERE id = ?`, [id]);
-  await db.run("COMMIT");
-  return true;
-}
+//     await db.run(`UPDATE products SET quantity = quantity - ? WHERE id = ?`, [
+//       qtyToDeduct,
+//       item.product_id,
+//     ]);
+//   }
+//   await db.run(`DELETE FROM purchase_items WHERE purchase_id = ?`, [id]);
+//   await db.run(`DELETE FROM purchases WHERE id = ?`, [id]);
+//   await db.run("COMMIT");
+//   return true;
+// }
 
 export function updatePurchase(id, data, newItems) {
   const executeUpdate = db.transaction(() => {
@@ -330,11 +347,11 @@ export function updatePurchase(id, data, newItems) {
 
     const insertItemStmt = db.prepare(`
       INSERT INTO purchase_items (
-        purchase_id, product_id, quantity, rate, gst_rate, discount, unit,
+        purchase_id, product_id, quantity, rate, gst_rate, discount, price, unit,
         batch_uid, batch_number, barcode, serial_numbers, expiry_date, mfg_date,
         mrp, margin, mop, mfw_price
       ) VALUES (
-        @purchase_id, @product_id, @quantity, @rate, @gst_rate, @discount, @unit,
+        @purchase_id, @product_id, @quantity, @rate, @gst_rate, @discount, @price, @unit,
         @batch_uid, @batch_number, @barcode, @serial_numbers, @expiry_date, @mfg_date,
         @mrp, @margin, @mop, @mfw_price
       )
@@ -348,6 +365,7 @@ export function updatePurchase(id, data, newItems) {
         rate: item.rate,
         gst_rate: item.gst_rate,
         discount: item.discount || 0,
+        price: item.price || 0,
         unit: normalizeItemUnit(item.unit),
         batch_uid: item.batch_uid || null,
         batch_number: item.batch_number || null,
@@ -374,7 +392,8 @@ export function updatePurchase(id, data, newItems) {
           note = @note, 
           total_amount = @total_amount, 
           paid_amount = @paid_amount,
-          is_reverse_charge = @is_reverse_charge
+          is_reverse_charge = @is_reverse_charge,
+          is_inclusive_tax = @is_inclusive_tax
       WHERE id = @id
     `,
     ).run({
@@ -386,6 +405,7 @@ export function updatePurchase(id, data, newItems) {
       total_amount: data.total_amount,
       paid_amount: data.paid_amount,
       is_reverse_charge: data.is_reverse_charge ? 1 : 0,
+      is_inclusive_tax: data.is_inclusive_tax ? 1 : 0,
       id: id,
     });
   });
@@ -827,4 +847,134 @@ export function processPurchaseReturn(payload) {
   });
 
   return transaction();
+}
+
+export function deletePurchase(id) {
+  const purchaseId = Number(id);
+  const purchase = db
+    .prepare("SELECT * FROM purchases WHERE id = ?")
+    .get(purchaseId);
+  if (!purchase) {
+    throw new Error("Purchase not found");
+  }
+
+  // 1. Find all batches created for this purchase
+  const batches = db
+    .prepare(
+      "SELECT id, batch_number, product_id, quantity FROM product_batches WHERE purchase_id = ?",
+    )
+    .all(purchaseId);
+  const batchIds = batches.map((b) => b.id);
+
+  // 2. Check if any items from these batches have been sold in sales_items or serials
+  if (batchIds.length > 0) {
+    const placeholders = batchIds.map(() => "?").join(",");
+
+    // Check sales_items by batch_id
+    const soldBatchCount =
+      db
+        .prepare(
+          `SELECT COUNT(*) as count FROM sales_items WHERE batch_id IN (${placeholders})`,
+        )
+        .get(...batchIds)?.count || 0;
+
+    if (soldBatchCount > 0) {
+      throw new Error(
+        `Cannot delete Purchase #${purchase.reference_no}: 1 or more items from this purchase have already been sold in Sales invoices.`,
+      );
+    }
+
+    // Check sales_items by variant_id
+    const variantIds = db
+      .prepare(
+        `SELECT id FROM batch_variants WHERE batch_id IN (${placeholders})`,
+      )
+      .all(...batchIds)
+      .map((v) => v.id);
+
+    if (variantIds.length > 0) {
+      const vPlaceholders = variantIds.map(() => "?").join(",");
+      const soldVariantCount =
+        db
+          .prepare(
+            `SELECT COUNT(*) as count FROM sales_items WHERE variant_id IN (${vPlaceholders})`,
+          )
+          .get(...variantIds)?.count || 0;
+
+      if (soldVariantCount > 0) {
+        throw new Error(
+          `Cannot delete Purchase #${purchase.reference_no}: Variant items from this purchase have already been sold.`,
+        );
+      }
+    }
+
+    // Check serials
+    const soldSerialCount =
+      db
+        .prepare(
+          `SELECT COUNT(*) as count FROM product_serials WHERE batch_id IN (${placeholders}) AND status IN ('sold', 'returned', 'defective', 'in_repair')`,
+        )
+        .get(...batchIds)?.count || 0;
+
+    if (soldSerialCount > 0) {
+      throw new Error(
+        `Cannot delete Purchase #${purchase.reference_no}: Serial tracked items from this purchase have already been sold or modified.`,
+      );
+    }
+  }
+
+  // 3. Everything is clean! Perform atomic deletion
+  const executeDelete = db.transaction(() => {
+    // A. Revert stock quantity on products
+    const items = db
+      .prepare("SELECT * FROM purchase_items WHERE purchase_id = ?")
+      .all(purchaseId);
+    for (const item of items) {
+      const product = getProductById(item.product_id);
+      if (product) {
+        const baseQty = convertToStockQuantity(
+          item.quantity,
+          item.unit,
+          product,
+        );
+        updateProductQuantity(item.product_id, -baseQty);
+        calculateAveragePurchaseCost(item.product_id);
+      }
+    }
+
+    // B. Delete batch_variants & product_serials
+    if (batchIds.length > 0) {
+      const placeholders = batchIds.map(() => "?").join(",");
+      db.prepare(
+        `DELETE FROM product_serials WHERE batch_id IN (${placeholders})`,
+      ).run(...batchIds);
+      db.prepare(
+        `DELETE FROM batch_variants WHERE batch_id IN (${placeholders})`,
+      ).run(...batchIds);
+    }
+
+    // C. Delete product_batches
+    db.prepare("DELETE FROM product_batches WHERE purchase_id = ?").run(
+      purchaseId,
+    );
+
+    // D. Delete transactions (financial ledger)
+    db.prepare(
+      "DELETE FROM transactions WHERE bill_id = ? AND bill_type = 'purchase'",
+    ).run(purchaseId);
+
+    // E. Delete purchase_items
+    db.prepare("DELETE FROM purchase_items WHERE purchase_id = ?").run(
+      purchaseId,
+    );
+
+    // F. Delete purchases header
+    db.prepare("DELETE FROM purchases WHERE id = ?").run(purchaseId);
+  });
+
+  executeDelete();
+  return {
+    success: true,
+    message: `Purchase #${purchase.reference_no} deleted successfully.`,
+  };
 }

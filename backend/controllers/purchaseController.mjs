@@ -84,8 +84,13 @@ export async function updatePurchase(req, res) {
 
 // 🔹 Delete a purchase by ID
 export async function deletePurchase(req, res) {
-  await purchaseService.deletePurchase(req.params.id);
-  res.json({ status: "success", message: "Purchase deleted" });
+  try {
+    const result = await purchaseService.deletePurchase(req.params.id);
+    res.json({ status: "success", message: result.message || "Purchase deleted successfully" });
+  } catch (err) {
+    console.error("deletePurchase error:", err.message);
+    res.status(400).json({ status: "error", message: err.message });
+  }
 }
 
 // 🔹 Get all purchases with filters & pagination

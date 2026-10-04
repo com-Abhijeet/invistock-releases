@@ -656,6 +656,11 @@ export default function AutoSuggestInput({
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          onClick={() => {
+            if (!disabled && !isOpen) {
+              setIsOpen(true);
+            }
+          }}
           autoComplete="off"
           sx={sx}
           error={error}

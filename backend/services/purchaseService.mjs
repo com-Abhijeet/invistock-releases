@@ -127,9 +127,7 @@ export async function getPurchaseById(id) {
 
 /* -------------------- DELETE PURCHASE   --------------------------*/
 export async function deletePurchase(id) {
-  // TODO: Add batch stock reversal logic here if needed
-  await purchaseRepository.deletePurchase(id);
-  return { status: 200, message: "Purchase deleted" };
+  return purchaseRepository.deletePurchase(id);
 }
 
 /* -------------------- UPDATE PURCHASE  --------------------------*/

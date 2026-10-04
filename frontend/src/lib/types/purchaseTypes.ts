@@ -43,4 +43,5 @@ export type PurchasePayload = {
     | "ordered"
     | "draft";
   is_reverse_charge?: boolean;
+  is_inclusive_tax?: boolean;
 };
