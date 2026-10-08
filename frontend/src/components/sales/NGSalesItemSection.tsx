@@ -361,6 +361,8 @@ export default function NGSaleItemSection({ items, onItemsChange }: Props) {
                 >
                   <IconButton
                     size="small"
+                    tabIndex={-1}
+                    data-nav-skip="true"
                     onClick={() => handleRemoveRow(idx)}
                     sx={{
                       color: theme.palette.error.main,

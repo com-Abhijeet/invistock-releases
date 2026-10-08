@@ -92,11 +92,10 @@ function registerFileDialogHandlers(ipcMain, { mainWindow } = {}) {
         xlsx.utils.sheet_to_json(worksheet, { header: 1, raw: true })[0] || [];
 
       const dataPreview = xlsx.utils.sheet_to_json(worksheet, {
-        range: 5,
         raw: true,
       });
 
-      return { success: true, headers, dataPreview };
+      return { success: true, headers, dataPreview: dataPreview.slice(0, 10) };
     } catch (error) {
       console.error("Failed to read Excel file:", error);
       return { success: false, error: "Could not read the selected file." };

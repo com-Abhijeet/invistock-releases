@@ -61,6 +61,10 @@ const requiredDbFields = [
   "storage_location",
   "description",
   "barcode",
+  "tracking_type",
+  "base_unit",
+  "secondary_unit",
+  "conversion_factor",
 ];
 
 export default function ProductImportModal({ open, onClose }: Props) {
@@ -208,21 +212,29 @@ export default function ProductImportModal({ open, onClose }: Props) {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  {Object.keys(mappings).map((key) => (
-                    <TableCell key={key} sx={{ fontWeight: "bold" }}>
-                      {key}
-                    </TableCell>
-                  ))}
+                  {Object.keys(mappings)
+                    .filter((key) => Boolean(mappings[key]))
+                    .map((key) => (
+                      <TableCell key={key} sx={{ fontWeight: "bold" }}>
+                        {key}
+                      </TableCell>
+                    ))}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {previewData.map((row, index) => (
                   <TableRow key={index}>
-                    {Object.keys(mappings).map((dbField) => (
-                      <TableCell key={dbField}>
-                        {row[mappings[dbField]] || "—"}
-                      </TableCell>
-                    ))}
+                    {Object.keys(mappings)
+                      .filter((dbField) => Boolean(mappings[dbField]))
+                      .map((dbField) => (
+                        <TableCell key={dbField}>
+                          {row[mappings[dbField]] !== undefined &&
+                          row[mappings[dbField]] !== null &&
+                          row[mappings[dbField]] !== ""
+                            ? String(row[mappings[dbField]])
+                            : "—"}
+                        </TableCell>
+                      ))}
                   </TableRow>
                 ))}
               </TableBody>

@@ -69,14 +69,20 @@ export async function importProducts(filePath, mappings) {
       "quantity",
       "hsn",
       "brand",
+      "category",
+      "subcategory",
       "mfw_price",
       "low_stock_threshold",
       "size",
       "weight",
-      // New Conversion Fields
       "base_unit",
       "secondary_unit",
       "conversion_factor",
+      "average_purchase_price",
+      "storage_location",
+      "description",
+      "barcode",
+      "tracking_type",
     ];
 
     const productsToInsert = data.map((row) => {
@@ -85,7 +91,7 @@ export async function importProducts(filePath, mappings) {
       // 1. Map data from the excel row to our database schema based on user's choices
       for (const dbField in mappings) {
         const excelHeader = mappings[dbField];
-        if (excelHeader && row[excelHeader] !== undefined) {
+        if (excelHeader && row[excelHeader] !== undefined && row[excelHeader] !== null) {
           newProduct[dbField] = row[excelHeader];
         }
       }
@@ -94,17 +100,41 @@ export async function importProducts(filePath, mappings) {
       dbFields.forEach((field) => {
         if (newProduct[field] === undefined) {
           // Use 0 for numbers and null for strings
-          if (["mrp", "mop", "gst_rate", "quantity"].includes(field)) {
+          if (
+            [
+              "mrp",
+              "mop",
+              "gst_rate",
+              "quantity",
+              "mfw_price",
+              "low_stock_threshold",
+              "average_purchase_price",
+            ].includes(field)
+          ) {
             newProduct[field] = 0;
           } else if (field === "conversion_factor") {
             newProduct[field] = 1;
           } else if (field === "base_unit") {
             newProduct[field] = "pcs";
+          } else if (field === "category" || field === "subcategory") {
+            newProduct[field] = "General";
+          } else if (field === "tracking_type") {
+            newProduct[field] = "none";
           } else {
             newProduct[field] = null;
           }
         }
       });
+
+      // Normalize tracking_type if provided as string (e.g. "Batch", "Serial", "None")
+      if (newProduct.tracking_type) {
+        const normalized = String(newProduct.tracking_type).toLowerCase().trim();
+        if (["batch", "serial"].includes(normalized)) {
+          newProduct.tracking_type = normalized;
+        } else {
+          newProduct.tracking_type = "none";
+        }
+      }
 
       return newProduct;
     });
@@ -112,8 +142,8 @@ export async function importProducts(filePath, mappings) {
     const result = await productRepo.bulkInsertProducts(productsToInsert);
     return { success: true, count: result.changes };
   } catch (error) {
-    console.error("Error in importProducts service:", error.message);
-    throw new Error("Failed to process and import products.");
+    console.error("Error in importProducts service:", error);
+    throw new Error(error.message || "Failed to process and import products.");
   }
 }
 

@@ -150,6 +150,7 @@ export const INVOICE_TEMPLATES = [
   { id: "a5_portrait", label: "A5 Portrait" },
   { id: "a5_portrait_modern", label: "A5 Portrait Modern" },
   { id: "a5_landscape_modern", label: "A5 Landscape Modern" },
+  { id: "custom_html", label: "Custom Template (HTML / Handlebars)" },
 ];
 
 interface InvoiceSettingsModalProps {

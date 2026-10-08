@@ -92,11 +92,11 @@ export default function KeyboardNavForm({
   const getFocusableElements = (): HTMLElement[] => {
     if (!containerRef.current) return [];
     const selector = [
-      'input:not([disabled]):not([type="hidden"]):not([tabindex="-1"])',
-      'select:not([disabled]):not([tabindex="-1"])',
-      'textarea:not([disabled]):not([tabindex="-1"])',
-      'button:not([disabled]):not([tabindex="-1"])',
-      '[tabindex="0"]:not([disabled])',
+      'input:not([disabled]):not([type="hidden"]):not([tabindex="-1"]):not([data-nav-skip="true"])',
+      'select:not([disabled]):not([tabindex="-1"]):not([data-nav-skip="true"])',
+      'textarea:not([disabled]):not([tabindex="-1"]):not([data-nav-skip="true"])',
+      'button:not([disabled]):not([tabindex="-1"]):not([data-nav-skip="true"])',
+      '[tabindex="0"]:not([disabled]):not([data-nav-skip="true"])',
     ].join(", ");
 
     const elements = Array.from(
@@ -106,6 +106,17 @@ export default function KeyboardNavForm({
     // Filter out invisible elements or those explicitly marked to skip navigation
     return elements.filter((el) => {
       if (el.getAttribute("data-nav-skip") === "true") return false;
+      if (el.getAttribute("tabindex") === "-1") return false;
+      const ariaLabel = el.getAttribute("aria-label")?.toLowerCase() || "";
+      const title = el.getAttribute("title")?.toLowerCase() || "";
+      if (
+        ariaLabel.includes("delete") ||
+        ariaLabel.includes("remove") ||
+        title.includes("delete") ||
+        title.includes("remove")
+      ) {
+        return false;
+      }
       // Check if element is visible
       return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
     });

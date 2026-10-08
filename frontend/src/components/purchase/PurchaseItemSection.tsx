@@ -1142,6 +1142,8 @@ const PurchaseItemSection = ({
                       <Tooltip title="Remove (Ctrl+Del)">
                         <IconButton
                           size="small"
+                          tabIndex={-1}
+                          data-nav-skip="true"
                           onClick={() => handleRemoveItem(idx)}
                           color="error"
                         >

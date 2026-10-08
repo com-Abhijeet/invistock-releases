@@ -168,7 +168,21 @@ export default function SaleItemSection({
   const [productCache, setProductCache] = useState<{ [id: number]: Product }>(
     {},
   );
-  const [globalPriceType, setGlobalPriceType] = useState<PriceType>("mrp");
+  const [globalPriceType, setGlobalPriceType] = useState<PriceType>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("kosh_pos_pricing_strategy");
+      if (saved === "mrp" || saved === "mop" || saved === "mfw") {
+        return saved as PriceType;
+      }
+    }
+    return "mrp";
+  });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("kosh_pos_pricing_strategy", globalPriceType);
+    }
+  }, [globalPriceType]);
   const [headerMenuAnchor, setHeaderMenuAnchor] = useState<null | HTMLElement>(
     null,
   );
@@ -1870,6 +1884,8 @@ export default function SaleItemSection({
                     <TableCell align="center">
                       <IconButton
                         size="small"
+                        tabIndex={-1}
+                        data-nav-skip="true"
                         disabled={mode === "view"}
                         onClick={() => handleRemoveRow(idx)}
                         sx={{ color: theme.palette.error.light }}

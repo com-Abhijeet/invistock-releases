@@ -66,7 +66,25 @@ Handlebars.registerHelper("cipherEncode", function (value, cipherKey) {
 /**
  * Render HTML for custom invoice using Handlebars.
  */
-function renderCustomInvoiceHTML(templateHtml, payload) {
+async function renderCustomInvoiceHTML(templateHtml, payload) {
+  const shop = payload?.shop;
+  const sale = payload?.sale;
+
+  if (shop && shop.upi_id && shop.upi_banking_name && !shop.generated_upi_qr) {
+    try {
+      const QRCode = require("qrcode");
+      const totalAmt = Number(sale?.total_amount || sale?.final_amount || 0);
+      const upiUrl = `upi://pay?pa=${encodeURIComponent(
+        shop.upi_id,
+      )}&pn=${encodeURIComponent(
+        shop.upi_banking_name,
+      )}&am=${totalAmt.toFixed(2)}&cu=INR`;
+      shop.generated_upi_qr = await QRCode.toDataURL(upiUrl);
+    } catch (err) {
+      console.error("❌ Failed to generate UPI QR for custom template:", err);
+    }
+  }
+
   const enrichedData = enrichInvoiceData(payload);
   const compiledTemplate = Handlebars.compile(templateHtml);
   return compiledTemplate(enrichedData);

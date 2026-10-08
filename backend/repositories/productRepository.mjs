@@ -598,35 +598,70 @@ export function bulkInsertProducts(products) {
     )`,
   );
 
-  const getCategoryCodeStmt = db.prepare(
-    "SELECT code FROM categories WHERE id = ?",
-  );
-  const getSubcategoryCodeStmt = db.prepare(
-    "SELECT code FROM subcategories WHERE id = ?",
+  const checkCodeStmt = db.prepare(
+    "SELECT id FROM products WHERE product_code = ?",
   );
 
   const insertMany = db.transaction((items) => {
     let nextBarcode = getNextBarcode();
 
     for (const item of items) {
-      if (!item.category || !item.subcategory) {
-        throw new Error(
-          `Product "${item.name}" is missing a category or subcategory.`,
-        );
+      if (!item.name || String(item.name).trim() === "") {
+        throw new Error("Product name is required.");
       }
-      const category = getCategoryCodeStmt.get(item.category);
-      const subcategory = getSubcategoryCodeStmt.get(item.subcategory);
-      if (!category || !subcategory) {
-        throw new Error(
-          `Invalid category or subcategory ID for product "${item.name}".`,
-        );
-      }
-      item.product_code = getNextProductCode(category.code, subcategory.code);
-      item.barcode = String(nextBarcode++);
 
-      if (item.product_code != null)
-        item.product_code = String(item.product_code);
-      if (item.barcode != null) item.barcode = String(item.barcode);
+      // 1. Resolve Category & Subcategory (string name or numeric ID, fallback to "General")
+      const catInput = item.category || "General";
+      const subCatInput = item.subcategory || "General";
+
+      const categoryId = resolveEntity(db, "categories", catInput);
+      const subcategoryId = resolveEntity(
+        db,
+        "subcategories",
+        subCatInput,
+        categoryId,
+      );
+
+      if (!categoryId || !subcategoryId) {
+        throw new Error(
+          `Could not resolve category or subcategory for product "${item.name}".`,
+        );
+      }
+
+      item.category = categoryId;
+      item.subcategory = subcategoryId;
+
+      // 2. Resolve product_code
+      if (
+        !item.product_code ||
+        item.product_code === "Generating..." ||
+        String(item.product_code).trim() === ""
+      ) {
+        item.product_code = generateInternalProductCode(
+          db,
+          categoryId,
+          subcategoryId,
+        );
+      } else {
+        item.product_code = String(item.product_code).trim();
+        // Check if code collides with an existing product
+        const existingCode = checkCodeStmt.get(item.product_code);
+        if (existingCode) {
+          item.product_code = generateInternalProductCode(
+            db,
+            categoryId,
+            subcategoryId,
+          );
+        }
+      }
+
+      // 3. Resolve barcode
+      if (!item.barcode || String(item.barcode).trim() === "") {
+        item.barcode = String(nextBarcode++);
+      } else {
+        item.barcode = String(item.barcode).trim();
+      }
+
       if (item.hsn != null) item.hsn = String(item.hsn);
 
       const productToInsert = {
@@ -639,6 +674,14 @@ export function bulkInsertProducts(products) {
         base_unit: "pcs",
         secondary_unit: null,
         conversion_factor: 1,
+        mrp: 0,
+        mop: 0,
+        gst_rate: 0,
+        quantity: 0,
+        mfw_price: 0,
+        low_stock_threshold: 0,
+        size: null,
+        weight: null,
         ...item,
       };
 
@@ -651,7 +694,7 @@ export function bulkInsertProducts(products) {
     return insertMany(products);
   } catch (error) {
     console.error("Database error in bulkInsertProducts:", error);
-    throw new Error(`Could not bulk insert products. Reason: ${error.message}`);
+    throw new Error(error.message);
   }
 }
 

@@ -3,10 +3,20 @@
  * Normalizes and enriches sale & invoice data for Handlebars rendering.
  */
 
+const { getLogoSrc } = require("../ipc/invoiceTemplates/utils");
+
 function enrichInvoiceData(payload) {
   const sale = payload?.sale || {};
   const shop = payload?.shop || {};
   const localSettings = payload?.localSettings || {};
+
+  const logoDataUrl = getLogoSrc(shop.logo_url || shop.logo);
+  const enrichedShop = {
+    ...shop,
+    logo: logoDataUrl || shop.logo || "",
+    logo_src: logoDataUrl || "",
+    logo_url: logoDataUrl || shop.logo_url || "",
+  };
 
   const itemsList = Array.isArray(sale.items) ? sale.items : [];
 
@@ -91,7 +101,7 @@ function enrichInvoiceData(payload) {
   );
 
   return {
-    shop,
+    shop: enrichedShop,
     localSettings,
     sale: {
       ...sale,

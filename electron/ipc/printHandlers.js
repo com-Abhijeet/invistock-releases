@@ -82,24 +82,31 @@ function registerPrintHandlers(ipcMain, { mainWindow } = {}) {
   ipcMain.on("print-invoice", async (event, payload) => {
     try {
       console.log("🖨️ Printing invoice for sale:", payload?.sale?.reference_no);
-      const folderTemplate = getCustomFolderTemplateContent("invoice");
-      const customInvoiceTemplate =
-        folderTemplate ||
-        payload?.localSettings?.custom_invoice_template_content;
-      const useCustomTemplate =
-        folderTemplate || payload?.localSettings?.use_custom_invoice_template;
 
-      if (customInvoiceTemplate && useCustomTemplate) {
-        const {
-          renderCustomInvoiceHTML,
-        } = require("../templates/invoiceHandlebarsEngine.js");
-        const renderedHtml = renderCustomInvoiceHTML(
-          customInvoiceTemplate,
-          payload,
-        );
-        const { printCustomInvoice } = require("../invoicePrinter.js");
-        await printCustomInvoice(renderedHtml, payload);
-        return;
+      const templateId = payload?.shop?.invoice_template_id;
+      const isCustomExplicitlyEnabled =
+        templateId === "custom" ||
+        templateId === "custom_html" ||
+        Boolean(payload?.localSettings?.use_custom_invoice_template);
+
+      if (isCustomExplicitlyEnabled) {
+        const folderTemplate = getCustomFolderTemplateContent("invoice");
+        const customInvoiceTemplate =
+          folderTemplate ||
+          payload?.localSettings?.custom_invoice_template_content;
+
+        if (customInvoiceTemplate) {
+          const {
+            renderCustomInvoiceHTML,
+          } = require("../templates/invoiceHandlebarsEngine.js");
+          const renderedHtml = await renderCustomInvoiceHTML(
+            customInvoiceTemplate,
+            payload,
+          );
+          const { printCustomInvoice } = require("../invoicePrinter.js");
+          await printCustomInvoice(renderedHtml, payload);
+          return;
+        }
       }
 
       await printInvoice(payload);

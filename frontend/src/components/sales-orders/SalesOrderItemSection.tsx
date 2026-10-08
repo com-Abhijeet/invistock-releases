@@ -382,6 +382,8 @@ export default function SalesOrderItemSection({
                     <IconButton
                       size="small"
                       color="error"
+                      tabIndex={-1}
+                      data-nav-skip="true"
                       onClick={() => handleRemoveItem(idx)}
                     >
                       <Trash2 size={16} />
