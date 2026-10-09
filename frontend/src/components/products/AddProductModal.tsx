@@ -578,7 +578,7 @@ export default function AddEditProductModal({
   };
 
   const handleBarcodeLookup = async (providedCode?: string) => {
-    const barcode = (providedCode ?? lookupBarcode ?? form.barcode ?? "")
+    const barcode = (providedCode || lookupBarcode || form.barcode || "")
       .toString()
       .trim();
     if (!barcode) {
@@ -1107,15 +1107,7 @@ export default function AddEditProductModal({
                     inputRef={(el) => (fieldRefs.current["barcode"] = el)}
                     placeholder="Scan or type barcode"
                     onChange={(e) => handleChange("barcode", e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void handleBarcodeLookup();
-                        focusField("quantity");
-                        return;
-                      }
-                      handleKeyDown(e, "barcode", "quantity");
-                    }}
+                    onKeyDown={(e) => handleKeyDown(e, "barcode", "quantity")}
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
