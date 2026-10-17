@@ -65,6 +65,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   products: Product[];
+  existingItems?: ExtendedPurchaseItem[];
   onAddItems: (items: ExtendedPurchaseItem[]) => void;
   editItem?: ExtendedPurchaseItem | null;
   initialProduct?: Product | null;
@@ -119,6 +120,7 @@ export default function PurchaseBatchModal({
   open,
   onClose,
   products,
+  existingItems = [],
   onAddItems,
   editItem,
   initialProduct,
@@ -403,18 +405,31 @@ export default function PurchaseBatchModal({
       setBarcodeStatus("idle");
       return;
     }
-    if (editItem && code === editItem.barcode && isInitialLoad) {
+    const cleanCode = code.trim();
+    if (editItem && cleanCode === editItem.barcode && isInitialLoad) {
       setBarcodeStatus("available");
       return;
     }
     // Assume valid if user typed same barcode as current item in edit mode
-    if (editItem && code === editItem.barcode) {
+    if (editItem && cleanCode === editItem.barcode) {
       setBarcodeStatus("available");
       return;
     }
 
+    // Check if barcode already exists in draft purchase items
+    const isDuplicateInDraft = (existingItems || []).some(
+      (item) =>
+        item !== editItem &&
+        item.barcode &&
+        item.barcode.trim() === cleanCode,
+    );
+    if (isDuplicateInDraft) {
+      setBarcodeStatus("duplicate");
+      return;
+    }
+
     setBarcodeStatus("checking");
-    const exists = await checkBarcodeExists(code);
+    const exists = await checkBarcodeExists(cleanCode);
     setBarcodeStatus(exists ? "duplicate" : "available");
   };
 
@@ -431,7 +446,17 @@ export default function PurchaseBatchModal({
       return;
     }
     setBarcodeStatus("checking");
-    const code = await generateBarcode();
+
+    const draftBarcodes = (existingItems || [])
+      .filter((it) => it !== editItem)
+      .map((it) => it.barcode?.trim())
+      .filter(Boolean) as string[];
+
+    const code = await generateBarcode({
+      type: "batch",
+      productId: prod?.id,
+      exclude: draftBarcodes,
+    });
     setFormData((prev) => ({ ...prev, barcode: code }));
     setBarcodeStatus("available");
   };
@@ -531,16 +556,39 @@ export default function PurchaseBatchModal({
 
     setLoading(true);
     try {
-      const itemPromises = selectedProducts.map(async (prod, index) => {
+      const runningExclude: string[] = (existingItems || [])
+        .filter((it) => it !== editItem)
+        .map((it) => it.barcode?.trim())
+        .filter(Boolean) as string[];
+
+      const newItems: ExtendedPurchaseItem[] = [];
+
+      for (let index = 0; index < selectedProducts.length; index++) {
+        const prod = selectedProducts[index];
         const qty = formData.quantity !== "" ? Number(formData.quantity) : 1;
 
-        let itemBarcode = formData.barcode || "";
+        let itemBarcode = formData.barcode ? formData.barcode.trim() : "";
         if (!editItem) {
           if (prod.tracking_type === "none") {
             itemBarcode = prod.barcode || "";
-          } else if (!itemBarcode) {
-            itemBarcode = await generateBarcode();
+          } else {
+            // Generate barcode if not provided, or if already in runningExclude, or if multiple products share the same user-typed barcode
+            if (
+              !itemBarcode ||
+              runningExclude.includes(itemBarcode) ||
+              (index > 0 && itemBarcode === (formData.barcode || "").trim())
+            ) {
+              itemBarcode = await generateBarcode({
+                type: "batch",
+                productId: prod.id,
+                exclude: runningExclude,
+              });
+            }
           }
+        }
+
+        if (itemBarcode) {
+          runningExclude.push(itemBarcode);
         }
 
         const generatedBatchNumber =
@@ -571,7 +619,7 @@ export default function PurchaseBatchModal({
         const gstAmount = (basePrice * gstRate) / 100;
         const finalPrice = basePrice + gstAmount;
 
-        return {
+        newItems.push({
           sr_no: 0,
           product_id: prod.id!,
           quantity: qty,
@@ -592,10 +640,9 @@ export default function PurchaseBatchModal({
           barcode: itemBarcode,
           serial_numbers: serialNumbers,
           variants: matrixVariants,
-        } as ExtendedPurchaseItem;
-      });
+        } as ExtendedPurchaseItem);
+      }
 
-      const newItems = await Promise.all(itemPromises);
       onAddItems(newItems);
 
       if (!editItem) {

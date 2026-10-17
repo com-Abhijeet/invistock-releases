@@ -248,14 +248,48 @@ export function checkBarcode(req, res) {
  */
 export function generateBarcode(req, res) {
   try {
-    const { type, productId, batchId, variantIndex } = req.query;
+    const {
+      type,
+      productId,
+      batchId,
+      batchSequence,
+      variantIndex,
+      exclude,
+      count,
+    } = req.query;
+
+    let excludeList = [];
+    if (exclude) {
+      if (Array.isArray(exclude)) {
+        excludeList = exclude.map((s) => String(s).trim()).filter(Boolean);
+      } else if (typeof exclude === "string") {
+        excludeList = exclude
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+    }
+
+    const qtyCount = count ? Math.min(Math.max(1, Number(count)), 100) : 1;
+
+    if (qtyCount > 1) {
+      const barcodes = BatchService.generateMultipleBatchBarcodes({
+        productId: productId ? Number(productId) : 1,
+        count: qtyCount,
+        exclude: excludeList,
+      });
+      return res.json({ status: "success", barcode: barcodes[0], barcodes });
+    }
+
     const barcode = BatchService.generate8DigitBarcode({
-      type: type || "variant",
+      type: type || "batch",
       productId: productId ? Number(productId) : 1,
-      batchId: batchId ? Number(batchId) : 1,
+      batchId: batchId ? Number(batchId) : null,
+      batchSequence: batchSequence ? Number(batchSequence) : null,
       variantIndex: variantIndex ? Number(variantIndex) : 1,
+      exclude: excludeList,
     });
-    res.json({ status: "success", barcode });
+    res.json({ status: "success", barcode, barcodes: [barcode] });
   } catch (error) {
     console.error("generateBarcode -", error);
     res.status(500).json({ status: "error", error: error.message });

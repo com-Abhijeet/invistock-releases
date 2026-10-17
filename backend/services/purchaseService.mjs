@@ -10,6 +10,92 @@ import {
 } from "../repositories/productRepository.mjs";
 
 /**
+ * Normalizes batch barcodes in incoming purchase items:
+ * - Preserves custom/FMCG manufacturer barcodes if unique.
+ * - Detects blanks, internal collisions, and duplicate barcodes within the same bill.
+ * - Auto-generates unique sequential 2_000<productId>_<seq> barcodes for any duplicates/blanks.
+ */
+export function normalizeAndDeduplicatePurchaseBatches(
+  items,
+  currentPurchaseId = null,
+) {
+  if (!Array.isArray(items)) return items;
+
+  // 1. Count frequencies of each barcode in the payload to catch duplicates in the same bill
+  const barcodeCounts = {};
+  for (const item of items) {
+    const raw = item.barcode ? String(item.barcode).trim() : "";
+    if (raw) {
+      barcodeCounts[raw] = (barcodeCounts[raw] || 0) + 1;
+    }
+  }
+
+  const usedBarcodesInPayload = new Set();
+
+  for (const item of items) {
+    const prodId = Number(item.product_id);
+    const prod = getProductById(prodId);
+    const trackingType = item.tracking_type || prod?.tracking_type || "none";
+
+    if (
+      trackingType === "batch" ||
+      trackingType === "serial" ||
+      item.batch_number
+    ) {
+      item.tracking_type = trackingType;
+      let rawBarcode = item.barcode ? String(item.barcode).trim() : "";
+
+      // Check if code collides with a different product or existing batch in DB
+      let isColliding = false;
+      if (rawBarcode) {
+        // 1. Check products table
+        const prodMatch = db
+          .prepare(
+            "SELECT id FROM products WHERE (barcode = ? OR product_code = ?) AND id != ?",
+          )
+          .get(rawBarcode, rawBarcode, prodId);
+        if (prodMatch) isColliding = true;
+
+        // 2. Check product_batches table
+        if (!isColliding) {
+          let batchQuery = "SELECT id, purchase_id FROM product_batches WHERE barcode = ?";
+          const batchMatches = db.prepare(batchQuery).all(rawBarcode);
+          for (const bm of batchMatches) {
+            if (currentPurchaseId && bm.purchase_id !== currentPurchaseId) {
+              if (!prod?.barcode || prod.barcode !== rawBarcode) {
+                isColliding = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      const isBlank = !rawBarcode;
+      // If the barcode is shared by multiple items in this payload (due to the bug), ALL duplicates must be re-minted!
+      const isDuplicateInPayload =
+        (rawBarcode && barcodeCounts[rawBarcode] > 1) ||
+        usedBarcodesInPayload.has(rawBarcode);
+
+      if (isBlank || isDuplicateInPayload || isColliding) {
+        // Mint next sequential 2_000<productId>_<seq> barcode
+        const newBarcode = batchService.generate8DigitBarcode({
+          type: "batch",
+          productId: prodId,
+          exclude: Array.from(usedBarcodesInPayload),
+        });
+        item.barcode = newBarcode;
+        usedBarcodesInPayload.add(newBarcode);
+      } else {
+        usedBarcodesInPayload.add(rawBarcode);
+      }
+    }
+  }
+
+  return items;
+}
+
+/**
  * Creates a new purchase, its items, and batches within a single transaction.
  */
 export async function createPurchase(purchaseData) {
@@ -27,6 +113,9 @@ export async function createPurchase(purchaseData) {
       discount,
       is_reverse_charge,
     } = purchaseData;
+
+    // Deduplicate & normalize batch barcodes before persisting
+    normalizeAndDeduplicatePurchaseBatches(items);
 
     const internal_ref_no = generateReference("P");
 
@@ -57,7 +146,7 @@ export async function createPurchase(purchaseData) {
           product,
         );
 
-        batchService.createNewBatch({
+        const created = batchService.createNewBatch({
           productId: item.product_id,
           purchaseId: purchase_id,
           batchNumber: item.batch_number,
@@ -72,6 +161,21 @@ export async function createPurchase(purchaseData) {
           location: "Store",
           variants: item.variants,
         });
+
+        // Sync batch_uid back to purchase_items
+        if (created?.batchUid) {
+          db.prepare(
+            `UPDATE purchase_items SET batch_uid = ? WHERE purchase_id = ? AND product_id = ? AND (batch_number IS ? OR batch_number = ?) AND (barcode IS ? OR barcode = ?)`,
+          ).run(
+            created.batchUid,
+            purchase_id,
+            item.product_id,
+            item.batch_number || null,
+            item.batch_number || "DEFAULT",
+            item.barcode || null,
+            item.barcode || "",
+          );
+        }
       }
     }
 
@@ -135,91 +239,263 @@ export async function updatePurchase(id, purchaseData) {
   const oldPurchase = purchaseRepository.getPurchaseById(id);
   if (!oldPurchase) throw new Error("Purchase not found");
 
+  // Deduplicate & normalize batch barcodes before persisting (heals duplicates on edit)
+  normalizeAndDeduplicatePurchaseBatches(purchaseData.items, id);
+
   const transaction = db.transaction(() => {
-    // 1. REVERT OLD STOCK (Master + Batch)
-    // We iterate over the *existing* items in the DB
+    // 1. Fetch all existing product_batches tied to this purchase
+    const existingBatches = db
+      .prepare(
+        "SELECT * FROM product_batches WHERE purchase_id = ? ORDER BY id ASC",
+      )
+      .all(id);
+
+    // 2. Adjust Master Product Quantities
+    const oldProductTotals = {};
     for (const item of oldPurchase.items) {
       const product = getProductById(item.product_id);
+      const qty = convertToStockQuantity(item.quantity, item.unit, product);
+      oldProductTotals[item.product_id] =
+        (oldProductTotals[item.product_id] || 0) + qty;
+    }
 
-      // Calculate quantity in Base Unit to revert
-      const revertQty = convertToStockQuantity(
-        item.quantity,
-        item.unit,
-        product,
-      );
+    const newProductTotals = {};
+    for (const item of purchaseData.items) {
+      const product = getProductById(item.product_id);
+      const qty = convertToStockQuantity(item.quantity, item.unit, product);
+      newProductTotals[item.product_id] =
+        (newProductTotals[item.product_id] || 0) + qty;
+    }
 
-      // A. Revert Master Stock (Decrease, because purchase added it)
-      updateProductQuantity(item.product_id, product.quantity - revertQty);
-
-      // B. Revert Batch/Serial Stock
-      // If the item had batch tracking, we reduce the batch quantity
-      if (
-        product.tracking_type === "batch" ||
-        product.tracking_type === "serial"
-      ) {
-        batchService.revertPurchaseBatchStock({
-          purchaseId: id,
-          productId: item.product_id,
-          quantity: revertQty,
-          serialNumbers: item.serial_numbers, // Pass serials to attempt removal
-        });
+    const allProductIds = new Set([
+      ...Object.keys(oldProductTotals),
+      ...Object.keys(newProductTotals),
+    ]);
+    for (const prodIdStr of allProductIds) {
+      const prodId = Number(prodIdStr);
+      const oldQty = oldProductTotals[prodId] || 0;
+      const newQty = newProductTotals[prodId] || 0;
+      const netDelta = newQty - oldQty;
+      if (netDelta !== 0) {
+        const prod = getProductById(prodId);
+        updateProductQuantity(prodId, prod.quantity + netDelta);
       }
     }
 
-    // 2. APPLY NEW STOCK (Master + Batch)
-    // Iterate over the *new* items coming from frontend
+    // 3. Update / Create Batches directly in product_batches
+    const usedBatchIds = new Set();
+
     for (const item of purchaseData.items) {
       const product = getProductById(item.product_id);
-
-      // Calculate quantity in Base Unit to add
-      const addQty = convertToStockQuantity(item.quantity, item.unit, product);
-
-      // A. Add Master Stock (Increase)
-      // Note: We fetched product *before* this loop, but since updateProductQuantity writes to DB
-      // immediately (synchronous in better-sqlite3), next iteration might see old qty object?
-      // Actually `getProductById` fetches fresh. But inside loop we used `product` var.
-      // Better to re-fetch product or just blindly add delta. `updateProductQuantity` sets absolute.
-      // Safe approach: Fetch fresh product quantity or assume cumulative delta.
-      // Since `updateProductQuantity` logic is `SET quantity = ?`, we need current.
-      const freshProduct = getProductById(item.product_id);
-      updateProductQuantity(item.product_id, freshProduct.quantity + addQty);
-
-      // B. Add/Update Batch Stock
-      if (
+      const isBatchTracked =
         product.tracking_type === "batch" ||
-        product.tracking_type === "serial"
-      ) {
-        batchService.addOrUpdatePurchaseBatch({
-          purchaseId: id,
+        product.tracking_type === "serial" ||
+        item.batch_number;
+
+      if (!isBatchTracked) continue;
+
+      const baseQty = convertToStockQuantity(item.quantity, item.unit, product);
+
+      // Find matching existing batch for this purchase
+      // Priority 1: batch_uid
+      let matchedBatch = existingBatches.find(
+        (b) =>
+          !usedBatchIds.has(b.id) &&
+          b.product_id === item.product_id &&
+          item.batch_uid &&
+          b.batch_uid === item.batch_uid,
+      );
+
+      // Priority 2: batch_number (if not DEFAULT and not blank)
+      if (!matchedBatch && item.batch_number) {
+        matchedBatch = existingBatches.find(
+          (b) =>
+            !usedBatchIds.has(b.id) &&
+            b.product_id === item.product_id &&
+            b.batch_number &&
+            b.batch_number !== "DEFAULT" &&
+            b.batch_number.trim().toLowerCase() ===
+              item.batch_number.trim().toLowerCase(),
+        );
+      }
+
+      // Priority 3: barcode
+      if (!matchedBatch && item.barcode) {
+        matchedBatch = existingBatches.find(
+          (b) =>
+            !usedBatchIds.has(b.id) &&
+            b.product_id === item.product_id &&
+            b.barcode === item.barcode,
+        );
+      }
+
+      // Priority 4: first unused batch for the same product in this purchase
+      if (!matchedBatch) {
+        matchedBatch = existingBatches.find(
+          (b) => !usedBatchIds.has(b.id) && b.product_id === item.product_id,
+        );
+      }
+
+      if (matchedBatch) {
+        usedBatchIds.add(matchedBatch.id);
+        item.batch_uid = matchedBatch.batch_uid;
+
+        // Check if sales were made from this batch
+        let salesCount = 0;
+        try {
+          const soldRes = db
+            .prepare(
+              "SELECT COALESCE(SUM(quantity), 0) as sold FROM sales_items WHERE batch_id = ?",
+            )
+            .get(matchedBatch.id);
+          salesCount = soldRes?.sold || 0;
+        } catch (e) {
+          salesCount = 0;
+        }
+
+        const effectiveBatchQty = Math.max(0, baseQty - salesCount);
+
+        // DIRECTLY UPDATE product_batches: barcode, batch_number, mrp, mop, margin, mfw_price, quantity, dates
+        db.prepare(
+          `
+          UPDATE product_batches 
+          SET barcode = ?,
+              batch_number = COALESCE(?, batch_number),
+              mrp = ?,
+              mop = ?,
+              margin = ?,
+              mfw_price = ?,
+              expiry_date = ?,
+              mfg_date = ?,
+              quantity = ?,
+              updated_at = datetime('now', 'localtime')
+          WHERE id = ?
+        `,
+        ).run(
+          item.barcode || matchedBatch.barcode,
+          item.batch_number || null,
+          item.mrp || 0,
+          item.mop || 0,
+          item.margin || 0,
+          item.mfw_price || null,
+          item.expiry_date || null,
+          item.mfg_date || null,
+          effectiveBatchQty,
+          matchedBatch.id,
+        );
+
+        // Update variants if applicable
+        if (Array.isArray(item.variants) && item.variants.length > 0) {
+          for (let i = 0; i < item.variants.length; i++) {
+            const v = item.variants[i];
+            if (v.quantity <= 0) continue;
+            const existingVar = db
+              .prepare(
+                `SELECT id FROM batch_variants WHERE batch_id = ? AND article_no IS ? AND dim1_value IS ? AND dim2_value IS ?`,
+              )
+              .get(
+                matchedBatch.id,
+                v.article_no || null,
+                v.dim1_value || null,
+                v.dim2_value || null,
+              );
+            if (existingVar) {
+              db.prepare(
+                `UPDATE batch_variants SET quantity = ?, mrp = ?, mop = ? WHERE id = ?`,
+              ).run(
+                v.quantity || 0,
+                v.mrp ?? item.mrp ?? 0,
+                v.mop ?? item.mop ?? 0,
+                existingVar.id,
+              );
+            } else {
+              const generatedBarcode =
+                v.barcode ||
+                batchService.generate8DigitBarcode({
+                  type: "variant",
+                  productId: item.product_id,
+                  batchId: matchedBatch.id,
+                  variantIndex: i + 1,
+                });
+              db.prepare(
+                `INSERT INTO batch_variants (batch_id, product_id, article_no, dim1_value, dim2_value, quantity, initial_quantity, mrp, mop, cost_price, barcode, sku)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              ).run(
+                matchedBatch.id,
+                item.product_id,
+                v.article_no || null,
+                v.dim1_value || null,
+                v.dim2_value || null,
+                v.quantity || 0,
+                v.quantity || 0,
+                v.mrp ?? item.mrp ?? 0,
+                v.mop ?? item.mop ?? 0,
+                item.rate || 0,
+                generatedBarcode,
+                v.sku || null,
+              );
+            }
+          }
+        }
+      } else {
+        // Create new batch for newly added item
+        const created = batchService.createNewBatch({
           productId: item.product_id,
+          purchaseId: id,
           batchNumber: item.batch_number,
-          quantity: addQty,
-          mrp: item.mrp,
-          mop: item.mop,
-          costPrice: item.rate,
-          margin: item.margin,
           barcode: item.barcode,
           expiryDate: item.expiry_date,
           mfgDate: item.mfg_date,
+          mrp: item.mrp || 0,
+          margin: item.margin || 0,
+          mop: item.mop || 0,
+          costPrice: item.rate || 0,
+          quantity: baseQty,
           serialNumbers: item.serial_numbers,
+          location: "Store",
           variants: item.variants,
         });
+        if (created?.batchUid) {
+          item.batch_uid = created.batchUid;
+        }
       }
     }
 
-    // 3. HANDLE FINANCIAL DELTA
-    // Calculate difference in paid amounts to record a new transaction if needed
+    // 4. Clean up any orphaned batches from this purchase that were removed or unused
+    for (const b of existingBatches) {
+      if (!usedBatchIds.has(b.id)) {
+        let salesCount = 0;
+        try {
+          const soldRes = db
+            .prepare(
+              "SELECT COALESCE(SUM(quantity), 0) as sold FROM sales_items WHERE batch_id = ?",
+            )
+            .get(b.id);
+          salesCount = soldRes?.sold || 0;
+        } catch (e) {
+          salesCount = 0;
+        }
+
+        if (salesCount === 0) {
+          db.prepare("DELETE FROM product_serials WHERE batch_id = ?").run(b.id);
+          db.prepare("DELETE FROM batch_variants WHERE batch_id = ?").run(b.id);
+          db.prepare("DELETE FROM product_batches WHERE id = ?").run(b.id);
+        } else {
+          db.prepare(
+            "UPDATE product_batches SET quantity = 0, is_active = 0, updated_at = datetime('now', 'localtime') WHERE id = ?",
+          ).run(b.id);
+        }
+      }
+    }
+
+    // 5. Handle Financial Delta
     const oldPaid = oldPurchase.paid_amount || 0;
     const newPaid = purchaseData.paid_amount || 0;
     const delta = newPaid - oldPaid;
 
     if (delta !== 0) {
       createTransaction({
-        type: delta > 0 ? "payment_out" : "payment_in", // Paying more = Out, Getting refund = In (technically refund)
-        // Wait, for Purchase: Payment Out is normal.
-        // If I pay MORE (delta > 0), it is another Payment Out.
-        // If I pay LESS (delta < 0), it implies I got money back? Or just corrected entry?
-        // Usually edits correct mistakes. If I reduce paid amount, I expect cash back (Payment In).
+        type: delta > 0 ? "payment_out" : "payment_in",
         bill_id: id,
         bill_type: "purchase",
         entity_id: purchaseData.supplier_id,
@@ -232,8 +508,7 @@ export async function updatePurchase(id, purchaseData) {
       });
     }
 
-    // 4. UPDATE RECORDS (Header & Items)
-    // This cleans up purchase_items table and updates header fields
+    // 6. Update Records (Header & Items)
     purchaseRepository.updatePurchase(id, purchaseData, purchaseData.items);
   });
 
@@ -262,6 +537,8 @@ export async function getAllPurchases(query) {
     limit: parseInt(limit),
     search,
     filter,
+    from: start_date,
+    to: end_date,
     startDate: start_date,
     endDate: end_date,
     status,

@@ -219,7 +219,10 @@ export const generateBarcode = async (options?: {
   type?: "product" | "batch" | "variant";
   productId?: number;
   batchId?: number;
+  batchSequence?: number;
   variantIndex?: number;
+  exclude?: string[];
+  count?: number;
 }): Promise<string> => {
   try {
     const params = new URLSearchParams();
@@ -227,8 +230,14 @@ export const generateBarcode = async (options?: {
     if (options?.productId)
       params.append("productId", String(options.productId));
     if (options?.batchId) params.append("batchId", String(options.batchId));
+    if (options?.batchSequence)
+      params.append("batchSequence", String(options.batchSequence));
     if (options?.variantIndex)
       params.append("variantIndex", String(options.variantIndex));
+    if (options?.count) params.append("count", String(options.count));
+    if (options?.exclude && options.exclude.length > 0) {
+      params.append("exclude", options.exclude.filter(Boolean).join(","));
+    }
 
     const queryStr = params.toString();
     const url = `/api/batches/generate-barcode${queryStr ? `?${queryStr}` : ""}`;

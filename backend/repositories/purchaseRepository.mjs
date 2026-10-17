@@ -147,11 +147,27 @@ export function getPurchaseById(id) {
     const itemsStmt = db.prepare(`
       SELECT 
         pi.id, pi.product_id, pr.name AS product_name, pr.hsn AS hsn_code,
+        pr.tracking_type,
         pi.rate, pi.quantity, COALESCE(pi.return_quantity, 0) AS return_quantity, pi.unit, pi.gst_rate, pi.discount, pi.price,
-        pi.batch_number, pi.barcode, pi.expiry_date, pi.mfg_date, pi.serial_numbers,
+        COALESCE(pi.batch_uid, pb.batch_uid) AS batch_uid,
+        COALESCE(pi.batch_number, pb.batch_number) AS batch_number,
+        COALESCE(pi.barcode, pb.barcode) AS barcode,
+        pb.id AS batch_id,
+        pi.expiry_date, pi.mfg_date, pi.serial_numbers,
         pi.mrp, pi.margin, pi.mop, pi.mfw_price
       FROM purchase_items pi
       JOIN products pr ON pi.product_id = pr.id
+      LEFT JOIN product_batches pb ON pb.id = (
+        SELECT id FROM product_batches 
+        WHERE purchase_id = pi.purchase_id 
+          AND product_id = pi.product_id
+          AND (
+            (pi.batch_uid IS NOT NULL AND batch_uid = pi.batch_uid)
+            OR (pi.batch_number IS NOT NULL AND batch_number = pi.batch_number)
+            OR (pi.barcode IS NOT NULL AND barcode = pi.barcode)
+          )
+        ORDER BY id ASC LIMIT 1
+      )
       WHERE pi.purchase_id = ?
       ORDER BY pi.id ASC
     `);
@@ -171,18 +187,13 @@ export function getPurchaseById(id) {
       // Fetch linked batch variants if any
       let variants = [];
       try {
-        const batch = db
-          .prepare(
-            `SELECT id FROM product_batches WHERE purchase_id = ? AND product_id = ?`,
-          )
-          .get(id, item.product_id);
-
-        if (batch) {
+        const batchId = item.batch_id;
+        if (batchId) {
           variants = db
             .prepare(
               `SELECT article_no, dim1_value, dim2_value, quantity, mrp, mop, cost_price, barcode, sku FROM batch_variants WHERE batch_id = ?`,
             )
-            .all(batch.id);
+            .all(batchId);
         }
       } catch (e) {
         variants = [];
@@ -361,9 +372,9 @@ export function updatePurchase(id, data, newItems) {
       insertItemStmt.run({
         purchase_id: id,
         product_id: item.product_id,
-        quantity: item.quantity,
-        rate: item.rate,
-        gst_rate: item.gst_rate,
+        quantity: item.quantity || 0,
+        rate: item.rate || 0,
+        gst_rate: item.gst_rate || 0,
         discount: item.discount || 0,
         price: item.price || 0,
         unit: normalizeItemUnit(item.unit),
@@ -420,36 +431,48 @@ export function getAllPurchases({
   filter,
   from,
   to,
+  startDate,
+  endDate,
+  start_date,
+  end_date,
   status,
 }) {
   try {
+    const fromDate = from || startDate || start_date;
+    const toDate = to || endDate || end_date;
     const offset = (page - 1) * limit;
     const { where: dateWhere, params: dateParams } = getDateFilter({
       filter,
-      from,
-      to,
+      from: fromDate,
+      to: toDate,
       alias: "p",
     });
-    let baseQuery = `
-      FROM purchases p
-      JOIN suppliers s ON p.supplier_id = s.id
-      LEFT JOIN transactions t ON t.bill_id = p.id AND t.bill_type = 'purchase'
-      WHERE ${dateWhere} AND p.status NOT IN ('cancelled')
-    `;
 
     const conditions = [];
     const params = [...dateParams];
-    if (search) {
-      conditions.push(`(p.reference_no LIKE ? OR s.name LIKE ?)`);
-      params.push(`%${search}%`, `%${search}%`);
+
+    if (search && search.trim() !== "") {
+      const term = `%${search.trim()}%`;
+      conditions.push(
+        `(p.reference_no LIKE ? COLLATE NOCASE OR p.internal_ref_no LIKE ? COLLATE NOCASE OR s.name LIKE ? COLLATE NOCASE OR s.phone LIKE ? OR s.gst_number LIKE ? COLLATE NOCASE)`,
+      );
+      params.push(term, term, term, term, term);
     }
-    if (status) {
+
+    if (status && status !== "all" && status.toLowerCase() !== "all") {
       conditions.push(`p.status = ?`);
       params.push(status);
     }
+
+    let whereSql = `${dateWhere} AND p.status NOT IN ('cancelled')`;
     if (conditions.length > 0) {
-      baseQuery += " AND " + conditions.join(" AND ");
+      whereSql += " AND " + conditions.join(" AND ");
     }
+
+    const fromAndJoin = `
+      FROM purchases p
+      LEFT JOIN suppliers s ON p.supplier_id = s.id
+    `;
 
     const finalQuery = `
       SELECT
@@ -457,29 +480,25 @@ export function getAllPurchases({
         p.total_amount AS original_total, p.paid_amount AS original_paid,
         COALESCE(SUM(CASE WHEN t.type IN ('debit_note') THEN ABS(t.amount) ELSE 0 END), 0) AS total_adjustments,
         COALESCE(SUM(CASE WHEN t.type = 'payment_out' THEN ABS(t.amount) ELSE 0 END), 0) AS net_paid_amount
-      ${baseQuery}
+      ${fromAndJoin}
+      LEFT JOIN transactions t ON t.bill_id = p.id AND t.bill_type = 'purchase'
+      WHERE ${whereSql}
       GROUP BY p.id
       ORDER BY p.date DESC
       LIMIT ? OFFSET ?
     `;
 
     const countQuery = `
-      SELECT COUNT(p.id) as count
-      FROM purchases p
-      JOIN suppliers s ON p.supplier_id = s.id
-      WHERE ${dateWhere} AND p.status NOT IN ('cancelled')
-      ${search ? " AND (p.reference_no LIKE ? OR s.name LIKE ?)" : ""}
-      ${status ? " AND p.status = ?" : ""}
+      SELECT COUNT(DISTINCT p.id) as count
+      ${fromAndJoin}
+      WHERE ${whereSql}
     `;
-
-    const countParams = [...dateParams];
-    if (search) countParams.push(`%${search}%`, `%${search}%`);
-    if (status) countParams.push(status);
 
     const dataStmt = db.prepare(finalQuery);
     const countStmt = db.prepare(countQuery);
     const data = dataStmt.all(...params, limit, offset);
-    const { count } = countStmt.get(...countParams);
+    const countResult = countStmt.get(...params);
+    const count = countResult ? countResult.count : 0;
 
     return {
       data,
@@ -489,7 +508,7 @@ export function getAllPurchases({
     };
   } catch (error) {
     console.error("Error in getAllPurchases:", error.message);
-    throw new Error("Failed to fetch all purchases.");
+    throw new Error("Failed to fetch all purchases: " + error.message);
   }
 }
 

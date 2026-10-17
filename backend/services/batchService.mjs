@@ -192,21 +192,25 @@ export function revertPurchaseBatchStock({
   productId,
   quantity,
   serialNumbers,
+  batchId = null,
 }) {
   const transaction = db.transaction(() => {
     // 1. Find the batch created by this purchase for this product
-    // Note: If multiple batches were created for same product in same purchase,
-    // this logic assumes 1 batch per product per purchase, or simply deducts from any found.
-    // Ideally we should use batch_uid if available from the old purchase item row.
-    // For now, we look up by purchase_id.
-    const batch = db
-      .prepare(
-        `
-      SELECT id, quantity FROM product_batches 
-      WHERE purchase_id = ? AND product_id = ?
-    `,
-      )
-      .get(purchaseId, productId);
+    let batch;
+    if (batchId) {
+      batch = db
+        .prepare("SELECT id, quantity FROM product_batches WHERE id = ?")
+        .get(batchId);
+    } else {
+      batch = db
+        .prepare(
+          `
+        SELECT id, quantity FROM product_batches 
+        WHERE purchase_id = ? AND product_id = ?
+      `,
+        )
+        .get(purchaseId, productId);
+    }
 
     if (batch) {
       const newQty = batch.quantity - quantity;
@@ -237,19 +241,25 @@ export function revertPurchaseBatchStock({
  * Adds stock to a batch for a purchase, updating existing if match found or creating new.
  */
 export function addOrUpdatePurchaseBatch(params) {
-  const { purchaseId, productId, batchNumber, quantity } = params;
+  const { purchaseId, productId, batchNumber, quantity, batchId = null } = params;
 
   const transaction = db.transaction(() => {
-    // Check if a batch already exists for this purchase and product (and batch number)
-    // This allows updating the SAME batch record during an edit, keeping history cleaner.
-    const existing = db
-      .prepare(
-        `
-      SELECT id, quantity FROM product_batches 
-      WHERE purchase_id = ? AND product_id = ? AND batch_number = ?
-    `,
-      )
-      .get(purchaseId, productId, batchNumber || "DEFAULT");
+    let existing;
+    if (batchId) {
+      existing = db
+        .prepare("SELECT * FROM product_batches WHERE id = ?")
+        .get(batchId);
+    }
+    if (!existing) {
+      existing = db
+        .prepare(
+          `
+        SELECT * FROM product_batches 
+        WHERE purchase_id = ? AND product_id = ? AND batch_number = ?
+      `,
+        )
+        .get(purchaseId, productId, batchNumber || "DEFAULT");
+    }
 
     if (existing) {
       // Update existing
@@ -258,13 +268,24 @@ export function addOrUpdatePurchaseBatch(params) {
         UPDATE product_batches 
         SET quantity = quantity + ?, 
             mrp = ?, 
+            barcode = ?,
+            batch_number = COALESCE(?, batch_number),
+            mop = ?,
+            margin = ?,
+            mfw_price = ?,
             expiry_date = ?, 
-            mfg_date = ? 
+            mfg_date = ?,
+            updated_at = datetime('now', 'localtime')
         WHERE id = ?
       `,
       ).run(
         quantity,
         params.mrp || 0,
+        params.barcode || existing.barcode,
+        params.batchNumber || null,
+        params.mop || 0,
+        params.margin || 0,
+        params.mfwPrice || null,
         params.expiryDate || null,
         params.mfgDate || null,
         existing.id,
@@ -940,14 +961,18 @@ export function checkBarcodeExistence(code) {
 export function generate8DigitBarcode({
   type = "variant",
   productId = 1,
-  batchId = 1,
+  batchId = null,
+  batchSequence = null,
   variantIndex = 1,
+  exclude = [],
 } = {}) {
+  const excludeSet = new Set(
+    Array.isArray(exclude) ? exclude.map((e) => String(e).trim()) : [],
+  );
   let prefix = "3";
   let coreStr = "";
 
-  const p = String(productId != null ? productId : 1);
-  const b = String(batchId != null ? batchId : 1);
+  const p = String(productId != null && productId > 0 ? productId : 1);
   const v = String(variantIndex != null ? variantIndex : 1);
 
   if (type === "product") {
@@ -955,10 +980,54 @@ export function generate8DigitBarcode({
     coreStr = p;
   } else if (type === "batch") {
     prefix = "2";
-    coreStr = p + b;
+    let seq = 1;
+    if (batchSequence != null && Number(batchSequence) > 0) {
+      seq = Number(batchSequence);
+    } else if (batchId != null && Number(batchId) > 0) {
+      seq = Number(batchId);
+    } else {
+      try {
+        const countRes = db
+          .prepare(
+            "SELECT COUNT(id) as count FROM product_batches WHERE product_id = ?",
+          )
+          .get(Number(p));
+        seq = (countRes ? Number(countRes.count) : 0) + 1;
+      } catch (e) {
+        seq = 1;
+      }
+    }
+
+    coreStr = p + String(seq);
+    if (coreStr.length > 7) {
+      coreStr = coreStr.slice(-7);
+    }
+
+    let paddingLength = Math.max(0, 7 - coreStr.length);
+    let zeroPadding = "0".repeat(paddingLength);
+    let candidate = `${prefix}${zeroPadding}${coreStr}`;
+
+    let numericVal = BigInt(candidate);
+    while (checkBarcodeExistence(candidate) || excludeSet.has(candidate)) {
+      seq++;
+      coreStr = p + String(seq);
+      if (coreStr.length > 7) {
+        numericVal++;
+        candidate = numericVal.toString();
+        if (candidate.length > 8) candidate = candidate.slice(-8);
+      } else {
+        paddingLength = Math.max(0, 7 - coreStr.length);
+        zeroPadding = "0".repeat(paddingLength);
+        candidate = `${prefix}${zeroPadding}${coreStr}`;
+        numericVal = BigInt(candidate);
+      }
+    }
+
+    return candidate;
   } else {
     // variant
     prefix = "3";
+    const b = String(batchId != null ? batchId : 1);
     coreStr = p + b + v;
   }
 
@@ -971,7 +1040,7 @@ export function generate8DigitBarcode({
   let candidate = `${prefix}${zeroPadding}${coreStr}`;
 
   let numericVal = BigInt(candidate);
-  while (checkBarcodeExistence(candidate)) {
+  while (checkBarcodeExistence(candidate) || excludeSet.has(candidate)) {
     numericVal++;
     candidate = numericVal.toString();
     if (candidate.length > 8) {
@@ -980,6 +1049,29 @@ export function generate8DigitBarcode({
   }
 
   return candidate;
+}
+
+export function generateMultipleBatchBarcodes({
+  productId = 1,
+  count = 1,
+  exclude = [],
+} = {}) {
+  const results = [];
+  const runningExclude = [
+    ...(Array.isArray(exclude) ? exclude.map((e) => String(e).trim()) : []),
+  ];
+
+  const total = Math.min(Math.max(1, Number(count) || 1), 100);
+  for (let i = 0; i < total; i++) {
+    const code = generate8DigitBarcode({
+      type: "batch",
+      productId,
+      exclude: runningExclude,
+    });
+    results.push(code);
+    runningExclude.push(code);
+  }
+  return results;
 }
 
 export function generateUniqueBarcode(options = {}) {

@@ -1166,6 +1166,7 @@ const PurchaseItemSection = ({
           setQuickAddProduct(null);
         }}
         products={products}
+        existingItems={items}
         supplierId={supplierId}
         initialProduct={quickAddProduct}
         onOpenAddProduct={() => {
