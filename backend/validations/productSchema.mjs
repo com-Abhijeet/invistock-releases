@@ -9,9 +9,9 @@ export const productSchema = z.object({
   mrp: z.number().min(0, "MRP must be non-negative"),
   mop: z.number().min(0, "MOP must be non-negative").optional(),
 
-  // ✅ ALLOW STRING (New Name) OR NUMBER (Existing ID)
-  category: z.union([z.number(), z.string()]).optional(),
-  subcategory: z.union([z.number(), z.string()]).optional(),
+  // ✅ ALLOW STRING (New Name), NUMBER (Existing ID), OR NULL (Empty/Unselected)
+  category: z.union([z.number(), z.string()]).nullable().optional(),
+  subcategory: z.union([z.number(), z.string()]).nullable().optional(),
 
   storage_location: z.string().optional(),
   quantity: z.number().min(0, "Quantity must be non-negative"), // Removed .int() to allow float

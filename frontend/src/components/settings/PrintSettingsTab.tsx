@@ -58,6 +58,7 @@ const LABEL_TEMPLATES = [
   {
     group: "General / Retail",
     options: [
+      { id: "gar_retail_50x25", label: "50x25mm Retail MOP (Shop / Item / Price / Barcode / Art & Size)" },
       { id: "gen_standard", label: "Standard Retail (Balanced)" },
       { id: "gen_minimal", label: "Modern Minimal (Clean)" },
       { id: "gen_qr", label: "QR Code Focused" },
@@ -68,6 +69,7 @@ const LABEL_TEMPLATES = [
   {
     group: "Garment / Apparel",
     options: [
+      { id: "gar_retail_50x25", label: "50x25mm Retail MOP (Shop / Item / Price / Barcode / Art & Size)" },
       { id: "gar_size_circle", label: "Size Circle (Standard)" },
       { id: "gar_boutique", label: "Boutique Elegant" },
       { id: "gar_grid", label: "Grid Specs (Detailed)" },

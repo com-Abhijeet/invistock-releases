@@ -63,6 +63,7 @@ export default function UpdateProductModalForm({
     setLoading(true);
     try {
       const updatedProduct = await updateProduct(product.id || 0, form);
+      if (!updatedProduct) return;
       toast.success("Product updated successfully!");
 
       const cached = localStorage.getItem("cached_products");

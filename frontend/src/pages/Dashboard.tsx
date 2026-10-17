@@ -252,7 +252,7 @@ export default function Dashboard() {
                     <Area
                       type="monotone"
                       dataKey="profit"
-                      name="Est. Profit"
+                      name="Profit"
                       stroke={theme.palette.success.main}
                       fill="url(#colorProf)"
                       strokeWidth={2}

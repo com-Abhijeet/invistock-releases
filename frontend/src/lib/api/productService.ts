@@ -113,14 +113,14 @@ export async function fetchProductHistory(
 export async function updateProduct(
   id: number,
   product: Partial<Product>,
-): Promise<Product> {
+): Promise<Product | null> {
   try {
     const response = await api.put(`${API_BASE}/update/${id}`, product);
     toast.success("Product updated successfully.");
     return response.data.data;
   } catch (err: any) {
     toast.error(err?.response?.data?.message || "Failed to update product.");
-    return err;
+    return null;
   }
 }
 

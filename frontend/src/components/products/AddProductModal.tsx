@@ -336,6 +336,17 @@ export default function AddEditProductModal({
         setHasSecondaryUnit(false);
       }
 
+      // Pre-populate subcategory option so it immediately displays name before categories API resolves
+      if (initialData?.subcategory && (initialData as any)?.subcategory_name) {
+        setFilteredSubcategories([
+          {
+            id: initialData.subcategory as any,
+            name: (initialData as any).subcategory_name,
+            code: "",
+          },
+        ]);
+      }
+
       // Initialize pricing unit to base unit (smart effect above will upgrade it to kg/l if needed)
       if (initialData?.base_unit) {
         setPricingUnit(initialData.base_unit);
@@ -530,10 +541,13 @@ export default function AddEditProductModal({
       if (key === "gst_rate" && value !== undefined && value !== null) {
         persistPreference("gst_rate", value as number);
       }
-      if (key === "category") {
+      // Only reset subcategory if category actually changed to a different one
+      if (key === "category" && value !== prev.category) {
         newForm.subcategory = null;
       }
+      // Only auto-generate product_code when creating a new product (never overwrite in edit mode)
       if (
+        mode === "add" &&
         !isNewCategory &&
         !isNewSubcategory &&
         ((key === "category" && value) || (key === "subcategory" && value))
@@ -709,6 +723,14 @@ export default function AddEditProductModal({
           ? Number(form.conversion_factor)
           : 1,
       };
+
+      // Ensure empty/null category/subcategory are omitted so they never violate Zod schema in production builds
+      if (!finalPayload.subcategory) {
+        delete finalPayload.subcategory;
+      }
+      if (!finalPayload.category) {
+        delete finalPayload.category;
+      }
 
       let result;
       if (mode === "add") {
@@ -970,8 +992,10 @@ export default function AddEditProductModal({
                     placeholder="Select or Type New"
                     inputRef={(el) => (fieldRefs.current["category"] = el)}
                     onChange={(newVal) => {
-                      handleChange("category", newVal);
-                      handleChange("subcategory", null);
+                      if (newVal !== form.category) {
+                        handleChange("category", newVal);
+                        handleChange("subcategory", null);
+                      }
                     }}
                     onNext={() => focusField("subcategory")}
                     onPrev={() => focusField("name")}

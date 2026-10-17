@@ -66,7 +66,7 @@ export const updateProduct = async (req, res) => {
     sendResponse(res, 200, "Product updated", updated);
   } catch (error) {
     console.error("updateProduct -", error);
-    return res.status(500).json({ message: "Error in updating product" });
+    return res.status(400).json({ message: error.message || "Error in updating product" });
   }
 };
 

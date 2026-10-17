@@ -218,6 +218,16 @@ export const createProduct = (product) => {
 
 export const updateProduct = (id, product) => {
   const transaction = db.transaction(() => {
+    // 0. Verify product_code uniqueness if updating code
+    if (product.product_code) {
+      const codeExists = db
+        .prepare("SELECT id FROM products WHERE product_code = ? AND id != ?")
+        .get(product.product_code, id);
+      if (codeExists) {
+        throw new Error(`Product code '${product.product_code}' already belongs to another product`);
+      }
+    }
+
     // 1. Resolve Categories in case they are edited to new ones
     const categoryId = resolveEntity(db, "categories", product.category);
     const subcategoryId = resolveEntity(

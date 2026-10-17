@@ -10,14 +10,20 @@ import { convertToStockQuantity } from "../services/unitService.mjs";
  * - Expenses = All operating outflows
  */
 export function getPnLData(startDate, endDate) {
+  const shopRow = db.prepare("SELECT inclusive_tax_pricing FROM shop WHERE id = 1").get();
+  const isInclusive = shopRow?.inclusive_tax_pricing !== 0;
+
   // 1. Calculate Net Taxable Revenue (Sales minus Returns, excluding GST)
   const revenueRow = db
     .prepare(
       `
     SELECT 
       SUM(
-        ( (si.rate * (si.quantity - COALESCE(si.return_quantity, 0)) * (1 - si.discount/100.0)) ) / 
-        (1 + (COALESCE(si.gst_rate, p.gst_rate, 0)/100.0))
+        ${
+          isInclusive
+            ? "( (si.rate * (si.quantity - COALESCE(si.return_quantity, 0)) * (1 - si.discount/100.0)) ) / (1 + (COALESCE(si.gst_rate, p.gst_rate, 0)/100.0))"
+            : "( si.rate * (si.quantity - COALESCE(si.return_quantity, 0)) * (1 - si.discount/100.0) )"
+        }
       ) as taxable_revenue
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
@@ -29,7 +35,7 @@ export function getPnLData(startDate, endDate) {
     )
     .get(startDate, endDate);
 
-  const netTaxableRevenue = revenueRow.taxable_revenue || 0;
+  const netTaxableRevenue = revenueRow?.taxable_revenue || 0;
 
   // 2. Calculate COGS (Net of Returns, converted to base stock units)
   const cogsItems = db
@@ -43,10 +49,15 @@ export function getPnLData(startDate, endDate) {
       p.secondary_unit,
       p.conversion_factor,
       p.average_purchase_price,
-      p.mop
+      bv.purchase_rate as variant_purchase_rate,
+      bv.cost_price as variant_cost_price,
+      (SELECT pi.rate FROM purchase_items pi WHERE pi.purchase_id = pb.purchase_id AND pi.product_id = si.product_id LIMIT 1) as batch_purchase_rate,
+      (SELECT pi.rate FROM purchase_items pi WHERE pi.product_id = p.id ORDER BY pi.created_at DESC LIMIT 1) as latest_purchase_rate
     FROM sales_items si
     JOIN sales s ON si.sale_id = s.id
     JOIN products p ON si.product_id = p.id
+    LEFT JOIN batch_variants bv ON si.variant_id = bv.id
+    LEFT JOIN product_batches pb ON si.batch_id = pb.id
     WHERE s.status != 'cancelled' 
       AND s.is_quote = 0
       AND date(s.created_at) BETWEEN date(?) AND date(?)
@@ -64,9 +75,17 @@ export function getPnLData(startDate, endDate) {
       conversion_factor: item.conversion_factor,
     });
     const unitCost =
-      item.average_purchase_price && item.average_purchase_price > 0
+      item.variant_purchase_rate && item.variant_purchase_rate > 0
+        ? item.variant_purchase_rate
+        : item.variant_cost_price && item.variant_cost_price > 0
+        ? item.variant_cost_price
+        : item.batch_purchase_rate && item.batch_purchase_rate > 0
+        ? item.batch_purchase_rate
+        : item.average_purchase_price && item.average_purchase_price > 0
         ? item.average_purchase_price
-        : item.mop || 0;
+        : item.latest_purchase_rate && item.latest_purchase_rate > 0
+        ? item.latest_purchase_rate
+        : 0;
     totalCogs += stockQty * unitCost;
   }
 
@@ -76,10 +95,10 @@ export function getPnLData(startDate, endDate) {
       `
     SELECT 
       SUM(CASE WHEN (sa.new_quantity - sa.old_quantity) > 0 
-               THEN (sa.new_quantity - sa.old_quantity) * COALESCE(p.average_purchase_price, p.mop, 0) 
+               THEN (sa.new_quantity - sa.old_quantity) * COALESCE(NULLIF(p.average_purchase_price, 0), (SELECT pi.rate FROM purchase_items pi WHERE pi.product_id = p.id ORDER BY pi.created_at DESC LIMIT 1), 0) 
                ELSE 0 END) as total_gain,
       SUM(CASE WHEN (sa.new_quantity - sa.old_quantity) < 0 
-               THEN ABS(sa.new_quantity - sa.old_quantity) * COALESCE(p.average_purchase_price, p.mop, 0) 
+               THEN ABS(sa.new_quantity - sa.old_quantity) * COALESCE(NULLIF(p.average_purchase_price, 0), (SELECT pi.rate FROM purchase_items pi WHERE pi.product_id = p.id ORDER BY pi.created_at DESC LIMIT 1), 0) 
                ELSE 0 END) as total_loss
     FROM stock_adjustments sa
     JOIN products p ON sa.product_id = p.id
@@ -89,8 +108,8 @@ export function getPnLData(startDate, endDate) {
     )
     .get(startDate, endDate);
 
-  const stockGain = adjustmentsRow.total_gain || 0;
-  const stockLoss = adjustmentsRow.total_loss || 0;
+  const stockGain = adjustmentsRow?.total_gain || 0;
+  const stockLoss = adjustmentsRow?.total_loss || 0;
 
   // 4. Operating Expenses
   const expenses = db
@@ -323,7 +342,7 @@ export function getStockValuation() {
     db
       .prepare(
         `
-    SELECT SUM(quantity * COALESCE(average_purchase_price, mop, 0)) as total_value
+    SELECT SUM(quantity * COALESCE(NULLIF(average_purchase_price, 0), (SELECT pi.rate FROM purchase_items pi WHERE pi.product_id = products.id ORDER BY pi.created_at DESC LIMIT 1), 0)) as total_value
     FROM products 
     WHERE quantity > 0 AND is_active = 1
   `,
@@ -334,9 +353,30 @@ export function getStockValuation() {
     db
       .prepare(
         `
-    SELECT SUM(quantity * COALESCE(mop, 0)) as total_value
-    FROM product_batches 
-    WHERE quantity > 0 AND is_active = 1
+    WITH VariantVal AS (
+      SELECT 
+        bv.batch_id,
+        SUM(bv.quantity * COALESCE(NULLIF(bv.purchase_rate, 0), NULLIF(bv.cost_price, 0), NULLIF(p.average_purchase_price, 0), (SELECT pi.rate FROM purchase_items pi WHERE pi.product_id = p.id ORDER BY pi.created_at DESC LIMIT 1), 0)) as variant_total
+      FROM batch_variants bv
+      JOIN products p ON bv.product_id = p.id
+      WHERE bv.quantity > 0
+      GROUP BY bv.batch_id
+    )
+    SELECT COALESCE(SUM(
+      CASE 
+        WHEN vv.batch_id IS NOT NULL THEN vv.variant_total
+        ELSE pb.quantity * COALESCE(
+          (SELECT pi.rate FROM purchase_items pi WHERE pi.purchase_id = pb.purchase_id AND pi.product_id = pb.product_id LIMIT 1),
+          NULLIF(p.average_purchase_price, 0),
+          (SELECT pi2.rate FROM purchase_items pi2 WHERE pi2.product_id = pb.product_id ORDER BY pi2.created_at DESC LIMIT 1),
+          0
+        )
+      END
+    ), 0) as total_value
+    FROM product_batches pb
+    JOIN products p ON pb.product_id = p.id
+    LEFT JOIN VariantVal vv ON pb.id = vv.batch_id
+    WHERE pb.quantity > 0 AND pb.is_active = 1
   `,
       )
       .get().total_value || 0;
