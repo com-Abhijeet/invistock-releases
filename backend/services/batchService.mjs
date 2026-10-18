@@ -1,6 +1,10 @@
 import * as BatchRepo from "../repositories/batchRepository.mjs";
 import * as AdjustmentRepo from "../repositories/stockAdjustmentRepository.mjs";
-import { generateBatchUid, calculateDaysLeft } from "../utils/batchUtils.mjs";
+import {
+  generateBatchUid,
+  getNextBatchUid,
+  calculateDaysLeft,
+} from "../utils/batchUtils.mjs";
 import db from "../db/db.mjs";
 
 // ... existing createNewBatch, processSaleItemStockDeduction ...
@@ -19,15 +23,20 @@ export function createNewBatch({
   barcode,
   margin,
   variants,
+  batchUid: customBatchUid,
 }) {
   const createTransaction = db.transaction(() => {
-    const countStmt = db.prepare(
-      "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?",
-    );
-    const result = countStmt.get(productId);
-    const nextSequence = (result ? result.count : 0) + 1;
-
-    const batchUid = generateBatchUid(productId, nextSequence);
+    let batchUid = customBatchUid;
+    if (!batchUid) {
+      batchUid = getNextBatchUid(productId, db);
+    } else {
+      const exists = db
+        .prepare("SELECT id FROM product_batches WHERE batch_uid = ? LIMIT 1")
+        .get(batchUid);
+      if (exists) {
+        batchUid = getNextBatchUid(productId, db);
+      }
+    }
 
     const insertBatch = db.prepare(`
       INSERT INTO product_batches (
@@ -418,12 +427,7 @@ export function assignUntrackedStock({
   serials,
 }) {
   const assignTransaction = db.transaction(() => {
-    const countStmt = db.prepare(
-      "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?",
-    );
-    const result = countStmt.get(productId);
-    const nextSequence = (result ? result.count : 0) + 1;
-    const batchUid = generateBatchUid(productId, nextSequence);
+    const batchUid = getNextBatchUid(productId, db);
 
     const insertBatch = db.prepare(`
       INSERT INTO product_batches (
@@ -596,12 +600,7 @@ export function createManualBatch({
     }
 
     // Generate batch UID
-    const countStmt = db.prepare(
-      "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?",
-    );
-    const result = countStmt.get(productId);
-    const nextSequence = (result ? result.count : 0) + 1;
-    const batchUid = generateBatchUid(productId, nextSequence);
+    const batchUid = getNextBatchUid(productId, db);
 
     const insertBatch = db.prepare(`
       INSERT INTO product_batches (
@@ -1503,12 +1502,7 @@ export function bulkCreateOpeningStock(batches) {
       const baseMop = Number(item.mop) / ratio;
 
       // 3. Generate a UID for the batch
-      const countStmt = db.prepare(
-        "SELECT COUNT(*) as count FROM product_batches WHERE product_id = ?",
-      );
-      const result = countStmt.get(item.product_id);
-      const nextSequence = (result ? result.count : 0) + 1;
-      const batchUid = generateBatchUid(item.product_id, nextSequence);
+      const batchUid = getNextBatchUid(item.product_id, db);
 
       // 4. Insert the new batch using the normalized base-unit metrics
       const insertBatch = db.prepare(`
@@ -1626,3 +1620,5 @@ export function updateBatchService(batchId, payload) {
 
   return transaction();
 }
+
+export { getNextBatchUid };

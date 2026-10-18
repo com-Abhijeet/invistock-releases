@@ -32,9 +32,13 @@ const createPrintWindow = async (payload) => {
   } else if (payload.product) {
     itemsList = [
       {
+        ...payload,
         product: payload.product,
         copies: payload.copies,
         customBarcode: payload.customBarcode,
+        batch_number: payload.batch_number || payload.batch_no || payload.product?.batch_number || payload.product?.batch_no || "",
+        batch_no: payload.batch_no || payload.batch_number || payload.product?.batch_no || payload.product?.batch_number || "",
+        batch: payload.batch || payload.product?.batch || {},
       },
     ];
   }
@@ -69,14 +73,24 @@ const createPrintWindow = async (payload) => {
     const { renderPRNLabels } = require("./templates/prnLabelEngine.js");
     const { sendRawToPrinter } = require("./utils/rawPrinter.js");
 
-    const formattedItems = itemsList.map((it) => ({
-      product: it.product || it,
-      barcode: it.customBarcode || it.product?.barcode || it.barcode || "",
-      print_qty: Number(it.copies || it.print_qty || 1),
-      name: it.product?.name || it.name || "",
-      mrp: it.product?.mrp || it.mrp || 0,
-      price: it.product?.selling_price || it.product?.price || it.price || 0,
-    }));
+    const formattedItems = itemsList.map((it) => {
+      const prod = it.product || it;
+      const batchObj = it.batch || prod.batch || {};
+      return {
+        ...it,
+        product: prod,
+        batch: batchObj,
+        barcode: it.customBarcode || prod.barcode || it.barcode || batchObj.barcode || "",
+        print_qty: Number(it.copies || it.print_qty || 1),
+        name: prod.product_name || prod.name || it.name || "",
+        mrp: it.mrp || prod.mrp || batchObj.mrp || 0,
+        price: it.price || prod.selling_price || prod.price || batchObj.mop || prod.mrp || 0,
+        batch_number: it.batch_number || it.batch_no || batchObj.batch_number || batchObj.batch_no || prod.batch_number || prod.batch_no || prod.batch_uid || "",
+        batch_no: it.batch_no || it.batch_number || batchObj.batch_no || batchObj.batch_number || prod.batch_no || prod.batch_number || prod.batch_uid || "",
+        expiry_date: it.expiry_date || batchObj.expiry_date || prod.expiry_date || "",
+        article_no: it.article_no || prod.article_no || "",
+      };
+    });
 
     const rawPrnOutput = renderPRNLabels(prnContent, formattedItems, shop, {
       multiUp: localSettings.label_multi_up || 1,

@@ -117,6 +117,27 @@ export async function createPurchase(purchaseData) {
     // Deduplicate & normalize batch barcodes before persisting
     normalizeAndDeduplicatePurchaseBatches(items);
 
+    // Pre-generate unique batch UIDs for batch/serial items so purchase_items and product_batches share the exact same UID
+    const usedBatchUids = new Set();
+    for (const item of items) {
+      const prod = getProductById(item.product_id);
+      const trackingType = item.tracking_type || prod?.tracking_type || "none";
+      if (
+        trackingType === "batch" ||
+        trackingType === "serial" ||
+        item.batch_number
+      ) {
+        if (!item.batch_uid) {
+          item.batch_uid = batchService.getNextBatchUid(
+            item.product_id,
+            db,
+            Array.from(usedBatchUids),
+          );
+        }
+        usedBatchUids.add(item.batch_uid);
+      }
+    }
+
     const internal_ref_no = generateReference("P");
 
     // 1. Create Purchase Header & Items (Repo handles stock aggregation)
@@ -138,8 +159,13 @@ export async function createPurchase(purchaseData) {
 
     // 2. Create Batches / Serials for relevant items
     for (const item of items) {
-      if (item.tracking_type === "batch" || item.tracking_type === "serial") {
-        const product = getProductById(item.product_id);
+      const product = getProductById(item.product_id);
+      const trackingType = item.tracking_type || product?.tracking_type || "none";
+      if (
+        trackingType === "batch" ||
+        trackingType === "serial" ||
+        item.batch_number
+      ) {
         const baseQty = convertToStockQuantity(
           item.quantity,
           item.unit,
@@ -160,10 +186,12 @@ export async function createPurchase(purchaseData) {
           serialNumbers: item.serial_numbers,
           location: "Store",
           variants: item.variants,
+          batchUid: item.batch_uid,
         });
 
-        // Sync batch_uid back to purchase_items
-        if (created?.batchUid) {
+        // Sync batch_uid back to purchase_items if altered by createNewBatch
+        if (created?.batchUid && item.batch_uid !== created.batchUid) {
+          item.batch_uid = created.batchUid;
           db.prepare(
             `UPDATE purchase_items SET batch_uid = ? WHERE purchase_id = ? AND product_id = ? AND (batch_number IS ? OR batch_number = ?) AND (barcode IS ? OR barcode = ?)`,
           ).run(
@@ -454,6 +482,7 @@ export async function updatePurchase(id, purchaseData) {
           serialNumbers: item.serial_numbers,
           location: "Store",
           variants: item.variants,
+          batchUid: item.batch_uid,
         });
         if (created?.batchUid) {
           item.batch_uid = created.batchUid;

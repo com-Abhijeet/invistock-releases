@@ -26,9 +26,9 @@ function encodeCostCipher(costPrice, cipherKey = "MONEYTALKS") {
  */
 function replaceLabelPlaceholders(templateStr, item, shop, cipherKey) {
   const product = item.product || {};
-  const batch = item.batch || {};
-  const serial = item.serial || {};
-  const variant = item.variant || {};
+  const batch = item.batch || product.batch || {};
+  const serial = item.serial || product.serial || {};
+  const variant = item.variant || product.variant || {};
 
   const name =
     product.product_name ||
@@ -36,7 +36,7 @@ function replaceLabelPlaceholders(templateStr, item, shop, cipherKey) {
     item.product_name ||
     item.name ||
     "Product";
-  const code = product.product_code || product.code || "";
+  const code = product.product_code || product.code || item.product_code || item.code || "";
   const barcode =
     item.barcode || variant.barcode || batch.barcode || product.barcode || "";
   const mrp = Number(
@@ -55,8 +55,21 @@ function replaceLabelPlaceholders(templateStr, item, shop, cipherKey) {
     variant.cost_price || batch.purchase_rate || product.cost_price || 0,
   );
   const cipher = encodeCostCipher(cost, cipherKey);
-  const batchNo = item.batch_number || batch.batch_number || "";
-  const expDate = batch.expiry_date || item.expiry_date || "";
+  const batchNo =
+    item.batch_number ||
+    item.batch_no ||
+    batch.batch_number ||
+    batch.batch_no ||
+    product.batch_number ||
+    product.batch_no ||
+    product.batch_uid ||
+    item.batch_uid ||
+    "";
+  const expDate =
+    batch.expiry_date ||
+    item.expiry_date ||
+    product.expiry_date ||
+    "";
   const articleNo = item.article_no || product.article_no || "";
   const size =
     item.size ||
@@ -70,9 +83,10 @@ function replaceLabelPlaceholders(templateStr, item, shop, cipherKey) {
     item.dim2_value ||
     variant.dim2_value ||
     product.dim2_value ||
+    product.color ||
     "";
   const displayCode = item.display_code || articleNo || batchNo || "";
-  const sku = item.sku || variant.sku || "";
+  const sku = item.sku || variant.sku || product.sku || "";
   const variantTitle = [size, color].filter(Boolean).join(" / ");
   const shopName = shop.shop_name || shop.name || "";
 
@@ -83,8 +97,8 @@ function replaceLabelPlaceholders(templateStr, item, shop, cipherKey) {
     .replace(/\{\{(BARCODE|barcode)\}\}/g, barcode)
     .replace(/\{\{(MRP|mrp)\}\}/g, mrp)
     .replace(/\{\{(PRICE|SELLING_PRICE|MOP|mop)\}\}/g, price)
-    .replace(/\{\{(BATCH_NO|BATCH_NUMBER|batch_number)\}\}/g, batchNo)
-    .replace(/\{\{(EXPIRY_DATE|expiry_date)\}\}/g, expDate)
+    .replace(/\{\{(BATCH_NO|batch_no|BATCH_NUMBER|batch_number)\}\}/g, batchNo)
+    .replace(/\{\{(EXPIRY_DATE|expiry_date|EXP_DATE|exp_date)\}\}/g, expDate)
     .replace(/\{\{(SIZE|dim1_value|size)\}\}/g, size)
     .replace(/\{\{(COLOR|dim2_value|color)\}\}/g, color)
     .replace(/\{\{(ARTICLE_NO|article_no)\}\}/g, articleNo)
@@ -145,9 +159,9 @@ function renderPRNLabels(prnTemplate, items, shop = {}, options = {}) {
       const prefix = `COL_${col}_`;
 
       const product = currentItem.product || {};
-      const batch = currentItem.batch || {};
-      const serial = currentItem.serial || {};
-      const variant = currentItem.variant || {};
+      const batch = currentItem.batch || product.batch || {};
+      const serial = currentItem.serial || product.serial || {};
+      const variant = currentItem.variant || product.variant || {};
 
       const name =
         product.product_name ||
@@ -155,7 +169,7 @@ function renderPRNLabels(prnTemplate, items, shop = {}, options = {}) {
         currentItem.product_name ||
         currentItem.name ||
         "";
-      const code = product.product_code || product.code || "";
+      const code = product.product_code || product.code || currentItem.product_code || currentItem.code || "";
       const barcode =
         currentItem.barcode ||
         variant.barcode ||
@@ -182,20 +196,39 @@ function renderPRNLabels(prnTemplate, items, shop = {}, options = {}) {
         variant.cost_price || batch.purchase_rate || product.cost_price || 0,
       );
       const cipher = name ? encodeCostCipher(cost, cipherKey) : "";
-      const batchNo = currentItem.batch_number || batch.batch_number || "";
-      const expDate = batch.expiry_date || currentItem.expiry_date || "";
+      const batchNo =
+        currentItem.batch_number ||
+        currentItem.batch_no ||
+        batch.batch_number ||
+        batch.batch_no ||
+        product.batch_number ||
+        product.batch_no ||
+        product.batch_uid ||
+        currentItem.batch_uid ||
+        "";
+      const expDate =
+        batch.expiry_date ||
+        currentItem.expiry_date ||
+        product.expiry_date ||
+        "";
       const articleNo = currentItem.article_no || product.article_no || "";
       const size =
         currentItem.size ||
         currentItem.dim1_value ||
         variant.dim1_value ||
+        product.dim1_value ||
         product.size ||
         "";
       const color =
-        currentItem.color || currentItem.dim2_value || variant.dim2_value || "";
+        currentItem.color ||
+        currentItem.dim2_value ||
+        variant.dim2_value ||
+        product.dim2_value ||
+        product.color ||
+        "";
       const displayCode =
         currentItem.display_code || articleNo || batchNo || "";
-      const sku = currentItem.sku || variant.sku || "";
+      const sku = currentItem.sku || variant.sku || product.sku || "";
       const variantTitle = [size, color].filter(Boolean).join(" / ");
       const shopName = shop.shop_name || shop.name || "";
 
@@ -223,13 +256,13 @@ function renderPRNLabels(prnTemplate, items, shop = {}, options = {}) {
         )
         .replace(
           new RegExp(
-            `\\{\\{${prefix}(BATCH_NO|BATCH_NUMBER|batch_number)\\}\\}`,
+            `\\{\\{${prefix}(BATCH_NO|batch_no|BATCH_NUMBER|batch_number)\\}\\}`,
             "g",
           ),
           batchNo,
         )
         .replace(
-          new RegExp(`\\{\\{${prefix}(EXPIRY_DATE|expiry_date)\\}\\}`, "g"),
+          new RegExp(`\\{\\{${prefix}(EXPIRY_DATE|expiry_date|EXP_DATE|exp_date)\\}\\}`, "g"),
           expDate,
         )
         .replace(
