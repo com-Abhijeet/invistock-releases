@@ -178,6 +178,9 @@ const PurchaseItemSection = ({
     const updated = [...items];
     updated[matrixRowIndex].variants = matrixData;
     updated[matrixRowIndex].quantity = totalQty;
+    if (!updated[matrixRowIndex].batch_number && matrixData[0]?.article_no) {
+      updated[matrixRowIndex].batch_number = matrixData[0].article_no;
+    }
     updated[matrixRowIndex].price = calculatePrice(updated[matrixRowIndex]);
     onItemsChange(updated);
     setMatrixModalOpen(false);
@@ -1343,9 +1346,12 @@ const PurchaseItemSection = ({
                 ?.preset_id
           )}
           productName={items[matrixRowIndex]?.product_name || "Product"}
+          presets={presets}
           articleNo={
+            items[matrixRowIndex]?.batch_number ||
             products.find((prod) => prod.id === items[matrixRowIndex]?.product_id)
-              ?.article_no || undefined
+              ?.article_no ||
+            undefined
           }
           initialVariants={items[matrixRowIndex]?.variants || []}
           defaultMrp={items[matrixRowIndex]?.mrp}

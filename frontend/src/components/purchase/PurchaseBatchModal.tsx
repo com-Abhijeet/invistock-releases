@@ -250,6 +250,8 @@ export default function PurchaseBatchModal({
   const productInputRef = useRef<HTMLInputElement>(null);
   const rateInputRef = useRef<HTMLInputElement>(null);
   const newProductBtnRef = useRef<HTMLButtonElement>(null);
+  const matrixBtnRef = useRef<HTMLButtonElement>(null);
+  const submitBtnRef = useRef<HTMLButtonElement>(null);
 
   const applyProductSelection = (
     prod: Product,
@@ -284,9 +286,9 @@ export default function PurchaseBatchModal({
     }));
   };
 
-  // Ctrl+A shortcut inside PurchaseBatchModal opens AddProductModal
+  // Ctrl+A shortcut inside PurchaseBatchModal opens AddProductModal; Alt+M / Ctrl+M opens VariantMatrixModal
   useEffect(() => {
-    if (!open) return;
+    if (!open || matrixModalOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
         e.preventDefault();
@@ -295,10 +297,17 @@ export default function PurchaseBatchModal({
           onOpenAddProduct();
         }
       }
+      if ((e.altKey || e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "m") {
+        if (selectedProducts.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          setMatrixModalOpen(true);
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [open, onOpenAddProduct]);
+  }, [open, matrixModalOpen, onOpenAddProduct, selectedProducts]);
 
   // Initialize form
   useEffect(() => {
@@ -798,26 +807,13 @@ export default function PurchaseBatchModal({
                     ref={newProductBtnRef}
                     variant="outlined"
                     size="small"
+                    tabIndex={-1}
+                    data-nav-skip="true"
                     startIcon={<PlusCircle size={16} />}
                     onClick={onOpenAddProduct}
                     sx={{ height: 40, whiteSpace: "nowrap" }}
                   >
                     + New Product
-                  </Button>
-                )}
-
-                {selectedProducts.length > 0 && (
-                  <Button
-                    variant={activeMatrixVariants.length > 0 ? "contained" : "outlined"}
-                    color="primary"
-                    size="small"
-                    startIcon={<GridIcon size={16} />}
-                    onClick={() => setMatrixModalOpen(true)}
-                    sx={{ height: 40, whiteSpace: "nowrap", fontWeight: 700 }}
-                  >
-                    {activeMatrixVariants.length > 0
-                      ? `Matrix (${formData.quantity} Pcs / ${activeMatrixVariants.length} Variants)`
-                      : "⚡ Size / Variant Matrix"}
                   </Button>
                 )}
               </Box>
@@ -869,7 +865,7 @@ export default function PurchaseBatchModal({
               />
             </Grid>
 
-            {/* Secondary Prices */}
+            {/* Secondary Prices & Batch Info */}
             <Grid item xs={6} sm={3}>
               <TextField
                 label="MOP"
@@ -929,6 +925,80 @@ export default function PurchaseBatchModal({
                 onFocus={(e) => e.target.select()}
               />
             </Grid>
+
+            {/* Variant Matrix Button placed directly below Batch Number for seamless sequential keyboard flow */}
+            {selectedProducts.length > 0 && (
+              <Grid item xs={12}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 1.5,
+                    p: 1,
+                    borderRadius: 1.5,
+                    bgcolor:
+                      activeMatrixVariants.length > 0
+                        ? "rgba(2, 132, 199, 0.08)"
+                        : "rgba(15, 23, 42, 0.03)",
+                    border: "1px dashed",
+                    borderColor:
+                      activeMatrixVariants.length > 0 ? "primary.main" : "divider",
+                  }}
+                >
+                  <Button
+                    ref={matrixBtnRef}
+                    variant={activeMatrixVariants.length > 0 ? "contained" : "outlined"}
+                    color="primary"
+                    size="medium"
+                    fullWidth={activeMatrixVariants.length === 0}
+                    startIcon={<GridIcon size={16} />}
+                    onClick={() => setMatrixModalOpen(true)}
+                    sx={{
+                      height: 38,
+                      whiteSpace: "nowrap",
+                      fontWeight: 700,
+                      textTransform: "none",
+                    }}
+                  >
+                    {activeMatrixVariants.length > 0
+                      ? `Edit Size / Variant Matrix (${formData.quantity} Pcs • ${activeMatrixVariants.length} Variants)`
+                      : "⚡ Enter Size / Variant Matrix (Press Enter / Alt+M)"}
+                  </Button>
+
+                  {activeMatrixVariants.length > 0 && (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 0.5,
+                        flexWrap: "wrap",
+                        overflow: "hidden",
+                        maxHeight: 56,
+                      }}
+                    >
+                      {activeMatrixVariants.slice(0, 8).map((v, i) => (
+                        <Chip
+                          key={i}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                          label={`${v.article_no ? `${v.article_no}: ` : ""}${v.dim2_value ? `${v.dim2_value} ` : ""}${v.dim1_value} × ${v.quantity}`}
+                          sx={{ fontWeight: 700, fontSize: "0.7rem", height: 22 }}
+                        />
+                      ))}
+                      {activeMatrixVariants.length > 8 && (
+                        <Chip
+                          size="small"
+                          label={`+${activeMatrixVariants.length - 8} more`}
+                          sx={{ fontSize: "0.7rem", height: 22 }}
+                        />
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              </Grid>
+            )}
 
             {/* Dates */}
             <Grid item xs={6}>
@@ -1082,6 +1152,7 @@ export default function PurchaseBatchModal({
             {editItem ? "Cancel" : "Exit"}
           </Button>
           <Button
+            ref={submitBtnRef}
             onClick={handleSubmit}
             variant="contained"
             data-save="true"
@@ -1111,13 +1182,23 @@ export default function PurchaseBatchModal({
           onClose={() => setMatrixModalOpen(false)}
           onSave={(matrixData) => {
             const totalQty = matrixData.reduce((sum, v) => sum + (v.quantity || 0), 0);
+            const firstArticleNo = matrixData[0]?.article_no || "";
             setMatrixVariants(matrixData);
-            setFormData((prev) => ({ ...prev, quantity: totalQty }));
+            setFormData((prev) => ({
+              ...prev,
+              quantity: totalQty > 0 ? totalQty : prev.quantity,
+              batch_number: prev.batch_number || firstArticleNo,
+            }));
+            setTimeout(() => {
+              submitBtnRef.current?.focus();
+            }, 80);
           }}
           preset={resolvedPreset}
           presets={presets}
           productName={selectedProducts[0]?.name || "Product"}
-          articleNo={selectedProducts[0]?.article_no || ""}
+          articleNo={
+            formData.batch_number || selectedProducts[0]?.article_no || ""
+          }
           initialVariants={matrixVariants}
           defaultMrp={Number(formData.mrp) || Number(selectedProducts[0]?.mrp) || 0}
           defaultMop={Number(formData.mop) || Number(selectedProducts[0]?.mop) || 0}
